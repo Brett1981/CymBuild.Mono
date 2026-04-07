@@ -1,0 +1,61 @@
+
+ -----------------------------------------------------------------------------------------------------
+| Given that the PostcodeLookup service cannot be installed for whatever reason, it might become	  |
+| cumbersome to integrate it into the working project.												  |
+|																									  |
+| The steps below were taken to make the service work with CymBuild.     							  |
+ -----------------------------------------------------------------------------------------------------
+
+
+1.  In the Program.cs file, comment out app.UseHttpsRedirection() - this is to ensure that the request does not get redirected
+	from HTTP to HTTPS. 
+
+2.  In the Program.cs file, comment out the existing CORS policy and add the below instead:
+
+		builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("AllowFrontend", builder =>
+            {
+                builder
+                    .WithOrigins("http://localhost:7202", "https://localhost:7202", "http://localhost:5041") 
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+            });
+        });
+
+3.  Comment out app.UseCors("AllowAll") and add app.UseCors("AllowFrontend") instead.
+
+4.  Slight changes had to be made to the service-worker.js file, specifically the block of code responsible for handling the "fetch" event.
+    We check if the path includes "/api/" - if it is, we do not want the script to do anything but to return. 
+
+        self.addEventListener('fetch', event => {
+
+            // Create a URL object from the request URL to access the pathname
+            const url = new URL(event.request.url);
+
+            if (url.pathname.startsWith('/api/')) {
+                return; // Do nothing — browser handles it directly
+            }
+
+            if (event.request.mode === 'navigate') {
+                event.respondWith(handleNavigationRequest(event));
+
+            } else {
+                event.respondWith(
+                    caches.match(event.request).then(response => {
+                        return response || fetch(event.request).catch(error => {
+                            console.error("Service Worker: Fetch failed:", error);
+                            return caches.match('index.html'); // fallback to main
+                        });
+                    })
+                );
+            }
+        });
+
+
+5. In the AppSettings.Development.json, update the endpoint to http://localhost:5041
+
+
+
+

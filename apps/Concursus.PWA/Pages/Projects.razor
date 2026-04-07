@@ -1,0 +1,33 @@
+﻿@page "/projects/{DrawerGuid}"
+@using Google.Protobuf.WellKnownTypes
+@attribute [Authorize]
+
+<h4><i class="bi bi-file-earmark-ppt-fill" style="font-size: 1.2rem;"></i> Projects</h4>
+
+<DynamicGrid GridCode="PROJECTS" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" TransientVirtualProperties="@TransientVirtualProperties" />
+
+@code {
+
+    [Parameter]
+    public string DrawerGuid { get; set; } = "";
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private bool isLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        isLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isLoading = false;
+            //StateHasChanged();
+        }
+    }
+
+}

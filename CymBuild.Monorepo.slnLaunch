@@ -1,0 +1,47 @@
+[
+  {
+    "Name": "CymBuild Dev ",
+    "Projects": [
+      {
+        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
+        "Action": "Start",
+        "DebugTarget": "PWA - Dev (IIS Express)"
+      },
+      {
+        "Path": "services\\Concursus.API\\Concursus.API.csproj",
+        "Action": "Start",
+        "DebugTarget": "API - Dev (Kestrel)"
+      }
+    ]
+  },
+  {
+    "Name": "CymBuild Test",
+    "Projects": [
+      {
+        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
+        "Action": "Start",
+        "DebugTarget": "PWA - Test (IIS Express)"
+      },
+      {
+        "Path": "services\\Concursus.API\\Concursus.API.csproj",
+        "Action": "Start",
+        "DebugTarget": "API - Test (Kestrel)"
+      }
+    ]
+  },
+  {
+    "Name": "CymBuild Live",
+    "Projects": [
+      {
+        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
+        "Action": "Start",
+        "DebugTarget": "PWA - Live (IIS Express)"
+      },
+      {
+        "Path": "services\\Concursus.API\\Concursus.API.csproj",
+        "Action": "Start",
+        "DebugTarget": "API - Live (Kestrel)"
+      }
+    ]
+  }
+]

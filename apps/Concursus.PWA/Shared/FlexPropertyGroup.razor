@@ -1,0 +1,198 @@
+﻿@using Concursus.PWA.Classes
+@using Concursus.Components.Shared.Services
+@using Google.Protobuf.WellKnownTypes;
+@inject DeviceInfoService DeviceInfoService
+@inject IConfiguration configuration
+
+@if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && entityPropertyGroup.ShowOnMobile))
+{
+    @if (ShouldRenderGroup)
+    {
+        <ErrorBoundary>
+            <ChildContent>
+                <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2" @onclick="ToggleCollapse" style="cursor: pointer;">
+                            <div class="d-flex flex-row justify-content-between">
+                                <h5 class="card-title mb-0">@entityPropertyGroup.Name</h5>
+
+                                @* Logic for showing the postcode button for the client section. *@
+                                @if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Agent Details")
+                                {
+                                    var addNewAgentAddress = dataObject.DataProperties
+                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("9c333b64-2f44-4833-bd6b-68571178f195").ToString())
+                                    ?? new DataProperty();
+
+                                  
+                                    //Get the value for the checkbox (e.g. true or not)
+                                    BoolValue boolValue = addNewAgentAddress.Value.Unpack<BoolValue>();
+
+                                    //If true, show the postcode button
+                                    if (boolValue.Value)
+                                    {
+                                        <div class="mx-3" @onclick:stopPropagation="true">
+                                            <PostcodeLookupButton 
+                                                @bind-DataObject="@dataObject"
+                                                EntityGroupSection="Agent" 
+                                                editPageRef="@editPageRef"
+                                            />
+                                        </div>
+                                        
+                                    }
+                                
+                                }
+                                //Logic for showing the postcode button for the client section.
+                                else if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Client Details")
+                                {
+
+                                    var addNewClientAddress = dataObject.DataProperties
+                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("0279fba4-01d2-4c7c-aee9-a29cfe45174c").ToString())
+                                    ?? new DataProperty();
+
+                                    var editPageR = editPageRef;
+
+                                    //Get the value for the checkbox (e.g. true or not)
+                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                    //If true, show the postcode button
+                                    if (boolValue.Value)
+                                    {
+                                        <div class="mx-3" @onclick:stopPropagation="true">
+                                            <PostcodeLookupButton 
+                                                @bind-DataObject="@dataObject"
+                                                EntityGroupSection="Client" 
+                                                editPageRef="@editPageRef"
+                                            />
+                                        </div>
+                                    }
+                                }
+                                //Logic for showing the postcode button for the Asset section.
+                                else if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Asset Details")
+                                {
+
+                                    var addNewClientAddress = dataObject.DataProperties
+                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("83730cf2-ac67-4064-9590-0a94800d03ce").ToString())
+                                    ?? new DataProperty();
+
+                                    var editPageR = editPageRef;
+
+                                    //Get the value for the checkbox (e.g. true or not)
+                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                    //If true, show the postcode button
+                                    if (boolValue.Value)
+                                    {
+                                        <div class="mx-3" @onclick:stopPropagation="true">
+                                            <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                  EntityGroupSection="Asset"
+                                                                  editPageRef="@editPageRef" />
+                                        </div>
+                                    }
+                                }
+                                //Logic for showing the postcode button for the Asset section.
+                                else if (dataObject.EntityTypeGuid == "83730cf2-ac67-4064-9590-0a94800d03ce" && entityPropertyGroup.Name == "Finance Account Details")
+                                {
+
+                                    var addNewClientAddress = dataObject.DataProperties
+                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("d5e1665d-0914-4e0f-8ec4-3572890ec345").ToString())
+                                    ?? new DataProperty();
+
+                                    var editPageR = editPageRef;
+
+                                    //Get the value for the checkbox (e.g. true or not)
+                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                    //If true, show the postcode button
+                                    if (boolValue.Value)
+                                    {
+                                        <div class="mx-3" @onclick:stopPropagation="true">
+                                            <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                  EntityGroupSection="Finance"
+                                                                  editPageRef="@editPageRef" />
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+
+
+
+                            <!--Use metadata to populate this section - should be tied to the groups -->
+                            @if(entityPropertyGroup.Name == "Address Detail" && configuration.GetValue<bool>("PostcodeLookupUI:Enabled") == true)
+                            {
+                                <PostcodeLookupButton 
+                                    @bind-DataObject="@dataObject"
+                                editPageRef="@editPageRef" />
+                            }
+                          
+                            @if (entityPropertyGroup.IsCollapsable)
+                            {
+                                <i class="bi @(isCollapsed ? "bi-chevron-down" : "bi-chevron-up")" style="font-size: 1.5rem;"></i>
+
+                             
+                            }
+                        </div>
+
+                        @*Warning message about automated invoicing (temporary)*@
+                        @if (!configuration.GetValue<bool>("AutomatedInvoicing:Enabled") && dataObject.EntityTypeGuid == "6474b796-c20d-4947-9406-ae1b6dffef32" && entityPropertyGroup.Name == "Invoicing")
+                        {
+
+                            //Get the warning message from appSettings.json
+                            var warningMessageForInvoicing = configuration.GetValue<string>("AutomatedInvoicing:Message");
+                            <div class="d-flex flex-row">
+                                <div class="alert alert-warning" role="alert">
+                                    @warningMessageForInvoicing
+                                </div>
+                            </div>
+                        }
+                        <div class="d-flex @(entityPropertyGroup.Layout == "Column" ? "flex-column" : "flex-row") flex-wrap align-items-top">
+                            <CascadingValue Value="this">
+                                @foreach (var ep in FilteredEntityProperties)
+                                {
+                                    var dataProperty = dataObject.DataProperties
+                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ep.Guid).ToString())
+                                    ?? new DataProperty();
+
+                                    
+
+                                    if (!(ep.IsHidden || dataProperty.IsHidden))
+                                    {
+                                        @if (!IsBulkEdit)
+                                        {
+                                            <ShoreInput EntityProperty="@ep"
+                                                        @bind-DataProperty="@dataProperty"
+                                                        IsMainRecordContext="@IsMainRecordContext"
+                                                        RecordGuid="@RecordGuid"
+                                                        InputUpdated="@HandleInputUpdated" />
+                                        }
+                                        else
+                                        {
+                                            <div class="property-row d-flex align-items-center">
+                                                <input type="checkbox"
+                                                       class="form-check-input me-2"
+                                                       @bind="ep.IsSelectedForBulkChange"
+                                                       disabled="@(!ep.AllowBulkChange || Disabled)"
+                                                       aria-label="Enable editing for @ep.Name" />
+
+                                                <ShoreInput EntityProperty="@ep"
+                                                            IsBulkEdit="true"
+                                                            IsMainRecordContext="@IsMainRecordContext"
+                                                            @bind-DataProperty="@dataProperty"
+                                                            Disabled="@(!ep.IsSelectedForBulkChange || ep.IsReadOnly)"
+                                                            RecordGuid="@RecordGuid"
+                                                            InputUpdated="@HandleInputUpdated" />
+                                            </div>
+                                        }
+                                    }
+                                }
+                            </CascadingValue>
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <ErrorDisplay ErrorMessage="@ex.Message" />
+            </ErrorContent>
+        </ErrorBoundary>
+    }
+}

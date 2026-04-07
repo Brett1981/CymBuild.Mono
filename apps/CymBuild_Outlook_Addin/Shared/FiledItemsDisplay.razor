@@ -1,0 +1,63 @@
+﻿@using CymBuild_Outlook_Common.Models
+@using Microsoft.AspNetCore.Components
+
+<style>
+    .filed-button {
+        width: 100%;
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+        color: #fff;
+        padding: 8px 12px;
+        text-align: left;
+        border-radius: 5px;
+        margin-bottom: 5px;
+        transition: background-color 0.3s, color 0.3s; /* Smooth transition for background color and text color */
+    }
+
+        .filed-button span {
+            display: -webkit-box;
+            -webkit-line-clamp: 2; /* Number of lines to show */
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: normal;
+        }
+
+    .filed-button-green {
+        background-color: #a9d6a5; /* Softer green */
+        color: #2f4f2f; /* Darker green text for better contrast */
+    }
+
+        .filed-button-green:hover {
+            background-color: #d4ebd2; /* Even softer green on hover */
+        }
+
+    .filed-button-red {
+        background-color: #e0a0a0; /* Softer red */
+        color: #5c2f2f; /* Darker red text for better contrast */
+    }
+
+        .filed-button-red:hover {
+            background-color: #f3dcdc; /* Even softer red on hover */
+        }
+</style>
+
+<div>
+    @if (FiledRecords != null && FiledRecords.Any())
+    {
+        foreach (var record in FiledRecords)
+        {
+            <button class="btn filed-button @(record.IsFiled == 1 && !string.IsNullOrEmpty(record.FilingLocationUrl) ? "filed-button-green" : "filed-button-red")">
+                <span>Filed To:</span>
+                <span>@((MarkupString)record.Name)</span>
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public List<FilingRecordSearchResult> FiledRecords { get; set; }
+}

@@ -1,0 +1,46 @@
+﻿@code {
+    [Parameter]
+    public EventCallback OnFileWithPrevious { get; set; }
+
+    [Parameter]
+    public EventCallback OnRefreshSearch { get; set; }
+
+    [Parameter]
+    public EventCallback OnDoNotFile { get; set; }
+
+    private async Task HandleFileWithPrevious()
+    {
+        if (OnFileWithPrevious.HasDelegate)
+        {
+            await OnFileWithPrevious.InvokeAsync(null);
+        }
+    }
+
+    private async Task HandleRefreshSearch()
+    {
+        if (OnRefreshSearch.HasDelegate)
+        {
+            await OnRefreshSearch.InvokeAsync(null);
+        }
+    }
+
+    private async Task HandleDoNotFile()
+    {
+        if (OnDoNotFile.HasDelegate)
+        {
+            await OnDoNotFile.InvokeAsync(null);
+        }
+    }
+}
+
+<div class="btn-group" role="group">
+    <button id="fileWithPreviousButton" class="btn btn-primary" type="button" @onclick="HandleFileWithPrevious" title="File with previous">
+        <i class="fa fa-copy"></i><span class="btn-text">File with previous</span>
+    </button>
+    <button type="button" class="btn btn-primary" @onclick="HandleRefreshSearch" title="Refresh">
+        <i class="fa fa-redo"></i><span class="btn-text">Refresh</span>
+    </button>
+    <button class="btn btn-danger" type="button" @onclick="HandleDoNotFile" title="Don't file">
+        <i class="fa fa-exclamation-circle"></i><span class="btn-text">Don't file</span>
+    </button>
+</div>

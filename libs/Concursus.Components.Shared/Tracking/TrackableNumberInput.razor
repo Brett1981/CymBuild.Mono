@@ -1,0 +1,59 @@
+﻿@*
+    ────────────────────────────────────────────────────────────────
+    TrackableNumberInput<T>
+    ────────────────────────────────────────────────────────────────
+    PURPOSE:
+    Wraps <InputNumber> to log user changes for debugging and QA.
+
+    🔁 REPLACES:
+    <InputNumber @bind-Value="model.Amount" />
+    ➜
+    <TrackableNumberInput T="decimal"
+                          FieldName="Amount"
+                          @bind-Value="model.Amount"
+                          class="form-control" />
+
+    📒 PARAMETERS:
+    - T: Value type (int, decimal, double, etc.)
+    - FieldName: Friendly label for log
+    - @bind-Value: Supported two-way binding
+    - class: CSS
+    - AdditionalAttributes: e.g., step, min, max, etc.
+
+    🧠 LOGGING:
+    Logs changes on blur:
+    "Field 'Amount' changed to '123.45'"
+
+    🛠️ DEPENDENCIES:
+    Requires `UserInteractionTrackerService` in DI
+*@
+@using System.Globalization
+@using System.Linq.Expressions
+@typeparam T
+
+@using Concursus.Components.Shared.Services
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<InputNumber @bind-Value="Value"
+             class="@CssClass"
+             @attributes="AdditionalAttributes"
+             @onblur="LogInteraction" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownNumberField";
+    [Parameter] public T? Value { get; set; }
+    [Parameter] public EventCallback<T?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<T?>>? ValueExpression { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction()
+    {
+        string formatted = Value?.ToString() ?? "null";
+        string log = $"Field '{FieldName}' changed to '{formatted}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+}

@@ -1,0 +1,251 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Helpers
+@using Concursus.PWA.Services
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+<MessageDisplay @ref="_messageDisplay"
+               ErrorMessage="@ErrorMessage"
+               PageMethod="@PageMethod"
+               MessageType="MessageType" />
+
+<ErrorBoundary>
+    <ChildContent>
+
+        @if (ViewDefinition is null)
+        {
+            <div class="alert alert-warning">No ViewDefinition supplied.</div>
+        }
+        else
+        {
+            <!-- Toolbar -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="mb-0">@ViewDefinition.Name</h5>
+                    @if (!string.IsNullOrWhiteSpace(_statusText))
+                    {
+                        <span class="text-muted small">@_statusText</span>
+                    }
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    @* Keep your existing menu component if you want (not Telerik) *@
+                    @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
+                    {
+                        <GridButtonMenu ViewDefinition="@ViewDefinition"
+                                        OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                    }
+
+                    @if (ViewDefinition.AllowNew && !Disabled)
+                    {
+                        <button class="btn btn-sm btn-success" type="button" @onclick="AddNew">
+                            <i class="bi bi-plus-circle-fill me-2"></i> New
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (ParentRowStatus != -1 && ParentRowStatus <= 0)
+            {
+                <div class="alert alert-info" role="alert">
+                    <strong>Save First!</strong> You must save the record before you can access this area.
+                </div>
+            }
+            else
+            {
+                <!-- Grid -->
+                <div class="v2-grid-wrapper">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle v2-grid-table">
+                            <thead>
+                                <!-- Filter row -->
+                                <tr>
+                                    @foreach (var col in ViewDefinition.Columns.Where(c => !c.IsHidden).OrderBy(c => c.ColumnOrder))
+                                    {
+                                        <th style="min-width:@(GetCssWidth(col.Width));">
+                                            <input class="form-control form-control-sm"
+                                                   placeholder="Filter..."
+                                                   value="@GetFilterValue(col.Name)"
+                                                   @oninput="(ChangeEventArgs e) => OnFilterChanged(col.Name, e)" />
+                                        </th>
+                                    }
+                                </tr>
+
+                                <!-- Header row -->
+                                <tr>
+                                    @foreach (var col in ViewDefinition.Columns
+                                                    .Where(c => !c.IsHidden)
+                                                    .OrderBy(c => c.ColumnOrder))
+                                    {
+                                        <th scope="col" style="min-width:@(GetCssWidth(col.Width));">
+                                            <button type="button"
+                                                    class="btn btn-link p-0 text-decoration-none v2-sort-header"
+                                                    @onclick="() => ToggleSort(col.Name)">
+                                                @col.Title
+                                                @if (string.Equals(_sortColumn, col.Name, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <i class="bi @( _sortDescending ? "bi-sort-down" : "bi-sort-up") ms-1"></i>
+                                                }
+                                            </button>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_isLoading)
+                                {
+                                    <tr>
+                                        <td colspan="@VisibleColumnCount">
+                                            <div class="d-flex align-items-center gap-2 py-2">
+                                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                                <span class="small text-muted">Loading…</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                                else if (_rows.Count == 0)
+                                {
+                                    <tr>
+                                        <td colspan="@VisibleColumnCount" class="text-muted small">
+                                            No records found.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var row in _rows)
+                                    {
+                                        <tr @ondblclick="() => OnRowDoubleClick(row)">
+                                            @foreach (var col in ViewDefinition.Columns
+                                                            .Where(c => !c.IsHidden)
+                                                            .OrderBy(c => c.ColumnOrder))
+                                            {
+                                                <td>
+                                                    <div class="v2-ellipsis">
+                                                        @GetValue(row, col.Name)
+                                                    </div>
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pager -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+                        <div class="small text-muted">
+                            Page @_page of @_totalPages (@_totalRows rows)
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="PrevPage"
+                                    disabled="@(_page <= 1 || _isLoading)">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+
+                            <input class="form-control form-control-sm"
+                                   style="width: 80px;"
+                                   type="number"
+                                   min="1"
+                                   max="@Math.Max(1, _totalPages)"
+                                   @bind="_page"
+                                   @bind:event="oninput"
+                                   @onchange="OnPageInputChanged"
+                                   disabled="@_isLoading" />
+
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="NextPage"
+                                    disabled="@(_page >= _totalPages || _isLoading)">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+
+                            <select class="form-select form-select-sm"
+                                    style="width: 110px;"
+                                    value="@_pageSize"
+                                    @onchange="OnPageSizeChanged"
+                                    disabled="@_isLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Detail modal (Bootstrap) -->
+        @if (ViewDefinition?.IsDetailWindowed == true && WindowIsVisible)
+        {
+            <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,.5);">
+                <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">@WindowTitle</h5>
+                            <button type="button" class="btn-close" @onclick="CloseWindow"></button>
+                        </div>
+                        <div class="modal-body">
+                            <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")"
+                                              Parameters="@_detailPageParameters" />
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" @onclick="CloseWindow">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Batch modal (Bootstrap wrapper; inner component unchanged for now) -->
+        @if (BatchGridVisible)
+        {
+            <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,.5);">
+                <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Batch Edit</h5>
+                            <button type="button" class="btn-close" @onclick="CloseBatchGridModal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <DynamicBatchGridView Items="@CurrentGridItems"
+                                                 OnActionCompleted="CloseBatchGridModal"
+                                                 IsBulkProcessing="true"
+                                                 ViewDefinition="@ViewDefinition"
+                                                 ParentDataObjectReference="@ParentDataObjectReference"
+                                                 ParentGuid="@ParentGuid" />
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" @onclick="CloseBatchGridModal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+    </ChildContent>
+
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

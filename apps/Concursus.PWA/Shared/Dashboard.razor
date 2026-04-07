@@ -1,0 +1,183 @@
+﻿@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+
+@inject Core.CoreClient CoreClient
+@inject NavigationManager Navigation
+@inject IJSRuntime JsRuntime
+@inject UserService UserService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAccessTokenProvider TokenProvider
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@attribute [Authorize]
+<style>
+    .custom-telerik-grid {
+        max-height: auto;
+        width: 100%;
+        height: auto;
+        overflow: auto;
+    }
+
+    .card h5 {
+        max-width: 200px;
+    }
+    /* custom-ellipsis class */
+    .custom-ellipsis,
+    /* OnCellRender class */
+    .k-grid td.custom-ellipsis,
+    /* OnRowRender class */
+    .k-grid tr.custom-ellipsis .k-table-td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+
+<AuthorizeView>
+    <Authorized>
+        <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+        @if (UserService?.UserId != -1)
+        {
+            GetRecentListAsync(UserService?.UserId ?? -1);
+            <h4><i class="bi bi-house-fill me-2" style="font-size: 1.2rem;"></i> Dashboard</h4>
+
+            <div class="d-flex flex-row flex-wrap justify-content-around align-items-start transition-fade-in">
+                <!-- Left Column (30% width) -->
+                <div class="col-lg-3 align-items-start">
+                    @if (_recentItems?.RecentItems?.Count > 0)
+                    {
+                        <!-- TelerikGrid in the left column -->
+                        <div class="card shadow-sm p-2 m-2" style="max-height:auto">
+                            <div class="card-body">
+                                <div class="card-title d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Recent </h5>
+
+                                </div>
+                                <!-- Telerik Grid -->
+                                <TelerikGrid Data="@_recentItems?.RecentItems" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="HandleRowDoubleClick">
+                                    <GridColumns>
+                                        <GridColumn Field="@nameof(RecentItem.EntityTypeLabel)" Title="Type" />
+                                        <GridColumn Field="@nameof(RecentItem.Label)" Title="Record" />
+                                    </GridColumns>
+                                </TelerikGrid>
+                            </div>
+                        </div>
+                    }
+                    @if (_scheduleItems?.ScheduleItems?.Count > 0)
+                    {
+                        <!-- TelerikGrid in the left column -->
+                        <div class="card shadow-sm p-2 m-2" style="max-height:auto">
+                            <div class="card-body">
+                                <div class="card-title d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">Schedule</h5>
+                                    <btn class="btn btn-default"
+                                         id="_schedule"
+                                         @onclick="@(_ => HandleClickOnMetric("_schedule"))">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </btn>
+                                </div>
+                                <!-- Telerik Grid -->
+                                <TelerikGrid Data="@_scheduleItems?.ScheduleItems" Resizable="true" Pageable="true" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="ScheduleRowDoubleClick">
+                                    <GridColumns>
+                                        <GridColumn Field="@nameof(ScheduleItem.Start)" Title="Start">
+                                            <Template Context="scheduleItem">
+                                                @{
+                                                    var item = (ScheduleItem)scheduleItem;
+                                                    var createdDateTime = item.Start.ToDateTime();
+                                                    var formattedCreatedDateTime = createdDateTime.ToUniversalTime().ToString("dd/MM/yyyy HH:mm:ss");
+                                                }
+                                                @formattedCreatedDateTime
+                                            </Template>
+                                        </GridColumn>
+                                        <GridColumn Field="@nameof(ScheduleItem.Title)" Title="Title" Visible="true">
+                                            <Template Context="scheduleItem">
+                                                @{
+                                                    var item = (ScheduleItem)scheduleItem;
+                                                    <div class="custom-ellipsis">
+                                                        @item.Title;
+                                                    </div>
+                                                }
+                                            </Template>
+                                        </GridColumn>
+                                    </GridColumns>
+                                </TelerikGrid>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <!-- Right Column (70% width) -->
+                <div class="col-lg-9 d-flex flex-wrap">
+                    @foreach (var dm in Metrics.OrderBy(m => m.DisplayGroupName).ThenBy(m => m.DisplayOrder))
+                    {
+                        switch (dm.MetricTypeName)
+                        {
+                            case "NumberValue":
+                                <div class="card shadow-sm p-2 m-2 flex-fill">
+                                    <NumberValue Metric="dm"></NumberValue>
+                                </div>
+                                break;
+                            case "ArcGauge":
+                                <div class="card shadow-sm p-2 m-2 flex-fill">
+                                    <ArcGauge Metric="dm"></ArcGauge>
+                                </div>
+                                break;
+                            case "RadialGauge":
+                                <div class="card shadow-sm p-2 m-2 flex-fill">
+                                    <RadialGauge Metric="dm"></RadialGauge>
+                                </div>
+                                break;
+                        }
+                    }
+
+@*                     <!-- Embed the iframe in the right column -->
+                    <div class="card shadow-sm p-2 m-2 flex-fill" style="width: 100%;">
+                        <iframe id="secureIframe" src="https://10.100.34.244/single/?appid=cd194419-1fb0-4279-bc22-80561a431026&obj=nrspQm&opt=ctxmenu,currsel"
+                                style="border:none;width:100%;height:600px;"></iframe>
+                    </div> *@
+                </div>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <p>You are not authorized to view this content. Please log in.</p>
+    </NotAuthorized>
+</AuthorizeView>
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var result = await TokenProvider.RequestAccessToken();
+                if (result.TryGetToken(out var token))
+                {
+                    await JsRuntime.InvokeVoidAsync("sendTokenToIframe", token.Value);
+                }
+            }
+            else
+            {
+
+                var ex = new Exception("Unable to identify if the user is authenticated")
+                    {
+                        Data =
+                            {
+                                { "MessageType", MessageDisplay.ShowMessageType.Error },
+                                { "AdditionalInfo", "Unable to identify if the user is authenticated."},
+                                { "PageMethod", "Dashboard/OnAfterRenderAsync()" }
+                            }
+                    };
+                OnError(ex);
+            }
+        }
+
+    }
+}

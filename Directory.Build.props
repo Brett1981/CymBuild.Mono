@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <!-- Absolute path to repo root, works in CLI and VS -->
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</RepoRoot>
+    <ProtosRoot>$(RepoRoot)services\Concursus.API\Protos\</ProtosRoot>
+  </PropertyGroup>
+</Project>

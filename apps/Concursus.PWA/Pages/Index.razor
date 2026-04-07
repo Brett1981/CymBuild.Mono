@@ -1,0 +1,39 @@
+﻿@page "/"
+@using Concursus.Components.Shared.Services
+@inject IJSRuntime JS
+@inject AppConfiguration AppConfig
+@inject DeviceInfoService DeviceInfoService
+@inject NavigationManager Navigation
+@attribute [Authorize]
+
+<PageTitle>Dashboard</PageTitle>
+
+<AuthorizeView>
+    <Widget></Widget>
+    <h2 style="font-size:smaller; color:lightgray">Environment: @AppConfig.EnvironmentType</h2>
+    @if (AppConfig.EnvironmentType != "LIVE")
+    {
+        <h2 style="font-size:smaller; color:lightgray">DevSharepointIdentifier: @AppConfig.DevSharepointIdentifier</h2>
+        <h2 style="font-size:smaller; color:lightgray">DevSharepointURL: @AppConfig.DevSharepointURL</h2>
+    }
+    <h2 style="font-size:smaller; color:lightgray">Version No: @AppConfig.Version</h2>
+    <h2 style="font-size:smaller; color:lightgray">EF Version No: @AppConfig.EFVersion</h2>
+    <h2 style="font-size:smaller; color:lightgray">@DeviceInfoService.IsMobile</h2>
+</AuthorizeView>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DeviceInfoService.IsInitialized)
+            await DeviceInfoService.InitializeAsync();
+
+        // Redirect to Jobs if on mobile
+        if (DeviceInfoService.IsMobile)
+        {
+            Navigation.NavigateTo("/jobs/00000000-0000-0000-0000-000000000000", forceLoad: false);
+            return; // prevent continuing this page load
+        }
+
+        base.OnInitialized();
+    }
+}

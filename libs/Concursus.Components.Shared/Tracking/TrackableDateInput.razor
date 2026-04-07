@@ -1,0 +1,72 @@
+﻿@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@using System.Globalization
+@inherits InputDate<DateTime?>
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+@* 
+    ─────────────────────────────────────────────────────────────
+    TrackableDateInput
+    ─────────────────────────────────────────────────────────────
+    PURPOSE:
+    A reusable component that replaces <InputDate> for tracking user
+    interactions with date fields. Automatically logs value changes
+    on blur using UserInteractionTrackerService.
+
+    🔁 REPLACES:
+    <InputDate @bind-Value="model.StartDate" class="form-control" />
+
+    USAGE EXAMPLE:
+    <TrackableDateInput FieldName="Start Date"
+                        @bind-Value="model.StartDate"
+                        class="form-control" />
+
+    📒 PARAMETERS:
+    - FieldName: Logical name used for logging (required for clarity in logs)
+    - Value: Bound DateTime? value
+    - class: CSS classes applied to the <input>
+
+    🧠 LOGGING:
+    Logs to InteractionTrackerService on blur with format:
+    "Field 'Start Date' set to '18-06-2025'"
+
+    🔒 NOTE:
+    Use this instead of <InputDate> when you want to track interactions
+    for debugging, analytics, or QA context during error reporting.
+
+*@
+
+<input type="date"
+       class="@CssClass"
+       @bind="CurrentValue"
+       @bind:event="oninput"
+       @attributes="AdditionalAttributes"
+       @onblur="LogInteraction" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownDateField";
+    [Parameter] public new string CssClass { get; set; } = "";
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction()
+    {
+        string log = $"Field '{FieldName}' set to '{CurrentValue?.ToString("dd-MM-yyyy") ?? "null"}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    protected override bool TryParseValueFromString(string? value, out DateTime? result, out string validationErrorMessage)
+    {
+        if (DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.None, out var parsed))
+        {
+            result = parsed;
+            validationErrorMessage = "";
+            return true;
+        }
+
+        result = null;
+        validationErrorMessage = $"The {FieldName} date is not valid.";
+        return false;
+    }
+}

@@ -1,0 +1,150 @@
+﻿@using System.Net.Http.Json
+@using Concursus.Components.Shared.Models
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<!-- The slide-out container for tasks -->
+<div class="task-list-panel @panelClass">
+    <!-- The vertical tab handle -->
+    <div class="tab-handle" @onclick="ToggleTaskList">
+        @TabText
+    </div>
+
+    <!-- Main content area of the panel -->
+    <div class="panel-content px-3 py-3">
+        <h4 class="mb-3">Today's Tasks</h4>
+
+        @if (tasks == null)
+        {
+            <p>Loading tasks...</p>
+        }
+        else if (tasks.Count == 0)
+        {
+            <p>No tasks for today!</p>
+        }
+        else
+        {
+            <ul class="task-list list-unstyled" style="max-height: 250px; overflow-y: auto;">
+                @foreach (var task in tasks)
+                {
+                    <TaskListItem Task="task"
+                                  OnDragStart="OnDragStart"
+                                  OnDrop="OnDrop"
+                                  OnToggleTask="ToggleTask"
+                                  OnEditTask="EditTask" />
+                }
+            </ul>
+        }
+
+        <button class="btn btn-primary mt-3" @onclick="AddTask">Add Task</button>
+    </div>
+</div>
+
+@code {
+    private List<TaskItem> tasks = new();
+    private TaskItem? draggedTask;
+    private bool isTaskListVisible = false; // Start hidden
+
+    // Switches CSS classes for open/closed
+    private string panelClass => isTaskListVisible ? "panel-open" : "panel-closed";
+
+    // The text on the vertical tab
+    private string TabText => isTaskListVisible ? "Hide Tasks" : "Show Tasks";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasks();
+    }
+
+    private async Task LoadTasks()
+    {
+        tasks = await AddStaticList();
+    }
+
+    private async Task<List<TaskItem>> AddStaticList()
+    {
+        var staticTasks = new List<TaskItem>
+        {
+            new TaskItem
+            {
+                TaskId = Guid.NewGuid().ToString(),
+                UserId = 1,
+                TaskTitle = "Team Meeting",
+                TaskDescription = "Attend the daily team meeting at 10am.",
+                IsComplete = false,
+                TaskDate = DateTime.Today,
+                OrderIndex = 1,
+                Notes = "Discuss current issues."
+            },
+            new TaskItem
+            {
+                TaskId = Guid.NewGuid().ToString(),
+                UserId = 1,
+                TaskTitle = "Call Client",
+                TaskDescription = "Follow up with the client on feedback.",
+                IsComplete = false,
+                TaskDate = DateTime.Today,
+                OrderIndex = 2,
+                Notes = "Prepare talking points."
+            },
+            new TaskItem
+            {
+                TaskId = Guid.NewGuid().ToString(),
+                UserId = 1,
+                TaskTitle = "Complete Project Report",
+                TaskDescription = "Finish writing the project report by 3pm.",
+                IsComplete = false,
+                TaskDate = DateTime.Today,
+                OrderIndex = 3,
+                Notes = "Include updated graphs."
+            }
+        };
+
+        await Task.Delay(100);
+        return staticTasks;
+    }
+
+    private void ToggleTask(TaskItem task)
+    {
+        task.IsComplete = !task.IsComplete;
+    }
+
+    private void EditTask(TaskItem task)
+    {
+        Navigation.NavigateTo($"/edit-task/{task.TaskId}");
+    }
+
+    private void AddTask()
+    {
+        Navigation.NavigateTo("/add-task");
+    }
+
+    private void OnDragStart(TaskItem task)
+    {
+        draggedTask = task;
+    }
+
+    private void OnDrop(TaskItem targetTask)
+    {
+        if (draggedTask == null || draggedTask == targetTask)
+            return;
+
+        int fromIndex = tasks.IndexOf(draggedTask);
+        int toIndex = tasks.IndexOf(targetTask);
+        tasks.RemoveAt(fromIndex);
+        tasks.Insert(toIndex, draggedTask);
+
+        // Update the order indexes
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            tasks[i].OrderIndex = i + 1;
+        }
+    }
+
+    // Called by the tab handle to open/close
+    private void ToggleTaskList()
+    {
+        isTaskListVisible = !isTaskListVisible;
+    }
+
+}

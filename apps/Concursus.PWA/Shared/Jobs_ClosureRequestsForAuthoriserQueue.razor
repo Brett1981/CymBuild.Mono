@@ -1,0 +1,62 @@
+﻿@page "/jobs/closure-requests/{DrawerGuid?}"
+@attribute [Authorize]
+
+@using Concursus.PWA.Shared
+
+
+<!--
+=============================================================================
+ Authoriser Closure Review Queue (Host Page)
+ ----------------------------------------------------------------------------
+ WHY THIS PAGE IS MINIMAL (by design):
+ - CymBuild grids are NOT loaded directly from pages.
+ - The DynamicGrid component:
+     1) Calls coreClient.GridDefinitionListAsync(GridCode)
+     2) Builds the drawer list from GridDefinition.Views
+     3) Supplies the selected GridViewDefinition to the correct renderer:
+          - GridViewTypeId == 7 -> FilteredDynamicGridViewV2
+          - FILTEREDQUOTES -> legacy FilteredDynamicGridView
+          - etc.
+ - Therefore, this page MUST host DynamicGrid and let it manage ViewDefinitions.
+
+ REQUIRED METADATA:
+ - Create/Configure a GridDefinition with Code = "JOBSCLOSUREREVIEWQUEUE"
+ - Ensure it has at least one GridViewDefinition (drawer item)
+ - For V2 filtered grid behavior, set GridViewTypeId = 7 on that view.
+=============================================================================
+-->
+<h4><i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i> Authorisation</h4>
+
+<DynamicGrid GridCode="JOBSCLOSUREREVIEW"
+             DrawerGuid="@DrawerGuid"
+             FullGrid="true"
+             IsLoading="@isLoading" />
+
+@code
+{
+    /// <summary>
+    /// Optional drawer view selection (supports direct navigation to a specific drawer item).
+    /// If omitted, DynamicGrid will select:
+    ///  - the last drawer from SessionStorage ("Drawer"), else
+    ///  - DrawerGuid match, else
+    ///  - first drawer item
+    /// </summary>
+    [Parameter]
+    public string? DrawerGuid { get; set; } = Guid.Empty.ToString();
+    private bool isLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        isLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isLoading = false;
+            //StateHasChanged();
+        }
+    }
+}

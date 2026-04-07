@@ -1,0 +1,508 @@
+﻿@page "/sage-api-test"
+
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Sage200Microservice.API.Protos.Invoice
+
+@inject Core.CoreClient coreClient
+@inject InvoiceService.InvoiceServiceClient sageClient
+@inject UserService userService
+
+<PageTitle>Sage API Test</PageTitle>
+
+<div class="container-fluid py-3">
+    <h3>Sage API Test</h3>
+
+    <div class="card mb-3">
+        <div class="card-header">Health</div>
+        <div class="card-body">
+            <button class="btn btn-primary" @onclick="RunHealthAsync" disabled="@_busy">Run Health</button>
+
+            @if (_healthResult is not null)
+            {
+                <div class="mt-3">
+                    <div><strong>Status:</strong> @_healthResult.Status</div>
+
+                    @if (HasBoolProperty(_healthResult, "IsHealthy"))
+                    {
+                        <div><strong>Healthy:</strong> @GetBoolProperty(_healthResult, "IsHealthy")</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_healthResult.Detail))
+                    {
+                        <div><strong>Detail:</strong> @_healthResult.Detail</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_healthResult.ErrorReturned))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error:</strong> @_healthResult.ErrorReturned
+                        </div>
+                    }
+
+                    @if (_showDebugSections && !string.IsNullOrWhiteSpace(_healthResult.RawResponse))
+                    {
+                        <details class="mt-3">
+                            <summary>Legacy raw response (debug only)</summary>
+                            <pre class="mb-0">@_healthResult.RawResponse</pre>
+                        </details>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Fetch Sales Orders</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Dataset</label>
+                    <InputText class="form-control" @bind-Value="_salesDataset" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Order Id</label>
+                    <InputText class="form-control" @bind-Value="_salesOrderId" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Filter Operator</label>
+                    <InputText class="form-control" @bind-Value="_salesFilterOperator" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_salesForce" />
+                        <label class="form-check-label">Force</label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary mt-3" @onclick="RunSalesOrdersAsync" disabled="@_busy">Fetch Sales Orders</button>
+
+            @if (_salesOrdersResult is not null)
+            {
+                <div class="mt-3">
+                    <div><strong>Status:</strong> @_salesOrdersResult.Status</div>
+                    <div><strong>Detail:</strong> @_salesOrdersResult.Detail</div>
+
+                    @if (!string.IsNullOrWhiteSpace(_salesOrdersResult.ErrorReturned))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error:</strong> @_salesOrdersResult.ErrorReturned
+                        </div>
+                    }
+                    else if (_salesOrdersResult.SalesOrders.Count == 0)
+                    {
+                        <div class="alert alert-info mt-3 mb-0">No sales orders returned.</div>
+                    }
+                    else
+                    {
+                        <div class="mt-2"><strong>Returned:</strong> @_salesOrdersResult.SalesOrders.Count</div>
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm table-bordered table-striped align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Account Ref</th>
+                                        <th>Document No</th>
+                                        <th>Customer Order No</th>
+                                        <th>Document Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var order in _salesOrdersResult.SalesOrders)
+                                    {
+                                        <tr>
+                                            <td>@order.AccountReference</td>
+                                            <td>@order.DocumentNo</td>
+                                            <td>@order.CustomerOrderNo</td>
+                                            <td>@order.DocumentDate</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @if (_showDebugSections && !string.IsNullOrWhiteSpace(_salesOrdersResult.RawJson))
+                        {
+                            <details class="mt-3">
+                                <summary>Legacy raw JSON (debug only)</summary>
+                                <pre class="mb-0">@_salesOrdersResult.RawJson</pre>
+                            </details>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Fetch Customer Transactions</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Dataset</label>
+                    <InputText class="form-control" @bind-Value="_transactionsDataset" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Account Reference</label>
+                    <InputText class="form-control" @bind-Value="_accountReference" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Document No</label>
+                    <InputText class="form-control" @bind-Value="_documentNo" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_transactionsForce" />
+                        <label class="form-check-label">Force</label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary mt-3" @onclick="RunTransactionsAsync" disabled="@_busy">Fetch Transactions</button>
+
+            @if (_transactionsResult is not null)
+            {
+                <div class="mt-3">
+                    <div><strong>Status:</strong> @_transactionsResult.Status</div>
+                    <div><strong>Detail:</strong> @_transactionsResult.Detail</div>
+
+                    @if (!string.IsNullOrWhiteSpace(_transactionsResult.ErrorReturned))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error:</strong> @_transactionsResult.ErrorReturned
+                        </div>
+                    }
+                    else if (_transactionsResult.Transactions.Count == 0)
+                    {
+                        <div class="alert alert-info mt-3 mb-0">No transactions returned.</div>
+                    }
+                    else
+                    {
+                        <div class="mt-2"><strong>Returned:</strong> @_transactionsResult.Transactions.Count</div>
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm table-bordered table-striped align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Transaction Ref</th>
+                                        <th>Account Ref</th>
+                                        <th>Second Ref</th>
+                                        <th>Tran Type</th>
+                                        <th>Date</th>
+                                        <th>Net</th>
+                                        <th>Tax</th>
+                                        <th>Gross</th>
+                                        <th>Outstanding</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var tran in _transactionsResult.Transactions)
+                                    {
+                                        <tr>
+                                            <td>@tran.TransactionReference</td>
+                                            <td>@tran.AccountReference</td>
+                                            <td>@tran.SecondReference</td>
+                                            <td>@(tran.SysTraderTranType == 0 ? "" : tran.SysTraderTranType.ToString())</td>
+                                            <td>@tran.TransactionDate</td>
+                                            <td>@tran.NetAmount</td>
+                                            <td>@tran.TaxAmount</td>
+                                            <td>@tran.GrossAmount</td>
+                                            <td>@tran.OutstandingAmount</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @if (_showDebugSections && !string.IsNullOrWhiteSpace(_transactionsResult.RawJson))
+                        {
+                            <details class="mt-3">
+                                <summary>Legacy raw JSON (debug only)</summary>
+                                <pre class="mb-0">@_transactionsResult.RawJson</pre>
+                            </details>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Create Sales Order</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Dataset</label>
+                    <InputText class="form-control" @bind-Value="_createDataset" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Account Reference</label>
+                    <InputText class="form-control" @bind-Value="_createAccountReference" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Customer Order No</label>
+                    <InputText class="form-control" @bind-Value="_createCustomerOrderNo" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Document Date</label>
+                    <InputText class="form-control" @bind-Value="_createDocumentDate" />
+                </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+                <div class="col-md-3">
+                    <label class="form-label">Analysis Code 01</label>
+                    <InputText class="form-control" @bind-Value="_analysis01" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Analysis Code 02</label>
+                    <InputText class="form-control" @bind-Value="_analysis02" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Analysis Code 03</label>
+                    <InputText class="form-control" @bind-Value="_analysis03" />
+                </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+                <div class="col-md-2">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_useInvoiceAddress" />
+                        <label class="form-check-label">Use Invoice Address</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_overrideOnHold" />
+                        <label class="form-check-label">Override On Hold</label>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_allowCreditLimitException" />
+                        <label class="form-check-label">Allow Credit Limit Exception</label>
+                    </div>
+                </div>
+                <div class="col-md-5 d-flex align-items-end justify-content-md-end">
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input" @bind-Value="_showDebugSections" />
+                        <label class="form-check-label">Show debug sections</label>
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+
+            <h6>Single test line</h6>
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Description</label>
+                    <InputText class="form-control" @bind-Value="_lineDescription" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Nominal Ref</label>
+                    <InputText class="form-control" @bind-Value="_lineNominalRef" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Quantity</label>
+                    <InputNumber class="form-control" @bind-Value="_lineQuantity" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Unit Price</label>
+                    <InputNumber class="form-control" @bind-Value="_lineUnitPrice" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Tax Code</label>
+                    <InputNumber class="form-control" @bind-Value="_lineTaxCode" />
+                </div>
+            </div>
+
+            <button class="btn btn-success mt-3" @onclick="RunCreateSalesOrderAsync" disabled="@_busy">Create Sales Order</button>
+
+            @if (_createResult is not null)
+            {
+                <div class="mt-3">
+                    <div><strong>Status:</strong> @_createResult.Status</div>
+                    <div><strong>Order ID:</strong> @_createResult.OrderId</div>
+                    <div><strong>Detail:</strong> @_createResult.Detail</div>
+
+                    @if (HasBoolProperty(_createResult, "Success"))
+                    {
+                        <div><strong>Success:</strong> @GetBoolProperty(_createResult, "Success")</div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_createResult.ErrorReturned))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error:</strong> @_createResult.ErrorReturned
+                        </div>
+                    }
+
+                    @if (_showDebugSections && !string.IsNullOrWhiteSpace(_createResult.RawJson))
+                    {
+                        <details class="mt-3">
+                            <summary>Legacy raw JSON (debug only)</summary>
+                            <pre class="mb-0">@_createResult.RawJson</pre>
+                        </details>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+</div>
+
+@code {
+    private bool _busy;
+    private bool _showDebugSections;
+    private string _error = string.Empty;
+
+    private SageHealthGetResponse? _healthResult;
+
+    private string _salesDataset = "group";
+    private string _salesOrderId = "123";
+    private string _salesFilterOperator = string.Empty;
+    private bool _salesForce;
+    private SageFetchSalesOrdersResponse? _salesOrdersResult;
+
+    private string _transactionsDataset = "group";
+    private string _accountReference = "DEV001";
+    private string _documentNo = string.Empty;
+    private bool _transactionsForce;
+    private SageFetchCustomerTransactionsResponse? _transactionsResult;
+
+    private string _createDataset = "group";
+    private string _createAccountReference = "DEV001";
+    private string _createCustomerOrderNo = "CYMBUILD-TEST-001";
+    private string _createDocumentDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+    private string _analysis01 = string.Empty;
+    private string _analysis02 = string.Empty;
+    private string _analysis03 = "JOB123";
+
+    private bool _useInvoiceAddress;
+    private bool _overrideOnHold = true;
+    private bool _allowCreditLimitException = true;
+
+    private string _lineDescription = "Consulting Services";
+    private string _lineNominalRef = "31010";
+    private int _lineQuantity = 1;
+    private double _lineUnitPrice = 100.00;
+    private int? _lineTaxCode = 22;
+
+    private SageCreateSalesOrderResponse? _createResult;
+
+    private FormHelper? _formHelper;
+
+    protected override void OnInitialized()
+    {
+        _formHelper = new FormHelper(
+            coreClient,
+            sageClient,
+            Guid.Empty.ToString(),
+            userService);
+    }
+
+    private async Task RunHealthAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            _healthResult = await _formHelper!.SageHealthGetAsync();
+        });
+    }
+
+    private async Task RunSalesOrdersAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            _salesOrdersResult = await _formHelper!.SageFetchSalesOrdersAsync(
+                _salesDataset,
+                _salesOrderId,
+                _salesFilterOperator,
+                _salesForce);
+        });
+    }
+
+    private async Task RunTransactionsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            _transactionsResult = await _formHelper!.SageFetchCustomerTransactionsAsync(
+                _transactionsDataset,
+                _accountReference,
+                _documentNo,
+                null,
+                _transactionsForce);
+        });
+    }
+
+    private async Task RunCreateSalesOrderAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var line = new SageCreateSalesOrderLine
+            {
+                ItemDescription = _lineDescription,
+                NominalRef = _lineNominalRef,
+                Quantity = _lineQuantity,
+                UnitPrice = _lineUnitPrice,
+                TaxCode = _lineTaxCode ?? 0,
+                HasTaxCode = _lineTaxCode.HasValue
+            };
+
+            _createResult = await _formHelper!.SageCreateSalesOrderAsync(
+                _createDataset,
+                _createAccountReference,
+                _createCustomerOrderNo,
+                _createDocumentDate,
+                _useInvoiceAddress,
+                _overrideOnHold,
+                _allowCreditLimitException,
+                _analysis01,
+                _analysis02,
+                _analysis03,
+                new[] { line });
+        });
+    }
+
+    private async Task ExecuteAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = string.Empty;
+
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string FormatDouble(double value)
+        => Math.Abs(value) < 0.0000001 ? string.Empty : value.ToString("0.##");
+
+    private static bool HasBoolProperty(object instance, string propertyName)
+        => instance.GetType().GetProperty(propertyName) is not null;
+
+    private static bool GetBoolProperty(object instance, string propertyName)
+    {
+        var property = instance.GetType().GetProperty(propertyName);
+        if (property is null)
+            return false;
+
+        var value = property.GetValue(instance);
+        return value is bool b && b;
+    }
+}

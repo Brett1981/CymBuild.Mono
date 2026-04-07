@@ -1,0 +1,806 @@
+﻿@page "/dev"
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Pages.Admin.Monitoring
+@using Concursus.PWA.Services
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using System.Text
+@using Google.Protobuf.WellKnownTypes
+@inject OfflineSyncService SyncService
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime jsRuntime
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+<Concursus.PWA.Shared.MessageDisplay @ref="messageDisplay" />
+<h4><i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development</h4>
+
+<TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+    <TabStripTab Title="Development">
+        <HeaderTemplate>
+            <i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development
+        </HeaderTemplate>
+        <Content>
+            <div class="row">
+                <DynamicGrid GridCode="DEV" FullGrid="true" TransientVirtualProperties="@TransientVirtualProperties" />
+            </div>
+        </Content>
+    </TabStripTab>
+    <TabStripTab Title="Dev Advanced">
+        <Content>
+            <TelerikTabStrip>
+                <TabStripTab Title="Routines">
+                    <HeaderTemplate>
+                        <i class="bi bi-collection-play me-2" style="font-size: 1.2rem;"></i> Routines
+                    </HeaderTemplate>
+                    <Content>
+                        <div class="container mt-3">
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineJobs" class="fw-bold">Update Jobs</label>
+                                    <p>This Routine will receive a collection of 'ALL JOBS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="UpdateJobs">Update Jobs</button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineEnquiries" class="fw-bold">Update Enquiries</label>
+                                    <p>This Routine will receive a collection of 'ALL ENQUIRIES' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="UpdateEnquiries">Update Enquiries</button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineQuotes" class="fw-bold">Update Quotes</label>
+                                    <p>This Routine will receive a collection of 'ALL QUOTES' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="UpdateQuotes">Update Quotes</button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineAccounts" class="fw-bold">Update Accounts</label>
+                                    <p>This Routine will receive a collection of 'ALL CRM ACCOUNTS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="UpdateAccounts">Update Accounts</button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineProperties" class="fw-bold">Update Properties</label>
+                                    <p>This Routine will receive a collection of 'ALL ASSETS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="UpdateProperties">Update Properties</button>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-9">
+                                    <label for="routineJobs" class="fw-bold">Import Legacy Statuses</label>
+                                    <p>Used by the new status management system. This Routine will import the last status for enquiries, quotes, and jobs.</p>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <button class="btn btn-primary" @onclick="ImportLegacyStatuses">Import Legacy Statuses</button>
+                                </div>
+                            </div>
+
+                            <div class="row mt-4">
+                                <div class="col">
+                                    <textarea id="logOutput" class="form-control" rows="10" readonly @ref="logOutputRef">@logOutput</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Translation">
+                    <HeaderTemplate>
+                        <i class="bi bi-translate me-2" style="font-size: 1.2rem;"></i> Translation
+                    </HeaderTemplate>
+                    <Content>
+                        <label for="routineName">Create new Language definitions - This Routine will receive a collection of 'British English - Labels Text' and generate new content for the new selected Language.</label>
+                        <TelerikComboBox TItem="LanguageItemModel"
+                                         TValue="string"
+                                         Data="@Languages"
+                                         TextField="Text"
+                                         ValueField="Value"
+                                         @bind-Value="@SelectedLanguage"
+                                         Placeholder="Select Language">
+                        </TelerikComboBox>
+                        <button class="btn btn-primary" @onclick="CreateLanguages">Create Languages</button>
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Usage Statistics">
+                    <HeaderTemplate>
+                        <i class="bi bi-bar-chart me-2" style="font-size: 1.2rem;"></i> Usage Statistics
+                    </HeaderTemplate>
+                    <Content>
+                        <UsageDashboard />
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Memory Diagnostics">
+                    <HeaderTemplate>
+                        <i class="bi bi-memory me-2" style="font-size: 1.2rem;"></i> Memory Diagnostics
+                    </HeaderTemplate>
+                    <Content>
+                        <Concursus.PWA.Shared.Diagnostics.Memory />
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Wait Stats">
+                    <WaitStatsDashboard />
+                </TabStripTab>
+                <TabStripTab Title="Sage API test">
+                    <SageApiTest />
+                </TabStripTab>
+                <TabStripTab Title="AI Error Admin">
+                    <HeaderTemplate>
+                        <i class="bi bi-braces me-2" style="font-size: 1.2rem;"></i> AI Error Admin
+                    </HeaderTemplate>
+                    <Content>
+                        <Concursus.PWA.Shared.AiErrorAdmin OnError="HandleAiError" />
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Sync Queue">
+                    <HeaderTemplate>
+                        <i class="bi bi-upload me-2" style="font-size: 1.2rem;"></i> Sync Queue
+                    </HeaderTemplate>
+                    <Content>
+                        <DevSyncQueueTab />
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="Step Logs">
+                    <HeaderTemplate>
+                        <i class="bi bi-textarea me-2" style="font-size: 1.2rem;"></i> Step Logs
+                    </HeaderTemplate>
+                    <Content>
+                        <DebugInteractions />
+                    </Content>
+                </TabStripTab>
+                <TabStripTab Title="PostCode Lookup">
+                    <HeaderTemplate>
+                        <i class="bi bi-mailbox-flag me-2" style="font-size: 1.2rem;"></i> PostCode Lookup
+                    </HeaderTemplate>
+                    <Content>
+                        <PostcodeLookupTab />
+                    </Content>
+                </TabStripTab>
+            </TelerikTabStrip>
+        </Content>
+    </TabStripTab>
+</TelerikTabStrip>
+
+<script>
+    window.scrollToBottom = function (element) {
+        element.scrollTop = element.scrollHeight;
+    };
+</script>
+
+@code{
+    private StringBuilder logOutputBuilder = new StringBuilder();
+    private string logOutput = string.Empty;
+    private ElementReference logOutputRef;
+    private MessageDisplay? messageDisplay;
+
+    protected API.Client.FormHelper? formHelper;
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private int localeID = -1;
+    private List<LanguageItemModel> Languages = LanguageData.GetLanguages().OrderBy(lang => lang.Text).ToList();
+    private List<LanguageLabelModel> languagesSet = new List<LanguageLabelModel>().OrderBy(lang => lang.Name).ToList();
+    private List<LanguageLabelsModel> languageLabels = new List<LanguageLabelsModel>().OrderBy(lang => lang.Name).ToList();
+    private List<LanguageLabelTranslationModel> languageLabelsTranslations = new List<LanguageLabelTranslationModel>().OrderBy(lang => lang.Text).ToList();
+
+    private string SelectedLanguage { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync() { }
+
+    // After updating logOutput, call this method to scroll to the bottom
+    private async Task ScrollToBottom()
+    {
+        await jsRuntime.InvokeVoidAsync("scrollToBottom", logOutputRef);
+    }
+
+    private async Task UpdateQuotes()
+    {
+        try
+        {
+            // Clear the previous log output
+            logOutputBuilder.Clear();
+            logOutput = string.Empty;
+
+            // Get GridDataList from GridRef
+            GridDataListRequest gridDataListRequest = new()
+                {
+                    GridCode = "QUOTES",
+                    GridViewCode = "ALLQUOTES",
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("00000000-0000-0000-0000-000000000000").ToString()
+                };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+            if (gridDataListReply.TotalRows > 0)
+            {
+                var dataObjectGetRequest = new DataObjectGetRequest()
+                    {
+                        EntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("1c4794c1-f956-4c32-b886-5500ac778a56").ToString(),
+                        ForInformationView = false
+                    };
+                // Get the list of existing SharePoint folders
+                var ospResponse = await coreClient.ObjectSharePointPathCollectionGetAsync(new ObjectSharePointPathCollectionGetRequest());
+
+                // Create a HashSet of GUIDs from the ospResponse for fast lookup
+                var existingGuids = new HashSet<string>(ospResponse.ObjectSharePointPaths.Select(o => o.ObjectGuid));
+
+                foreach (var gridDataRow in gridDataListReply.DataTable)
+                {
+                    var objectGuid = gridDataRow.Columns[1].Value.ToString(); // Assuming column 1 contains the Guid
+
+                    // Skip processing if the objectGuid exists in ospResponse
+                    if (existingGuids.Contains(objectGuid))
+                    {
+                        // Log the record as being skipped to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Skipping Record: {objectGuid} As already exists");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                        continue; // Skip this iteration
+                    }
+
+                    // Find the "Number" column in the row
+                    var numberColumn = gridDataRow.Columns.FirstOrDefault(c => c.Name == "Number");
+
+                    // Check if the "Number" column exists and its value is numeric
+                    if (numberColumn != null && !numberColumn.Value.Contains("SHORE"))
+                    {
+                        // Process each ObjectGuid individually
+                        dataObjectGetRequest.ObjectGuids.Clear();
+                        dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                        // Call the API and process each object
+                        var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                        foreach (var dataObject in response.DataObjects)
+                        {
+                            // Log the Guid and SharePointUrl to the logOutputBuilder
+                            logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                            // Update the UI
+                            logOutput = logOutputBuilder.ToString();
+                            StateHasChanged();
+                            // Scroll to the bottom
+                            await ScrollToBottom();
+                        }
+                    }
+                }
+
+                logOutputBuilder.AppendLine("All items processed successfully.");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating Quotes.");
+            ex.Data.Add("PageMethod", "DetailView/UpdateQuotes()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+    private async Task UpdateAccounts()
+    {
+        try
+        {
+            // Clear the previous log output
+            logOutputBuilder.Clear();
+            logOutput = string.Empty;
+
+            // Get GridDataList from GridRef
+            GridDataListRequest gridDataListRequest = new()
+                {
+                    GridCode = "CRM",
+                    GridViewCode = "ACCOUNTS",
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("00000000-0000-0000-0000-000000000000").ToString()
+                };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+            if (gridDataListReply.TotalRows > 0)
+            {
+                var dataObjectGetRequest = new DataObjectGetRequest()
+                    {
+                        EntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("40476ecc-d19a-4de9-90df-e1f45cd72fb2").ToString(),
+                        ForInformationView = false
+                    };
+
+                // Get the list of existing SharePoint folders
+                var ospResponse = await coreClient.ObjectSharePointPathCollectionGetAsync(new ObjectSharePointPathCollectionGetRequest());
+
+                // Create a HashSet of GUIDs from the ospResponse for fast lookup
+                var existingGuids = new HashSet<string>(ospResponse.ObjectSharePointPaths.Select(o => o.ObjectGuid));
+
+                foreach (var gridDataRow in gridDataListReply.DataTable)
+                {
+                    var objectGuid = gridDataRow.Columns[1].Value.ToString(); // Assuming column 1 contains the Guid
+
+                    // Skip processing if the objectGuid exists in ospResponse
+                    if (existingGuids.Contains(objectGuid))
+                    {
+                        // Log the record as being skipped to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Skipping Record: {objectGuid} As already exists");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                        continue; // Skip this iteration
+                    }
+                    // Process each ObjectGuid individually
+                    dataObjectGetRequest.ObjectGuids.Clear();
+                    dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                    // Call the API and process each object
+                    var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                    foreach (var dataObject in response.DataObjects)
+                    {
+                        // Log the Guid and SharePointUrl to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                    }
+
+                }
+
+                logOutputBuilder.AppendLine("All batches processed successfully.");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating CRM Accounts.");
+            ex.Data.Add("PageMethod", "DetailView/UpdateCRM()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task ImportLegacyStatuses()
+    {
+        try
+        {
+
+            logOutputBuilder.AppendLine("Importing legacy statuses has started. This might take a few minutes to complete, please wait!");
+            logOutput = logOutputBuilder.ToString();
+            StateHasChanged();
+
+            var success = await coreClient.ImportLegacyStatusesAsync(new ImportLegacyStatusesReq());
+
+            if (success.Status)
+            {
+                logOutputBuilder.AppendLine("Imported Legacy Statuses!");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+            else
+            {
+                logOutputBuilder.AppendLine($"There was a problem importing legacy statuses: {success.ErrorReturned}");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+
+        } catch(Exception ex)
+        {
+
+        }
+    }
+
+    private async Task UpdateJobs()
+    {
+        try
+        {
+            // Clear the previous log output
+            logOutputBuilder.Clear();
+            logOutput = string.Empty;
+
+            // Get GridDataList from GridRef
+            GridDataListRequest gridDataListRequest = new()
+                {
+                    GridCode = "JOBS",
+                    GridViewCode = "ALLJOBS",
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("00000000-0000-0000-0000-000000000000").ToString()
+                };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+            if (gridDataListReply.TotalRows > 0)
+            {
+                var dataObjectGetRequest = new DataObjectGetRequest()
+                    {
+                        EntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("63542427-46ab-4078-abd1-1d583c24315c").ToString(),
+                        ForInformationView = false
+                    };
+
+                // Get the list of existing SharePoint folders
+                var ospResponse = await coreClient.ObjectSharePointPathCollectionGetAsync(new ObjectSharePointPathCollectionGetRequest());
+
+                // Create a HashSet of GUIDs from the ospResponse for fast lookup
+                var existingGuids = new HashSet<string>(ospResponse.ObjectSharePointPaths.Select(o => o.ObjectGuid));
+
+                foreach (var gridDataRow in gridDataListReply.DataTable)
+                {
+                    var objectGuid = gridDataRow.Columns[1].Value.ToString(); // Assuming column 1 contains the Guid
+
+                    // Skip processing if the objectGuid exists in ospResponse
+                    if (existingGuids.Contains(objectGuid))
+                    {
+                        // Log the record as being skipped to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Skipping Record: {objectGuid} As already exists");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                        continue; // Skip this iteration
+                    }
+                    // Find the "Number" column in the row
+                    var numberColumn = gridDataRow.Columns.FirstOrDefault(c => c.Name == "Number");
+
+                    // // Check if the "Number" column exists and its value is numeric
+                    // if (numberColumn != null && PWAFunctions.IsNumeric(numberColumn.Value))
+                    // {
+                    //     // Process each ObjectGuid individually
+                    //     dataObjectGetRequest.ObjectGuids.Clear();
+                    //     dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                    //     // Call the API and process each object
+                    //     var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                    //     foreach (var dataObject in response.DataObjects)
+                    //     {
+                    //         // Log the Guid and SharePointUrl to the logOutputBuilder
+                    //         logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                    //         // Update the UI
+                    //         logOutput = logOutputBuilder.ToString();
+                    //         StateHasChanged();
+                    //         // Scroll to the bottom
+                    //         await ScrollToBottom();
+                    //     }
+                    // }
+                    // Check if the "Number" column exists and its value Does not contain SHORE
+                    if (numberColumn != null && !numberColumn.Value.Contains("SHORE"))
+                    {
+                        // Process each ObjectGuid individually
+                        dataObjectGetRequest.ObjectGuids.Clear();
+                        dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                        // Call the API and process each object
+                        var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                        foreach (var dataObject in response.DataObjects)
+                        {
+                            // Log the Guid and SharePointUrl to the logOutputBuilder
+                            logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                            // Update the UI
+                            logOutput = logOutputBuilder.ToString();
+                            StateHasChanged();
+                            // Scroll to the bottom
+                            await ScrollToBottom();
+                        }
+                    }
+                }
+
+                logOutputBuilder.AppendLine("All batches processed successfully.");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating Jobs.");
+            ex.Data.Add("PageMethod", "DetailView/UpdateJobs()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task UpdateEnquiries()
+    {
+        try
+        {
+            // Clear the previous log output
+            logOutputBuilder.Clear();
+            logOutput = string.Empty;
+
+            // Get GridDataList from GridRef
+            GridDataListRequest gridDataListRequest = new()
+                {
+                    GridCode = "ENQUIRIES",
+                    GridViewCode = "ALLENQUIRIES",
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("00000000-0000-0000-0000-000000000000").ToString()
+                };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+            if (gridDataListReply.TotalRows > 0)
+            {
+                var dataObjectGetRequest = new DataObjectGetRequest()
+                    {
+                        EntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("3b4f2df9-b6cf-4a49-9eed-2206473867a1").ToString(),
+                        ForInformationView = false
+                    };
+
+                // Get the list of existing SharePoint folders
+                var ospResponse = await coreClient.ObjectSharePointPathCollectionGetAsync(new ObjectSharePointPathCollectionGetRequest());
+
+                // Create a HashSet of GUIDs from the ospResponse for fast lookup
+                var existingGuids = new HashSet<string>(ospResponse.ObjectSharePointPaths.Select(o => o.ObjectGuid));
+
+                foreach (var gridDataRow in gridDataListReply.DataTable)
+                {
+                    var objectGuid = gridDataRow.Columns[1].Value.ToString(); // Assuming column 1 contains the Guid
+
+                    // Skip processing if the objectGuid exists in ospResponse
+                    if (existingGuids.Contains(objectGuid))
+                    {
+                        // Log the record as being skipped to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Skipping Record: {objectGuid} As already exists");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                        continue; // Skip this iteration
+                    }
+                    // Find the "Number" column in the row
+                    var numberColumn = gridDataRow.Columns.FirstOrDefault(c => c.Name == "Number");
+
+                    // Check if the "Number" column exists and its value is numeric
+                    if (numberColumn != null && !numberColumn.Value.Contains("SHORE"))
+                    {
+                        // Process each ObjectGuid individually
+                        dataObjectGetRequest.ObjectGuids.Clear();
+                        dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                        // Call the API and process each object
+                        var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                        foreach (var dataObject in response.DataObjects)
+                        {
+                            // Log the Guid and SharePointUrl to the logOutputBuilder
+                            logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                            // Update the UI
+                            logOutput = logOutputBuilder.ToString();
+                            StateHasChanged();
+                            // Scroll to the bottom
+                            await ScrollToBottom();
+                        }
+                    }
+                }
+
+                logOutputBuilder.AppendLine("All batches processed successfully.");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+        }
+
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating Enquiries.");
+            ex.Data.Add("PageMethod", "DetailView/UpdateEnquiries()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+    private async Task UpdateProperties()
+    {
+        try
+        {
+            // Clear the previous log output
+            logOutputBuilder.Clear();
+            logOutput = string.Empty;
+
+            // Get GridDataList from GridRef
+            GridDataListRequest gridDataListRequest = new()
+                {
+                    GridCode = "PROPERTIES",
+                    GridViewCode = "PROPERTIES",
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("00000000-0000-0000-0000-000000000000").ToString()
+                };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+            if (gridDataListReply.TotalRows > 0)
+            {
+                var dataObjectGetRequest = new DataObjectGetRequest()
+                    {
+                        EntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("2cfbff39-93cd-436b-b8ca-b2fcf7609707").ToString(),
+                        ForInformationView = false
+                    };
+
+                // Get the list of existing SharePoint folders
+                var ospResponse = await coreClient.ObjectSharePointPathCollectionGetAsync(new ObjectSharePointPathCollectionGetRequest());
+
+                // Create a HashSet of GUIDs from the ospResponse for fast lookup
+                var existingGuids = new HashSet<string>(ospResponse.ObjectSharePointPaths.Select(o => o.ObjectGuid));
+
+                foreach (var gridDataRow in gridDataListReply.DataTable)
+                {
+                    var objectGuid = gridDataRow.Columns[1].Value.ToString(); // Assuming column 1 contains the Guid
+
+                    // Skip processing if the objectGuid exists in ospResponse
+                    if (existingGuids.Contains(objectGuid))
+                    {
+                        // Log the record as being skipped to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Skipping Record: {objectGuid} As already exists");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                        continue; // Skip this iteration
+                    }
+
+                    // Process each ObjectGuid individually
+                    dataObjectGetRequest.ObjectGuids.Clear();
+                    dataObjectGetRequest.ObjectGuids.Add(objectGuid);
+
+                    // Call the API and process each object
+                    var response = await coreClient.DataObjectListGetSingleAsync(dataObjectGetRequest);
+
+                    foreach (var dataObject in response.DataObjects)
+                    {
+                        // Log the Guid and SharePointUrl to the logOutputBuilder
+                        logOutputBuilder.AppendLine($"Record: {dataObject.Label}, SharePointUrl: {dataObject.SharePointUrl}");
+
+                        // Update the UI
+                        logOutput = logOutputBuilder.ToString();
+                        StateHasChanged();
+                        // Scroll to the bottom
+                        await ScrollToBottom();
+                    }
+
+                }
+
+                logOutputBuilder.AppendLine("All batches processed successfully.");
+                logOutput = logOutputBuilder.ToString();
+                StateHasChanged();
+            }
+        }
+
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating Properties.");
+            ex.Data.Add("PageMethod", "DetailView/UpdateProperties()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+    private async Task CreateLanguages()
+    {
+        if(string.IsNullOrEmpty(SelectedLanguage))
+        {
+            return;
+        };
+        languageLabels = await LanguageData.GetAllLanguageLabelsAsync(coreClient);
+        // Languages Grid definitions are missing, so we need to create them below disabled for now
+
+        // languagesSet = await LanguageData.GetLanguagesSetAsync(coreClient);
+        // if(languagesSet is not null)
+        // {
+        //     localeID = languagesSet.FirstOrDefault(lang => lang.Locale == SelectedLanguage).ID;
+        // }
+        // if (localeID == -1)
+        // {
+        //     //create new Languages Record and return the ID
+        //     var languageSet = new LanguageLabelModel()
+        //     {
+        //         Guid = Guid.NewGuid().ToString(),
+        //         Locale = SelectedLanguage,
+        //         Name = SelectedLanguage
+        //     };
+        // }
+
+        //Temporarily set localeID to 1
+        localeID = 1;
+        languageLabelsTranslations = await LanguageData.GetLanguageLabelTranslationsAsync(coreClient, localeID);
+
+        string guid = GetGuidByName("[SCore].[EntityDataTypes].[Name]");
+        Console.WriteLine($"Guid: {guid}");
+        Console.WriteLine($"Total Language Labels on Initialization: {languageLabels.Count}");
+
+        foreach (var languageLabel in languageLabels)
+        {
+            Console.WriteLine($"Language Label ID: {languageLabel.ID} - Name: {languageLabel.Name} - Guid: {languageLabel.Guid}");
+        }
+        // Now you can use the `languageLabels` list as needed
+    }
+    private string GetGuidByName(string name)
+    {
+        var languageLabel = languageLabels.FirstOrDefault(lang => lang.Name == name);
+        return languageLabel?.Guid ?? "Not Found";
+    }
+
+    private async Task HandleAiError(Exception ex)
+    {
+        Console.WriteLine("HandleAiError: Invoked with exception.");
+        Console.WriteLine($"HandleAiError: Exception.Message: {ex.Message}");
+        Console.WriteLine($"HandleAiError: Exception.StackTrace: {ex.StackTrace}");
+        foreach (System.Collections.DictionaryEntry kv in ex.Data)
+        {
+            Console.WriteLine($"HandleAiError: ex.Data[{kv.Key}] = {kv.Value}");
+        }
+
+        try
+        {
+            var result = await AiErrorReporter.ReportAsync(ex, userService);
+            Console.WriteLine("HandleAiError: Awaited AiErrorReporter.ReportAsync.");
+            if (result != null)
+            {
+                // Console.WriteLine($"HandleAiError: ReportResult: AlreadyExists={result.AlreadyExists}, JiraTicketKey={result.JiraTicketKey}, JiraStatus={result.JiraStatus}, ErrorMessage={result.ErrorMessage}");
+                // var message = result.AlreadyExists
+                //     ? $"📌 This issue has already been raised and logged.\n\n" +
+                //       $"🔖 Ticket: {result.JiraTicketKey}\n" +
+                //       $"📄 Title: {result.ErrorMessage}\n" +
+                //       $"📌 Status: {result.JiraStatus}"
+                //     : $"🧠 We have automatically logged this new issue on your behalf.\n\n" +
+                //       $"🔖 Ticket: {result.JiraTicketKey}\n" +
+                //       $"📄 Title: {result.ErrorMessage}\n" +
+                //       $"📌 Status: {result.JiraStatus}";
+                // messageDisplay?.SetMessage(message, result.AlreadyExists
+                //     ? MessageDisplay.ShowMessageType.Information
+                //     : MessageDisplay.ShowMessageType.Success);
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                {
+                    Console.WriteLine("HandleAiError: Message set to MessageDisplay: " + result.ErrorMessage);
+                    messageDisplay?.SetMessage(result.UiMessage, result.MessageType);
+                    messageDisplay?.ShowError(true);
+                }
+            }
+            else
+            {
+                Console.WriteLine("HandleAiError: ReportAsync returned null result!");
+                messageDisplay?.SetMessage("❌ Failed to report AI error. Please raise a Help Desk ticket.", MessageDisplay.ShowMessageType.Error);
+                messageDisplay?.ShowError(true);
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"HandleAiError: Caught error in ReportAsync or display: {e.Message}\n{e.StackTrace}");
+            messageDisplay?.SetMessage($"❌ Unexpected error while reporting AI issue: {e.Message}", MessageDisplay.ShowMessageType.Error);
+            messageDisplay?.ShowError(true);
+        }
+        await InvokeAsync(StateHasChanged);
+        Console.WriteLine("HandleAiError: StateHasChanged called, function complete.");
+    }
+
+
+}

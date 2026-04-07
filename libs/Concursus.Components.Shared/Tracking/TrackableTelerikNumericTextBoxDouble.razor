@@ -1,0 +1,59 @@
+﻿@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikNumericTextBox T="double"
+                       Value="@BoundValue"
+                       ValueChanged="@OnInternalValueChanged"
+                       ValueExpression="@ResolvedExpression"
+                       Id="@Id"
+                       Class="@Class"
+                       Step="@Step"
+                       ReadOnly="@ReadOnly"
+                       Placeholder="@Placeholder"
+                       OnBlur="@(() => LogInteraction(BoundValue))"
+                       @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownDoubleField";
+
+    [Parameter] public double? Value { get; set; }
+    [Parameter] public EventCallback<double?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<double?>>? ValueExpression { get; set; }
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public bool ReadOnly { get; set; } = false;
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public double Step { get; set; } = 0.01;
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private double BoundValue => Value ?? -1.0;
+
+    private EventCallback<double> OnInternalValueChanged =>
+        EventCallback.Factory.Create<double>(this, HandleValueChanged);
+
+    private Expression<Func<double>>? ResolvedExpression =>
+        ValueExpression == null ? null :
+        Expression.Lambda<Func<double>>(
+            Expression.Convert(ValueExpression.Body, typeof(double)),
+            ValueExpression.Parameters);
+
+    private void LogInteraction(double value)
+    {
+        InteractionTracker.Log(PageKey, $"DoubleTextBox '{FieldName}' changed to '{value}'");
+    }
+
+    private async Task HandleValueChanged(double newValue)
+    {
+        Value = newValue;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+    }
+}

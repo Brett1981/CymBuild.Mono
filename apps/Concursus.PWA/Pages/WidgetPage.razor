@@ -1,0 +1,33 @@
+﻿@page "/widget/{DrawerGuid}"
+@attribute [Authorize]
+
+
+<h4><i class="bi bi-person-workspace me-2" style="font-size: 1.2rem;"></i> My Dashboard</h4>
+
+<PageTitle>Widget</PageTitle>
+
+<Widget />
+
+
+@code {
+    [Parameter]
+    public string DrawerGuid { get; set; } = "";
+
+    private bool isLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        isLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isLoading = false;
+            //StateHasChanged();
+        }
+    }
+
+}

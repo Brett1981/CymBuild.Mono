@@ -1,0 +1,79 @@
+﻿@typeparam T where T : struct, IComparable, IFormattable
+
+@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikNumericTextBox T="T"
+                       Value="@BoundValue"
+                       ValueChanged="@OnInternalValueChanged"
+                       Id="@Id"
+                       Class="@Class"
+                       Step="@Step"
+                       ReadOnly="@ReadOnly"
+                       Placeholder="@Placeholder"
+                       @attributes="AdditionalAttributes"
+                       OnBlur="@(() => LogInteraction(BoundValue))" />
+
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownNumericField";
+
+    // External bind
+    [Parameter] public T? Value { get; set; }
+    [Parameter] public EventCallback<T?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<T?>>? ValueExpression { get; set; }
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public bool ReadOnly { get; set; } = false;
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public T Step { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    // Provide a default value when Value is null
+    private T BoundValue => Value ?? DefaultFallback();
+
+    // Convert T? to T safely for EventCallback<T>
+    private EventCallback<T> OnInternalValueChanged =>
+        EventCallback.Factory.Create<T>(this, HandleValueChanged);
+
+    // Convert Expression<Func<T?>> to Expression<Func<T>>
+    private Expression<Func<T>>? ResolvedExpression =>
+        ValueExpression == null ? null :
+        Expression.Lambda<Func<T>>(Expression.Convert(ValueExpression.Body, typeof(T)), ValueExpression.Parameters);
+
+    private T DefaultFallback()
+    {
+        object fallback = typeof(T) switch
+        {
+            Type t when t == typeof(int) => -1,
+            Type t when t == typeof(long) => -1L,
+            Type t when t == typeof(double) => -1.0,
+            Type t when t == typeof(float) => -1f,
+            Type t when t == typeof(decimal) => -1m,
+            _ => Activator.CreateInstance(typeof(T))!
+        };
+
+        return (T)fallback;
+    }
+
+    private void LogInteraction(T value)
+    {
+        string log = $"NumericTextBox '{FieldName}' changed to '{value}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(T newValue)
+    {
+        Value = newValue;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+    }
+}

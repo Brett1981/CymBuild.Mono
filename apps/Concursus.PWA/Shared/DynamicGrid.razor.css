@@ -1,0 +1,83 @@
+﻿.drawer-container {
+    margin: 30px auto;
+    width: 100%;
+}
+
+.k-drawer-container {
+    position: relative;
+    width: 100%;
+}
+
+.k-icon {
+    font-size: 1.538rem;
+}
+
+.custom-toolbar {
+    width: 100%;
+    background-color: #f6f6f6;
+    line-height: 10px;
+    border-bottom: inset;
+    border-bottom-width: 1px;
+    padding: 3px 8px;
+    color: #656565;
+}
+
+.mail-box {
+    margin-left: 20px;
+    font-weight: bold;
+    font-size: 17px;
+}
+
+.page ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.page li {
+    font-size: 1.154rem;
+    background: 0 0;
+    border-radius: 0;
+    border-width: 0 0 1px;
+    border-color: rgba(33, 37, 41, 0.125);
+    border-style: solid;
+    line-height: 1.5em;
+    padding: 1.09em .84em 1.23em .84em;
+}
+
+    .page li:last-child {
+        border: 0;
+    }
+
+    .page li h6 {
+        border-bottom: none;
+        padding-bottom: 8px;
+    }
+
+.loader-size-title {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.loader-container {
+    text-align: center;
+    width: 150px;
+    display: inline-table;
+    padding-top: 10px;
+}
+
+.dg-host {
+    position: relative;
+}
+
+.dg-disabled {
+    opacity: 0.85;
+}
+
+.dg-blocker {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.01); /* almost invisible */
+    pointer-events: all; /* blocks clicks */
+    cursor: not-allowed;
+}

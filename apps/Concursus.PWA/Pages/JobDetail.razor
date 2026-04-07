@@ -1,0 +1,800 @@
+﻿@page "/JobDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.Extensions.Options
+@using Newtonsoft.Json
+@using Concursus.API.Client.Models
+@using System.Web
+@using Concursus.PWA.Classes
+@using Concursus.Components.Shared.Controls.Documents
+@using static Concursus.API.Client.FormHelper
+
+@inherits EditPageBase
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject NavigationManager NavManager
+@inject RefreshService refreshService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject AppConfiguration appConfiguration
+@inject IOptions<ClientConfiguration> Config
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="63542427-46ab-4078-abd1-1d583c24315c"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          IsDetailWindowed="IsDetailWindowed"
+          InvoiceProcessingModeText="@GetModeLabel(_currentMode)"
+          InvoiceProcessingModeCss="@GetModeCss(_currentMode)"
+          InvoiceProcessingModeTooltip="Invoice automation mode for this job"
+          EnableBrowserTabTitle="true"
+          BrowserTabTitlePropertyName="Number"
+          BrowserTabTitlePrefix="Job"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+
+    <FormBody>
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+
+            <TabStripTab Title="Job">
+                <HeaderTemplate>
+                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Job
+                </HeaderTemplate>
+                <Content>
+                    <div class="row">
+                        <JobProgress @ref="jobProgressRef" DataObject="@editPage.dataObject" />
+                    </div>
+
+                    <div class="row">
+                        <DynamicGrid GridCode="RECORDSTATUS"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus"
+                                     ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+
+                        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                            entityProperties="@editPage.entityProperties"
+                                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                                            IsMainRecordContext="@IsMainRecordContext"
+                                            @bind-dataObject="@editPage.dataObject"
+                                            RecordGuid="@RecordGuid"
+                                            inputUpdated="@editPage.HandleInputUpdated" />
+                    </div>
+
+                    <div class="row">
+                        <DynamicGrid GridCode="JOB_MEMOS"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+
+                        <DynamicGrid GridCode="JOBMEMOS"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </div>
+                </Content>
+            </TabStripTab>
+
+            <TabStripTab Title="Fees">
+                <HeaderTemplate>
+                    <i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="JOBFEES"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+
+                    <DynamicGrid GridCode="JOBFINANCEMEMO"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <div class="card shadow-sm mb-3">
+                        <div class="card-header d-flex align-items-center justify-content-between">
+                            <div>
+                                <i class="bi bi-sliders me-2"></i>
+                                Invoicing Mode
+                            </div>
+                            <span class="badge @GetModeBadgeCss(_currentMode)">
+                                @GetModeLabel(_currentMode)
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row align-items-end">
+                                <div class="col-md-6">
+                                    <label class="form-label">Processing mode</label>
+                                    <select class="form-select" @bind="_selectedMode">
+                                        <option value="@InvoiceProcessingModeUi.Automated">Automated</option>
+                                        <option value="@InvoiceProcessingModeUi.Manual">Manual</option>
+                                        <option value="@InvoiceProcessingModeUi.Paused">Paused</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Reason (audit)</label>
+                                    <input class="form-control" placeholder="Why are you changing the mode?"
+                                           @bind="_modeChangeReason" />
+                                </div>
+                            </div>
+
+                            <div class="mt-3 d-flex gap-2">
+                                <TelerikButton OnClick="@PromptModeChangeAsync" Enabled="@(_selectedMode != _currentMode)">
+                                    Apply mode change
+                                </TelerikButton>
+
+                                <div class="text-muted small align-self-center">
+                                    Changing mode is logged and auditable.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <DynamicGrid GridCode="JOBINVOICES"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 Disabled="@(_currentMode == InvoiceProcessingModeUi.Paused || editPage.GetValueAsBool("CannotBeInvoiced"))"
+                                 DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
+
+
+                    <DynamicGrid GridCode="JOBINVOICEREQUESTS"
+                                 OnActionCompleted="OnInvoiceRequestsActionCompletedAsync"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 Disabled="@(_currentMode == InvoiceProcessingModeUi.Paused || editPage.GetValueAsBool("CannotBeInvoiced"))"
+                                 DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
+
+
+@*                     @if (appConfiguration.EnvironmentType == "DEV")
+                    { *@
+                        <DynamicGrid GridCode="SUBCONTRACTOR"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    @* } *@
+
+
+
+                </Content>
+            </TabStripTab>
+
+            <TabStripTab Title="Project Details">
+                <HeaderTemplate>
+                    <i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Details
+                </HeaderTemplate>
+                <Content>
+                    <div class="card shadow-sm">
+                        <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                            <i class="bi bi-info-circle" style="margin-right: 9px !important; color: #ffffff"></i>
+                            Information
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">
+                                Project Details are shared across all records linked to this project.
+                                Changes you make here will be visible on any Enquiry, Quote or Job for this project,
+                                even if they belong to a different Business Unit.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DynamicGrid GridCode="JOBPROJECTDIRECTORY"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+
+                    <DynamicGrid GridCode="JOBKEYDATES"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+            <TabStripTab Title="Milestones">
+                <HeaderTemplate>
+                    <i class="bi bi-signpost-split-fill me-2" style="font-size: 1.2rem;"></i> Milestones
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="JOBMILESTONES"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+            <TabStripTab Title="Activity">
+                <HeaderTemplate>
+                    <i class="bi bi-activity me-2" style="font-size: 1.2rem;"></i> Activities
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="JOBACTIVITY"
+                                 OnActionCompleted="OnActivityActionCompletedAsync"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+            <TabStripTab Title="Actions">
+                <HeaderTemplate>
+                    <i class="bi bi-card-checklist me-2" style="font-size: 1.2rem;"></i> Actions
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="JOBACTIONS"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            @if (ShowDocumentsTab)
+{
+            <TabStripTab Title="Documents">
+                <HeaderTemplate>
+                    <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                </HeaderTemplate>
+
+                <Content>
+                    <ErrorBoundary @ref="_docsBoundary">
+                        <ChildContent>
+                            @* Only render when EditPage has actually loaded a real record *@
+                            @if (_formHelper is null
+                                                        || editPage is null
+                                                        || editPage.dataObject is null
+                                                        || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
+                                                        || editPage.dataObject.Guid == Guid.Empty.ToString())
+                            {
+                                <div class="alert alert-info mb-0">
+                                    Documents are loading...
+                                </div>
+                            }
+                            else
+                            {
+                                <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                                       DataObject="editPage.dataObject"
+                                                       EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
+                                                             EntityTypeId="9"
+                                                             EntityProperties="editPage.entityProperties"
+                                                             EmailRecordNumberPropertyName="Number"
+                                                             EmailRecordDescriptionPropertyName="JobDescription"
+                                                             EmailRecordLocationPropertyName="FormattedAddressComma" />
+                            }
+                        </ChildContent>
+
+                        <ErrorContent Context="ex">
+                            <div class="alert alert-danger">
+                                <strong>Documents tab crashed.</strong><br />
+                                @ex.Message
+
+                                <div class="mt-2">
+                                    <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                </div>
+                            </div>
+                        </ErrorContent>
+                    </ErrorBoundary>
+                </Content>
+            </TabStripTab>
+            }
+        </TelerikTabStrip>
+
+        <TelerikWindow @bind-Visible="@_showConfirmModeChange"
+                       Modal="true"
+                       Width="520px">
+
+            <WindowTitle>
+                Confirm invoicing mode change
+            </WindowTitle>
+
+            <WindowActions>
+                <WindowAction Name="Close" />
+            </WindowActions>
+
+            <WindowContent>
+                <p class="mb-2">
+                    You are about to change this job’s invoicing mode to:
+                    <strong>@GetModeLabel(_pendingNewMode)</strong>
+                </p>
+
+                <div class="alert alert-warning mb-3">
+                    <strong>Warning:</strong>
+                    Changing this affects whether invoice requests are generated automatically.
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <TelerikButton OnClick="@CancelModeChange">
+                        Cancel
+                    </TelerikButton>
+
+                    <TelerikButton ThemeColor="ThemeColor.Primary"
+                                   OnClick="@ConfirmModeChangeAsync">
+                        Confirm
+                    </TelerikButton>
+                </div>
+            </WindowContent>
+
+        </TelerikWindow>
+
+        <TelerikWindow @bind-Visible="@_showPausedGeneratePrompt"
+                       Modal="true"
+                       Width="560px">
+
+            <WindowTitle>
+                Invoicing is paused
+            </WindowTitle>
+
+            <WindowActions>
+                <WindowAction Name="Close" />
+            </WindowActions>
+
+            <WindowContent>
+                <p>
+                    This job’s invoicing is paused.
+                    There are <strong>@_pendingTriggerCount</strong> completed item(s) that could generate invoice requests.
+                </p>
+
+                <div class="alert alert-info">
+                    “This job’s invoicing is paused. Do you still want to generate an invoice request?”
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <TelerikButton OnClick="@CancelGenerateInvoicesWhilePaused">
+                        No
+                    </TelerikButton>
+
+                    <TelerikButton ThemeColor="ThemeColor.Primary"
+                                   OnClick="@ConfirmGenerateInvoicesWhilePausedAsync">
+                        Yes, generate invoice requests
+                    </TelerikButton>
+                </div>
+            </WindowContent>
+
+        </TelerikWindow>
+        <TelerikWindow @bind-Visible="@_showAutomationReenableModal"
+                       Modal="true"
+                       Width="980px"
+                       Height="90vh"
+                       MaxHeight="90vh">
+
+            <WindowTitle>
+                Review invoicing schedule before re-enabling automation
+            </WindowTitle>
+
+            <WindowActions>
+                <WindowAction Name="Close" />
+            </WindowActions>
+
+            <WindowContent>
+                <div class="automation-modal-container">
+
+                    <!-- Scrollable Content Area -->
+                    <div class="automation-modal-body">
+
+                        <div class="alert alert-warning">
+                            <strong>As Automation is being turned on whilst a Job is Active</strong>, you must ensure the remaining pre-scheduled dates are correct and expected.
+                            <br /><br />
+                            Once Automation is re-enabled, all past Invoice Requests not previously created will be processed at once potentially creating duplicates.
+                            This includes any Manual Invoice requests created whilst in Manual / Paused mode.
+                        </div>
+
+                        @if (_loadingScheduleForAutomation)
+                        {
+                            <div class="d-flex justify-content-center py-4">
+                                <TelerikLoader Type="LoaderType.InfiniteSpinner" />
+                            </div>
+                        }
+                        else if (_jobInvoiceScheduleGuid == Guid.Empty)
+                        {
+                            <div class="alert alert-danger">
+                                No invoicing schedule could be resolved for this job. Automation cannot be enabled.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="border rounded p-2">
+                                <InvoicingScheduleDetail @ref="_scheduleDetailRef"
+                                                         RecordGuid="@_jobInvoiceScheduleGuid.ToString()"
+                                                         ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                                         ReturnUrl=""
+                                                         Windowed="true"
+                                                         IsDetailWindowed="true"
+                                                         HideDefaultActions="true"
+                                                         BypassReadOnlyForAutomationReenable="true" TransientVirtualProperties="@TransientVirtualProperties" />
+                            </div>
+                        }
+
+                    </div>
+
+                    <!-- Sticky Footer -->
+                    <div class="automation-modal-footer d-flex justify-content-end gap-2">
+                        <TelerikButton OnClick="@CancelAutomationReenableAsync">
+                            Cancelled - Manual Mode
+                        </TelerikButton>
+
+                        <TelerikButton ThemeColor="ThemeColor.Primary"
+                                       OnClick="@AcceptAutomationReenableAsync"
+                                       Enabled="@(!_loadingScheduleForAutomation && _jobInvoiceScheduleGuid != Guid.Empty)">
+                            Accepted - Re-enable Automations
+                        </TelerikButton>
+                    </div>
+
+                </div>
+            </WindowContent>
+
+        </TelerikWindow>
+    </FormBody>
+</EditPage>
+
+@code {
+
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    private InvoiceProcessingModeUi _currentMode = InvoiceProcessingModeUi.Manual;
+    private InvoiceProcessingModeUi _selectedMode = InvoiceProcessingModeUi.Manual;
+    private string _modeChangeReason = string.Empty;
+
+    private bool _showConfirmModeChange;
+    private bool _showPausedGeneratePrompt;
+
+    private InvoiceProcessingModeUi _pendingNewMode;
+    private int _pendingTriggerCount;
+    private JobProgress? jobProgressRef;
+
+    private API.Client.FormHelper? _formHelper;
+    private ErrorBoundary? _docsBoundary;
+
+    private bool ShowDocumentsTab =>
+            Config.Value.Environment.ShowDocumentsTab;
+
+    private bool _showAutomationReenableModal;
+    private InvoicingScheduleDetail? _scheduleDetailRef;
+
+    private Guid _jobInvoiceScheduleGuid = Guid.Empty;
+
+    // Optional: show loading while we resolve schedule
+    private bool _loadingScheduleForAutomation;
+    private void RecoverDocumentsTab()
+    {
+        _docsBoundary?.Recover();
+        StateHasChanged();
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            var deserializedRef =
+                JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+
+            ParentDataObjectReference = deserializedRef;
+            await ParentDataObjectReferenceChanged.InvokeAsync(deserializedRef);
+
+            // Ensure FormHelper exists early so Documents tab can work immediately
+            EnsureFormHelper();
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the Job Detail page.");
+            ex.Data.Add("PageMethod", "JobDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!firstRender) return;
+
+        try
+        {
+            EnsureFormHelper();
+            if (_formHelper is null) return;
+            if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+            _currentMode = await _formHelper.JobInvoiceProcessingModeGetAsync(jobGuid);
+            _selectedMode = _currentMode;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Non-blocking
+        }
+    }
+
+    private async Task OnInvoiceRequestsActionCompletedAsync()
+    {
+        RefreshJobProgress();
+        await TryPromptGenerateWhilePausedAsync("InvoiceRequest grid action completed");
+    }
+
+    private async Task TryPromptGenerateWhilePausedAsync(string source)
+    {
+        EnsureFormHelper();
+        if (_formHelper is null) return;
+        if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+        _currentMode = await _formHelper.JobInvoiceProcessingModeGetAsync(jobGuid);
+        _selectedMode = _currentMode;
+
+        if (_currentMode != InvoiceProcessingModeUi.Paused)
+            return;
+
+        _pendingTriggerCount = await _formHelper.JobInvoicePendingTriggerCountGetAsync(jobGuid);
+        if (_pendingTriggerCount <= 0)
+            return;
+
+        _showPausedGeneratePrompt = true;
+        StateHasChanged();
+    }
+
+    private static string GetModeLabel(InvoiceProcessingModeUi mode) => mode switch
+    {
+        InvoiceProcessingModeUi.Automated => "Automated",
+        InvoiceProcessingModeUi.Manual => "Manual",
+        InvoiceProcessingModeUi.Paused => "Paused",
+        _ => mode.ToString()
+    };
+
+    private static string GetModeBadgeCss(InvoiceProcessingModeUi mode) => mode switch
+    {
+        InvoiceProcessingModeUi.Automated => "bg-success",
+        InvoiceProcessingModeUi.Manual => "bg-secondary",
+        InvoiceProcessingModeUi.Paused => "bg-warning text-dark",
+        _ => "bg-light text-dark"
+    };
+
+    private async Task PromptModeChangeAsync()
+    {
+        _pendingNewMode = _selectedMode;
+
+        // If switching to Automated, show schedule review modal instead of the simple confirm.
+        if (_pendingNewMode == InvoiceProcessingModeUi.Automated)
+        {
+            EnsureFormHelper();
+            if (_formHelper is null) return;
+            if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+            _loadingScheduleForAutomation = true;
+            StateHasChanged();
+
+            try
+            {
+                // You need a FormHelper method that resolves the schedule Guid for this Job.
+                // It should use your Quote->QuoteItems->InvoiceSchedule linkage (CreatedJobId + qi.InvoicingSchedule).
+                _jobInvoiceScheduleGuid = await _formHelper.JobInvoiceScheduleGuidGetAsync(jobGuid);
+
+                if (_jobInvoiceScheduleGuid == Guid.Empty)
+                {
+                    // No schedule found: do not allow enabling automation
+                    // (you can toast this if you want)
+                    _loadingScheduleForAutomation = false;
+                    _selectedMode = InvoiceProcessingModeUi.Manual;
+                    StateHasChanged();
+                    return;
+                }
+
+                _showAutomationReenableModal = true;
+            }
+            finally
+            {
+                _loadingScheduleForAutomation = false;
+                StateHasChanged();
+            }
+
+            return;
+        }
+
+        // Otherwise use existing confirm modal
+        _showConfirmModeChange = true;
+    }
+
+    private async Task AcceptAutomationReenableAsync()
+{
+    EnsureFormHelper();
+    if (_formHelper is null) return;
+    if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+    // 1) Save + Exit the schedule detail (equivalent of Save and Exit)
+    if (_scheduleDetailRef is not null)
+    {
+        await _scheduleDetailRef.SaveAndExitAsync();
+    }
+
+    // 2) Now flip the Job mode to Automated
+    await _formHelper.JobInvoiceProcessingModeSetAsync(
+        jobGuid,
+        InvoiceProcessingModeUi.Automated,
+        string.IsNullOrWhiteSpace(_modeChangeReason)
+            ? "User re-enabled automation after schedule review (JobDetail modal)."
+            : _modeChangeReason);
+
+    _currentMode = InvoiceProcessingModeUi.Automated;
+    _selectedMode = _currentMode;
+
+    _showAutomationReenableModal = false;
+
+    RefreshJobProgress();
+    StateHasChanged();
+}
+
+private async Task CancelAutomationReenableAsync()
+{
+    EnsureFormHelper();
+    if (_formHelper is null)
+    {
+        _showAutomationReenableModal = false;
+        _selectedMode = InvoiceProcessingModeUi.Manual;
+        StateHasChanged();
+        return;
+    }
+
+    if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty)
+    {
+        _showAutomationReenableModal = false;
+        _selectedMode = InvoiceProcessingModeUi.Manual;
+        StateHasChanged();
+        return;
+    }
+
+    // Requirement: Cancel forces Manual mode
+    await _formHelper.JobInvoiceProcessingModeSetAsync(
+        jobGuid,
+        InvoiceProcessingModeUi.Manual,
+        "User cancelled re-enable automation (JobDetail modal). Forced Manual mode.");
+
+    _currentMode = InvoiceProcessingModeUi.Manual;
+    _selectedMode = _currentMode;
+
+    _showAutomationReenableModal = false;
+
+    RefreshJobProgress();
+    StateHasChanged();
+}
+
+    private async Task ConfirmModeChangeAsync()
+    {
+        _showConfirmModeChange = false;
+
+        if (_formHelper is null) return;
+        if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+        await _formHelper.JobInvoiceProcessingModeSetAsync(jobGuid, _pendingNewMode, _modeChangeReason);
+
+        _currentMode = _pendingNewMode;
+        _selectedMode = _currentMode;
+
+        RefreshJobProgress();
+        StateHasChanged();
+    }
+
+    private void CancelModeChange()
+    {
+        _showConfirmModeChange = false;
+        _selectedMode = _currentMode;
+        StateHasChanged();
+    }
+
+    private async Task OnActivityActionCompletedAsync()
+    {
+        // Preserve existing behaviour
+        RefreshJobProgress();
+        await TryPromptGenerateWhilePausedAsync("Activity grid action completed");
+
+    }
+
+    private async Task ConfirmGenerateInvoicesWhilePausedAsync()
+    {
+        _showPausedGeneratePrompt = false;
+
+        if (_formHelper is null) return;
+        if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
+
+        await _formHelper.JobInvoiceGenerateFromPendingTriggersAsync(
+            jobGuid,
+            "User confirmed generation while Paused (JobDetail prompt).");
+
+        RefreshJobProgress();
+        StateHasChanged();
+    }
+
+    private void CancelGenerateInvoicesWhilePaused()
+    {
+        _showPausedGeneratePrompt = false;
+        StateHasChanged();
+    }
+    private void EnsureFormHelper()
+    {
+        if (_formHelper != null) return;
+
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            sageIntegrationService,
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(),
+            userService);
+    }
+
+    private void RefreshJobProgress()
+    {
+        _ = LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null && ParentDataObjectReference.DataObjectGuid != Guid.Empty)
+            {
+                EnsureFormHelper();
+
+                await _formHelper!.LoadMetaDataAsync(IsInformationPage);
+
+                var newDataObject = await _formHelper.ReadDataObjectAsync(
+                    editPage.RecordGuid,
+                    ParentDataObjectReference,
+                    false,
+                    ParentDataObjectReference.EntityTypeGuid.ToString());
+
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+
+                if (!string.IsNullOrEmpty(newDataObject.ErrorReturned))
+                    throw new Exception(newDataObject.ErrorReturned);
+
+                if (newDataObject.ProgressData != null)
+                {
+                    editPage.dataObject = newDataObject;
+                    editPage.MyDataObjectReference = ParentDataObjectReference;
+                }
+
+                StateHasChanged();
+                jobProgressRef?.RefreshProgress();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while loading data for the Job Detail page.");
+            ex.Data.Add("PageMethod", "JobDetail/LoadData()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private string GetInvoiceRequestsDisabledMessage()
+    {
+        if (_currentMode == InvoiceProcessingModeUi.Paused)
+            return "This job’s invoicing is paused. Complete activities/milestones will not auto-generate invoice requests unless you confirm.";
+
+        if (editPage.GetValueAsBool("CannotBeInvoiced"))
+            return "This job cannot currently be invoiced.";
+
+        return "This area is disabled.";
+    }
+    private static string GetModeCss(InvoiceProcessingModeUi mode) => mode switch
+    {
+        InvoiceProcessingModeUi.Automated => "mode-automated",
+        InvoiceProcessingModeUi.Manual => "mode-manual",
+        InvoiceProcessingModeUi.Paused => "mode-paused",
+        _ => ""
+    };
+}
+

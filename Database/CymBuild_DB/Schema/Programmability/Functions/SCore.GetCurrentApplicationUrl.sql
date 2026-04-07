@@ -1,0 +1,20 @@
+﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+
+CREATE FUNCTION [SCore].[GetCurrentApplicationUrl]
+	()
+RETURNS NVARCHAR(500)
+AS
+	BEGIN
+
+		RETURN ISNULL(CONVERT(NVARCHAR(500),
+		SESSION_CONTEXT(N'application_url')
+		),
+		-1
+		)
+
+
+
+	END;
+GO

@@ -1,0 +1,21 @@
+﻿.v2-grid-wrapper {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    background: #fff;
+}
+
+.v2-grid-table th {
+    white-space: nowrap;
+}
+
+.v2-sort-header {
+    color: inherit;
+}
+
+.v2-ellipsis {
+    max-width: 420px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

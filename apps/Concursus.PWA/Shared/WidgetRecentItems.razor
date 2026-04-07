@@ -1,0 +1,282 @@
+﻿@using Blazored.Modal;
+@using Blazored.Modal.Services;
+@using Concursus.API.Client.Classes;
+@using Concursus.API.Client.Models;
+@using Concursus.API.Core;
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+@using Microsoft.AspNetCore.Components;
+@using Newtonsoft.Json;
+@using System.Web;
+@using System.Collections
+@using Telerik.Blazor.Components;
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using static Concursus.PWA.Shared.MessageDisplay
+
+
+@inject Core.CoreClient CoreClient
+@inject UserService UserService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAccessTokenProvider TokenProvider
+@inject IJSRuntime JsRuntime
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+<div class="card shadow-sm p-2 m-2" style="max-height:auto">
+    <div class="card-body">
+        <div class="card-title d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Recent </h5>
+
+        </div>
+        <!-- Telerik Grid -->
+        <TelerikGrid Data="@_recentItems?.RecentItems" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="HandleRowDoubleClick">
+            <GridColumns>
+                <GridColumn Field="@nameof(RecentItem.EntityTypeLabel)" Title="Type" />
+                <GridColumn Field="@nameof(RecentItem.Label)" Title="Record" />
+            </GridColumns>
+        </TelerikGrid>
+    </div>
+</div>
+
+@code {
+
+
+
+
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+
+    private RecentItemResponse? _recentItems;
+    private bool _hasLoaded = false;
+
+    protected MessageDisplay? _messageDisplay;
+    protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
+    protected string ErrorMessage { get; set; } = "";
+
+    protected string PageMethod { get; set; } = "Not Set";
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var result = await TokenProvider.RequestAccessToken();
+                if (result.TryGetToken(out var token))
+                {
+                    await JsRuntime.InvokeVoidAsync("sendTokenToIframe", token.Value);
+                }
+            }
+            else
+            {
+                Exception ex = new Exception("Unable to identify if the user is authenticated");
+                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+                ex.Data.Add("AdditionalInfo", "Unable to identify if the user is authenticated");
+                ex.Data.Add("PageMethod", "Dashboard/OnAfterRenderAsync()");
+                OnError(ex);
+            }
+        }
+
+    }
+
+    protected override Task OnInitializedAsync()
+    {
+        GetRecentListAsync(1471);
+        return base.OnInitializedAsync();
+    }
+    private async void GetRecentListAsync(int userId)
+    {
+        try
+        {
+            var recentItemRequest = new RecentItemRequest { UserId = userId };
+            _recentItems = await CoreClient.RecentItemsGetAsync(recentItemRequest);
+
+            Console.WriteLine(_recentItems);
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to retrieve recent items. Please try again later.");
+            ex.Data.Add("PageMethod", "Dashboard/GetRecentListAsync()");
+            OnError(ex);
+        }
+    }
+
+    private void HandleRowDoubleClick(GridRowClickEventArgs args)
+    {
+        try
+        {
+            dynamic model = args.Item;
+            var onRowDoubleClickHandler = !string.IsNullOrEmpty(model?.DetailPageUri) ? "@HandleRowDoubleClick" : null;
+            if (onRowDoubleClickHandler == null) return;
+
+            if (model == null) return; // Check for null
+
+            string serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(ParentDataObjectReference ?? new DataObjectReference("", ""))); ;
+            if (ParentDataObjectReference == null || (ParentDataObjectReference.EntityTypeGuid == Guid.Empty)
+                && ParentDataObjectReference.DataObjectGuid == Guid.Empty)
+            {
+                try
+                {
+                    ParentDataObjectReference = new DataObjectReference(model.RecordGuid, model.EntityTypeGuid);
+                    serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(ParentDataObjectReference));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+            }
+
+            if (model.DetailPageUri == "DynamicEdit")
+                Navigation.NavigateTo(model.DetailPageUri + "/" + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.EntityTypeGuid).ToString()
+                                      + "/" + Guid.Empty.ToString() + "/" +
+                                      serializeParentDataObjectReferenced + "/" + System.Web.HttpUtility.UrlEncode(Navigation.Uri));
+            else
+                Navigation.NavigateTo(model.DetailPageUri + "/" + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.RecordGuid).ToString() + "/" +
+                                      serializeParentDataObjectReferenced + "/" + System.Web.HttpUtility.UrlEncode(Navigation.Uri));
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to handle row double click. Please try again later.");
+            ex.Data.Add("PageMethod", "Dashboard/HandleRowDoubleClick()");
+            OnError(ex);
+        }
+    }
+
+    public async Task OnError(Exception error)
+    {
+
+        if (string.IsNullOrEmpty(error.Message))
+        {
+            Console.WriteLine("WidgetRecentItems: Error message is empty. Aborting.");
+            return;
+        }
+
+        ErrorMessage = error.Message;
+        PageMethod = error.Data.Contains("PageMethod")
+            ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
+            : "Not Set";
+        Console.WriteLine($"WidgetRecentItems: PageMethod = {PageMethod}");
+
+        if (error.Data.Contains("MessageType"))
+        {
+            MessageType = (ShowMessageType)(error.Data["MessageType"] ?? ShowMessageType.Information);
+        }
+        else
+        {
+            MessageType = ShowMessageType.Error;
+            Console.WriteLine("WidgetRecentItems: MessageType not found in error.Data. Defaulted to Error.");
+        }
+
+        // Extract all exception data
+        var exceptionData = error.Data.Count > 0
+            ? error.Data.Cast<DictionaryEntry>().ToDictionary(
+                de => de.Key?.ToString() ?? "UnknownKey",
+                de => de.Value!)
+            : null;
+
+        if (exceptionData != null)
+        {
+            foreach (var kvp in exceptionData)
+                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+        }
+
+        _messageDisplay.UpdateExceptionData(exceptionData);
+        _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
+        _messageDisplay.ShowError(true);
+
+        Console.WriteLine("WidgetRecentItems: MessageDisplay updated and error shown.");
+
+        // AI Error Reporting (only for actual errors)
+        if (MessageType == ShowMessageType.Error)
+        {
+            try
+            {
+                var context = new
+                {
+                    ErrorMessage = error.Message,
+                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
+                    StackTrace = error.StackTrace ?? "No stack trace",
+                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
+                    Data = error.Data.Cast<DictionaryEntry>()
+                        .ToDictionary(
+                            de => de.Key?.ToString() ?? "UnknownKey",
+                            de => de.Value?.ToString() ?? "null"
+                        )
+                };
+
+                var log = InteractionTracker.GetAllLogs();
+                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
+                error.Data["UserInteractionLog"] = description;
+                Console.WriteLine($"WidgetRecentItems: UserInteractionLog = {description}");
+
+                var result = await AiErrorReporter.ReportAsync(error, context);
+
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                {
+                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
+                    _messageDisplay.ShowError(true);
+                }
+                else
+                {
+                    Console.WriteLine("WidgetRecentItems: AI Error Reporter returned no UI message.");
+                }
+            }
+            catch (Exception aiEx)
+            {
+                Console.WriteLine($"WidgetRecentItems: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    // public void OnError(Exception error)
+    // {
+    //     if (string.IsNullOrEmpty(error.Message)) return;
+
+    //     ErrorMessage = error.Message;
+    //     PageMethod = (error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+
+    //     if (error.Data.Contains("MessageType"))
+    //     {
+    //         MessageType = (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ?? MessageDisplay.ShowMessageType.Information);
+    //     }
+    //     else
+    //     {
+    //         MessageType = MessageDisplay.ShowMessageType.Error;
+    //     }
+
+    //     // Extract all exception data and pass it to the MessageDisplay component
+    //     if (messageDisplay != null)
+    //     {
+    //         // Pass Exception Data using the new method
+    //         messageDisplay?.UpdateExceptionData(
+    //             error.Data.Count > 0
+    //             ? error.Data.Cast<DictionaryEntry>()
+    //                         .ToDictionary(
+    //                             de => de.Key?.ToString() ?? "UnknownKey",
+    //                             de => de.Value!)
+    //             : null
+    //         );
+
+    //         // Update the stack trace dynamically
+    //         messageDisplay?.UpdateStackTrace(error.StackTrace);
+
+    //         messageDisplay?.ShowError(true);
+    //     }
+
+    //     // Recover from error (if using a custom boundary)
+    //     // customErrorBoundary.Recover();
+
+    //     StateHasChanged();
+    // }
+}

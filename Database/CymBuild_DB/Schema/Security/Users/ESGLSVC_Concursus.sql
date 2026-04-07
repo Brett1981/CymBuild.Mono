@@ -1,0 +1,3 @@
+﻿CREATE USER [ESGL\SVC_Concursus]
+  WITHOUT LOGIN
+GO

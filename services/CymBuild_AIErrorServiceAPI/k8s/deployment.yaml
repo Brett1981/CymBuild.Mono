@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aierrorserviceapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aierrorserviceapi
+  template:
+    metadata:
+      labels:
+        app: aierrorserviceapi
+    spec:
+      containers:
+        - name: aierrorserviceapi
+          image: your-registry/aierrorserviceapi:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Production"
+            - name: ConnectionStrings__DefaultConnection
+              valueFrom:
+                secretKeyRef:
+                  name: aierrorservice-secrets
+                  key: DefaultConnection
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aierrorserviceapi
+spec:
+  selector:
+    app: aierrorserviceapi
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

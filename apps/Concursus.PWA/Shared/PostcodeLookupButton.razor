@@ -1,0 +1,309 @@
+﻿@using Concursus.PWA.Classes
+@using System;
+@using System.Collections.Generic;
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes;
+@inject HttpClient Http
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject Concursus.Components.Shared.Services.UserInteractionTrackerService InteractionTracker
+
+
+@inject Concursus.PWA.Services.AiErrorReporter AiErrorReporter
+
+
+<button class="k-button btn btn-primary form-action-menu" @onclick="OpenModal" @onclick:stopPropagation="true">Address Lookup</button>
+
+
+    @if (LoaderVisible)
+    {
+        <div class="loader-overlay">
+            <TelerikLoader Class="loader-indicator" Type="LoaderType.InfiniteSpinner" ThemeColor="dark" Size="@(ThemeConstants.Loader.Size.Medium)" Visible="@LoaderVisible"></TelerikLoader>
+        </div>
+    }
+
+
+
+<TelerikWindow @ref="ModalWindow"
+               Class="responsive-window"
+               @bind-Visible="@WindowIsVisible"
+               Modal="true"
+               CloseOnOverlayClick="false"
+               MaxHeight="100vh">
+    <WindowTitle>Address Lookup</WindowTitle>
+    <WindowContent>
+        <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+        <!--[SHOW DIFFERENT SCREEN IF THE API CREDENTIALS COULD NOT BE LOADED]-->
+        @if (LockScreenIfNoAPICredentials)
+        {
+            <div class="alert alert-danger d-flex align-items-center shadow-sm" role="alert">
+                <div class="me-3">
+                    <i class="bi bi-exclamation-triangle-fill fs-3"></i>
+                </div>
+                <div>
+                    <h4 class="alert-heading">API Error</h4>
+                    <p class="mb-0">The API Credentials could not be loaded for Postcode Lookup. Please, check your configuration settings.</p>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="addressFinderBody">
+                <!--[HELPER INFORMATION FOR THE USER]-->
+                <div class="accordion mb-5">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingOne">
+                            <button class="accordion-button collapsed text-white bg-info fw-bold"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#collapseOne"
+                                    aria-expanded="false"
+                                    aria-controls="collapseOne">
+                                Information
+                            </button>
+                        </h2>
+                        <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne">
+                            <div class="accordion-body">
+                                <ul>
+                                    <li>On the left-hand side, you'll find the input section where you can enter an address — this can be a full address or just a postcode.</li>
+                                    <li>Make sure to select the country using the dropdown next to the input field.</li>
+                                    <li>Once you've entered the details, click "Search Database" to look up the address. From the list of results, select the correct address - if present.</li>
+                                    <li>If not present, select "Address Not Found" and then you can perform an online search</li>
+                                    <li>On the right-hand side, the address fields will automatically populate so you can review the details.</li>
+                                    <li>Please note: these fields are read-only and cannot be edited directly. Exception is when no address is returned even when searching online</li>
+                                    <ul>
+                                        <li>You can click the "Enter address manually" after which the fields become editable & you can enter the address yourself.</li>
+                                    </ul>
+                                    <li>If all the details look correct on the right handside, click "OK" to confirm — the address details will then be transferred to the parent record.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="d-flex flex-row justify-content-between gap-3 w-100">
+
+                    <!--[INPUT FIELDS CARD]-->
+                    <div class="card flex-fill me-3" style="max-width: 48%;">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">Postcode Lookup</h5>
+
+                            <div id="search-inputs d-flex flex-column" class="mb-3">
+                                <div class="d-flex flex-row">
+                                    <div class="d-inline-block me-2">
+                                        <input placeholder="@InputFieldText"
+                                               id="search-address"
+                                               @bind="AddressSearchInput"
+                                               class=@($"form-control k-textbox {IsInvalid}")
+                                               style="width:200px"
+                                               disabled="@DisableAddressSearch" />
+                                        <div class="invalid-feedback">
+                                            @IsInvalidMsg
+                                        </div>
+                                    </div>
+                                    <div class="ISOCodes">
+                                        <TelerikDropDownList Data="@ISOCodes"
+                                                             TextField="name"
+                                                             ValueField="iso"
+                                                             Width="150px"
+                                                             @bind-Value="selectedISO" />
+                                    </div>
+                                </div>
+
+
+                                <button class="k-button btn btn-primary mt-2 mb-2 d-block"
+                                        disabled="@DisableAddressSearch"
+                                        style="width:100%;"
+                                        @onclick="@(() => SearchByAddress())">
+                                    @SearchButtonTex
+                                </button>
+                            </div>
+
+                            <!--[DROPDOWN]-->
+                            <div class="mb-3">
+                                @if (addressRecommendations is not null && !DisableAddressSearch)
+                                {
+                                    <TelerikDropDownList DefaultText="Select an address:"
+                                                         Data="@addressRecommendations"
+                                                         TextField="Suggestion"
+                                                         ValueField="Urls"
+                                                         Filterable="true"
+                                                         @bind-Value="DropdownSelectionForAddress" />
+                                }
+                                else if (postcodeRecommendations is not null && !DisableAddressSearch)
+                                {
+                                    <TelerikDropDownList DefaultText="Select an address:"
+                                                         Data="@postcodeRecommendations"
+                                                         TextField="FormattedAddress"
+                                                         ValueField="Uprn"
+                                                         Filterable="true"
+                                                         @bind-Value="DropdownSelectionForPostcode" />
+
+                                }
+                            </div>
+
+                            <!--[CONFIRMATION BUTTONS]-->
+                            <div>
+                                @if (addressRecommendations is not null && !DisableAddressSearch)
+                                {
+                                    <button class="btn btn-success w-100" @onclick="SelectAddressSuggestion">Confirm</button>
+                                }
+                                else if (postcodeRecommendations is not null)
+                                {
+                                    <button class="btn btn-success w-100" @onclick="SelectPostcodeSuggestion">Confirm</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <!--[READ-ONLY FIELDS CARD]-->
+                    <div class="card flex-fill" style="max-width: 48%;">
+                        <div class="card-body">
+                            <h5 class="card-title">Selected Address:</h5>
+                            <div class="mt-4 container-fluid">
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">UPRN (read-only):</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Uprn" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Number:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Number" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Local Authority:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.AuthorityCode" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Address Line 1:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Line1" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Address Line 2:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Line2" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Town / City:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Town" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">County:</label>
+                                    <div class="col-sm-8">
+                                        <TelerikComboBox TItem="@API.Client.ComboDataItem"
+                                                         TValue="@Guid"
+                                                         DebounceDelay="@DebounceDelay"
+                                                         OnRead="@DropdownReadCounties"
+                                                         Placeholder="County:"
+                                                         TextField="Name"
+                                                         ValueField="Value"
+                                                         Filterable="true"
+                                                         FilterOperator="StringFilterOperator.Contains"
+                                                         Id="propertyId"
+                                                         Width="100%"
+                                                         ReadOnly="false"
+                                                         @bind-Value="@CountySelection"
+                                                         AdaptiveMode="AdaptiveMode.Auto"
+                                                         @ref="@CountyCombo">
+                                        </TelerikComboBox>
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Postcode:</label>
+                                    <div class="col-sm-8">
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Postcode" class="form-control" />
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <label class="col-sm-4 col-form-label">Country:</label>
+                                    <div class="col-sm-8">
+
+                                        @* @if (IsReadOnlyForm)
+                                    {
+                                        <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Country" class="form-control" />
+                                    }
+                                    else
+                                    { *@
+                                        <TelerikComboBox TItem="@API.Client.ComboDataItem"
+                                                         TValue="@Guid"
+                                                         DebounceDelay="@DebounceDelay"
+                                                         OnRead="@DropdownReadCountries"
+                                                         Placeholder="Country:"
+                                                         TextField="Name"
+                                                         ValueField="Value"
+                                                         Filterable="true"
+                                                         FilterOperator="StringFilterOperator.Contains"
+                                                         Id="propertyId"
+                                                         Width="100%"
+                                                         ReadOnly="false"
+                                                         @bind-Value="@CountrySelection"
+                                                         AdaptiveMode="AdaptiveMode.Auto"
+                                                         @ref="@CountryCombo">
+                                        </TelerikComboBox>
+                                        @* } *@
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="d-flex flex-row justify-content-end mt-2 mr-1">
+
+                    @if (ShowManualEntryButton)
+                    {
+                        <button class="btn btn-secondary mx-2" @onclick="EnableReadOnlyForm">@ManualAddressEntryText</button>
+                    }
+
+                    @if (ShowOverwriteAddressButton)
+                    {
+                        <button class="btn btn-secondary mx-2" @onclick="OverwriteAddress">Amend address</button>
+                    }
+
+                    @if (ShowDoneButton || ShowManualEntryButton)
+                    {
+                        <button class="btn btn-success" @onclick="ConfirmAddress">Done</button>
+                    }
+
+                </div>
+            </div>
+        }
+
+
+    </WindowContent>
+    <WindowActions>
+        <WindowAction Name="Close" OnClick="@(() => WindowIsVisible = false)"></WindowAction>
+    </WindowActions>
+</TelerikWindow>
+
+
+<style>
+    .loader-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: rgba(255, 255, 255, 0.6); /* faint white background */
+        z-index: 999; /* make sure it’s above the content */
+    }
+</style>
+

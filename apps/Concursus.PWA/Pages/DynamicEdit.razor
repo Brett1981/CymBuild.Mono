@@ -1,0 +1,92 @@
+﻿@page "/DynamicEdit/{EntityTypeGuid}/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using System.Web
+@inherits EditPageBase
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="@EntityTypeGuid"
+          Windowed="@Windowed"
+          IsInformationPage="@IsInformationPage"
+          @bind-RecordGuid="@RecordGuid"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          PassedEntityProperty="@PassedEntityProperty"
+          ModalId="@ModalId"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle></FormTitle>
+    <FormBody>
+        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@editPage.entityProperties"
+                            IsMainRecordContext="@IsMainRecordContext"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                            dataObject="@editPage.dataObject"
+                            RecordGuid="@RecordGuid"
+                            inputUpdated="@editPage.HandleInputUpdated"
+                            editPageRef="@editPage"/>
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private bool isRendering;
+    private Timer? debounceTimer;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (isRendering)
+            {
+                Console.WriteLine("Render blocked to avoid infinite loop.");
+                return;
+            }
+
+            isRendering = true;
+
+            var newReference = JsonConvert.DeserializeObject<DataObjectReference>(
+                HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty
+            );
+
+            if (newReference != null &&
+                (ParentDataObjectReference == null ||
+                 newReference.DataObjectGuid != ParentDataObjectReference.DataObjectGuid))
+            {
+                ParentDataObjectReference = newReference;
+
+                // Debounce the invocation to prevent excessive re-renders
+                debounceTimer?.Dispose();
+                debounceTimer = new Timer(async _ =>
+                {
+                    Console.WriteLine("Updating ParentDataObjectReference.");
+                    await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+                }, null, 300, Timeout.Infinite);
+            }
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the DynamicEdit page.");
+            ex.Data.Add("PageMethod", "DynamicEdit/OnParametersSetAsync()");
+            await OnError.InvokeAsync(ex);
+        }
+        finally
+        {
+            isRendering = false;
+        }
+    }
+}

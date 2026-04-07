@@ -1,0 +1,91 @@
+﻿@inject Core.CoreClient CoreClient
+@inject NavigationManager Navigation
+
+
+@* <div class="card shadow-sm p-2 m-2 align-items-center transition-fade-in" style="min-width:240px">
+    <div class="card-body">
+        <div class="card-title d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@Metric?.Label</h5>
+            <btn class="btn btn-default" @onclick="@((e) => HandleClickOnMetric(Metric?.Guid, Metric?.PageUri))">
+                <i class="bi bi-eye-fill"></i>
+            </btn>
+        </div>
+
+        <div class="gauge-container" style="width: 200px; height: 200px;"> <!-- Adjust the height as needed -->
+            <TelerikCircularGauge Width="100%">
+                <CircularGaugeCenterLabel>
+                    <Template>
+                        @{
+                            var pointer = Metric?.Values.FirstOrDefault();
+
+                            <div style="font-weight: bold; font-size:40px">@pointer?.Value</div>
+                        }
+                    </Template>
+                </CircularGaugeCenterLabel>
+                <CircularGaugeScales>
+                   
+                </CircularGaugeScales>
+                <CircularGaugePointers>
+                   
+                </CircularGaugePointers>
+            </TelerikCircularGauge>
+        </div>
+    </div>
+</div> *@
+
+
+<div class="gauge-container">
+    <!-- Adjust the height as needed -->
+    <TelerikCircularGauge>
+        <CircularGaugeCenterLabel>
+            <Template>
+                @{
+                    var pointer = Metric?.Values.FirstOrDefault();
+
+                    <div style="font-weight: bold; font-size:40px">@pointer?.Value</div>
+                }
+            </Template>
+        </CircularGaugeCenterLabel>
+        <CircularGaugeScales>
+            <!-- Currently hidding this scale as it is not needed -->
+            @* <CircularGaugeScale Min="@Metric?.Min" Max="@Metric?.Max" MajorUnit="@Metric?.MajorUnit" MinorUnit="@Metric?.MinorUnit">
+            <CircularGaugeScaleLabels Visible="true"/>
+            </CircularGaugeScale> *@
+        </CircularGaugeScales>
+        <CircularGaugePointers>
+            @*                     @if (Metric is not null)
+            {
+            @foreach (var v in Metric.Values)
+            {
+            <CircularGaugePointer Value="@v.Value" Color="@v.ColourHex">
+            </CircularGaugePointer>
+            }
+            } *@
+        </CircularGaugePointers>
+    </TelerikCircularGauge>
+</div>
+
+<style>
+    .gauge-container {
+        position: relative;
+        width: 100%;
+        height: 100%; /* Adjust if necessary */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden; /* Avoid scrollbars */
+    }
+
+    @@media (max-width: 1280px) {
+    .k-gauge {
+        transform: scale(0.6); /* Zoom out slightly */
+    }
+
+    @@media (max-width: 768px) {
+        .gauge-container {
+            transform: scale(1); /* Zoom out slightly */
+        }
+
+   
+
+</style>

@@ -1,0 +1,465 @@
+﻿@* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowser.razor *@
+@using Concursus.API.Client
+@using Concursus.API.Core
+@using Microsoft.Extensions.Configuration
+@using Google.Protobuf.WellKnownTypes
+@using Telerik.SvgIcons
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IConfiguration Config
+
+<div class="record-doc-browser">
+    <div class="doc-toolbar">
+        <div class="left">
+            @if (_breadcrumbs.Count > 0)
+            {
+                <div class="breadcrumb-bar">
+                    @for (var i = 0; i < _breadcrumbs.Count; i++)
+                    {
+                        var crumb = _breadcrumbs[i];
+
+                        <TelerikButton Class="crumb"
+                                       OnClick="@(async () => await OnCrumbClickAsync(i))">
+                            @crumb.Name
+                        </TelerikButton>
+
+                        @if (i < _breadcrumbs.Count - 1)
+                        {
+                            <span class="crumb-sep">/</span>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="right">
+            <TelerikTextBox @bind-Value="_searchText"
+                            Placeholder="Search documents..."
+                            Width="280px" />
+
+            <TelerikButton OnClick="@RefreshAsync" Icon="@SvgIcon.Redo">Refresh</TelerikButton>
+
+            @if (!string.IsNullOrWhiteSpace(_location?.SharePointWebUrl))
+            {
+                <TelerikButton OnClick="@OpenInSharePointAsync" Icon="@SvgIcon.Link">Open</TelerikButton>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_fatalError))
+    {
+        <div class="alert alert-danger">
+            <strong>Documents unavailable.</strong> @_fatalError
+            <TelerikButton OnClick="@InitializeAsync" Class="ml-2">Retry</TelerikButton>
+        </div>
+    }
+    else
+    {
+        <div class="doc-body">
+            <div class="folders">
+                <div class="panel-title">Folders</div>
+
+                @if (_foldersLoading)
+                {
+                    <div class="p-3">
+                        <TelerikLoader />
+                    </div>
+                }
+                else
+                {
+                    <TelerikTreeView Data="@_folderNodes"
+                                     OnExpand="@OnFolderExpand"
+                                     OnItemClick="@OnFolderSelected">
+                        <TreeViewBindings>
+                            <TreeViewBinding TextField="Name"
+                                             ItemsField="Children"
+                                             HasChildrenField="HasChildren" />
+                        </TreeViewBindings>
+                    </TelerikTreeView>
+                }
+            </div>
+
+            <div class="files">
+                <div class="panel-title">Documents</div>
+
+                @if (_filesLoading)
+                {
+                    <div class="p-3">
+                        <TelerikLoader />
+                    </div>
+                }
+                else
+                {
+                    <TelerikGrid Data="@_fileRows"
+                                 Pageable="false"
+                                 Sortable="true"
+                                 Height="520px">
+                        <GridColumns>
+                            <GridColumn Field="@nameof(DocumentsListItem.Name)" Title="Name">
+                                <Template>
+                                    @{
+                                        var item = (DocumentsListItem)context;
+                                    }
+                                    <span class="doc-name">
+                                        <span class="doc-icon">@GetIcon(item)</span>
+
+                                        @if (item.IsFolder)
+                                        {
+                                            <a href="javascript:void(0)" @onclick="() => NavigateToFolder(item)">
+                                                @item.Name
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a href="javascript:void(0)" @onclick="() => DownloadAsync(item)">
+                                                @item.Name
+                                            </a>
+                                        }
+                                    </span>
+                                </Template>
+                            </GridColumn>
+
+                            <GridColumn Title="Date Modified" Width="160px">
+                                <Template>
+                                    @{
+                                        var item = (DocumentsListItem)context;
+                                    }
+                                    @FormatTimestamp(item.LastModifiedUtc)
+                                </Template>
+                            </GridColumn>
+
+                            <GridColumn Title="Size" Width="120px">
+                                <Template>
+                                    @{
+                                        var item = (DocumentsListItem)context;
+                                    }
+                                    @(item.IsFolder ? "" : FormatBytes(item.Size))
+                                </Template>
+                            </GridColumn>
+
+                            <GridColumn Title="Actions" Width="120px">
+                                <Template>
+                                    @{
+                                        var item = (DocumentsListItem)context;
+                                    }
+                                    @if (!item.IsFolder && item.CanDownload)
+                                    {
+                                        <TelerikButton OnClick="() => DownloadAsync(item)" Icon="@SvgIcon.Download" />
+                                    }
+                                </Template>
+                            </GridColumn>
+                        </GridColumns>
+                    </TelerikGrid>
+
+                    @if (!string.IsNullOrWhiteSpace(_nextPageToken))
+                    {
+                        <div class="load-more">
+                            <TelerikButton OnClick="@LoadMoreAsync">Load more</TelerikButton>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public FormHelper? FormHelper { get; set; }
+    [Parameter] public DataObject? DataObject { get; set; }
+    [Parameter] public int EntityTypeId { get; set; } = -1;
+    [Parameter] public string EntityQueryGuid { get; set; } = Guid.Empty.ToString();
+
+    private DocumentsLocation? _location;
+
+    private readonly List<Crumb> _breadcrumbs = new();
+    private readonly List<FolderTreeNode> _folderNodes = new();
+    private readonly List<DocumentsListItem> _fileRows = new();
+
+    private string? _currentFolderId;
+    private string? _nextPageToken;
+
+    private bool _foldersLoading;
+    private bool _filesLoading;
+    private string? _fatalError;
+    private string _searchText = "";
+
+    protected override async Task OnParametersSetAsync()
+        => await InitializeAsync();
+
+    private async Task InitializeAsync()
+    {
+        _fatalError = null;
+        _location = null;
+
+        _folderNodes.Clear();
+        _fileRows.Clear();
+        _breadcrumbs.Clear();
+        _nextPageToken = null;
+        _currentFolderId = null;
+
+        if (FormHelper is null)
+        {
+            _fatalError = "Missing FormHelper parameter.";
+            return;
+        }
+
+        if (DataObject is null)
+        {
+            _fatalError = "Missing DataObject parameter.";
+            return;
+        }
+
+        var recordGuid = DataObject.Guid ?? "";
+        if (!Guid.TryParse(recordGuid, out var rg) || rg == Guid.Empty)
+        {
+            _fatalError = "Missing record context (DataObject.Guid is empty/invalid).";
+            return;
+        }
+
+        if (!Guid.TryParse(EntityQueryGuid, out var eq) || eq == Guid.Empty)
+        {
+            _fatalError = "Missing entity query context (EntityQueryGuid is empty/invalid).";
+            return;
+        }
+
+        try
+        {
+            _foldersLoading = true;
+            _filesLoading = true;
+
+            _location = await FormHelper.DocumentsResolveAsync(DataObject, EntityTypeId, EntityQueryGuid);
+
+            if (_location is null)
+            {
+                _fatalError = "DocumentsResolve returned no location.";
+                return;
+            }
+
+
+            if (string.IsNullOrWhiteSpace(_location.DriveId) || string.IsNullOrWhiteSpace(_location.RootFolderId))
+            {
+                _fatalError = "Documents location is missing DriveId or RootFolderId.";
+                return;
+            }
+
+            _currentFolderId = _location.RootFolderId;
+
+            BuildRootFolderTree(_location);
+            BuildBreadcrumbRoot(_location);
+
+            await LoadFolderAsync(_currentFolderId, reset: true);
+        }
+        catch (Exception ex)
+        {
+            _fatalError = ex.Message;
+        }
+        finally
+        {
+            _foldersLoading = false;
+            _filesLoading = false;
+        }
+    }
+
+    private void BuildRootFolderTree(DocumentsLocation loc)
+    {
+        _folderNodes.Add(new FolderTreeNode
+        {
+            Id = loc.RootFolderId,
+            Name = string.IsNullOrWhiteSpace(loc.RootFolderName) ? "Documents" : loc.RootFolderName,
+            HasChildren = true
+        });
+    }
+
+    private void BuildBreadcrumbRoot(DocumentsLocation loc)
+    {
+        _breadcrumbs.Clear();
+        _breadcrumbs.Add(new Crumb
+        {
+            Name = string.IsNullOrWhiteSpace(loc.RootFolderName) ? "Documents" : loc.RootFolderName,
+            FolderId = loc.RootFolderId
+        });
+    }
+
+    private async Task OnFolderExpand(TreeViewExpandEventArgs args)
+    {
+        if (args.Item is not FolderTreeNode node) return;
+        if (node.ChildrenLoaded) return;
+        if (_location is null || FormHelper is null) return;
+
+        try
+        {
+            _foldersLoading = true;
+
+            var resp = await FormHelper.DocumentsListAsync(
+                driveId: _location.DriveId,
+                folderId: node.Id,
+                pageSize: 200,
+                pageToken: null,
+                searchText: null);
+
+            // Only folders in left tree
+            node.Children = resp.Items
+                .Where(i => i.IsFolder)
+                .Select(i => new FolderTreeNode
+                {
+                    Id = i.Id,
+                    Name = i.Name,
+                    HasChildren = i.HasChildren
+                })
+                .ToList();
+
+            node.ChildrenLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _fatalError = ex.Message;
+        }
+        finally
+        {
+            _foldersLoading = false;
+        }
+    }
+
+    private async Task OnFolderSelected(TreeViewItemClickEventArgs args)
+    {
+        if (args.Item is not FolderTreeNode node) return;
+        await NavigateToFolderIdAsync(node.Id, node.Name);
+    }
+
+    private async Task NavigateToFolderIdAsync(string folderId, string folderName)
+    {
+        _currentFolderId = folderId;
+        PushBreadcrumb(folderName, folderId);
+        await LoadFolderAsync(folderId, reset: true);
+    }
+
+    private void NavigateToFolder(DocumentsListItem folder)
+        => _ = NavigateToFolderIdAsync(folder.Id, folder.Name);
+
+    private async Task LoadFolderAsync(string folderId, bool reset)
+    {
+        if (_location is null || FormHelper is null) return;
+
+        try
+        {
+            _filesLoading = true;
+
+            if (reset)
+            {
+                _fileRows.Clear();
+                _nextPageToken = null;
+            }
+
+            var resp = await FormHelper.DocumentsListAsync(
+                driveId: _location.DriveId,
+                folderId: folderId,
+                pageSize: 100,
+                pageToken: _nextPageToken,
+                searchText: string.IsNullOrWhiteSpace(_searchText) ? null : _searchText.Trim());
+
+            _fileRows.AddRange(resp.Items);
+            _nextPageToken = string.IsNullOrWhiteSpace(resp.NextPageToken) ? null : resp.NextPageToken;
+        }
+        catch (Exception ex)
+        {
+            _fatalError = ex.Message;
+        }
+        finally
+        {
+            _filesLoading = false;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nextPageToken) || string.IsNullOrWhiteSpace(_currentFolderId)) return;
+        await LoadFolderAsync(_currentFolderId!, reset: false);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_currentFolderId)) return;
+        await LoadFolderAsync(_currentFolderId!, reset: true);
+    }
+
+    private async Task DownloadAsync(DocumentsListItem file)
+    {
+        if (_location is null || FormHelper is null) return;
+        if (file.IsFolder || !file.CanDownload) return;
+
+        var url = FormHelper.BuildDocumentsDownloadUrl(Config, _location.DriveId, file.Id);
+        await JS.InvokeVoidAsync("cymbuild.downloadFile", url);
+    }
+
+    private async Task OpenInSharePointAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_location?.SharePointWebUrl)) return;
+        await JS.InvokeVoidAsync("open", _location.SharePointWebUrl, "_blank");
+    }
+
+    private void PushBreadcrumb(string name, string folderId)
+    {
+        var idx = _breadcrumbs.FindIndex(b => b.FolderId == folderId);
+        if (idx >= 0)
+        {
+            _breadcrumbs.RemoveRange(idx + 1, _breadcrumbs.Count - (idx + 1));
+            return;
+        }
+
+        _breadcrumbs.Add(new Crumb { Name = name, FolderId = folderId });
+    }
+
+    private async Task OnCrumbClickAsync(int index)
+    {
+        if (index < 0 || index >= _breadcrumbs.Count) return;
+
+        var target = _breadcrumbs[index];
+        if (index < _breadcrumbs.Count - 1)
+        {
+            _breadcrumbs.RemoveRange(index + 1, _breadcrumbs.Count - (index + 1));
+        }
+
+        _currentFolderId = target.FolderId;
+        await LoadFolderAsync(target.FolderId, reset: true);
+    }
+
+    private static string GetIcon(DocumentsListItem item) => item.IsFolder ? "📁" : "📄";
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        int unit = 0;
+        double size = bytes;
+
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return $"{size:0.##} {units[unit]}";
+    }
+
+    private static string FormatTimestamp(Timestamp ts)
+    {
+        if (ts == null) return "";
+        var dt = ts.ToDateTime().ToLocalTime();
+        return dt.ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private sealed class Crumb
+    {
+        public string Name { get; set; } = "";
+        public string FolderId { get; set; } = "";
+    }
+
+    private sealed class FolderTreeNode
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public bool HasChildren { get; set; }
+
+        public bool ChildrenLoaded { get; set; }
+        public List<FolderTreeNode> Children { get; set; } = new();
+    }
+}

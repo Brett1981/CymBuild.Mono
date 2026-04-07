@@ -1,0 +1,21 @@
+﻿@using System.Dynamic
+@using Google.Protobuf.WellKnownTypes
+@inject Core.CoreClient coreClient
+
+<div class="d-flex flex-row flex-wrap flexpropertygroups">
+    <CascadingValue Value="this">
+
+        @foreach (var eg in entityPropertyGroups.Where(g => g.IsHidden == false).OrderBy(g => g.SortOrder))
+        {
+            <FlexPropertyGroup entityProperties="@entityProperties"
+                               IsMainRecordContext="@IsMainRecordContext"
+                               entityPropertyGroup="@eg"
+                               @bind-dataObject="@dataObject"
+                               @bind-RecordGuid="@RecordGuid"
+                               inputUpdated="@HandleInputUpdated"
+                               IsBulkEdit="IsBulkUpdate"
+                               editPageRef="editPageRef" />
+        }
+
+    </CascadingValue>
+</div>

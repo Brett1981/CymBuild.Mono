@@ -1,0 +1,175 @@
+<?xml version="1.0"?>
+<SqlWorkbenchSqlProject xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Name="8.0.13 Upgrade">
+  <Items>
+    <LogicalFolder Name="Connections" Type="2" Sorted="true">
+      <Items>
+        <ConnectionNode Name="SOC-SQLBRE01\SQL2022:ESGL\richard.brindley_adm">
+          <Created>2025-04-01T19:05:29.9301796+01:00</Created>
+          <Type>SQL</Type>
+          <Server>SOC-SQLBRE01\SQL2022</Server>
+          <UserName />
+          <Authentication>Windows Authentication</Authentication>
+          <InitialDB>Concursus</InitialDB>
+          <LoginTimeout>30</LoginTimeout>
+          <TrustServerCertificate>True</TrustServerCertificate>
+          <HostNameInServerCertificate />
+          <EncryptionOption>True</EncryptionOption>
+          <ExecutionTimeout>0</ExecutionTimeout>
+          <ConnectionProtocol>NotSpecified</ConnectionProtocol>
+          <ApplicationName>Microsoft SQL Server Management Studio - Query</ApplicationName>
+        </ConnectionNode>
+      </Items>
+    </LogicalFolder>
+    <LogicalFolder Name="Queries" Type="0" Sorted="true">
+      <Items>
+        <FileNode Name="8.0.13 post Upgrade scripts.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 post Upgrade scripts.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 pre Upgrade scripts.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 pre Upgrade scripts.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 1.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 1.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 2.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 2.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 3.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 3.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 4.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 4.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 5.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 5.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 6.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 6.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Data 7.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Data 7.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 1.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 1.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 10.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 10.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 11.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 11.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 12.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 12.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 13.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 13.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 14.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 14.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 15.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 15.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 2.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 2.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 3.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 3.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 4.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 4.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 5.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 5.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 6.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 6.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 7.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 7.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 8.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 8.sql</FullPath>
+        </FileNode>
+        <FileNode Name="8.0.13 Upgrade Schema 9.sql">
+          <AssociatedConnectionMoniker>8c91a03d-f9b4-46c0-a305-b5dcc79ff907:SOC-SQLBRE01\SQL2022:True</AssociatedConnectionMoniker>
+          <AssociatedConnSrvName>SOC-SQLBRE01\SQL2022</AssociatedConnSrvName>
+          <AssociatedConnUserName />
+          <FullPath>8.0.13 Upgrade Schema 9.sql</FullPath>
+        </FileNode>
+      </Items>
+    </LogicalFolder>
+    <LogicalFolder Name="Miscellaneous" Type="3" Sorted="true">
+      <Items />
+    </LogicalFolder>
+  </Items>
+</SqlWorkbenchSqlProject>

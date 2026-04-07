@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <TargetOfficeVersion>15.0</TargetOfficeVersion>
+    <IncludeAssemblyInPackage>False</IncludeAssemblyInPackage>
+    <AppFeaturePartId>{3db75ad4-5d2c-45f6-a212-951752b39116}</AppFeaturePartId>
+    <WspPartId>{5cbd0067-5c34-4f82-a3c3-974061367c6a}</WspPartId>
+    <WorkflowPartId>{1d53e703-c2fe-45ef-af13-a487c0f0bb6a}</WorkflowPartId>
+    <CspkgPartId>{8287d241-751e-4f46-87f4-8cbf0cc844d3}</CspkgPartId>
+    <SqlPackagePartId>{b6188308-23b1-4a8f-90e4-a823ac8c3e8e}</SqlPackagePartId>
+    <ProjectMode>MailApp</ProjectMode>
+    <MinimumOfficeToolsVersion>14.0</MinimumOfficeToolsVersion>
+    <ActivePublishProfile>CymBuildOutlook</ActivePublishProfile>
+    <CoreWebProject>..\CymBuild_Outlook_Addin\CymBuild_Outlook_Addin.csproj</CoreWebProject>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseVSHostingProcess>false</UseVSHostingProcess>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="CymBuild_OutlookManifest\SharePointProjectItem.spdata">
+      <SharePointProjectItemId>{4aa06b1e-08cd-47cd-9586-124797f331eb}</SharePointProjectItemId>
+    </None>
+    <Content Include="CymBuild_OutlookManifest\CymBuild_Outlook.Development.xml" />
+    <Content Include="CymBuild_OutlookManifest\CymBuild_Outlook.xml">
+      <OpcRelationship>manifest-oemanifest</OpcRelationship>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <PackageReference Include="itext" Version="9.5.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>

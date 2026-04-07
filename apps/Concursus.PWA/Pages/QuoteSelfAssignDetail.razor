@@ -1,0 +1,413 @@
+﻿@page "/QuoteSelfAssignDetail"
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Google.Protobuf
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using System.Web
+@using System.Dynamic
+@inherits EditPageBase
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JsRuntime
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="@_EntityTypeGuid"
+          Windowed="@Windowed"
+          RecordGuid="00000000-0000-0000-0000-000000000000"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          IsBulkUpdate="IsBulkUpdate"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+        @if (@UpdateSuccessful)
+        {
+            <div class="alert alert-success" role="alert">
+                Assignee updated for the selected records.
+            </div>
+        }
+
+
+        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@filteredEntityProperties"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                            IsMainRecordContext="@IsMainRecordContext"
+                            dataObject="@editPage.dataObject"
+                            RecordGuid="00000000-0000-0000-0000-000000000000"
+                            inputUpdated="@HandleInputUpdated"
+                            />
+
+        <div class="action-buttons">
+            <button class="btn btn-danger" @onclick="CloseModal" disabled="@UpdateSuccessful">Cancel</button>
+            <button class="btn btn-success" @onclick="ConfirmChanges" disabled="@UpdateSuccessful">Confirm</button>
+        </div>
+
+    </FormBody>
+
+</EditPage>
+<!-- Loading Overlay -->
+@if (IsProcessing)
+{
+    <div class="overlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Processing changes, please wait...</p>
+    </div>
+}
+<style>
+    .modal-footer {
+        padding-top: 1rem;
+        border-top: 1px solid #ddd;
+    }
+
+        .modal-footer .btn {
+            min-width: 100px;
+        }
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 1050;
+    }
+
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+
+    .back-to-top-button{
+        visibility: hidden;
+    }
+
+    .action-buttons{
+        margin-top: 30px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public List<ExpandoObject> SelectedItems { get; set; } = new List<ExpandoObject>();
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public bool IsBulkUpdate { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public TelerikGrid<ExpandoObject>? GridRef { get; set; }
+    [Parameter] public EventCallback OnRefreshRequested { get; set; }
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+
+
+
+    private string _EntityTypeGuid = "1c4794c1-f956-4c32-b886-5500ac778a56";
+    private List<EntityProperty> filteredEntityProperties = new();
+    private EntityType EntityTypeProperties = new();
+    private FlexPropertyGroup FlexPropertyGroup { get; set; }
+    private bool IsProcessing { get; set; } = false;
+
+    //Here, we set the new values for the entity properties
+    private Dictionary<string, Any> ValuesToSet { get; set; } = new Dictionary<string, Any>();
+
+    // Store the changes to be applied
+    private Dictionary<string, object> ChangesToApply = new();
+
+
+
+    private bool UpdateSuccessful { get; set; } = false;
+
+
+
+
+    private async Task ConfirmChanges()
+    {
+        //Property we wish to target.
+        string QuotingUserIdPropertyGuid = "ee947786-1e4a-40d8-b0ad-e2d0b039cf6e";
+        //Get the selected value from the dropdown.
+        var UserToSetValue = editPage.dataObject.DataProperties.Where(x => x.EntityPropertyGuid == QuotingUserIdPropertyGuid).FirstOrDefault();
+
+
+        var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+
+        // Display confirmation dialog
+        bool isConfirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure you wish to perform the selected changes?");
+        if (!isConfirmed)
+            return;
+
+        IsProcessing = true; // Show the loading overlay
+        StateHasChanged();
+
+        try
+        {
+            if (SelectedItems.Count == 0)
+            {
+                await JsRuntime.InvokeVoidAsync("alert", "No records selected for update!");
+                return;
+            }
+
+
+            // Loop through selected records and apply changes
+            foreach (var selection in SelectedItems)
+            {
+                var selectionId = GetRecordGuidFromSelection(selection);
+                if (selectionId == Guid.Empty) continue;
+
+                var parentDataObjectRef = new DataObjectReference(selectionId.ToString(), _EntityTypeGuid);
+
+                var dataObject = await formHelper.ReadDataObjectAsync(selectionId.ToString(), parentDataObjectRef);
+                if (dataObject == null) continue;
+
+
+
+                //Get the field & update it.
+                var QuotingUserIdProperty = dataObject.DataProperties.Where(x => x.EntityPropertyGuid == QuotingUserIdPropertyGuid).FirstOrDefault();
+
+                if (QuotingUserIdProperty != null)
+                {
+                    QuotingUserIdProperty.Value = UserToSetValue.Value;
+                    await formHelper.UpsertDataObject(dataObject, null, false);
+                }
+
+            }
+
+            //This will disable the buttons.
+            UpdateSuccessful = true;
+
+            await OnRefreshRequested.InvokeAsync();
+
+            CloseModal();
+
+
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while confirming the changes.");
+            ex.Data.Add("PageMethod", "BulkRecordChange/ConfirmChanges()");
+            await OnError.InvokeAsync(ex);
+        }
+        finally
+        {
+            IsProcessing = false; // Hide the loading overlay
+            StateHasChanged();
+        }
+    }
+
+
+    private Guid GetRecordGuidFromSelection(ExpandoObject selection)
+    {
+        if (selection == null)
+            return Guid.Empty;
+
+        var dictionary = selection as IDictionary<string, object>;
+        if (dictionary != null && dictionary.ContainsKey("Guid"))
+        {
+            return PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dictionary["Guid"]?.ToString() ?? string.Empty);
+        }
+
+        return Guid.Empty;
+    }
+
+    private void CloseModal()
+    {
+        CloseWindow.InvokeAsync();
+        GridUpdated.InvokeAsync();
+        StateHasChanged();
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+
+            EntityTypeGuid = _EntityTypeGuid;
+
+            //Change from "Quotes" -> "Quote Assignment"
+            editPage.ChangeEntityTypeLabel("Quote Assigment", "bi bi-person");
+
+            // Filter entity properties to show only relevant ones
+            await FilterEntityProperties();
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting the parameters for the Bulk Record Change page.");
+            ex.Data.Add("PageMethod", "BulkRecordChange/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task FilterEntityProperties()
+    {
+        try
+        {
+            // Use FormHelper to get entity type properties
+            var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, "1c4794c1-f956-4c32-b886-5500ac778a56", userService);
+            EntityTypeProperties = await formHelper.GetEntityType();
+
+            // List of property GUIDs that are allowed for bulk changes
+            List<string> fieldsToShow = new()
+            {
+                "ee947786-1e4a-40d8-b0ad-e2d0b039cf6e", // TypeGuid
+            };
+
+            // Filter the entity properties based on AllowBulkChange or specific GUIDs
+            filteredEntityProperties = EntityTypeProperties.EntityProperties
+                .Where(x =>  fieldsToShow.Contains(x.Guid.ToString()))
+                .ToList();
+
+            //Ensure it is editable
+            filteredEntityProperties[0].IsReadOnly = false;
+
+
+            //dataObject = await formHelper.ReadDataObjectAsync(RecordGuid, ParentDataObjectReference);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while filtering entity properties for the Bulk Record Change page.");
+            ex.Data.Add("PageMethod", "BulkRecordChange/FilterEntityProperties()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    public async void HandleInputUpdated(InputUpdatedArgs inputUpdatedArgs)
+    {
+        try
+        {
+            var entityGuid = inputUpdatedArgs.EntityId.ToString();
+            var newValue = inputUpdatedArgs.NewValue;
+            var typeUrl = newValue.TypeUrl;
+
+            // Determine if the key already exists in the dictionary
+            if (ValuesToSet.ContainsKey(entityGuid))
+            {
+                // Update the existing value
+                ValuesToSet[entityGuid] = newValue;
+            }
+            else
+            {
+                // Add a new value
+                ValuesToSet.Add(entityGuid, newValue);
+            }
+
+            // Handle specific types for unpacking or validation
+            switch (typeUrl)
+            {
+                case "type.googleapis.com/google.protobuf.Timestamp":
+                    if (newValue.TryUnpack(out Timestamp timestampValue))
+                    {
+                        Console.WriteLine($"Timestamp unpacked: {timestampValue}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.Int32Value":
+                    if (newValue.TryUnpack(out Int32Value int32Value))
+                    {
+                        Console.WriteLine($"Int32 unpacked: {int32Value.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.Int64Value":
+                    if (newValue.TryUnpack(out Int64Value int64Value))
+                    {
+                        Console.WriteLine($"Int64 unpacked: {int64Value.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.StringValue":
+                    if (newValue.TryUnpack(out StringValue stringValueObj))
+                    {
+                        Console.WriteLine($"String unpacked: {stringValueObj.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.BoolValue":
+                    if (newValue.TryUnpack(out BoolValue boolValue))
+                    {
+                        Console.WriteLine($"Boolean unpacked: {boolValue.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.DoubleValue":
+                    if (newValue.TryUnpack(out DoubleValue doubleValue))
+                    {
+                        Console.WriteLine($"Double unpacked: {doubleValue.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.FloatValue":
+                    if (newValue.TryUnpack(out FloatValue floatValue))
+                    {
+                        Console.WriteLine($"Float unpacked: {floatValue.Value}");
+                    }
+                    break;
+
+                case "type.googleapis.com/google.protobuf.BytesValue":
+                    if (newValue.TryUnpack(out BytesValue bytesValue))
+                    {
+                        Console.WriteLine($"Bytes unpacked: {BitConverter.ToString(bytesValue.Value.ToByteArray())}");
+                    }
+                    break;
+
+                default:
+                    // Treat unhandled types as strings
+                    var defaultValue = newValue.Value.ToStringUtf8();
+                    Console.WriteLine($"Unhandled type treated as string: {defaultValue}");
+
+                    // Update ValuesToSet with the string value
+                    ValuesToSet[entityGuid] = new Any
+                    {
+                        Value = ByteString.CopyFromUtf8(defaultValue)
+                    };
+                    break;
+            }
+
+            // Rebind properties in the UI to reflect changes
+            FlexPropertyGroup.RebindFromPropertyChange(inputUpdatedArgs);
+
+            Console.WriteLine("Updated ValuesToSet:");
+            foreach (var value in ValuesToSet)
+            {
+                Console.WriteLine($"Key: {value.Key}, Value: {value.Value}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while handling input updates.");
+            ex.Data.Add("PageMethod", "HandleInputUpdated");
+            await OnError.InvokeAsync(ex);
+        }
+    }
+
+
+
+
+}

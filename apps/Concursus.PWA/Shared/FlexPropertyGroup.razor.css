@@ -1,0 +1,9 @@
+﻿.property-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px; /* Add spacing between rows if needed */
+}
+
+    .property-row .form-check-input {
+        margin-top: 0; /* Ensures proper alignment with controls */
+    }

@@ -1,0 +1,176 @@
+﻿
+Build & Run via Docker
+
+docker build -t aierrorserviceapi .
+docker run -p 5110:80 aierrorserviceapi
+
+
+-------------------------------------------------
+Initialise Database
+
+dotnet ef migrations add InitialCreate --project AiErrorServiceAPI
+dotnet ef database update --project AiErrorServiceAPI
+
+---------------------------------------------------
+
+PUBLISH to Kestrel instead of IIS or Via Docker
+
+dotnet publish -c Release -o ./publish
+cd ./publish
+dotnet CymBuild_AIErrorServiceAPI.dll
+
+Possible requirement:
+dotnet dev-certs https --trust
+
+Or Run as a windows Service (elevated CMD prompt):
+
+run the InstallService.bat script to install the service as administrator:
+
+Start-Service AIErrorServiceAPI
+
+View Status
+Get-Service AIErrorServiceAPI
+
+
+-----------------------------------------------------
+FOR DEBUG - RUNAS in CMD As administrator the following:
+create the following (Copy from Project this is only for debug):
+"C:\\certs\\aierrorservice.pfx",
+
+In Developer Powershell run:
+dotnet dev-certs https --trust
+
+Back in CMD, run the following command to start the service:
+runas /user:ESGL\stephen.brett "dotnet \"C:\Users\stephen.brett\source\BitBucketRepo\CymBuild_AIErrorService\CymBuild_AIErrorService\publish\CymBuild_AIErrorServiceAPI.dll\""
+
+-----------------------------------------------------
+
+PWA CHANGES
+
+
+public class GlobalErrorHandler
+{
+    private readonly AiErrorReporter _aiReporter;
+
+    public GlobalErrorHandler(AiErrorReporter aiReporter)
+    {
+        _aiReporter = aiReporter;
+    }
+
+    public async Task HandleExceptionAsync(Exception ex)
+    {
+        var context = new { url = "...", userAgent = "..." }; // Fill in as needed
+        await _aiReporter.ReportAsync(ex, "user@example.com", context);
+    }
+}
+
+
+Update Program.cs in CymBuild.PWA:
+
+builder.Services.AddScoped<AiErrorReporter>();
+
+Update the appsettings.json file in CymBuild.PWA to include the AI error reporting endpoint:
+"AiErrorService": {
+  "BaseUrl": "https://localhost:5001"
+}
+
+And create a Services\AiErrorReporter.cs file with the following content:
+
+using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
+using Microsoft.Extensions.Configuration;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+public class AiErrorReporter
+{
+    private readonly IAccessTokenProvider _tokenProvider;
+    private readonly HttpClient _http;
+    private readonly IConfiguration _config;
+
+    public AiErrorReporter(HttpClient http, IAccessTokenProvider tokenProvider, IConfiguration config)
+    {
+        _http = http;
+        _tokenProvider = tokenProvider;
+        _config = config;
+    }
+
+    public async Task ReportAsync(Exception ex, string userId, object context)
+    {
+        var tokenResult = await _tokenProvider.RequestAccessToken();
+        if (!tokenResult.TryGetToken(out var token))
+        {
+            Console.Error.WriteLine("⚠ Unable to get token for AI error reporting");
+            return;
+        }
+
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
+
+        var endpoint = $"{_config["AiErrorService:BaseUrl"]}/api/ErrorReport";
+
+        var request = new
+        {
+            UserId = userId,
+            ErrorMessage = ex.Message,
+            StackTrace = ex.StackTrace,
+            ContextJson = JsonSerializer.Serialize(context)
+        };
+
+        try
+        {
+            var res = await _http.PostAsJsonAsync(endpoint, request);
+            var json = await res.Content.ReadAsStringAsync();
+            Console.WriteLine($"AI Error reported: {json}");
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"❌ Failed to report AI Error: {e.Message}");
+        }
+    }
+}
+
+Example Frontend Integration (Blazor InputFile)
+
+<InputText @bind-Value="FileDescription" placeholder="Describe the uploaded file..." class="form-control mb-2" />
+<InputFile OnChange="HandleUpload" />
+
+<p>@UploadResult</p>
+
+@code {
+    private string FileDescription { get; set; } = string.Empty;
+    private string UploadResult { get; set; }
+
+    async Task HandleUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+
+        using var content = new MultipartFormDataContent();
+
+        // Add the file
+        content.Add(new StreamContent(file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024)),
+            "file", file.Name);
+
+        // Add the description text
+        content.Add(new StringContent(FileDescription ?? "No description provided."), "description");
+
+        try
+        {
+            var response = await Http.PostAsync("https://localhost:7132/api/ErrorReport/upload-file", content);
+            if (response.IsSuccessStatusCode)
+            {
+                var summary = await response.Content.ReadAsStringAsync();
+                UploadResult = $"AI Summary: {summary}";
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                UploadResult = $"❌ Failed to upload: {response.StatusCode} - {err}";
+            }
+        }
+        catch (Exception ex)
+        {
+            UploadResult = $"❌ Exception: {ex.Message}";
+        }
+    }
+}
+

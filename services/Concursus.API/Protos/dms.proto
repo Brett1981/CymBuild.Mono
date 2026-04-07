@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option csharp_namespace = "Concursus.API.DMS";
+
+package dms;
+
+service Dms {
+rpc CheckMailerQueueForMessageId(CheckMailerQueueForMessageIdRequest) returns (CheckMailerQueueForMessageIdResponse);
+
+rpc CopyDmsEntry(CopyDmsEntryRequest) returns (CopyDmsEntryResponse);
+
+rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
+
+rpc DeleteDmsEntry(DeleteDmsEntryRequest) returns (DeleteDmsEntryResponse);
+
+rpc FileDownload(FileDownloadRequest) returns (stream FileDownloadResponse);
+
+rpc FileUpload(stream FileUploadRequest) returns (FileUploadResponse);
+
+rpc FilingDestinationSearch(FilingDestinationSearchRequest) returns (FilingDestinationSearchResponse);
+
+rpc GetFlattenedFilingStructure(GetFlattenedFilingStructureRequest) returns (GetFlattenedFilingStructureReply);
+
+rpc GetImmutableExchangeRestId(GetImmutableExchangeRestIdRequest) returns (GetImmutableExchangeRestIdResponse);
+
+rpc GetMailerQueueItem(GetMailerQueueItemRequest) returns (GetMailerQueueItemResponse);
+
+rpc GetPathContent(GetPathContentRequest) returns (GetPathContentResponse);
+
+rpc MailerQueueUpsert(MailerQueueUpsertRequest) returns (MailerQueueUpsertResponse);
+
+rpc ProcessAllMailerQueues(ProcessAllMailerQueuesRequest) returns (ProcessAllMailerQueuesResponse);
+
+rpc ProcessMailerQueue(ProcessMailerQueueRequest) returns (ProcessMailerQueueResponse);
+
+rpc RenameDmsEntry(RenameDmsEntryRequest) returns (RenameDmsEntryResponse);
+
+}
+
+message DmsMetaData {
+	string name = 1;
+	string type = 2;
+	string contentDisposition = 3;
+}
+
+message DmsFile {
+	bytes content = 1;
+}
+
+enum DmsStatus {
+	PENDING = 0;
+	IN_PROGRESS = 1;
+	SUCCESS = 2;
+	FAILED = 3;
+}
+
+message FileUploadRequest {
+	DmsMetaData metadata = 1;
+	DmsFile file = 2;
+	string path = 3;
+	string rootFolder = 4;
+	int64 recordId = 5;
+}
+
+message FileUploadResponse {
+	FileManagerEntry FileManagerEntry = 1;
+	DmsStatus status = 2;
+	string errorMessage = 3;
+}
+
+message FileDownloadRequest {
+	string path = 1;
+	string rootFolder = 2;
+	int64 recordId = 3;
+}
+
+message FileDownloadResponse {
+	DmsMetaData metadata = 1;
+	DmsFile file = 2;
+	DmsStatus status = 3;
+}
+
+message FileManagerEntry {
+	string name = 1;
+	int64 size = 2;
+	string path = 3;
+	string extension = 4; 
+	bool isDirectory = 5;
+	bool hasDirectories = 6;
+	google.protobuf.Timestamp created = 7;
+	google.protobuf.Timestamp createdUtc = 8;
+	google.protobuf.Timestamp modified = 9;
+	google.protobuf.Timestamp modifiedUtc = 10;
+	string rootFolder = 11;
+	int64 recordId = 12;
+}
+
+message GetPathContentRequest {
+	string path = 1;
+	string filter = 2;
+	string rootFolder = 3;
+	int64 recordId = 4;
+}
+
+message GetPathContentResponse {
+	repeated FileManagerEntry content = 1;
+	string ErrorReturned = 2;
+}
+
+message CreateDirectoryRequest {
+	string path = 1;
+	string name = 2;
+	string rootFolder = 3;
+	int64 recordId = 4;
+}
+
+message CreateDirectoryResponse {
+	FileManagerEntry newDirectory = 1;
+	string ErrorReturned = 2;
+}
+
+message RenameDmsEntryRequest {
+	FileManagerEntry fileManagerEntry = 1;
+	string newName = 2;
+}
+
+message RenameDmsEntryResponse {
+	FileManagerEntry fileManagerEntry = 1;
+	string ErrorReturned = 2;
+}
+
+message DeleteDmsEntryRequest {
+	FileManagerEntry fileManagerEntry = 1;
+}
+
+message DeleteDmsEntryResponse {
+	bool success = 1;
+	string ErrorReturned = 2;
+}
+
+message CopyDmsEntryRequest {
+	FileManagerEntry fileManagerEntry = 1;
+	string target = 2;
+}
+
+message CopyDmsEntryResponse {
+	FileManagerEntry fileManagerEntry = 1;
+	string ErrorReturned = 2;
+}
+
+message FilingDestination {
+	int32 rowId = 1;
+	string entityType = 2;
+	string record = 3;
+	int32 searchRank = 4;
+}
+
+message FilingDestinationSearchRequest {
+	string entityType = 1;
+	string recordSearch = 2;
+	string toAddressesCSV = 3;
+	string FromAddress = 4;
+	string Subject = 5;
+}
+
+message FilingDestinationSearchResponse {
+	repeated FilingDestination filingDestinations = 1;
+	string ErrorReturned = 2;
+}
+
+message MailerQueue { 
+	int64 id = 1;
+	string messageId = 2;
+	string entityType = 3;
+	int64 rowId = 4;
+	int32 userId = 5;
+	bool isFiled = 6;
+	bool doNotFile = 7;
+	string rowVersion = 8;
+	string to = 9;
+	string from = 10;
+	string subject = 11;
+	bool isReadyToFile = 12;
+	oneof SentDateTimeObj {
+		google.protobuf.NullValue nullSentDateTime = 13;
+		google.protobuf.Timestamp SentDateTime = 14;
+	};
+	int32 FilingStructureID = 15;
+	oneof FiledDateTimeObj {
+		google.protobuf.NullValue nullFiledDateTime = 16;
+		google.protobuf.Timestamp FiledDateTime = 17;
+	};
+	string mailbox = 18;
+	string errorMessage = 19;
+	string conversationId = 20;
+	bool deliveryReceiptRequested = 21;
+	bool deliveryReceiptReceived = 22;
+	bool readReceiptRequested = 23;
+	bool readReceiptReceived = 24;
+}
+
+message MailerQueueUpsertRequest { 
+	repeated MailerQueue mailerQueue = 1;
+}
+
+message MailerQueueUpsertResponse {
+	repeated MailerQueue mailerQueue = 1;
+	string ErrorReturned = 2;
+}
+
+message ProcessMailerQueueRequest {
+	int32 UserId = 1;
+	bool FileAll = 2;
+}
+
+message ProcessMailerQueueResponse {
+	string ErrorReturned = 1;
+}
+
+message FlattenedFilingStructure {
+	int32 Id = 1;
+	string Name = 2;
+}
+
+message GetFlattenedFilingStructureRequest {
+}
+
+message GetFlattenedFilingStructureReply {
+	repeated FlattenedFilingStructure flattenedFilingStructures = 1; 
+}
+
+message ProcessAllMailerQueuesRequest {
+
+}
+
+message ProcessAllMailerQueuesResponse {
+	string ErrorMessage = 1;
+
+}
+
+message CheckMailerQueueForMessageIdRequest {
+	string messageId = 1;
+	string mailbox = 2;
+}
+
+message CheckMailerQueueForMessageIdResponse {
+	repeated MailerQueue mailerQueueEntries = 1;
+	string ErrorReturned = 2;
+}
+
+message GetImmutableExchangeRestIdRequest {
+	string restId = 1;
+	string mailbox = 2;
+}
+
+message GetImmutableExchangeRestIdResponse {
+	string immutableRestId = 1;
+	string ErrorReturned = 2;
+}
+
+message GetMailerQueueItemRequest {
+	int64 id = 1;
+}
+
+message GetMailerQueueItemResponse {
+	MailerQueue mailerQueue = 1;
+	string ErrorReturned = 2;
+}

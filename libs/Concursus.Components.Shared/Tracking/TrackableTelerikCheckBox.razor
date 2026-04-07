@@ -1,0 +1,56 @@
+﻿@*
+    TrackableTelerikCheckBox.razor
+    -------------------------------------------------
+    A wrapper for TelerikCheckBox with user interaction tracking and validation.
+    Use like:
+
+    <TrackableTelerikCheckBox FieldName="Is Enabled"
+                              @bind-Value="model.IsEnabled"
+                              Id="enabled-checkbox"
+                              CssClass="form-check-input" />
+*@
+
+@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikCheckBox Value="Value"
+ValueChanged="@(EventCallback.Factory.Create<bool>(this, HandleValueChanged))"
+ValueExpression="ValueExpression"
+Id="@Id"
+Class="@Class"
+@attributes="AdditionalAttributes"
+Enabled="@Enabled"
+OnBlur="@(() => LogInteraction(Value))" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownCheckbox";
+
+    [Parameter] public bool Value { get; set; } = true;
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<bool>>? ValueExpression { get; set; }
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public bool Enabled { get; set; } = true;
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(bool value)
+    {
+        string state = value ? "Checked" : "Unchecked";
+        string log = $"CheckBox '{FieldName}' set to '{state}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(bool newValue)
+    {
+        Value = newValue;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+    }
+}

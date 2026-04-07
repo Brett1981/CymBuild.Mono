@@ -1,0 +1,160 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>f0d1a79e-70e9-4e65-8632-68b4516664e0</UserSecretsId>
+    <ApplicationIcon>wwwroot\favicon.ico</ApplicationIcon>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <Optimize>true</Optimize>
+    <!-- Set to true for performance optimization -->
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Test|AnyCPU'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <!-- Kill any direct/transitive Microsoft.AspNetCore.App ref for WASM -->
+  <Target Name="StripAspNetCoreForWasm" AfterTargets="AddTransitiveFrameworkReferences" BeforeTargets="ResolveFrameworkReferences;ResolveRuntimePackAssets">
+    <ItemGroup>
+      <FrameworkReference Remove="@(FrameworkReference)" Condition="'%(FrameworkReference.Identity)' == 'Microsoft.AspNetCore.App'" />
+    </ItemGroup>
+    <Message Importance="high" Text="(PWA) Stripped Microsoft.AspNetCore.App framework reference for WASM." />
+  </Target>
+
+  <ItemGroup>
+    <Compile Remove="obj\**" />
+    <Compile Remove="wwwroot\WhisperNet\**" />
+    <Content Remove="obj\**" />
+    <Content Remove="wwwroot\WhisperNet\**" />
+    <EmbeddedResource Remove="obj\**" />
+    <EmbeddedResource Remove="wwwroot\WhisperNet\**" />
+    <None Remove="obj\**" />
+    <None Remove="wwwroot\WhisperNet\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Microsoft.Authentication.WebAssembly.Msal" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Classes\InputUpdatedArgs.cs" />
+    <Compile Remove="Services\IPostcodeLookupService.cs" />
+    <Compile Remove="Services\TextToSpeechService.cs" />
+    <Compile Remove="Services\WhisperService.cs" />
+    <Compile Remove="Shared\DynamicBatchGridView - Copy.razor.cs" />
+    <Compile Remove="Shared\ShoreInput_new.razor.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="Pages\BulkRecordChange_old.razor" />
+    <Content Remove="Shared\ArcGauge.razor" />
+    <Content Remove="Shared\DocumentsButton.razor" />
+    <Content Remove="Shared\DynamicBatchGridView - Copy.razor" />
+    <Content Remove="Shared\FormButtons.razor" />
+    <Content Remove="Shared\RadialGauge.razor" />
+    <Content Remove="Shared\RedirectToLogin.razor" />
+    <Content Remove="Shared\ShoreInput_new.razor" />
+    <Content Remove="Shared\SurveyPrompt.razor" />
+    <Content Remove="Shared\TelerikLayout.razor" />
+    <Content Remove="wwwroot\appsettings.Production.json" />
+    <Content Remove="wwwroot\service-worker - Copy.js" />
+    <Content Remove="wwwroot\service-worker - Copy.published.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="DockerFile" />
+    <None Remove="Pages\AccountDetail.razor.css" />
+    <None Remove="Pages\Authentication.razor.css" />
+    <None Remove="Pages\Crm.razor.css" />
+    <None Remove="Pages\DayMap.razor.css" />
+    <None Remove="Shared\ButtonMenu.razor.css" />
+    <None Remove="Shared\DynamicGridView.razor.css" />
+    <None Remove="Shared\ErrorDisplay.razor.css" />
+    <None Remove="Shared\FlexPropertyGroups.razor.css" />
+    <None Remove="Shared\ShoreInput_new.razor.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_WebToolingArtifacts Remove="Properties\PublishProfiles\Stephen.pubxml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Helpers\IPostcodeLookupService.cs" />
+    <Content Include="properties\publishprofiles\web.config">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Handlers\" />
+    <Folder Include="Properties\PublishProfiles\" />
+    <Folder Include="wwwroot\PostCodeLookup_Assets\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Shared\FilteredDynamicGridView.razor.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Blazored.Modal" Version="7.3.1" />
+    <PackageReference Include="bootstrap" Version="5.3.8" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <PackageReference Include="getAddress.Sdk" Version="3.5.1" />
+    <PackageReference Include="Grpc.Net.Client.Web" Version="2.76.0" />
+    <PackageReference Include="itext" Version="9.5.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Forms" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.5" />
+    <!--<PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.3" />-->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.5" />
+    <!--<PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.1" />-->
+    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.5" />
+    <PackageReference Include="MimeKit" Version="4.15.1" />
+    <PackageReference Include="OpenAI" Version="2.9.1" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <!--<PackageReference Include="System.Drawing.Common" Version="10.0.1" />-->
+    <PackageReference Include="Telerik.Licensing" Version="1.6.35" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\Concursus.Components.Shared\Concursus.Components.Shared.csproj" />
+  </ItemGroup>
+
+
+
+  <ItemGroup>
+    <Content Update="Pages\MergeDocumentItems.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Update="Pages\MergeDocuments.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Update="Shared\BatchButtonMenu.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Update="Shared\DynamicBatchGridView.razor">
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </Content>
+    <Content Update="wwwroot\memoryDiagnostics.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

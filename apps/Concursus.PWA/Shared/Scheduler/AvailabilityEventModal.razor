@@ -1,0 +1,109 @@
+﻿@using _AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent 
+@using Concursus.PWA.Helpers;
+
+<TelerikWindow Modal="true" Size="WindowSize.Medium" Visible="@ModalShowing">
+    <WindowTitle>@Title</WindowTitle>
+    <WindowActions>
+        <WindowAction Name="Close" OnClick="@CloseModal" />
+    </WindowActions>
+    <WindowContent>
+        <EditForm Model="@appointment">
+
+            <div class="d-flex flex-column">
+                @if(appointment.CssClass == "scheduled-work")
+                {
+                    <label class="width100">
+                        Job Number :<br />
+                        <TelerikTextBox 
+                        @bind-Value="@appointment.JobNumber"
+                        Width="100%" />
+                    </label>
+
+                    <label class="width100">
+                        Activity Note(s) :<br />
+                        <TelerikTextBox Enabled="false"
+                        @bind-Value="@appointment.Note"
+                        Width="100%" />
+                    </label>
+                }
+                else
+                {
+                    <label class="width100">
+                        Absence Type :<br />
+                        <TelerikTextBox Enabled="false"
+                        @bind-Value="@appointment.Title"
+                        Width="100%" />
+                    </label>
+                }
+
+                <label class="width100">
+                    Start:<br />
+                    <TelerikDateTimePicker 
+                    Enabled="false"
+                    @bind-Value="@dateTimeUTCStart"
+                    Width="100%" />
+                </label>
+
+                <label class="width100">
+                    End:<br />
+                    <TelerikDateTimePicker 
+                    Enabled="false"
+                    @bind-Value="@dateTimeUTCEnd"
+                    Width="100%" />
+                </label>
+            </div>
+
+        </EditForm>
+    </WindowContent>
+</TelerikWindow>
+
+@code {
+
+    [Parameter] public _AvailabilityEvent appointment { get; set; }
+    [Parameter] public  EventCallback CloseModalCllback { get; set; }
+
+    [Parameter] public bool ModalShowing { get; set; } = false;
+
+    private string Title { get; set; }
+    private string StartTime { get; set; }
+    private string EndTime { get; set; }
+    private DateTime dateTimeUTCStart { get; set; }
+    private DateTime dateTimeUTCEnd { get; set; }
+
+
+    public async void CloseModal(){
+        ModalShowing = false;
+        await  CloseModalCllback.InvokeAsync();
+    }
+
+    public void ShowModal()
+    {
+        ModalShowing = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        //Set the title first.
+        if (appointment != null)
+        {
+            if (appointment.CssClass == "scheduled-work")
+            {
+                Title = $"Appointment - {UiFormattingHelper.FormatDateForUI(appointment.Start, false)}";
+            }
+            else
+            { 
+                Title = $"Absence - {UiFormattingHelper.FormatDateForUI(appointment.Start, false)}"; 
+            }
+
+            dateTimeUTCStart = appointment.Start.ToLocalTime();
+            dateTimeUTCEnd = appointment.End.ToLocalTime();
+        }
+
+
+
+        // StartTime = UiFormattingHelper.FormatDateForUI(appointment.Start, false);
+        // EndTime = UiFormattingHelper.FormatDateForUI(appointment.End, false);
+
+        base.OnParametersSet();
+    }
+}

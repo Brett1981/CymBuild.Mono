@@ -1,0 +1,52 @@
+﻿@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+    
+    @*Notification reference.*@
+    <TelerikNotification 
+        @ref="@notificationRef" 
+        VerticalPosition="NotificationVerticalPosition.Top" 
+        HorizontalPosition="NotificationHorizontalPosition.Center"
+        Class="filterClearedNotification"></TelerikNotification>
+
+
+    <TelerikMenu Data="@MenuItems"
+                 Class="btn gridfilterbtn"
+                 IconField="@(nameof(API.Client.MenuItem.Icon))"
+                 DisabledField="@(nameof(API.Client.MenuItem.IsReadOnly))"
+                 OnClick="@((API.Client.MenuItem item) => OnClickHandler(item))" />
+
+
+<style>
+    .button-menu-container {
+        gap: 10px; /* Adds spacing between flex items */
+    }
+
+    .custom-button {
+        background-color: #007bff; /* Custom background color */
+        border-color: #007bff;
+    }
+
+        .custom-button:hover {
+            background-color: #0056b3; /* Darker background color on hover */
+            border-color: #0056b3;
+        }
+
+    @* Telerik 7.1.0 ==> Removing extra padding for the Task button*@
+    .btn-primary .k-item .k-link {
+        padding-block: 0 !important;
+        padding-inline: 0 !important;
+    }
+
+    .gridfilterbtn{
+        background-color: #0d6efd !important;
+        padding: 2px !important;
+        color: #ffffff !important;
+    }
+
+    .gridfilterbtn .k-item{
+        color: #ffffff !important;
+    }
+
+    .filterClearedNotification{
+        margin-top: 20px;
+    }
+</style>

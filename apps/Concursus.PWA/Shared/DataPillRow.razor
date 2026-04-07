@@ -1,0 +1,128 @@
+﻿@using System.Globalization
+
+<div class="dp-row">
+
+    <!-- General pills (everything except financial-data / financial-json) -->
+    <div class="dp-general">
+        @foreach (var dataPill in GeneralPills)
+        {
+            <span class="@GetBadgeClasses(dataPill)">@dataPill.Value</span>
+        }
+    </div>
+
+    @if (ShowFinancialOverview && FinanceCards.Count > 0)
+    {
+        <div class="dp-finance @(IsExpanded ? "expanded" : "collapsed") @(HasAnyOverdue ? "has-overdue" : "")">
+
+            <!-- Header row ALWAYS visible -->
+            <button type="button"
+                    class="dp-finance-header"
+                    title="Financial overview"
+                    @onclick="ToggleExpanded">
+
+                <div class="dp-finance-title">
+                    <span class="dp-finance-icon" aria-hidden="true">💷</span>
+                    <span class="dp-finance-text">Financial overview</span>
+                </div>
+
+                <div class="dp-finance-summary">
+                    @SummaryText
+                </div>
+
+                <div class="dp-finance-actions">
+
+                    @if (!string.IsNullOrWhiteSpace(InvoiceProcessingModeText))
+                    {
+                        <span class="dp-finance-mode @InvoiceProcessingModeCss"
+                              title="@InvoiceProcessingModeTooltip">
+                            @InvoiceProcessingModeText
+                        </span>
+                    }
+
+                    @if (HasAnyOverdue)
+                    {
+                        <span class="dp-finance-alert" title="Overdue invoices present">Overdue</span>
+                    }
+
+                    <span class="dp-finance-chevron" aria-hidden="true">
+                        @(IsExpanded ? "▾" : "▸")
+                    </span>
+                </div>
+            </button>
+
+            <!-- Expanded content -->
+            @if (IsExpanded)
+            {
+                <div class="dp-finance-body">
+                    <div class="dp-finance-cards">
+                        @foreach (var c in FinanceCards)
+                        {
+                            <div class="dp-finance-card @(c.EmphasisClass)"
+                                 title="@BuildTooltip(c)">
+                                <div class="dp-finance-card-top">
+                                    <span class="dp-finance-emoji" aria-hidden="true">@c.Emoji</span>
+                                    <span class="dp-finance-card-title">@c.Title</span>
+                                </div>
+
+                                <div class="dp-finance-card-value">
+                                    @FormatMoney(c.Amount)
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(c.Subtitle))
+                                {
+                                    <div class="dp-finance-card-subtitle">@c.Subtitle</div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (HasAnyOverdue)
+                    {
+                        <div class="dp-finance-footer">
+                            <button type="button"
+                                    class="dp-finance-filter-btn"
+                                    @onclick="OnViewOverdueClicked">
+                                View overdue invoices
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Modal (Bootstrap markup, no @media needed) -->
+        @if (ShowOverdueModal)
+        {
+            <div class="dp-modal-backdrop" @onclick="CloseOverdueModal"></div>
+
+            <div class="dp-modal" role="dialog" aria-modal="true">
+                <div class="dp-modal-content">
+                    <div class="dp-modal-header">
+                        <div class="dp-modal-title">
+                            <span aria-hidden="true">📄</span>
+                            <span>Overdue invoices</span>
+                        </div>
+
+                        <button type="button"
+                                class="dp-modal-close"
+                                title="Close"
+                                @onclick="CloseOverdueModal">
+                            ✕
+                        </button>
+                    </div>
+
+                    <div class="dp-modal-body">
+                        @* IMPORTANT:
+                           This assumes your FINANCE grid uses DrawerGuid to scope to the current Job.
+                           If your FINANCE grid also supports a “quick filter” parameter, we can wire it in next.
+                        *@
+                        <DynamicGrid GridCode="@OverdueGridCode"
+                                     DrawerGuid="@DrawerGuid"
+                                     FullGrid="true"
+                                     IsLoading="@IsGridLoading" />
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>

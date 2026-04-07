@@ -1,0 +1,12 @@
+{
+  "Notifications": {
+    "Kafka": {
+      "Enabled": false,
+      "BootstrapServers": "",
+      "TopicJobClosureDecision": "cymbuild.job.closure.decision"
+    },
+    "Outbox": {
+      "Enabled": true
+    }
+  }
+}

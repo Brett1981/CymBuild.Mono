@@ -1,0 +1,52 @@
+﻿@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IDisposable
+
+<h3>Memory Diagnostics Dashboard</h3>
+
+<TelerikGrid Data="@diagnostics" Pageable="true" Height="600px" Resizable="true" Reorderable="true">
+    <GridColumns>
+        <GridColumn Field="Metric" Title="Metric" Width="250px" />
+        <GridColumn Field="Description" Title="Description" Width="600px" />
+        <GridColumn Field="RecommendedThreshold" Title="Recommended Threshold" Width="200px" />
+        <GridColumn Field="Value" Title="Live Value" Width="200px" />
+    </GridColumns>
+</TelerikGrid>
+
+<TelerikButton OnClick="@(async () => await RefreshMetrics())">Refresh</TelerikButton>
+
+@code {
+    private List<MemoryMetric> diagnostics = new();
+    private IJSObjectReference _module;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./memoryDiagnostics.js");
+        await RefreshMetrics();
+    }
+
+    private async Task RefreshMetrics()
+    {
+        var memory = await _module.InvokeAsync<double>("getTotalMemory");
+        var jsObjectCount = await _module.InvokeAsync<int>("getJSObjectReferenceCount");
+        var cacheSize = await _module.InvokeAsync<double>("getServiceWorkerCacheSizeMB");
+        var componentCount = await _module.InvokeAsync<int>("getBlazorComponentCount");
+
+        diagnostics = new()
+        {
+            new("GC Total Memory (bytes)", "Current memory usage reported by .NET GC", "< 200MB", $"{memory:N0} bytes"),
+            new("Page Component Count", "Number of active components on the current page", "< 20 components", componentCount.ToString()),
+            new("Active JSObjectReferences", "JS interop object references still held", "< 5 references", jsObjectCount.ToString()),
+            new("Service Worker Cache Size (MB)", "Offline cache size used by service worker", "< 50MB", $"{cacheSize:F2} MB"),
+            new("Telerik Grids Rendered", "Number of Telerik grids on the page", "< 5 grids", "1 (this one)"),
+            new("Blazor Circuit Count", "Total active SignalR circuits (Blazor Server only)", "< 3", "N/A in WebAssembly"),
+        };
+    }
+
+    public void Dispose()
+    {
+        _module?.DisposeAsync();
+    }
+
+    public record MemoryMetric(string Metric, string Description, string RecommendedThreshold, string Value);
+}

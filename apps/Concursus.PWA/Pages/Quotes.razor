@@ -1,0 +1,43 @@
+﻿@page "/quotes/{DrawerGuid}"
+@using Google.Protobuf.WellKnownTypes
+@using Concursus.Components.Shared.Controls
+@attribute [Authorize]
+
+ <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+    <TabStripTab Title="Quotes">
+        <HeaderTemplate>
+            <h4><i class="bi bi-newspaper me-2" style="font-size: 1.2rem;"></i> Quoting</h4>
+        </HeaderTemplate>
+        <Content>
+            <DynamicGrid GridCode="QUOTES" DrawerGuid="@DrawerGuid" FullGrid="true" TransientVirtualProperties="@TransientVirtualProperties" />
+        </Content>
+    </TabStripTab>
+    <TabStripTab Title="Filtered Quotes">
+        <HeaderTemplate>
+            <h4><i class="bi bi-newspaper me-2" style="font-size: 1.2rem;"></i> Filtered Quoting</h4>
+        </HeaderTemplate>
+        <Content>
+            <DynamicGrid GridCode="FILTEREDQUOTES" DrawerGuid="@DrawerGuid" FullGrid="true" TransientVirtualProperties="@TransientVirtualProperties" />
+        </Content>
+    </TabStripTab>
+    <TabStripTab Title="Quote Dashboard">
+        <HeaderTemplate>
+            <h4><i class="bi bi-bar-chart me-2" style="font-size: 1.2rem;"></i> Quote Dashboard</h4>
+        </HeaderTemplate>
+        <Content>
+            <QuoteDashboardV2 />
+        </Content>
+    </TabStripTab>
+</TelerikTabStrip>
+
+
+
+
+@code {
+
+    [Parameter]
+    public string DrawerGuid { get; set; } = "";
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+}

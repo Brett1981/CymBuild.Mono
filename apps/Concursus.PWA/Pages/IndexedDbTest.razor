@@ -1,0 +1,86 @@
+﻿@page "/entity-type"
+@using System.Text
+
+@inject IConfiguration configuration
+@inject Services.GenericEntityService EntityService
+@inject Core.CoreClient GrpcClient
+
+<h3>Entity Type Management Test</h3>
+
+<button @onclick="FetchAndStoreEntityType">Fetch and Store Entity Type</button>
+<button @onclick="LoadEntityType">Load Entity Type</button>
+<button disabled="true" @onclick="UpdateEntityType">Update Entity Type</button>
+<button disabled="true" @onclick="DeleteEntityType">Delete Entity Type</button>
+
+
+<p>@entityTypeResult</p>
+
+@code {
+    private string entityTypeResult = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Initialize the IndexedDB Getting the environment name from the AppSettings
+        var EnvironmentType = configuration["Environment:Type"];
+        await EntityService.InitializeDatabaseAsync($"CymBuildDB_{EnvironmentType}");
+    }
+
+    private async Task FetchAndStoreEntityType()
+    {
+        var request = new EntityTypeGetRequest
+            {
+                Guid = "46de9042-b453-4d28-8269-03db25b624e3", //Account Addresses
+                IsInformationView = false
+            };
+
+        // Specify the types explicitly and await the result of the gRPC call
+        await EntityService.FetchAndStoreEntityAsync<EntityTypeGetResponse, EntityType>(
+            async () => await GrpcClient.EntityTypeGetAsync(request),
+            "EntityType"
+        );
+    }
+
+    private async Task LoadEntityType()
+    {
+        var entityType = await EntityService.LoadEntityAsync<EntityType>("EntityType", "some-guid");
+
+        if (entityType != null)
+        {
+            // Log all properties
+            var logBuilder = new StringBuilder();
+            logBuilder.AppendLine("EntityType Properties:");
+
+            // Use reflection to get all properties of the EntityType
+            foreach (var property in entityType.GetType().GetProperties())
+            {
+                var name = property.Name;
+                var value = property.GetValue(entityType, null);
+                logBuilder.AppendLine($"{name}: {value}");
+            }
+
+            // Store the result in entityTypeResult
+            entityTypeResult = logBuilder.ToString();
+        }
+        else
+        {
+            entityTypeResult = "Entity Type not found";
+        }
+    }
+
+    // Below i have included the Update and Delete methods for the EntityType but we wont be testing them
+    private async Task UpdateEntityType()
+    {
+        await EntityService.UpdateEntityAsync<EntityType>("EntityType", "46de9042-b453-4d28-8269-03db25b624e3", entity =>
+        {
+            entity.Name = "Updated Name";
+        });
+
+        entityTypeResult = "Entity Type updated successfully.";
+    }
+
+    private async Task DeleteEntityType()
+    {
+        await EntityService.DeleteEntityAsync("EntityType", "46de9042-b453-4d28-8269-03db25b624e3");
+        entityTypeResult = "Entity Type deleted successfully.";
+    }
+}

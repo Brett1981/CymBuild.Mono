@@ -1,0 +1,1724 @@
+@using Concursus.API.Client
+@using Concursus.API.Core
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Configuration
+
+@inject IConfiguration Config
+@inject IJSRuntime JS
+@inject IHttpClientFactory HttpClientFactory
+
+<div class="record-doc-browser v2-docs cb-v2-shell">
+
+    <div class="doc-toolbar cb-v2-toolbar">
+        <div class="doc-location flex-grow-1">
+            <div class="small cb-v2-muted">Location</div>
+
+            @if (_breadcrumbs.Count > 0)
+            {
+                <div class="breadcrumb-bar d-flex flex-wrap align-items-center gap-1">
+                    @for (int i = 0; i < _breadcrumbs.Count; i++)
+                    {
+                        var crumb = _breadcrumbs[i];
+
+                        <button type="button"
+                                class="btn btn-sm cb-v2-btn-link crumb"
+                                @onclick="() => OnCrumbClickAsync(i)">
+                            @crumb.Name
+                        </button>
+
+                        @if (i < _breadcrumbs.Count - 1)
+                        {
+                            <span class="cb-v2-muted px-1">/</span>
+                        }
+                    }
+                </div>
+
+                <div class="small cb-v2-muted mt-1">
+                    @(_location?.RootFolderName ?? "Documents") · Current folder: @(_currentFolderName ?? "-")
+                </div>
+            }
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <input class="cb-v2-input doc-search"
+                   placeholder="Search current folder..."
+                   value="@_searchText"
+                   @oninput="OnSearchChangedAsync" />
+
+            <div class="upload-btn-wrap">
+                <button type="button"
+                        class="btn btn-sm btn-primary cb-v2-doc-primary"
+                        disabled="@(!_canUpload || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))">
+                    <i class="bi bi-upload me-1"></i> Upload
+                </button>
+
+                <InputFile class="upload-input-overlay"
+                           multiple
+                           OnChange="OnFilesSelectedAsync"
+                           disabled="@(!_canUpload || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))" />
+            </div>
+
+            <button type="button"
+                    class="btn btn-sm cb-v2-btn-secondary"
+                    @onclick="CreateFolderAsync"
+                    disabled="@(!_canCreateFolder || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))">
+                <i class="bi bi-folder-plus me-1"></i> New Folder
+            </button>
+
+            <button type="button"
+                    class="btn btn-sm cb-v2-btn-secondary"
+                    @onclick="CreateEmailFromSelectionAsync"
+                    disabled="@(!CanEmailSelected() || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))">
+                <i class="bi bi-envelope me-1"></i> Email Selected
+            </button>
+
+            <button type="button"
+                    class="btn btn-sm btn-outline-danger cb-v2-doc-danger"
+                    @onclick="DeleteSelectedAsync"
+                    disabled="@(!CanDeleteSelected() || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))">
+                <i class="bi bi-trash me-1"></i> Delete Selected
+            </button>
+
+            <button type="button"
+                    class="btn btn-sm cb-v2-btn-secondary"
+                    @onclick="RefreshAsync"
+                    disabled="@_busy">
+                <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(_currentFolderWebUrl))
+            {
+                <button type="button"
+                        class="btn btn-sm cb-v2-btn-secondary cb-v2-doc-open-btn"
+                        @onclick="OpenCurrentFolderAsync">
+                    <i class="bi bi-box-arrow-up-right me-1"></i> Open
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") py-2 px-3 mt-2 mb-2 cb-v2-doc-alert">
+            @_message
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_fatalError))
+    {
+        <div class="alert alert-danger py-2 px-3 mt-2 mb-2">
+            <strong>Documents unavailable.</strong> @_fatalError
+        </div>
+    }
+    else
+    {
+        <div class="doc-body row g-2 mt-1">
+            <div class="navigation col-12 col-xl-3">
+                <div class="panel-title cb-v2-title fw-semibold mb-2">Records</div>
+
+                <div class="cb-v2-panel v2-nav-card">
+                    <div class="cb-v2-panel-body p-2">
+                        @if (_navigationLoading)
+                        {
+                            <div class="small cb-v2-muted p-2">Loading related records...</div>
+                        }
+                        else if (_navigationItems.Count == 0)
+                        {
+                            <div class="small cb-v2-empty-state compact p-2">No related records found.</div>
+                        }
+                        else
+                        {
+                            @foreach (var group in _navigationItems
+                                                .OrderBy(x => x.NavigationSortOrder)
+                                                .ThenBy(x => x.RecordSortValue)
+                                                .ThenBy(x => x.RecordTitle)
+                                                .GroupBy(x => x.NavigationGroup))
+                            {
+                                var groupedItems = group.ToList();
+
+                                <div class="v2-nav-group">
+                                    <div class="v2-nav-group-header">
+                                        <div class="v2-nav-group-title">@group.Key</div>
+                                        <span class="v2-nav-group-count">@groupedItems.Count</span>
+                                    </div>
+
+                                    <div class="v2-nav-list">
+                                        @foreach (var item in groupedItems)
+                                        {
+                                            var isSelected = string.Equals(
+                                            _selectedNavigationItem?.NavigationKey,
+                                            item.NavigationKey,
+                                            StringComparison.OrdinalIgnoreCase);
+
+                                            var itemWarning = GetNavigationWarning(item);
+                                            var isUnavailable = !string.IsNullOrWhiteSpace(itemWarning);
+
+                                            <button type="button"
+                                                    class="btn btn-sm w-100 text-start v2-nav-item @(isSelected ? "selected" : "") @(isUnavailable ? "unavailable" : "")"
+                                                    @onclick="() => SelectNavigationItemAsync(item)">
+                                                <div class="v2-nav-item-main">
+                                                    <div class="v2-nav-item-title-row">
+                                                        <div class="v2-nav-item-title text-truncate" title="@item.RecordTitle">
+                                                            @item.RecordTitle
+                                                        </div>
+
+                                                        @if (isUnavailable)
+                                                        {
+                                                            <span class="badge rounded-pill cb-v2-badge cb-v2-badge-warning v2-nav-doc-badge">
+                                                                Unavailable
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge rounded-pill cb-v2-badge @(item.CanBrowseDocuments ? "cb-v2-badge-success" : "cb-v2-badge-muted") v2-nav-doc-badge">
+                                                                @(item.CanBrowseDocuments ? "Docs" : "No docs")
+                                                            </span>
+                                                        }
+                                                    </div>
+
+                                                    @if (isSelected && (!string.IsNullOrWhiteSpace(item.RecordSubtitle) || !string.IsNullOrWhiteSpace(item.RecordNumber) || isUnavailable))
+                                                    {
+                                                        <div class="v2-nav-item-detail">
+                                                            @if (!string.IsNullOrWhiteSpace(item.RecordSubtitle))
+                                                            {
+                                                                <div class="v2-nav-item-subtitle">
+                                                                    @item.RecordSubtitle
+                                                                </div>
+                                                            }
+
+                                                            @if (!string.IsNullOrWhiteSpace(item.RecordNumber))
+                                                            {
+                                                                <div class="v2-nav-item-meta">
+                                                                    Ref: @item.RecordNumber
+                                                                </div>
+                                                            }
+
+                                                            @if (isUnavailable)
+                                                            {
+                                                                <div class="v2-nav-item-warning">
+                                                                    @itemWarning
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="folders col-12 col-xl-3">
+                <div class="panel-title cb-v2-title fw-semibold mb-2">Folders</div>
+
+                <div class="cb-v2-panel">
+                    <div class="cb-v2-panel-body p-2">
+                        @if (!string.IsNullOrWhiteSpace(_currentLocationWarning))
+                        {
+                            <div class="small text-warning-emphasis bg-warning-subtle border rounded p-2">
+                                @_currentLocationWarning
+                            </div>
+                        }
+                        else if (_folderTree.Count == 0 && _foldersLoading)
+                        {
+                            <div class="small cb-v2-muted p-2">Loading folders...</div>
+                        }
+                        else if (_folderTree.Count == 0)
+                        {
+                            <div class="small cb-v2-empty-state compact p-2">No folders found.</div>
+                        }
+                        else
+                        {
+                            <ul class="v2-tree list-unstyled mb-0">
+                                @foreach (var node in _folderTree)
+                                {
+                                    @RenderTreeNode(node, 0)
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="files col-12 col-xl-6">
+                <div class="panel-title cb-v2-panel-header fw-semibold mb-2">
+                    <span>Documents</span>
+                    <span class="small cb-v2-muted">@_items.Count item@(_items.Count == 1 ? "" : "s")</span>
+                </div>
+
+                <div class="cb-v2-panel">
+                    <div class="cb-v2-panel-body p-0">
+
+                        @if (string.IsNullOrWhiteSpace(_currentLocationWarning))
+                        {
+                            <div class="drop-panel @(_isDragOver ? "drag-over" : "")"
+                                 @ref="_dropZoneElement"
+                                 @ondragenter="OnDragEnter"
+                                 @ondragenter:preventDefault
+                                 @ondragover="OnDragOver"
+                                 @ondragover:preventDefault
+                                 @ondragleave="OnDragLeave"
+                                 @ondragleave:preventDefault
+                                 @ondrop="OnDrop"
+                                 @ondrop:preventDefault>
+                                <div class="drop-panel-inner">
+                                    <div class="drop-panel-icon">
+                                        <i class="bi bi-cloud-arrow-up"></i>
+                                    </div>
+                                    <div class="fw-semibold">Drag files here to upload</div>
+                                    <div class="small cb-v2-muted">or use the Upload button above</div>
+                                </div>
+
+                                <div @ref="_dropInputHostElement" class="drop-input-overlay">
+                                    <InputFile class="drop-input-overlay"
+                                               multiple
+                                               OnChange="OnFilesSelectedAsync"
+                                               disabled="@(!_canUpload || _busy)" />
+                                </div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(_currentLocationWarning))
+                        {
+                            <div class="p-3">
+                                <div class="small text-warning-emphasis bg-warning-subtle border rounded p-3">
+                                    @_currentLocationWarning
+                                </div>
+                            </div>
+                        }
+                        else if (_filesLoading)
+                        {
+                            <div class="p-3 small cb-v2-muted border-top">Loading documents...</div>
+                        }
+                        else
+                        {
+                            <div class="cb-v2-table-wrap table-responsive">
+                                <table class="cb-v2-table table table-sm table-hover align-middle mb-0 doc-grid-table">
+                                    <colgroup>
+                                        <col style="width:36px;" />
+                                        <col style="width:32%;" />
+                                        <col style="width:24%;" />
+                                        <col style="width:150px;" />
+                                        <col style="width:90px;" />
+                                        <col style="width:170px;" />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                <input type="checkbox"
+                                                       checked="@IsAllSelected()"
+                                                       @onchange="ToggleSelectAll" />
+                                            </th>
+                                            <th>Name</th>
+                                            <th>Description</th>
+                                            <th>Date Modified</th>
+                                            <th>Size</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (_items.Count == 0)
+                                        {
+                                            <tr>
+                                                <td colspan="6" class="small cb-v2-empty-state compact p-3">No documents found.</td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var item in _items)
+                                            {
+                                                var isSelected = _selectedIds.Contains(item.Id);
+
+                                                <tr class="@(isSelected ? "cb-v2-table-row-selected" : "")">
+                                                    <td>
+                                                        <input type="checkbox"
+                                                               checked="@isSelected"
+                                                               @onchange="e => ToggleSelected(item.Id, e)" />
+                                                    </td>
+
+                                                    <td class="doc-name-cell">
+                                                        <div class="doc-name-wrap">
+                                                            <span class="doc-icon">@GetItemIcon(item)</span>
+
+                                                            @if (item.IsFolder)
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-sm cb-v2-btn-link doc-name-link"
+                                                                        title="@item.Name"
+                                                                        @onclick="() => NavigateToFolderAsync(item)">
+                                                                    @item.Name
+                                                                </button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-sm cb-v2-btn-link doc-name-link"
+                                                                        title="@item.Name"
+                                                                        @onclick="() => DownloadAsync(item)">
+                                                                    @item.Name
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    </td>
+
+                                                    <td class="small doc-description-cell">
+                                                        <div class="doc-description" title="@GetItemDescription(item)">
+                                                            @GetItemDescription(item)
+                                                        </div>
+                                                    </td>
+
+                                                    <td class="small cb-v2-muted">@FormatTimestamp(item.LastModifiedUtc)</td>
+                                                    <td class="small cb-v2-muted">@(item.IsFolder ? "" : FormatBytes(item.Size))</td>
+                                                    <td>
+                                                        <div class="d-flex flex-nowrap gap-1 doc-actions">
+                                                            @if (item.IsFolder)
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-sm cb-v2-btn-secondary"
+                                                                        @onclick="() => NavigateToFolderAsync(item)">
+                                                                    <i class="bi bi-folder2-open me-1"></i>Open
+                                                                </button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-sm cb-v2-btn-secondary cb-v2-doc-open-btn"
+                                                                        @onclick="() => DownloadAsync(item)">
+                                                                    <i class="bi bi-download me-1"></i>Open
+                                                                </button>
+
+                                                                <button type="button"
+                                                                        class="btn btn-sm cb-v2-btn-secondary"
+                                                                        @onclick="() => CreateEmailForSingleFileAsync(item)"
+                                                                        disabled="@string.IsNullOrWhiteSpace(item.WebUrl)">
+                                                                    <i class="bi bi-envelope me-1"></i>Email
+                                                                </button>
+                                                            }
+
+                                                            @if (item.CanDelete)
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-sm btn-outline-danger cb-v2-doc-danger"
+                                                                        @onclick="() => DeleteSingleAsync(item)">
+                                                                    <i class="bi bi-trash me-1"></i>Delete
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(_nextPageToken))
+                            {
+                                <div class="p-2 border-top text-center">
+                                    <button type="button"
+                                            class="btn btn-sm cb-v2-btn-secondary"
+                                            @onclick="LoadMoreAsync"
+                                            disabled="@_busy">
+                                        Load more
+                                    </button>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public FormHelper? FormHelper { get; set; }
+    [Parameter] public DataObject? DataObject { get; set; }
+    [Parameter] public string EntityQueryGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public int EntityTypeId { get; set; }
+    [Parameter] public string EmailRecordNumberPropertyName { get; set; } = "Number";
+    [Parameter] public string EmailRecordDescriptionPropertyName { get; set; } = "Description";
+    [Parameter] public string EmailRecordLocationPropertyName { get; set; } = "FormattedAddressComma";
+    [Parameter] public List<API.Core.EntityProperty> entityProperties { get; set; } = new();
+
+    private DocumentsLocation? _location;
+    private readonly List<DocumentsListItem> _items = new();
+    private readonly List<FolderNode> _folderTree = new();
+    private readonly List<BreadcrumbItem> _breadcrumbs = new();
+    private readonly HashSet<string> _selectedIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DocumentsNavigationItem> _navigationItems = new();
+    private readonly Dictionary<string, string> _navigationWarnings = new(StringComparer.OrdinalIgnoreCase);
+
+    private DocumentsNavigationItem? _selectedNavigationItem;
+    private bool _navigationLoading;
+
+    private string? _currentFolderId;
+    private string? _currentFolderName;
+    private string? _currentFolderWebUrl;
+    private string? _currentLocationWarning;
+    private string? _nextPageToken;
+
+    private ElementReference _dropZoneElement;
+    private ElementReference _dropInputHostElement;
+    private bool _dropZoneRegistered;
+
+    private bool _foldersLoading;
+    private bool _filesLoading;
+    private bool _busy;
+    private bool _isDragOver;
+
+    private string _searchText = string.Empty;
+    private string? _fatalError;
+    private string? _message;
+    private bool _messageIsError;
+
+    private bool _canUpload => _location?.Capabilities?.CanUpload ?? false;
+    private bool _canCreateFolder => _location?.Capabilities?.CanCreateFolder ?? false;
+
+    private string? _lastRecordGuid;
+    private string? _lastEntityQueryGuid;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var currentRecordGuid = DataObject?.Guid;
+        var currentEntityQueryGuid = EntityQueryGuid;
+
+        if (_lastRecordGuid == currentRecordGuid &&
+            _lastEntityQueryGuid == currentEntityQueryGuid)
+        {
+            return;
+        }
+
+        _lastRecordGuid = currentRecordGuid;
+        _lastEntityQueryGuid = currentEntityQueryGuid;
+
+        await InitialiseAsync();
+    }
+
+    private async Task InitialiseAsync()
+    {
+        _fatalError = null;
+        _message = null;
+        _messageIsError = false;
+
+        _items.Clear();
+        _folderTree.Clear();
+        _breadcrumbs.Clear();
+        _selectedIds.Clear();
+        _navigationItems.Clear();
+        _navigationWarnings.Clear();
+
+        _location = null;
+        _selectedNavigationItem = null;
+        _currentFolderId = null;
+        _currentFolderName = null;
+        _currentFolderWebUrl = null;
+        _currentLocationWarning = null;
+        _nextPageToken = null;
+
+        if (FormHelper is null)
+        {
+            _fatalError = "FormHelper was not supplied.";
+            return;
+        }
+
+        if (DataObject is null)
+        {
+            _fatalError = "DataObject was not supplied.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(DataObject.Guid))
+        {
+            _fatalError = "DataObject.Guid is empty.";
+            return;
+        }
+
+        if (EntityTypeId <= 0)
+        {
+            _fatalError = "EntityTypeId was not supplied.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EntityQueryGuid) || EntityQueryGuid == Guid.Empty.ToString())
+        {
+            _fatalError = "EntityQueryGuid is empty.";
+            return;
+        }
+
+        try
+        {
+            _navigationLoading = true;
+            _foldersLoading = true;
+            _filesLoading = true;
+
+            var navigation = await FormHelper.DocumentsNavigationGetAsync(
+                FormHelper.UserService.UserId,
+                DataObject.Guid,
+                EntityTypeId);
+
+            _navigationItems.AddRange(navigation.Items);
+
+            var initialItem =
+                _navigationItems.FirstOrDefault(x =>
+                    string.Equals(x.RecordGuid, DataObject.Guid, StringComparison.OrdinalIgnoreCase))
+                ?? _navigationItems.FirstOrDefault(x => x.CanBrowseDocuments)
+                ?? _navigationItems.FirstOrDefault();
+
+            if (initialItem is not null)
+            {
+                await SelectNavigationItemAsync(initialItem);
+            }
+        }
+        catch (Exception ex)
+        {
+            _fatalError = ex.Message;
+        }
+        finally
+        {
+            _navigationLoading = false;
+            _foldersLoading = false;
+            _filesLoading = false;
+        }
+    }
+
+    private async Task SelectNavigationItemAsync(DocumentsNavigationItem item)
+    {
+        if (FormHelper is null)
+            return;
+
+        _selectedNavigationItem = item;
+        _items.Clear();
+        _folderTree.Clear();
+        _breadcrumbs.Clear();
+        _selectedIds.Clear();
+        _location = null;
+        _currentFolderId = null;
+        _currentFolderName = null;
+        _currentFolderWebUrl = null;
+        _currentLocationWarning = null;
+        _nextPageToken = null;
+
+        if (!item.CanBrowseDocuments)
+        {
+            _currentLocationWarning = "This record does not currently have a browsable document location.";
+            return;
+        }
+
+        try
+        {
+            _foldersLoading = true;
+            _filesLoading = true;
+
+            var location = await FormHelper.DocumentsResolveAsync(
+                recordGuid: item.RecordGuid,
+                entityTypeId: item.EntityTypeId,
+                entityQueryGuid: EntityQueryGuid,
+                sharePointUrlHint: null,
+                ct: CancellationToken.None);
+
+            if (location is null)
+            {
+                var warning = "This record's document location could not be resolved.";
+                SetNavigationWarning(item, warning);
+                _currentLocationWarning = warning;
+                return;
+            }
+
+            ClearNavigationWarning(item);
+
+            _location = location;
+            _currentFolderId = _location.RootFolderId;
+            _currentFolderName = _location.RootFolderName;
+            _currentFolderWebUrl = _location.SharePointWebUrl;
+
+            BuildRootTree();
+            BuildRootBreadcrumb();
+
+            if (_folderTree.Count > 0)
+            {
+                await EnsureChildrenLoadedAsync(_folderTree[0]);
+            }
+
+            await LoadFolderAsync(_currentFolderId, true);
+        }
+        catch (Exception ex)
+        {
+            var warning = BuildNavigationWarning(ex);
+            SetNavigationWarning(item, warning);
+            _currentLocationWarning = warning;
+        }
+        finally
+        {
+            _foldersLoading = false;
+            _filesLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_dropZoneRegistered)
+        {
+            _dropZoneRegistered = true;
+
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "cymbuildDocs.registerDropZone",
+                    _dropZoneElement,
+                    _dropInputHostElement);
+            }
+            catch
+            {
+                _dropZoneRegistered = false;
+            }
+        }
+    }
+
+    private void BuildRootTree()
+    {
+        _folderTree.Clear();
+
+        if (_location is null)
+            return;
+
+        _folderTree.Add(new FolderNode
+        {
+            Id = _location.RootFolderId,
+            Name = string.IsNullOrWhiteSpace(_location.RootFolderName) ? "Documents" : _location.RootFolderName,
+            HasChildren = true,
+            IsExpanded = true
+        });
+    }
+
+    private void BuildRootBreadcrumb()
+    {
+        _breadcrumbs.Clear();
+
+        if (_location is null)
+            return;
+
+        _breadcrumbs.Add(new BreadcrumbItem
+        {
+            FolderId = _location.RootFolderId,
+            Name = string.IsNullOrWhiteSpace(_location.RootFolderName) ? "Documents" : _location.RootFolderName
+        });
+    }
+
+    private async Task EnsureChildrenLoadedAsync(FolderNode node)
+    {
+        if (FormHelper is null || _location is null || node.ChildrenLoaded)
+            return;
+
+        try
+        {
+            _foldersLoading = true;
+
+            var response = await FormHelper.DocumentsListAsync(
+                _location.DriveId,
+                node.Id,
+                200,
+                null,
+                null);
+
+            node.Children = response.Items
+                .Where(x => x.IsFolder)
+                .OrderBy(x => x.Name)
+                .Select(x => new FolderNode
+                {
+                    Id = x.Id,
+                    Name = x.Name,
+                    HasChildren = x.HasChildren
+                })
+                .ToList();
+
+            node.ChildrenLoaded = true;
+        }
+        finally
+        {
+            _foldersLoading = false;
+        }
+    }
+
+    private RenderFragment RenderTreeNode(FolderNode node, int depth) => builder =>
+    {
+        var seq = 0;
+        var isSelected = string.Equals(node.Id, _currentFolderId, StringComparison.OrdinalIgnoreCase);
+
+        builder.OpenElement(seq++, "li");
+        builder.AddAttribute(seq++, "class", "v2-tree-node");
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", $"d-flex align-items-center gap-1 py-1 v2-tree-row {(isSelected ? "selected" : "")}");
+        builder.AddAttribute(seq++, "style", $"padding-left:{depth * 14}px;");
+
+        if (node.HasChildren)
+        {
+            builder.OpenElement(seq++, "button");
+            builder.AddAttribute(seq++, "type", "button");
+            builder.AddAttribute(seq++, "class", "btn btn-sm cb-v2-btn-link v2-tree-toggle");
+            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, async () => await ToggleNodeAsync(node)));
+            builder.AddMarkupContent(seq++, node.IsExpanded
+                ? "<i class=\"bi bi-caret-down-fill\"></i>"
+                : "<i class=\"bi bi-caret-right-fill\"></i>");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "v2-tree-toggle-spacer");
+            builder.AddMarkupContent(seq++, "<i class=\"bi bi-dot\"></i>");
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(seq++, "button");
+        builder.AddAttribute(seq++, "type", "button");
+        builder.AddAttribute(seq++, "class", "btn btn-sm cb-v2-btn-link text-decoration-none v2-tree-link");
+        builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, async () => await NavigateToFolderIdAsync(node.Id, node.Name, null)));
+        builder.AddContent(seq++, node.Name);
+        builder.CloseElement();
+
+        builder.CloseElement();
+
+        if (node.IsExpanded)
+        {
+            if (node.ChildrenLoaded && node.Children.Count > 0)
+            {
+                builder.OpenElement(seq++, "ul");
+                builder.AddAttribute(seq++, "class", "list-unstyled mb-0");
+                foreach (var child in node.Children)
+                {
+                    builder.AddContent(seq++, RenderTreeNode(child, depth + 1));
+                }
+                builder.CloseElement();
+            }
+            else if (!node.ChildrenLoaded)
+            {
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "small cb-v2-muted ps-4 py-1");
+                builder.AddContent(seq++, "Loading...");
+                builder.CloseElement();
+            }
+        }
+
+        builder.CloseElement();
+    };
+
+    private async Task ToggleNodeAsync(FolderNode node)
+    {
+        node.IsExpanded = !node.IsExpanded;
+
+        if (node.IsExpanded)
+        {
+            await EnsureChildrenLoadedAsync(node);
+        }
+    }
+
+    private async Task NavigateToFolderAsync(DocumentsListItem folder)
+    {
+        await NavigateToFolderIdAsync(folder.Id, folder.Name, folder.WebUrl);
+    }
+
+    private async Task NavigateToFolderIdAsync(string folderId, string folderName, string? folderWebUrl)
+    {
+        _currentFolderId = folderId;
+        _currentFolderName = folderName;
+        _currentFolderWebUrl = folderWebUrl;
+        _currentLocationWarning = null;
+        _selectedIds.Clear();
+
+        PushBreadcrumb(folderId, folderName);
+        await ExpandTreeToFolderAsync(folderId);
+        await LoadFolderAsync(folderId, true);
+    }
+
+    private async Task ExpandTreeToFolderAsync(string folderId)
+    {
+        foreach (var root in _folderTree)
+        {
+            if (await ExpandTreeRecursiveAsync(root, folderId))
+                return;
+        }
+    }
+
+    private async Task<bool> ExpandTreeRecursiveAsync(FolderNode node, string folderId)
+    {
+        if (string.Equals(node.Id, folderId, StringComparison.OrdinalIgnoreCase))
+        {
+            node.IsExpanded = true;
+            return true;
+        }
+
+        if (node.HasChildren && !node.ChildrenLoaded)
+        {
+            await EnsureChildrenLoadedAsync(node);
+        }
+
+        foreach (var child in node.Children)
+        {
+            if (await ExpandTreeRecursiveAsync(child, folderId))
+            {
+                node.IsExpanded = true;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task LoadFolderAsync(string? folderId, bool reset)
+    {
+        if (FormHelper is null || _location is null || string.IsNullOrWhiteSpace(folderId))
+            return;
+
+        try
+        {
+            _filesLoading = true;
+
+            if (reset)
+            {
+                _items.Clear();
+                _selectedIds.Clear();
+                _nextPageToken = null;
+            }
+
+            var response = await FormHelper.DocumentsListAsync(
+                _location.DriveId,
+                folderId,
+                100,
+                _nextPageToken,
+                string.IsNullOrWhiteSpace(_searchText) ? null : _searchText);
+
+            var incomingItems = response.Items
+                .OrderByDescending(x => x.IsFolder)
+                .ThenBy(x => x.Name)
+                .ToList();
+
+            if (reset)
+            {
+                _items.Clear();
+                _items.AddRange(incomingItems);
+            }
+            else
+            {
+                foreach (var item in incomingItems)
+                {
+                    if (!_items.Any(x => string.Equals(x.Id, item.Id, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        _items.Add(item);
+                    }
+                }
+            }
+
+            _nextPageToken = string.IsNullOrWhiteSpace(response.NextPageToken)
+                ? null
+                : response.NextPageToken;
+        }
+        catch (Exception ex)
+        {
+            _currentLocationWarning = BuildNavigationWarning(ex);
+
+            if (_selectedNavigationItem is not null)
+            {
+                SetNavigationWarning(_selectedNavigationItem, _currentLocationWarning);
+            }
+
+            _items.Clear();
+            _nextPageToken = null;
+        }
+        finally
+        {
+            _filesLoading = false;
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        await LoadFolderAsync(_currentFolderId, false);
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_currentFolderId))
+            return;
+
+        _message = null;
+        _currentLocationWarning = null;
+
+        foreach (var node in _folderTree.ToList())
+        {
+            ResetNode(node);
+        }
+
+        if (_folderTree.Count > 0)
+        {
+            _folderTree[0].IsExpanded = true;
+            await EnsureChildrenLoadedAsync(_folderTree[0]);
+        }
+
+        await LoadFolderAsync(_currentFolderId, true);
+    }
+
+    private void ResetNode(FolderNode node)
+    {
+        foreach (var child in node.Children.ToList())
+        {
+            ResetNode(child);
+        }
+
+        node.ChildrenLoaded = false;
+        node.Children.Clear();
+    }
+
+    private async Task DownloadAsync(DocumentsListItem item)
+    {
+        if (FormHelper is null || _location is null || item.IsFolder)
+            return;
+
+        var downloadId = Guid.NewGuid().ToString("N");
+
+        try
+        {
+            _busy = true;
+            _message = null;
+
+            await JS.InvokeVoidAsync("fileDownload.beginStreamedDownload", downloadId);
+
+            var (fileName, contentType) = await FormHelper.DocumentsDownloadFileStreamAsync(
+                _location.DriveId,
+                item.Id,
+                async chunk =>
+                {
+                    await JS.InvokeVoidAsync(
+                        "fileDownload.appendChunkBase64",
+                        downloadId,
+                        Convert.ToBase64String(chunk));
+                });
+
+            await JS.InvokeVoidAsync(
+                "fileDownload.finishStreamedDownload",
+                downloadId,
+                fileName,
+                contentType);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("fileDownload.cancelStreamedDownload", downloadId);
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OpenCurrentFolderAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_currentFolderWebUrl))
+        {
+            await JS.InvokeVoidAsync("open", _currentFolderWebUrl, "_blank");
+        }
+    }
+
+    private async Task OnFilesSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (FormHelper is null || _location is null || string.IsNullOrWhiteSpace(_currentFolderId))
+            return;
+
+        var files = e.GetMultipleFiles();
+        if (files.Count == 0)
+            return;
+
+        try
+        {
+            _busy = true;
+            _message = null;
+
+            foreach (var file in files)
+            {
+                await using var stream = file.OpenReadStream(100L * 1024L * 1024L);
+                using var memory = new MemoryStream();
+
+                await stream.CopyToAsync(memory);
+
+                await FormHelper.DocumentsUploadAsync(
+                    _location.SiteId,
+                    _location.DriveId,
+                    _currentFolderId,
+                    file.Name,
+                    memory.ToArray(),
+                    true);
+            }
+
+            SetMessage($"{files.Count} file(s) uploaded successfully.", false);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            _busy = false;
+            _isDragOver = false;
+        }
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (FormHelper is null || _location is null || string.IsNullOrWhiteSpace(_currentFolderId))
+            return;
+
+        try
+        {
+            var folderName = await JS.InvokeAsync<string?>("prompt", "Enter the new folder name:");
+            if (string.IsNullOrWhiteSpace(folderName))
+                return;
+
+            _busy = true;
+
+            await FormHelper.DocumentsCreateFolderAsync(
+                _location.SiteId,
+                _location.DriveId,
+                _currentFolderId,
+                folderName.Trim(),
+                "rename");
+
+            SetMessage($"Folder '{folderName}' created.", false);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteSingleAsync(DocumentsListItem item)
+    {
+        if (FormHelper is null || _location is null)
+            return;
+
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete '{item.Name}'?");
+            if (!confirmed)
+                return;
+
+            _busy = true;
+
+            await FormHelper.DocumentsDeleteAsync(
+                _location.SiteId,
+                _location.DriveId,
+                item.Id);
+
+            SetMessage($"Deleted '{item.Name}'.", false);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        if (FormHelper is null || _location is null)
+            return;
+
+        var selected = _items.Where(x => _selectedIds.Contains(x.Id)).ToList();
+        if (selected.Count == 0)
+            return;
+
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete {selected.Count} selected item(s)?");
+            if (!confirmed)
+                return;
+
+            _busy = true;
+
+            foreach (var item in selected)
+            {
+                await FormHelper.DocumentsDeleteAsync(
+                    _location.SiteId,
+                    _location.DriveId,
+                    item.Id);
+            }
+
+            SetMessage($"{selected.Count} item(s) deleted.", false);
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private bool CanEmailSelected()
+        => _items.Any(x => _selectedIds.Contains(x.Id) && !x.IsFolder && !string.IsNullOrWhiteSpace(x.WebUrl));
+
+    private bool CanDeleteSelected()
+        => _selectedIds.Count > 0;
+
+    private async Task CreateEmailForSingleFileAsync(DocumentsListItem item)
+    {
+        if (item.IsFolder)
+            return;
+
+        await CreateEmailAsync([item]);
+    }
+
+    private async Task CreateEmailFromSelectionAsync()
+    {
+        var files = _items
+            .Where(x => _selectedIds.Contains(x.Id) && !x.IsFolder && !string.IsNullOrWhiteSpace(x.WebUrl))
+            .ToList();
+
+        if (files.Count == 0)
+        {
+            SetMessage("Please select one or more files to email.", true);
+            return;
+        }
+
+        await CreateEmailAsync(files);
+    }
+
+    // private async Task CreateEmailAsync(List<DocumentsListItem> files)
+    // {
+    //     try
+    //     {
+    //         var documentLines = files
+    //             .Where(x => !string.IsNullOrWhiteSpace(x.WebUrl))
+    //             .Select(x => $"- {x.Name}{Environment.NewLine}  {x.WebUrl}")
+    //             .ToList();
+
+    //         if (documentLines.Count == 0)
+    //         {
+    //             SetMessage("No SharePoint links are available for the selected file(s).", true);
+    //             return;
+    //         }
+
+    //         var recordNumber = GetStringValueByPropertyName(EmailRecordNumberPropertyName);
+    //         var recordDescription = GetStringValueByPropertyName(EmailRecordDescriptionPropertyName);
+    //         var recordLocation = GetStringValueByPropertyName(EmailRecordLocationPropertyName);
+
+    //         var subjectParts = new List<string>();
+
+    //         if (!string.IsNullOrWhiteSpace(recordNumber))
+    //         {
+    //             subjectParts.Add(recordNumber);
+    //         }
+
+    //         if (!string.IsNullOrWhiteSpace(recordLocation))
+    //         {
+    //             subjectParts.Add(recordLocation);
+    //         }
+
+    //         var subject = subjectParts.Count > 0
+    //             ? $"Documents from CymBuild - {string.Join(" - ", subjectParts)}"
+    //             : $"Documents from CymBuild - {_currentFolderName ?? "Documents"}";
+
+    //         var bodyLines = new List<string>
+    //     {
+    //         "Hi,",
+    //         "",
+    //         "Please find below the requested document(s) relating to:"
+    //     };
+
+    //         if (!string.IsNullOrWhiteSpace(recordNumber))
+    //         {
+    //             bodyLines.Add($"Reference: {recordNumber}");
+    //         }
+
+    //         if (!string.IsNullOrWhiteSpace(recordDescription))
+    //         {
+    //             bodyLines.Add($"Description: {recordDescription}");
+    //         }
+
+    //         if (!string.IsNullOrWhiteSpace(recordLocation))
+    //         {
+    //             bodyLines.Add($"Location: {recordLocation}");
+    //         }
+
+    //         bodyLines.Add("");
+    //         bodyLines.Add("Documents:");
+    //         bodyLines.AddRange(documentLines);
+    //         bodyLines.Add("");
+    //         bodyLines.Add("If you have any questions, please let us know.");
+    //         bodyLines.Add("");
+    //         bodyLines.Add("Kind regards,");
+    //         bodyLines.Add("SOCOTEC");
+
+    //         var body = string.Join(Environment.NewLine, bodyLines);
+
+    //         await JS.InvokeVoidAsync("cymbuildDocs.openMailTo", subject, body);
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         SetMessage(ex.Message, true);
+    //     }
+    // }
+    private async Task CreateEmailAsync(List<DocumentsListItem> files)
+    {
+        try
+        {
+            var selectedFiles = files
+                .Where(x => !string.IsNullOrWhiteSpace(x.Id))
+                .Select(x => (
+                    DriveId: _location?.DriveId ?? string.Empty,
+                    ItemId: x.Id,
+                    FileName: x.Name ?? string.Empty))
+                .Where(x => !string.IsNullOrWhiteSpace(x.DriveId) && !string.IsNullOrWhiteSpace(x.ItemId))
+                .ToList();
+
+            if (selectedFiles.Count == 0)
+            {
+                SetMessage("No valid files were selected.", true);
+                return;
+            }
+
+            var recordNumber = GetStringValueByPropertyName(EmailRecordNumberPropertyName);
+            var recordDescription = GetStringValueByPropertyName(EmailRecordDescriptionPropertyName);
+            var recordLocation = GetStringValueByPropertyName(EmailRecordLocationPropertyName);
+
+            var subjectParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(recordNumber))
+                subjectParts.Add(recordNumber);
+            if (!string.IsNullOrWhiteSpace(recordLocation))
+                subjectParts.Add(recordLocation);
+
+            var subject = subjectParts.Count > 0
+                ? $"Documents from CymBuild - {string.Join(" - ", subjectParts)}"
+                : $"Documents from CymBuild - {_currentFolderName ?? "Documents"}";
+
+            var bodyLines = new List<string>
+        {
+            "Hi,",
+            "",
+            "Please find attached the requested document(s) relating to:"
+        };
+
+            if (!string.IsNullOrWhiteSpace(recordNumber))
+                bodyLines.Add($"Reference: {recordNumber}");
+
+            if (!string.IsNullOrWhiteSpace(recordDescription))
+                bodyLines.Add($"Description: {recordDescription}");
+
+            if (!string.IsNullOrWhiteSpace(recordLocation))
+                bodyLines.Add($"Location: {recordLocation}");
+
+            bodyLines.Add("");
+            bodyLines.Add("If you have any questions, please let us know.");
+            bodyLines.Add("");
+            bodyLines.Add("Kind regards,");
+            bodyLines.Add("SOCOTEC");
+
+            var body = string.Join(Environment.NewLine, bodyLines);
+
+            var result = await FormHelper.DocumentsCreateEmailDraftAsync(
+                subject: subject,
+                body: body,
+                isHtmlBody: false,
+                toRecipients: Array.Empty<string>(),
+                ccRecipients: Array.Empty<string>(),
+                bccRecipients: Array.Empty<string>(),
+                attachments: selectedFiles,
+                recordGuid: DataObject?.Guid ?? string.Empty,
+                entityTypeId: EntityTypeId,
+                recordNumber: recordNumber,
+                recordDescription: recordDescription,
+                recordLocation: recordLocation);
+
+            if (!result.Success || !string.IsNullOrWhiteSpace(result.ErrorReturned))
+            {
+                SetMessage(
+                        string.IsNullOrWhiteSpace(result.ErrorReturned)
+                            ? "Unable to create the email draft."
+                            : result.ErrorReturned,
+                        true);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(result.WebLink))
+            {
+                SetMessage("Draft created, but no Outlook draft link was returned.", true);
+                return;
+            }
+
+            await JS.InvokeVoidAsync("openInNewTab", result.WebLink);
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ex.Message, true);
+        }
+    }
+    private string GetStringValueByPropertyName(string propertyName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return string.Empty;
+            }
+
+            var entityPropertyGuid = entityProperties?
+                .FirstOrDefault(p => string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase))?
+                .Guid;
+
+            if (string.IsNullOrWhiteSpace(entityPropertyGuid))
+            {
+                return string.Empty;
+            }
+
+            var dataProperty = DataObject?.DataProperties?
+                .FirstOrDefault(p => p.EntityPropertyGuid == entityPropertyGuid);
+
+            if (dataProperty?.Value == null)
+            {
+                return string.Empty;
+            }
+
+            if (dataProperty.Value.Is(StringValue.Descriptor))
+            {
+                return dataProperty.Value.Unpack<StringValue>()?.Value ?? string.Empty;
+            }
+
+            if (dataProperty.Value.Is(Int32Value.Descriptor))
+            {
+                return dataProperty.Value.Unpack<Int32Value>().Value.ToString();
+            }
+
+            if (dataProperty.Value.Is(Int64Value.Descriptor))
+            {
+                return dataProperty.Value.Unpack<Int64Value>().Value.ToString();
+            }
+
+            if (dataProperty.Value.Is(DoubleValue.Descriptor))
+            {
+                return dataProperty.Value.Unpack<DoubleValue>().Value.ToString();
+            }
+
+            if (dataProperty.Value.Is(FloatValue.Descriptor))
+            {
+                return dataProperty.Value.Unpack<FloatValue>().Value.ToString();
+            }
+
+            if (dataProperty.Value.Is(BoolValue.Descriptor))
+            {
+                return dataProperty.Value.Unpack<BoolValue>().Value.ToString();
+            }
+
+            return dataProperty.Value.ToString() ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+
+    private string GetStringValueByEntityPropertyGuid(string entityPropertyGuid)
+    {
+        try
+        {
+            if (DataObject == null ||
+                DataObject.DataProperties == null ||
+                string.IsNullOrWhiteSpace(entityPropertyGuid))
+            {
+                return string.Empty;
+            }
+
+            var parsedGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(entityPropertyGuid).ToString();
+
+            if (parsedGuid == Guid.Empty.ToString())
+            {
+                return string.Empty;
+            }
+
+            var property = DataObject.DataProperties.FirstOrDefault(p =>
+                p.EntityPropertyGuid == parsedGuid);
+
+            if (property?.Value is not Any packedValue)
+            {
+                return string.Empty;
+            }
+
+            if (packedValue.Is(StringValue.Descriptor))
+            {
+                return PWAFunctions.UnpackString(packedValue)?.Trim() ?? string.Empty;
+            }
+
+            if (packedValue.Is(Int32Value.Descriptor))
+            {
+                return PWAFunctions.UnpackInt32(packedValue).ToString();
+            }
+
+            if (packedValue.Is(Int64Value.Descriptor))
+            {
+                return PWAFunctions.UnpackInt64(packedValue).ToString();
+            }
+
+            if (packedValue.Is(DoubleValue.Descriptor))
+            {
+                return PWAFunctions.UnpackDouble(packedValue).ToString();
+            }
+
+            if (packedValue.Is(BoolValue.Descriptor))
+            {
+                return PWAFunctions.UnpackBool(packedValue) ? "Yes" : "No";
+            }
+
+            if (packedValue.Is(Timestamp.Descriptor))
+            {
+                return PWAFunctions.UnpackTimestamp(packedValue).ToString("dd/MM/yyyy");
+            }
+
+            return string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        return values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+    }
+
+    private async Task OnCrumbClickAsync(int index)
+    {
+        if (index < 0 || index >= _breadcrumbs.Count)
+            return;
+
+        var crumb = _breadcrumbs[index];
+
+        if (index < _breadcrumbs.Count - 1)
+        {
+            _breadcrumbs.RemoveRange(index + 1, _breadcrumbs.Count - index - 1);
+        }
+
+        _currentFolderId = crumb.FolderId;
+        _currentFolderName = crumb.Name;
+        _currentFolderWebUrl = string.Equals(_location?.RootFolderId, crumb.FolderId, StringComparison.OrdinalIgnoreCase)
+            ? _location?.SharePointWebUrl
+            : null;
+
+        _currentLocationWarning = null;
+        _selectedIds.Clear();
+
+        await ExpandTreeToFolderAsync(crumb.FolderId);
+        await LoadFolderAsync(crumb.FolderId, true);
+    }
+
+    private async Task OnSearchChangedAsync(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? string.Empty;
+        await LoadFolderAsync(_currentFolderId, true);
+    }
+
+    private void PushBreadcrumb(string folderId, string folderName)
+    {
+        var existingIndex = _breadcrumbs.FindIndex(x =>
+            string.Equals(x.FolderId, folderId, StringComparison.OrdinalIgnoreCase));
+
+        if (existingIndex >= 0)
+        {
+            _breadcrumbs.RemoveRange(existingIndex + 1, _breadcrumbs.Count - existingIndex - 1);
+            return;
+        }
+
+        _breadcrumbs.Add(new BreadcrumbItem
+        {
+            FolderId = folderId,
+            Name = folderName
+        });
+    }
+
+    private void ToggleSelected(string itemId, ChangeEventArgs e)
+    {
+        bool isChecked = e.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+
+        if (isChecked)
+            _selectedIds.Add(itemId);
+        else
+            _selectedIds.Remove(itemId);
+    }
+
+    private bool IsAllSelected()
+    {
+        if (_items.Count == 0)
+            return false;
+
+        return _items.All(x => _selectedIds.Contains(x.Id));
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        bool isChecked = e.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+
+        _selectedIds.Clear();
+
+        if (isChecked)
+        {
+            foreach (var item in _items)
+            {
+                _selectedIds.Add(item.Id);
+            }
+        }
+    }
+
+    private void OnDragEnter(DragEventArgs _)
+    {
+        _isDragOver = true;
+    }
+
+    private void OnDragOver(DragEventArgs _)
+    {
+        _isDragOver = true;
+    }
+
+    private void OnDragLeave(DragEventArgs _)
+    {
+        _isDragOver = false;
+    }
+
+    private void OnDrop(DragEventArgs _)
+    {
+        _isDragOver = false;
+    }
+
+    private void SetMessage(string text, bool isError)
+    {
+        _message = text;
+        _messageIsError = isError;
+    }
+
+    private string? GetNavigationWarning(DocumentsNavigationItem item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.NavigationKey))
+            return null;
+
+        return _navigationWarnings.TryGetValue(item.NavigationKey, out var value)
+            ? value
+            : null;
+    }
+
+    private void SetNavigationWarning(DocumentsNavigationItem item, string warning)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.NavigationKey))
+            return;
+
+        _navigationWarnings[item.NavigationKey] = warning;
+    }
+
+    private void ClearNavigationWarning(DocumentsNavigationItem item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.NavigationKey))
+            return;
+
+        _navigationWarnings.Remove(item.NavigationKey);
+    }
+
+    private static string BuildNavigationWarning(Exception ex)
+    {
+        var message = ex.Message?.Trim();
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return "This record's document location is currently unavailable.";
+        }
+
+        if (message.Contains("resource could not be found", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return "This record exists, but its SharePoint document location could not be found.";
+        }
+
+        return message;
+    }
+
+    private static string GetItemIcon(DocumentsListItem item) => item.IsFolder ? "📁" : "📄";
+
+    private static string FormatTimestamp(Timestamp? timestamp)
+    {
+        if (timestamp is null)
+            return string.Empty;
+
+        return timestamp.ToDateTime().ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        int unit = 0;
+
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
+
+        return $"{value:0.##} {units[unit]}";
+    }
+
+    private static string GetItemDescription(DocumentsListItem item)
+    {
+        if (item is null || item.IsFolder)
+        {
+            return string.Empty;
+        }
+
+        var description = item.Description;
+
+        return string.IsNullOrWhiteSpace(description)
+            ? string.Empty
+            : description.Trim();
+    }
+
+    private sealed class BreadcrumbItem
+    {
+        public string FolderId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class FolderNode
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public bool HasChildren { get; set; }
+        public bool IsExpanded { get; set; }
+        public bool ChildrenLoaded { get; set; }
+        public List<FolderNode> Children { get; set; } = new();
+    }
+}

@@ -1,0 +1,23 @@
+﻿@* <div class="navbar px-3">
+	<div class="container">
+		<div class="col-md-2">
+			<button @onclick="@(() => MoveToPage("/"))" hidden="hidden" class="btn btn-primary nav-addin"><div>Details</div></button>
+		</div>
+	</div>
+</div> *@
+
+@code {
+
+	[Inject]
+	public NavigationManager NavigationManager { get; set; } = default!;
+
+	protected override void OnInitialized()
+    {
+		//MoveToPage("/");
+        base.OnInitialized();
+    }
+	void MoveToPage(string page)
+	{
+		NavigationManager.NavigateTo(page, true);
+	}
+}

@@ -1,0 +1,33 @@
+﻿@using Concursus.API.Client.Models
+@inject Core.CoreClient coreClient
+
+@code {
+
+    [Parameter]
+    public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
+
+    [Parameter]
+    public string RecordGuid { get; set; } = "";
+
+    [Parameter] public EntityProperty PassedEntityProperty { get; set; } = new EntityProperty();
+
+    [Parameter]
+    public DataObjectReference? ParentDataObjectReference { get; set; } = new("", "");
+
+    [Parameter]
+    public bool IsInformationPage { get; set; } = false;
+
+    [Parameter]
+    public bool Windowed { get; set; } = false;
+
+    [Parameter]
+    public EventCallback CloseWindow { get; set; }
+
+    [Parameter]
+    public EventCallback GridUpdated { get; set; }
+
+    [Parameter]
+    public string ReturnUrl { get; set; } = "";
+
+    protected EditPage editPage;
+}

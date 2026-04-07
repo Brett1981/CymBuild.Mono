@@ -1,0 +1,42 @@
+{
+  "manifestVersion": "v1",
+  "family": "grids",
+  "generatedAtUtc": "2026-02-02T00:00:00Z",
+  "grids": [
+    {
+      "guid": "2A45F8D3-DD0F-4895-91C1-FFA49F9AD726",
+      "code": "ENTITYHOBTS",
+      "rowStatus": 1,
+      "pageUri": null,
+      "tabName": null,
+      "showAsTiles": false,
+      "languageLabel": null,
+      "views": [
+        {
+          "guid": "4A75253D-4A3A-4A2B-82E2-40491F5C89B9",
+          "code": "ALLENTITYHOBTS",
+          "rowStatus": 1,
+          "detailPageUri": null,
+          "sqlQuery": null,
+          "defaultSortColumnName": null,
+          "isDefaultSortDescending": false,
+          "securableCode": null,
+          "displayOrder": 1,
+          "displayGroupName": null,
+          "showOnMobile": false,
+          "showOnDashboard": false,
+          "allowNew": true,
+          "allowExcelExport": false,
+          "allowPdfExport": false,
+          "allowCsvExport": false,
+          "allowBulkChange": false,
+          "isDetailWindowed": true,
+          "languageLabel": null,
+          "columns": [],
+          "actions": [],
+          "widgets": []
+        }
+      ]
+    }
+  ]
+}

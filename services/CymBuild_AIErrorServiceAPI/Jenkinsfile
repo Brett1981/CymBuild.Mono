@@ -1,0 +1,34 @@
+pipeline {
+  agent any
+
+  environment {
+    IMAGE_NAME = 'your-registry/aierrorserviceapi'
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://your-repo-url.git'
+      }
+    }
+    stage('Build') {
+      steps {
+        sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+      }
+    }
+    stage('Push') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'docker-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh '''echo $PASS | docker login -u $USER --password-stdin your-registry
+docker push $IMAGE_NAME:$IMAGE_TAG'''
+        }
+      }
+    }
+    stage('Deploy to K8s') {
+      steps {
+        sh 'kubectl apply -f k8s/deployment.yaml'
+      }
+    }
+  }
+}

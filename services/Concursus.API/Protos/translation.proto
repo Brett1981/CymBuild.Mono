@@ -1,0 +1,27 @@
+﻿syntax = "proto3";
+
+option csharp_namespace = "Concursus.API";
+
+package core;
+
+message GoogleLanguageLabelTranslation {
+    string RowStatus = 1;
+    string RowVersion = 2;
+    string Guid = 3;
+    string Text = 4;
+    string LanguageLabelGuid = 5;
+    string LanguageGuid = 6;
+}
+
+message TranslateRequest {
+    repeated GoogleLanguageLabelTranslation LabelTranslation = 1;
+    string target_language = 2;
+}
+
+message TranslateResponse {
+    repeated GoogleLanguageLabelTranslation translated_LabelTranslation = 1;
+}
+
+service TranslationService {
+    rpc TranslateText (TranslateRequest) returns (TranslateResponse);
+}

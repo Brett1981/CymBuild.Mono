@@ -1,0 +1,131 @@
+﻿@page "/DocumentTaskView/{RecordGuid}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject IJSRuntime JS
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@inherits EditPageBase
+@attribute [Authorize]
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+@if (ShowOutPutType)
+{
+    <SelectOutputTypeModal OnTypeSelected="SetOutputType" CloseWindow="CloseOutputTypeModal" />
+}
+
+<div class="d-flex justify-content-around">
+
+    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup" style="width:790px">
+        <div class="card-body">
+            <h5 class="card-title">Filter by Name</h5>
+            <div class="product-actions">
+                <TelerikTextBox Class="txt-listview" @bind-Value="@FilterText"></TelerikTextBox>
+                <TelerikButton Class="mb-sm" OnClick="@Filter">Filter</TelerikButton>
+                <TelerikButton OnClick="@ClearFilter">Clear Filter</TelerikButton>
+            </div>
+            <h5 class="card-title">Document Selection</h5>
+            <div class="multi-select">
+                <TelerikMultiSelect Data="@Data"
+                                    @bind-Value="@SelectedItems"
+                                    TextField="Text"
+                                    ValueField="DocumentId"
+                                    Placeholder="Select documents to open"
+                                    ShowClearButton="true"
+                                    AutoClose="false">
+                    <HeaderTemplate>
+                        <strong>Select one or more:</strong>
+                    </HeaderTemplate>
+                    <ItemTemplate>
+                        <i class="k-card-image @context.Icon">@context.Text</i>
+                    </ItemTemplate>
+                    <TagTemplate>
+                        <i class="k-card-image @context.Icon">@context.Text</i>
+                    </TagTemplate>
+                    <FooterTemplate>
+                        <h6>Total Selected: @SelectedItems?.Count()</h6>
+                    </FooterTemplate>
+                    <NoDataTemplate>
+                        <div class="no-data-template">
+                            <TelerikFontIcon Class="k-icon k-icon-lg" Icon="@FontIcon.FilesError"></TelerikFontIcon>
+                            <p>No documents available</p>
+                        </div>
+                    </NoDataTemplate>
+                </TelerikMultiSelect>
+                @if (SelectedItems?.Count > 0 && IsListVisible)
+                {
+                    <ul class="@(!IsListVisible ? "hidden" : "")">
+                        @foreach (string item in SelectedItems)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+                <div class="p-2 form-buttons">
+                    <btn class="btn btn-success mb-1" type="button" @onclick="@(() => ShowOutPutTypeModal())" value="Save">
+                        <i class="bi bi-save-fill"></i> Generate Documents
+                        <TelerikLoader Class="loader-indicator" ThemeColor="light" Visible="@LoaderVisible"></TelerikLoader>
+                    </btn>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .k-listview-header {
+        padding: 20px 28px;
+        text-transform: uppercase;
+    }
+
+    .k-card {
+        width: 100%; /* Set the width to 100% or adjust it to your desired width */
+        max-width: 800px; /* Set the maximum width if needed */
+        margin: 0 auto; /* Center the card horizontally */
+        padding: 20px; /* Adjust padding as needed */
+        border-width: 0 0 1px 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+        .k-card .k-card-body,
+        .k-card .k-card-actions {
+            padding: 0 8px;
+        }
+
+        .k-card .k-card-image {
+            max-width: unset;
+        }
+
+    .k-card-horizontal > .k-card-image:last-child {
+        border-radius: 0;
+    }
+
+    .k-card .k-card-title {
+        padding: 0;
+        font-size: 1.285em;
+        font-weight: bold;
+        line-height: normal;
+    }
+
+    .k-card-subtitle {
+        font-size: 1em;
+    }
+
+    .card-date {
+        font-size: 0.85em;
+        color: #bababa;
+    }
+
+    .multi-select {
+        width: 100%;
+        max-width: 680px;
+        margin: 10px 0 0 0;
+    }
+</style>

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cymbuild-api
+  labels:
+    app: cymbuild-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cymbuild-api
+  template:
+    metadata:
+      labels:
+        app: cymbuild-api
+    spec:
+      containers:
+      - name: api
+        image: your-registry.io/cymbuild/api:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: AzureAd__ClientSecret
+          valueFrom:
+            secretKeyRef:
+              name: cymbuild-api-secrets
+              key: azure-client-secret
+        - name: Google__TranslateAPIKey
+          valueFrom:
+            secretKeyRef:
+              name: cymbuild-api-secrets
+              key: google-api-key
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cymbuild-api-secrets
+type: Opaque
+data:
+  azure-client-secret: eEthOFF+MldmUFFwbGg0YmFjbDluWHNNS3RFRVRwaDFrWlZvVmNxeg==
+  google-api-key: QUl6YVN5RGF2bkpNLUFWLUo4Sm8zTFh1MEZmdzZNX01oMU5xVHNj

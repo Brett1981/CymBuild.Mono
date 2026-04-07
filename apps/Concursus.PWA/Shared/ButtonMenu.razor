@@ -1,0 +1,74 @@
+﻿@using Concursus.API.Client;
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+
+@inject NavigationManager NavManager
+@inject Core.CoreClient coreClient
+@inject IJSRuntime JSRuntime;
+@inject UserService userService
+@inject ModalService modalService
+@inject AppConfiguration appConfiguration
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject ModalService modalService
+
+<div class="button-menu-container d-flex flex-row align-items-center">
+
+    <span class="d-flex flex-row align-items-center">
+        <span>
+            <span class="@isButtonLoading" />
+            <span>@buttonLoadingText</span>
+        </span>
+
+        <TelerikMenu Data="@MenuItems"
+                     IconField="@(nameof(API.Client.MenuItem.Icon))"
+                     DisabledField="@(nameof(API.Client.MenuItem.IsReadOnly))"
+                     OnClick="@((API.Client.MenuItem item) => OnClickHandler(item))" />
+    </span>
+</div>
+
+@attribute [Authorize]
+<TelerikWindow @ref="ModalWindow" Class="responsive-window" Visible="@ModalWindowIsVisible" VisibleChanged="VisibleChangedHandler" Modal="true" CloseOnOverlayClick="false" MaxHeight="100vh">
+    <WindowTitle>@WindowTitle</WindowTitle>
+    <WindowContent>
+        <h4>
+            <i class="@HeaderCssIcon" style="font-size: 1.2rem;"></i> @HeaderText
+        </h4>
+        @if (!string.IsNullOrEmpty(@GridCodeSelection))
+        {
+            <DynamicGrid GridCode="@GridCodeSelection" ParentGuid="@GetParentGuid()" />
+        }
+        @if (!string.IsNullOrEmpty(@LoadPageUrl))
+        {
+            <DynamicComponent Type="@Type.GetType(@LoadPageUrl)" Parameters="@DetailPageParameters" />
+        }
+    </WindowContent>
+    <WindowActions>
+        <WindowAction Name="MinRimize"></WindowAction>
+        <WindowAction Name="Maximize"></WindowAction>
+        <WindowAction Name="Close" OnClick="@CloseWindowCross"></WindowAction>
+    </WindowActions>
+</TelerikWindow>
+<style>
+    .button-menu-container {
+        gap: 10px; /* Adds spacing between flex items */
+    }
+
+    .custom-button {
+        background-color: #007bff; /* Custom background color */
+        border-color: #007bff;
+    }
+
+    .custom-button:hover {
+        background-color: #0056b3; /* Darker background color on hover */
+        border-color: #0056b3;
+    }
+
+    @* Telerik 7.1.0 ==> Removing extra padding for the Task button*@
+    .btn-primary .k-item .k-link{
+        padding-block: 0 !important;
+        padding-inline: 0 !important;
+
+    }
+
+</style>

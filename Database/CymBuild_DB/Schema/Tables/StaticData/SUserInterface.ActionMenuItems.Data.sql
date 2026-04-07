@@ -1,0 +1,23 @@
+﻿SET IDENTITY_INSERT SUserInterface.ActionMenuItems ON
+GO
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (-1, 0, '00000000-0000-0000-0000-000000000000', -1, N'', N'', -1, -1, 0, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (1, 1, 'a04896e8-8a74-485d-bb0c-26291af3abd4', 790, N'bi-collection-play', N'A', 55, 94, 1, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (2, 1, '1bab9ced-d83c-4b61-b081-9e5020ec7137', -1, N'', N'S', 55, -1, 0, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (3, 1, '1b0f8850-fb32-41a1-8642-252eccc4245a', 1179, N'bi-play-fill', N'A', 83, 169, 1, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (4, 1, '39173a1e-64c5-479f-bbe2-dac4ef6df523', 2022, N'bi-copy', N'A', 55, 230, 0, 1);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (5, 1, '1e9ef73e-7181-45ee-bb28-5301e5215337', 3131, N'bi bi-x-octagon', N'A', 9, 335, 1, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (6, 1, '8aacef6e-3e26-4aa7-ab54-a50411954dc0', 2340, N'bi bi-cart-plus', N'A', 30, 256, 0, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (7, 1, '70644090-fa9b-4e8c-b8e7-af6078a094d9', -1, N'', N'S', 83, -1, 0, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (8, 1, 'a4ddd7a8-c49b-4efb-9be2-bedc7ce023ee', 2559, N'bi-collection-play', N'A', 83, 289, 3, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (9, 1, '7f7812c9-a992-46f1-ad4f-104a651d34df', -1, N'', N'S', 83, -1, 4, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (10, 1, '0428ea05-7fb3-447e-89e3-8fd5faaa6f0f', 2773, N'bi-clipboard', N'A', 83, 307, 5, 1);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (11, 1, '24bbebcb-9017-4722-a9ca-195e783f696f', 2774, N'bi-copy', N'A', 83, 308, 6, 1);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (12, 1, '1bf38161-a934-4bab-b30b-80f6570936b5', -1, N'', N'S', 83, -1, 7, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (13, 1, '2539a353-ddeb-405c-be82-ab1850e68492', 2890, N'bi-door-open', N'A', 9, 319, 0, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (14, 1, '2fd00446-e54a-41e8-9a23-82025a58fd00', 2891, N'bi-door-open', N'A', 55, 320, 2, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (15, 1, '187a1bdd-25b3-45e9-bf95-fe9a414525b2', 2892, N'bi-door-open', N'A', 83, 321, 7, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (16, 1, 'af8ad96c-c69c-4e79-a883-924ec4b443d8', 2893, N'bi-door-open', N'A', 30, 322, 1, 0);
+INSERT SUserInterface.ActionMenuItems(ID, RowStatus, Guid, LanguageLabelId, IconCss, Type, EntityTypeId, EntityQueryId, SortOrder, RedirectToTargetGuid) VALUES (17, 1, 'd9e7d815-1b1d-42fb-ade6-7f14effc34e7', 3152, N'bi bi-heart-pulse-fill', N'A', 9, 336, 4, 0);
+GO
+SET IDENTITY_INSERT SUserInterface.ActionMenuItems OFF
+GO

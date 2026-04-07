@@ -1,0 +1,316 @@
+﻿@using Blazored.Modal;
+@using Blazored.Modal.Services;
+@using Concursus.API.Client.Classes;
+@using Concursus.API.Client.Models;
+@using Concursus.API.Core;
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Helpers
+@using Concursus.PWA.Services
+@using Microsoft.AspNetCore.Components;
+@using Newtonsoft.Json;
+@using System.Web;
+@using System.Collections
+@using Telerik.Blazor.Components;
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using static Concursus.PWA.Shared.MessageDisplay
+
+@inject UserService UserService
+@inject Core.CoreClient CoreClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAccessTokenProvider TokenProvider
+@inject IJSRuntime JsRuntime
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+<TelerikGrid Data="@_scheduleItems?.ScheduleItems" Resizable="true" Pageable="true" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="ScheduleRowDoubleClick">
+    <GridColumns>
+        <GridColumn Field="@nameof(ScheduleItem.Start)" Title="Start">
+            <Template Context="scheduleItem">
+                @UiFormattingHelper.FormatDateForUI(((ScheduleItem)scheduleItem).Start.ToDateTime(), false)
+            </Template>
+        </GridColumn>
+        <GridColumn Field="@nameof(ScheduleItem.Title)" Title="Title" Visible="true">
+            <Template Context="scheduleItem">
+                @{
+                    var item = (ScheduleItem)scheduleItem;
+                    <div class="custom-ellipsis">
+                        @item.Title;
+                    </div>
+                }
+            </Template>
+        </GridColumn>
+    </GridColumns>
+</TelerikGrid>
+
+@code {
+
+    [CascadingParameter] public IModalService Modal { get; set; } = default!;
+
+    private bool _hasLoaded = false;
+    private ScheduleItemsGetResponse? _scheduleItems;
+    protected MessageDisplay? messageDisplay;
+    protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
+    protected string ErrorMessage { get; set; } = "";
+
+    protected string PageMethod { get; set; } = "Not Set";
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var result = await TokenProvider.RequestAccessToken();
+                if (result.TryGetToken(out var token))
+                {
+                    await JsRuntime.InvokeVoidAsync("sendTokenToIframe", token.Value);
+                }
+            }
+            else
+            {
+                Exception ex = new Exception("Unable to identify if the user is authenticated");
+                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+                ex.Data.Add("AdditionalInfo", "Unable to identify if the user is authenticated");
+                ex.Data.Add("PageMethod", "Dashboard/OnAfterRenderAsync()");
+                OnError(ex);
+            }
+        }
+
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+
+            GetScheduleListAsync();
+            StateHasChanged();
+            await base.OnInitializedAsync();
+
+            return;
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to get the schedule list");
+            ex.Data.Add("PageMethod", "Dashboard/OnInitializedAsync()");
+            OnError(ex);
+        }
+    }
+
+    private void ScheduleRowDoubleClick(GridRowClickEventArgs args)
+    {
+        try
+        {
+            dynamic model = args.Item;
+
+            // Open the modal and pass data as parameters
+            ShowModal<ScheduleItemView>(new ModalParameters
+            {
+                { "StartDateTime", UiFormattingHelper.FormatDateForUI(model.Start.ToDateTime(), false) },
+                { "EndDateTime", UiFormattingHelper.FormatDateForUI(model.End.ToDateTime(), false) },
+                { "Title", model.Title },
+                { "Description", model.Description },
+                { "JobNumber", model.JobNumber }
+                // Add other properties as needed
+            });
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to open the schedule item modal");
+            ex.Data.Add("PageMethod", "Dashboard/ScheduleRowDoubleClick()");
+            OnError(ex);
+        }
+    }
+
+    private async void GetScheduleListAsync()
+    {
+        try
+        {
+            var scheduleItemsGetRequest = new ScheduleItemsGetRequest() { CurrentUserOnly = true };
+            var listOfScheduleItems = await CoreClient.ScheduleItemsGetAsync(scheduleItemsGetRequest);
+            if (listOfScheduleItems == null) return;
+            if (!string.IsNullOrEmpty(listOfScheduleItems.ErrorReturned))
+            { throw new Exception(listOfScheduleItems.ErrorReturned); }
+            var earlyDate = DateTime.UtcNow.AddDays(-7);
+            var lateDate = DateTime.UtcNow.AddDays(7);
+            _scheduleItems = new ScheduleItemsGetResponse();
+            foreach (var item in listOfScheduleItems.ScheduleItems)
+            {
+                var start = item.Start.ToDateTime();
+
+                if (start.IsBetweenTwoDates(earlyDate, lateDate))
+                {
+                    _scheduleItems.ScheduleItems.Add(item);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to retrieve schedule items. Please try again later.");
+            ex.Data.Add("PageMethod", "Dashboard/GetScheduleListAsync()");
+            OnError(ex);
+        }
+
+        if (!_hasLoaded)
+        {
+            _hasLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowModal<TModal>(ModalParameters parameters) where TModal : ComponentBase
+    {
+        try
+        {
+            var modalOptions = new ModalOptions
+                {
+                    AnimationType = ModalAnimationType.FadeInOut,
+                    HideHeader = false,
+                    UseCustomLayout = true,
+                    Position = ModalPosition.Middle,
+                };
+            Modal.Show<TModal>("Schedule Info", parameters, modalOptions);
+            //modal.Close();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Unable to show the modal");
+            ex.Data.Add("PageMethod", "Dashboard/ShowModal()");
+            OnError(ex);
+        }
+    }
+    public async Task OnError(Exception error)
+    {
+
+        if (string.IsNullOrEmpty(error.Message))
+        {
+            Console.WriteLine("WidgetScheduledItems: Error message is empty. Aborting.");
+            return;
+        }
+        ErrorMessage = error.Message;
+        PageMethod = error.Data.Contains("PageMethod")
+            ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
+            : "Not Set";
+        Console.WriteLine($"WidgetScheduledItems: PageMethod = {PageMethod}");
+
+        if (error.Data.Contains("MessageType"))
+        {
+            MessageType = (ShowMessageType)(error.Data["MessageType"] ?? ShowMessageType.Information);
+        }
+        else
+        {
+            MessageType = ShowMessageType.Error;
+            Console.WriteLine("WidgetScheduledItems: MessageType not found in error.Data. Defaulted to Error.");
+        }
+
+        // Extract all exception data
+        var exceptionData = error.Data.Count > 0
+            ? error.Data.Cast<DictionaryEntry>().ToDictionary(
+                de => de.Key?.ToString() ?? "UnknownKey",
+                de => de.Value!)
+            : null;
+
+        if (exceptionData != null)
+        {
+            foreach (var kvp in exceptionData)
+                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+        }
+
+        messageDisplay.UpdateExceptionData(exceptionData);
+        messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
+        messageDisplay.ShowError(true);
+
+
+        // AI Error Reporting (only for actual errors)
+        if (MessageType == ShowMessageType.Error)
+        {
+            try
+            {
+                var context = new
+                {
+                    ErrorMessage = error.Message,
+                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
+                    StackTrace = error.StackTrace ?? "No stack trace",
+                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
+                    Data = error.Data.Cast<DictionaryEntry>()
+                        .ToDictionary(
+                            de => de.Key?.ToString() ?? "UnknownKey",
+                            de => de.Value?.ToString() ?? "null"
+                        )
+                };
+
+                var log = InteractionTracker.GetAllLogs();
+                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
+                error.Data["UserInteractionLog"] = description;
+                Console.WriteLine($"WidgetScheduledItems: UserInteractionLog = {description}");
+
+                var result = await AiErrorReporter.ReportAsync(error, context);
+
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                {
+                    messageDisplay.SetMessage(result.UiMessage, result.MessageType);
+                    messageDisplay.ShowError(true);
+                }
+                else
+                {
+                    Console.WriteLine("WidgetScheduledItems: AI Error Reporter returned no UI message.");
+                }
+            }
+            catch (Exception aiEx)
+            {
+                Console.WriteLine($"WidgetScheduledItems: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
+            }
+        }
+
+        StateHasChanged();
+    }
+    // public void OnError(Exception error)
+    // {
+    //     if (string.IsNullOrEmpty(error.Message)) return;
+
+    //     ErrorMessage = error.Message;
+    //     PageMethod = (error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+
+    //     if (error.Data.Contains("MessageType"))
+    //     {
+    //         MessageType = (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ?? MessageDisplay.ShowMessageType.Information);
+    //     }
+    //     else
+    //     {
+    //         MessageType = MessageDisplay.ShowMessageType.Error;
+    //     }
+
+    //     // Extract all exception data and pass it to the MessageDisplay component
+    //     if (messageDisplay != null)
+    //     {
+    //         // Pass Exception Data using the new method
+    //         messageDisplay?.UpdateExceptionData(
+    //             error.Data.Count > 0
+    //             ? error.Data.Cast<DictionaryEntry>()
+    //                         .ToDictionary(
+    //                             de => de.Key?.ToString() ?? "UnknownKey",
+    //                             de => de.Value!)
+    //             : null
+    //         );
+
+    //         // Update the stack trace dynamically
+    //         messageDisplay?.UpdateStackTrace(error.StackTrace);
+
+    //         messageDisplay?.ShowError(true);
+    //     }
+
+    //     // Recover from error (if using a custom boundary)
+    //     // customErrorBoundary.Recover();
+
+    //     StateHasChanged();
+    // }
+}

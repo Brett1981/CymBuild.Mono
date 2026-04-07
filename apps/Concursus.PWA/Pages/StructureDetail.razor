@@ -1,0 +1,423 @@
+﻿@page "/StructureDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@inject Core.CoreClient CoreClient
+@inherits EditPageBase
+@using Google.Protobuf.WellKnownTypes
+@using Telerik.Blazor.Components.Map
+@using Concursus.PWA.Classes
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Newtonsoft.Json
+@using System.Web
+@using Concursus.API.Client.GeoData
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="2cfbff39-93cd-436b-b8ca-b2fcf7609707"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          FormSubmittedPre="@FormSubmittedPre"
+          PostCodeChangedPre="@PostCodeChangedPre"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          EnableBrowserTabTitle="true"
+          BrowserTabTitlePropertyName="Number"
+          BrowserTabTitlePrefix="Asset"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+            <TabStripTab Title="Property (UPRN)">
+                <HeaderTemplate>
+                    <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i> Asset
+                </HeaderTemplate>
+                <Content>
+                    <div class="row">
+                        <div class="col-md-12 col-lg-6">
+                            <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                                entityProperties="@editPage.entityProperties"
+                                                entityPropertyGroups="@editPage.entityPropertyGroups"
+                                                IsMainRecordContext="@IsMainRecordContext"
+                                                dataObject="@editPage.dataObject"
+                                                RecordGuid="@RecordGuid"
+                                                inputUpdated="@editPage.HandleInputUpdated"
+                                                editPageRef="@editPage" />
+                        </div>
+                        <div class="col-md-12 col-lg-6">
+                            <div class="card shadow-sm p-2 m-2 flex-fill" style="min-width: 250px;">
+                                <div class="card-body">
+                                    <TelerikMap @ref="MapRef"
+                                                Center="@MapCenter"
+                                                MinZoom="3"
+                                                MaxZoom="19"
+                                                Zoom="@MapZoom"
+                                                WrapAround="false"
+                                                OnZoomEnd="@OnZoomEnd"
+                                                OnClick="@OnMapClick">
+                                        <MapLayers>
+                                            <MapLayer Type="@MapLayersType.Tile"
+                                                      Attribution="@MapAttribution"
+                                                      Subdomains="@MapSubdomains"
+                                                      UrlTemplate="@MapUrlTemplate">
+                                            </MapLayer>
+                                            <MapLayer Type="@MapLayersType.Marker"
+                                                      Data="@MarkerData"
+                                                      LocationField="@nameof(API.Core.MapMarker.LatLng)"
+                                                      TitleField="@nameof(API.Core.MapMarker.EntityTypeGuid)">
+                                                <MapLayerMarkerSettings>
+                                                    <MapLayerMarkerSettingsTooltip>
+                                                        <Template Context="mapContext">
+                                                            @{
+                                                                var dataItem = mapContext.DataItem as Concursus.API.Core.MapMarker;
+                                                            }
+                                                            <div>@dataItem?.EntityTypeGuid</div>
+                                                        </Template>
+                                                    </MapLayerMarkerSettingsTooltip>
+                                                </MapLayerMarkerSettings>
+                                            </MapLayer>
+                                        </MapLayers>
+                                    </TelerikMap>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Related Records">
+                <HeaderTemplate>
+                    <i class="bi bi-book me-2" style="font-size: 1.2rem;"></i>Related Records
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="PROPERTYJOBS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Child Assets">
+                <HeaderTemplate>
+                    <i class="bi bi-house-down-fill me-2" style="font-size: 1.2rem;"></i>Child Assets
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="ASSETSCHILDREN" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+        </TelerikTabStrip>
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter]
+    public int ParentRowStatus { get; set; } = -1;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private TelerikMap MapRef { get; set; }
+    private double MapZoom { get; set; } = 6; // Default zoom level
+
+    public string[] MapSubdomains { get; set; } = { "a", "b", "c" };
+    public string MapUrlTemplate { get; set; } = "https://#= subdomain #.tile.openstreetmap.org/#= zoom #/#= x #/#= y #.png";
+    public string MapAttribution { get; set; } = "&copy; <a href='https://osm.org/copyright'>OpenStreetMap contributors</a>";
+    private double[] MapCenter { get; set; } = { 54.0, -2.0 }; // Center of UK
+    private List<Concursus.API.Core.MapMarker> MarkerData { get; set; } = new();
+
+    private bool FirstUpdate = false;
+    private readonly Geodata _geoData = new();
+    [Parameter]
+    public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter]
+    public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+
+
+    public void RefreshPage()
+    {
+        editPage.SetHasChangedToTrue();
+        StateHasChanged();
+    }
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/OnParametersSetAsync()");
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        EntityTypeGuid = "2cfbff39-93cd-436b-b8ca-b2fcf7609707";
+        base.OnInitialized();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await base.OnInitializedAsync();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/OnInitializedAsync()");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeMapAsync();
+            MapRef.Refresh(); // This ensures the map gets refreshed once data is set
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+
+    private async Task InitializeMapAsync()
+    {
+        try
+        {
+            if (ParentRowStatus != 999 && !FirstUpdate)
+            {
+                if (editPage.entityProperties.Count > 0)
+                {
+                    var postcodeProperty = GetEntityPropertyValue<string>("64e674c3-e42d-4a4b-8747-16212d7db19d");
+                    var latitudeProperty = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
+                    var longitudeProperty = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+
+                    if (!string.IsNullOrEmpty(postcodeProperty))
+                    {
+                        if (latitudeProperty == 0 && longitudeProperty == 0)
+                        {
+                            await GetLatLonFromPostCode(postcodeProperty.ToLower());
+                        }
+                        else
+                        {
+                            await SetLocationValues(new MapLocation { Latitude = latitudeProperty, Longitude = longitudeProperty });
+                        }
+                    }
+                    else
+                    {
+                        // Default to UK center
+                        MapCenter = new double[] { 54.0, -2.0 }; // UK center coordinates
+                        MapZoom = 6; // Set the zoom level for UK
+                        MarkerData.Clear();
+                        MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+
+                    }
+                    MapRef.Refresh(); // Ensure the map refreshes after setting values
+                }
+            }
+            FirstUpdate = true;
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/InitializeMapAsync()");
+        }
+        StateHasChanged();
+    }
+
+    private void OnZoomEnd(MapZoomEndEventArgs args)
+    {
+        MapZoom = args.Zoom; // Update the zoom level
+        Console.WriteLine($"New Zoom Level: {MapZoom}");
+    }
+
+
+    protected async void PostCodeChangedPre((API.Client.GeoData.PostcodeInfo postcodeInfo, bool update) p)
+    {
+        try
+        {
+            var latitude = Math.Round(p.postcodeInfo.Result[0].Latitude, 6);
+            var longitude = Math.Round(p.postcodeInfo.Result[0].Longitude, 6);
+            await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
+            MapRef.Refresh();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/PostCodeChangedPre()");
+        }
+    }
+
+    protected async void FormSubmittedPre((EditContext editContext, bool save, bool exit) p)
+    {
+        var postcodeProperty = GetEntityPropertyValue<string>("64e674c3-e42d-4a4b-8747-16212d7db19d") ?? "";
+
+        if (p.save)
+        {
+            try
+            {
+                var latitude = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
+                var longitude = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+
+                if (latitude > 0 && longitude > 0)
+                {
+                    await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
+                    MapCenter = new double[] { latitude, longitude };
+                    MarkerData.Clear();
+                    MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+
+                    PWAFunctions.SetDataPropertyValue("14bf36ce-da62-4dc3-b832-dd9b485ff32e", WellKnownType.Double, latitude, editPage);
+                    PWAFunctions.SetDataPropertyValue("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba", WellKnownType.Double, longitude, editPage);
+
+                    if (!string.IsNullOrEmpty(postcodeProperty) && latitude == 0 && longitude == 0)
+                    {
+                        await GetLatLonFromPostCode(postcodeProperty);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await HandleErrorAsync(ex, "PropertyDetail/FormSubmittedPre()");
+            }
+        }
+
+        if (!p.save)
+        {
+            try
+            {
+                var latitude = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
+                var longitude = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+
+                if (latitude > 0 && longitude > 0)
+                {
+                    await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
+                }
+            }
+            catch (Exception ex)
+            {
+                await HandleErrorAsync(ex, "PropertyDetail/FormSubmittedPre()");
+            }
+        }
+        MapRef.Refresh();
+        StateHasChanged();
+    }
+
+    public void OnMapClick(MapClickEventArgs args)
+    {
+        _ = SetLocationValues(args.Location);
+    }
+
+    private async Task GetLatLonFromPostCode(string postcode)
+    {
+        try
+        {
+            var postcodeInfo = await _geoData.GetGeoDataAsync(postcode);
+            if (postcodeInfo.Result.Count == 0) return;
+
+            var lat = Math.Round(postcodeInfo.Result[0].Latitude, 6);
+            var lon = Math.Round(postcodeInfo.Result[0].Longitude, 6);
+            await SetLocationValues(new MapLocation { Latitude = lat, Longitude = lon });
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/GetLatLonFromPostCode()");
+        }
+    }
+
+    private async Task SetLocationValues(MapLocation location)
+    {
+        try
+        {
+            var roundedLatitude = Math.Round(location.Latitude, 6);
+            var roundedLongitude = Math.Round(location.Longitude, 6);
+
+            MarkerData.Clear();
+            MapCenter = new double[] { roundedLatitude, roundedLongitude };
+            MapZoom = 19;
+            MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+
+            await SetAndRebindAddressFromLocation(new MapLocation { Latitude = roundedLatitude, Longitude = roundedLongitude });
+
+            // Refresh map after updating values
+            MapRef.Refresh();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/SetLocationValues()");
+        }
+    }
+
+
+    private async Task SetAndRebindAddressFromLocation(MapLocation location)
+    {
+        try
+        {
+            var roundedLatitude = Math.Round(location.Latitude, 6);
+            var roundedLongitude = Math.Round(location.Longitude, 6);
+
+            var postcodeInfo = await _geoData.GetGeoDataByCoordinatesAsync(roundedLongitude, roundedLatitude);
+            if (postcodeInfo.Result.Count > 0 && postcodeInfo.Result[0]?.Outcode != null)
+            {
+                await UpdateDropDownLists(postcodeInfo.Result[0]);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/SetAndRebindAddressFromLocation()");
+        }
+    }
+
+    private async Task UpdateDropDownLists(PostcodeResult result)
+    {
+        var tasks = new List<Task>();
+
+        var countyDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == "313686fc-322f-45cd-87bf-8131c333a1a9");
+        if (countyDropDownList?.DropDownListDefinitionGuid != Guid.Empty.ToString())
+        {
+            tasks.Add(UpdateDropDownList(countyDropDownList, result.AdminCounty));
+        }
+
+        var countryDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == "a4a1588d-38b5-4a10-9c91-a2fccc2562f9");
+        if (countryDropDownList?.DropDownListDefinitionGuid != Guid.Empty.ToString())
+        {
+            tasks.Add(UpdateDropDownList(countryDropDownList, result.Country));
+        }
+
+        await Task.WhenAll(tasks);
+        StateHasChanged();
+    }
+
+    private Task UpdateDropDownList(API.Core.EntityProperty property, string value)
+    {
+        return PWAFunctions.SetDropDownListValueAsync(
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(property.Guid).ToString(),
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(property.DropDownListDefinitionGuid).ToString(),
+            editPage.MyDataObjectReference.DataObjectGuid.ToString(),
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid).ToString(),
+            value ?? "",
+            editPage,
+            CoreClient);
+    }
+
+    private async Task HandleErrorAsync(Exception ex, string method)
+    {
+        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+        ex.Data.Add("AdditionalInfo", "An error occurred while processing the request. Please try again later.");
+        ex.Data.Add("PageMethod", method);
+        await OnError.InvokeAsync(ex);
+    }
+
+    private T GetEntityPropertyValue<T>(string guid)
+    {
+        return (T)PWAFunctions.GetValueByEntityPropertyGuid(editPage, guid, typeof(T) == typeof(double) ? WellKnownType.Double : WellKnownType.String);
+    }
+}

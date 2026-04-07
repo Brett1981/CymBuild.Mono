@@ -1,0 +1,373 @@
+﻿@page "/"
+@inject LoggingHelper LoggingHelper
+@inject HttpClient Http
+@inject GraphService GraphService
+@inject EntityTypeService EntityTypeService
+@inject RecordSearchService RecordSearchService
+@inject OutlookEmailService OutlookEmailService
+@inject TargetObjectService TargetObjectService
+@inject EmailDescriptionService EmailDescriptionService
+@* @inject IAccessTokenProvider TokenProvider *@
+@inject IJSRuntime JSRuntime
+@inject IConfiguration Configuration
+
+@using CymBuild_Outlook_Addin.Controls
+@using CymBuild_Outlook_Addin.Model
+@using CymBuild_Outlook_Addin.Services
+@using CymBuild_Outlook_Common.Controls
+@using CymBuild_Outlook_Common.Dto
+@using CymBuild_Outlook_Common.Models
+@using CymBuild_Outlook_Common.Models.SharePoint
+@using Microsoft.AspNetCore.Components.Web
+@* @using Microsoft.AspNetCore.Components.WebAssembly.Authentication *@
+@using Telerik.Blazor
+@using Telerik.Blazor.Components
+@using Telerik.DataSource
+
+<NavMenu />
+
+<div class="container mt-4">
+    <div class="messageFilerTab">
+        <div class="buttonContainer collapsed">
+            <button id="fileWithPreviousButton" class="btn btn-primary me-2" @onclick="FileWithPreviousAsync" title="File with previous">
+                <i class="fas fa-copy"></i><span class="btn-text"></span>
+            </button>
+
+            <button type="button" @onclick="RefreshSearch" class="btn btn-primary me-2" title="Refresh">
+                <i class="fas fa-redo"></i><span class="btn-text"></span>
+            </button>
+
+            <button class="btn btn-success" @onclick="SaveEmailToSharePointAsync" title="Save to SharePoint">
+                <i class="fas fa-cloud-upload-alt"></i><span class="btn-text"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="btn-group" role="group" aria-label="Basic example">
+        @foreach (var button in buttonConfigurations)
+        {
+            if (MailReadData != null && MailReadData.ItemType == button.ItemType)
+            {
+                <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection(button.Section))">
+                    @button.Label
+                </button>
+            }
+        }
+
+        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("attachments"))"><i class="bi-paperclip"></i></button>
+        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("info"))"><i class="bi-info-circle"></i></button>
+        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("settings"))"><i class="bi-gear"></i></button>
+        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("help"))"><i class="bi bi-question-diamond"></i></button>
+    </div>
+
+    @if (currentSection == "details")
+    {
+        if (MailReadData is not null)
+        {
+            <div class="card">
+                <div class="card-body panel-content">
+                    @if (FiledRecords != null && FiledRecords.Any())
+                    {
+                        <FiledItemsDisplay FiledRecords="FiledRecords" />
+                    }
+
+                    @if (selectedRecords != null && selectedRecords.Any())
+                    {
+                        <SelectedItemsDisplay SelectedRecords="selectedRecords" OnRemove="RemoveSelectedItem" />
+                    }
+
+                    <div class="row" style="padding-top: 2px;padding-bottom: 2px">
+                        <span @onkeypress="HandleKeyPress" @onkeydown="HandleKeyPress">
+                            <TelerikTextBox Id="TextSearch" Placeholder="Search..." @bind-Value="searchString" />
+                        </span>
+                    </div>
+
+                    @if (selectedRecords != null && selectedRecords.Any())
+                    {
+                        <div class="row" style="padding-top: 8px;padding-bottom: 8px">
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="emailDescription" class="form-label mb-0">Description (Optional)</label>
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            @onclick="GenerateDescriptionAsync" 
+                                            disabled="@isGeneratingDescription"
+                                            title="Generate description using AI">
+                                        @if (isGeneratingDescription)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="fas fa-magic me-1"></i>
+                                        }
+                                        AI Generate
+                                    </button>
+                                </div>
+                                <TelerikTextArea Id="emailDescription"
+                                                 Placeholder="Add a note or context about this email..."
+                                                 @bind-Value="emailDescription"
+                                                 Rows="3"
+                                                 MaxLength="4000"
+                                                 Class="form-control" />
+                                <small class="form-text text-muted">@emailDescription.Length / 4000 characters</small>
+                            </div>
+                        </div>
+                    }
+
+                    <div id="filingDestinationsGridContainer" class="grid-container" style="padding-top:0.250rem">
+                        <TelerikGrid Data="@gridData"
+                                     Pageable="false"
+                                     Sortable="false"
+                                     FilterMode="GridFilterMode.None"
+                                     OnRowClick="OnRowClick"
+                                     Groupable="true"
+                                     TItem="RecordSearchResult"
+                                     OnStateInit="@OnGridStateInit"
+                                     Id="filingDestinationsGrid"
+                                     Class="no-header">
+                            <GridColumns>
+                                <GridColumn Field="Name" Title="Record">
+                                    <Template>
+                                        @{
+                                            RecordSearchResult record = (RecordSearchResult)context;
+                                            <span data-recordId="@record.ID" class="tooltip-target">@record.Name</span>
+                                        }
+                                    </Template>
+                                </GridColumn>
+                                <GridColumn Field="EntityTypeName" Title="Type" Visible="false" />
+                            </GridColumns>
+                            <NoDataTemplate>
+                                <div>No records found, please enter a search request</div>
+                            </NoDataTemplate>
+                        </TelerikGrid>
+
+                        <TelerikTooltip TargetSelector=".tooltip-target"
+                                        Class="blue-yellow no-flicker"
+                                        Width="250px" Height="150px"
+                                        Position="@TooltipPosition.Top"
+                                        ShowDelay="50">
+                            <Template Context="ttipContext">
+                                <h6>Record Details</h6>
+                                <hr />
+                                @{
+                                    int recordId = int.Parse(ttipContext.DataAttributes?["recordid"] ?? string.Empty);
+                                    var recordDetails = GetRecordDetails(recordId);
+
+                                    <div>
+                                        <p><strong>Name</strong>: @recordDetails?.Name</p>
+                                        <p><strong>Type</strong>: @recordDetails?.EntityTypeName</p>
+                                        <p><strong>ID</strong>: @recordDetails?.ID</p>
+                                    </div>
+                                }
+                            </Template>
+                        </TelerikTooltip>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-danger" role="alert">
+                Unable to read email and attachment data
+            </div>
+        }
+    }
+
+    @if (currentSection == "attachments")
+    {
+        if (MailReadData?.Attachments?.Any() == true)
+        {
+            <table class="table table-striped mt-3">
+                <thead>
+                    <tr>
+                        <th>Preview</th>
+                        <th width="55px">Name</th>
+                        <th width="45px">Type</th>
+                        <th>Inline</th>
+                        <th width="55px">Immutable ID</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var attachment in MailReadData.Attachments)
+                    {
+                        <tr>
+                            <td>
+                                <div class="attachment-icon">
+                                    @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
+                                    {
+                                        <img src="@attachment.AttachmentImageURL" class="img-thumbnail" alt="Image Preview" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
+                                    }
+                                </div>
+                            </td>
+                            <td class="shortened-name" title="@attachment.AttachmentName">
+                                @(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)
+                            </td>
+                            <td>@attachment.AttachmentType</td>
+                            <td>@(attachment.Inline ? "Yes" : "No")</td>
+                            <td class="shortened-name" title="@attachment.ImmutableID">@attachment.ImmutableID</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <div class="alert alert-warning" role="alert">
+                No attachments found.
+            </div>
+        }
+    }
+
+    @if (currentSection == "meetingInfo")
+    {
+        if (MailReadData?.Meeting?.StartDateTime is not null)
+        {
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Meeting Information</h5>
+                    <dl class="row">
+                        <dt class="col-sm-3">Series ID</dt>
+                        <dd class="col-sm-9">@MailReadData.Meeting.SeriesId</dd>
+                    </dl>
+                    <dl class="row">
+                        <dt class="col-sm-3">Date</dt>
+                        <dd class="col-sm-9">@MailReadData.Meeting.StartDateTime - @MailReadData.Meeting.EndDateTime</dd>
+                    </dl>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning" role="alert">
+                There is no meeting information
+            </div>
+        }
+    }
+
+    @if (currentSection == "info")
+    {
+        if (MailReadData is not null)
+        {
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Email Information</h5>
+                    <dl class="row">
+                        <dt class="col-sm-3">Item Type</dt>
+                        <dd class="col-sm-9">@MailReadData.ItemType</dd>
+                    </dl>
+                    <dl class="row">
+                        <dt class="col-sm-3">ID</dt>
+                        <dd class="col-sm-9">@MailReadData.ConversationId</dd>
+                    </dl>
+                    <dl class="row">
+                        <dt class="col-sm-3">Subject</dt>
+                        <dd class="col-sm-9">@MailReadData.Subject</dd>
+                    </dl>
+                    <dl class="row">
+                        <dt class="col-sm-3">Sender</dt>
+                        <dd class="col-sm-9">
+                            @MailReadData.Sender?.SenderName
+                            <a href="mailto:@MailReadData.Sender?.SenderEmail">@MailReadData.Sender?.SenderEmail</a>
+                        </dd>
+                    </dl>
+                    <dl class="row">
+                        <dt class="col-sm-3">Body</dt>
+                        <dd class="col-sm-9 multi-line-ellipsis">@MailReadData.Body</dd>
+                    </dl>
+
+                    @if (MailReadData.CustomProperties != null && MailReadData.CustomProperties.Any())
+                    {
+                        <dl class="row">
+                            <dt class="col-sm-3">Custom Properties</dt>
+                            <dd class="col-sm-9">
+                                @foreach (var property in MailReadData.CustomProperties)
+                                {
+                                    <div>@property.Key: @property.Value</div>
+                                }
+                            </dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-danger" role="alert">
+                Unable to read email information
+            </div>
+        }
+    }
+
+    @if (currentSection == "settings")
+    {
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Settings</h5>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="moveToCymBuildFiled" @bind="moveToCymBuildFiled" />
+                    <label class="form-check-label" for="moveToCymBuildFiled">Move Filed Email To "CymBuild Filed"</label>
+                </div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="extractAttachments" @bind="extractAttachments" />
+                    <label class="form-check-label" for="extractAttachments">Extract Attachments To Separate Folder</label>
+                </div>
+
+                <button class="btn btn-primary mt-3" @onclick="SaveSettings">Save Settings</button>
+            </div>
+        </div>
+    }
+
+    @if (currentSection == "help")
+    {
+        <div class="card">
+            <div class="card-body">
+                <h3>Filing an Email</h3>
+                <ol>
+                    <li>Use the search box to find the record you want to file the email against.</li>
+                    <li>Select the desired record from the search results by clicking on it.</li>
+                    <li>Once all desired records are selected, click the "Save to SharePoint" button to file the email and attachments.</li>
+                </ol>
+
+                <p><strong>Note:</strong> You can file an email to multiple records by repeating the search and select steps before clicking the "Save to SharePoint" button.</p>
+
+                <img src="@imageSources["SearchAndSelectRecords"]" alt="Search and Select Records" class="img-fluid" />
+                <hr />
+
+                <h3>Actions</h3>
+
+                <h4>File with Previous...</h4>
+                <p>This button allows you to file the current email to the same records you used for the last filed email.</p>
+                <img src="@imageSources["FileWithPreviousButton"]" alt="File with Previous Button" class="img-fluid" />
+
+                <hr />
+
+                <h3>Field Descriptions</h3>
+
+                <h4>Search Box</h4>
+                <p>Use the search box to find relevant records to file your email against.</p>
+                <img src="@imageSources["SearchBoxExample"]" alt="Search Box Example" class="img-fluid" />
+
+                <h4>Selected Records</h4>
+                <p>The selected records section displays the records you have chosen to file the email against.</p>
+                <img src="@imageSources["SelectedRecordsExample"]" alt="Selected Records Example" class="img-fluid" />
+
+                <h4>Save to SharePoint</h4>
+                <p>This button files the email and its attachments to the selected records' locations in SharePoint.</p>
+                <img src="@imageSources["SaveToSharePointButton"]" alt="Save to SharePoint Button" class="img-fluid" />
+            </div>
+        </div>
+    }
+
+    <div class="buttonContainer">
+        <button class="btn btn-success save-sharepoint" @onclick="SaveEmailToSharePointAsync" title="Save to SharePoint">
+            <i class="fas fa-cloud-upload-alt"></i><span class="btn-text"></span>
+            Save to SharePoint
+        </button>
+    </div>
+</div>

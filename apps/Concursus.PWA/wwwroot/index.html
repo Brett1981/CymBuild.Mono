@@ -1,0 +1,846 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>CymBuild</title>
+    <base href="/" />
+
+    <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
+    <link href="_content/Telerik.UI.for.Blazor/css/kendo-theme-bootstrap/all.css" rel="stylesheet" type="text/css" />
+
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="_content/Concursus.Components.Shared/css/cymbuild-v2.css" rel="stylesheet" />
+    <link href="css/bootstrap-icons-1.10.5/font/bootstrap-icons.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="Concursus.PWA.styles.css" rel="stylesheet" />
+
+    <link href="manifest.json" rel="manifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+
+    <script src="_content/Telerik.UI.for.Blazor/js/telerik-blazor.js" defer></script>
+    <script src="https://unpkg.com/datastore-idb/dist/index.min.js"></script>
+    <script src="idb.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css?family=Ubuntu&display=swap" rel="stylesheet" />
+</head>
+
+<body>
+
+    <script>
+        window.cymBuildEmergencyRepair = async function () {
+            try {
+                console.warn("[EmergencyRepair] Starting emergency repair.");
+
+                try {
+                    if ("caches" in window) {
+                        const cacheKeys = await caches.keys();
+                        await Promise.all(cacheKeys.map(key => caches.delete(key)));
+                        console.warn("[EmergencyRepair] Cache storage cleared.");
+                    }
+                } catch (e) {
+                    console.warn("[EmergencyRepair] Cache clear failed.", e);
+                }
+
+                try {
+                    if (window.indexedDB && typeof indexedDB.databases === "function") {
+                        const databases = await indexedDB.databases();
+                        await Promise.all(
+                            (databases || [])
+                                .filter(db => !!db.name)
+                                .map(db => new Promise(resolve => {
+                                    const request = indexedDB.deleteDatabase(db.name);
+                                    request.onsuccess = () => resolve();
+                                    request.onerror = () => resolve();
+                                    request.onblocked = () => resolve();
+                                }))
+                        );
+                        console.warn("[EmergencyRepair] IndexedDB cleared.");
+                    }
+                } catch (e) {
+                    console.warn("[EmergencyRepair] IndexedDB clear failed.", e);
+                }
+
+                try {
+                    localStorage.clear();
+                } catch (e) {
+                    console.warn("[EmergencyRepair] localStorage clear failed.", e);
+                }
+
+                try {
+                    sessionStorage.removeItem("autoBootRepairAttempted");
+                    sessionStorage.removeItem("bootWatchdogTriggered");
+                    sessionStorage.removeItem("reloadAttempted");
+                } catch (e) {
+                    console.warn("[EmergencyRepair] sessionStorage cleanup failed.", e);
+                }
+
+                try {
+                    if ("serviceWorker" in navigator) {
+                        const registrations = await navigator.serviceWorker.getRegistrations();
+
+                        for (const registration of registrations) {
+                            try {
+                                if (registration.active) {
+                                    registration.active.postMessage("CLEAR_CACHE_RELOAD");
+                                }
+                            } catch (e) {
+                                console.warn("[EmergencyRepair] Active worker postMessage failed.", e);
+                            }
+
+                            try {
+                                if (registration.waiting) {
+                                    registration.waiting.postMessage("CLEAR_CACHE_RELOAD");
+                                }
+                            } catch (e) {
+                                console.warn("[EmergencyRepair] Waiting worker postMessage failed.", e);
+                            }
+
+                            try {
+                                if (registration.installing) {
+                                    registration.installing.postMessage("CLEAR_CACHE_RELOAD");
+                                }
+                            } catch (e) {
+                                console.warn("[EmergencyRepair] Installing worker postMessage failed.", e);
+                            }
+
+                            try {
+                                await registration.unregister();
+                            } catch (e) {
+                                console.warn("[EmergencyRepair] SW unregister failed.", e);
+                            }
+                        }
+
+                        console.warn("[EmergencyRepair] Service workers unregistered.");
+                    }
+                } catch (e) {
+                    console.warn("[EmergencyRepair] Service worker cleanup failed.", e);
+                }
+
+                const url = new URL(window.location.href);
+                url.searchParams.set("swreset", Date.now().toString());
+
+                console.warn("[EmergencyRepair] Reloading to", url.toString());
+                window.location.replace(url.toString());
+            } catch (error) {
+                console.error("[EmergencyRepair] Fatal repair failure.", error);
+                window.location.reload();
+            }
+        };
+    </script>
+
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+
+        <div class="d-flex flex-row justify-content-center">
+            <button style="z-index: 2000;"
+                    class="btn btn-primary"
+                    id="hardrefreshbtn"
+                    onclick="window.cymBuildEmergencyRepair()">
+                Repair / Refresh App
+            </button>
+        </div>
+    </div>
+
+    <div id="splashScreenModal" class="splash-screen-modal" style="display:none;">
+        <div class="splash-content">
+            <div class="splash-screen-content">
+                <h1>CymBuild</h1>
+                <h2>Concursus Yielding Metadata for Building and Real Estate</h2>
+                <div class="release-history">
+                    <div class="release-notes">
+                        <p id="siteType">Site:</p>
+                        <p id="versionText">Version:</p>
+                        <p>HOTFIX Release:</p>
+                        <p>• Ability to split invoice CSV files by individual Business Units.</p>
+                        <p>• Fix for adding documents to enquiries.</p>
+                        <p>• Restored the link to enquiry documents within quote documents.</p>
+                        <p>• Resolved issue with quote files having two different SharePoint links.</p>
+                        <p>• Restored the link to the quote file for new jobs.</p>
+                        <p>• Fix for invoice requests not disappearing from the batch window.</p>
+                        <p>• Fix for Sage export window freezing.</p>
+                        <p>• SharePoint permissions to be updated when changes made to records in CymBuild.</p>
+                        <p>• Finance (Transaction) - Job number resets after clicking "Save and Exit".</p>
+                    </div>
+                </div>
+                <label>
+                    <input type="checkbox" id="noShowUntilNextRelease"> Do not show until next release
+                </label>
+                <button onclick="closeSplashScreen()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="service-worker-interop.js"></script>
+    <script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script src="lib/bootstrap/js/bootstrap.bundle.js"></script>
+    <script src="iframeHelper.js"></script>
+
+    <script>
+        function setRepairButtonState(enabled, text) {
+            const hardBtn = document.getElementById("hardrefreshbtn");
+            if (!hardBtn) {
+                return;
+            }
+
+            hardBtn.disabled = !enabled;
+            hardBtn.innerText = text;
+        }
+
+        function getSessionFlag(name) {
+            try {
+                return sessionStorage.getItem(name);
+            } catch {
+                return null;
+            }
+        }
+
+        function setSessionFlag(name, value) {
+            try {
+                sessionStorage.setItem(name, value);
+            } catch {
+                // ignore
+            }
+        }
+
+        function removeSessionFlag(name) {
+            try {
+                sessionStorage.removeItem(name);
+            } catch {
+                // ignore
+            }
+        }
+
+        function buildVersionedUrl(jsFile) {
+            const version = (window.appVersion || "dev").toString().trim();
+            const separator = jsFile.includes("?") ? "&" : "?";
+            return `${jsFile}${separator}v=${encodeURIComponent(version)}`;
+        }
+
+        function loadScriptSequentially(jsFile) {
+            return new Promise((resolve, reject) => {
+                const existing = document.querySelector(`script[data-cymbuild-src="${jsFile}"]`);
+                if (existing) {
+                    if (existing.dataset.loaded === "true") {
+                        resolve();
+                        return;
+                    }
+
+                    existing.addEventListener("load", () => resolve(), { once: true });
+                    existing.addEventListener("error", () => reject(new Error(`Failed to load script: ${jsFile}`)), { once: true });
+                    return;
+                }
+
+                const script = document.createElement("script");
+                script.src = buildVersionedUrl(jsFile);
+                script.async = false;
+                script.defer = false;
+                script.dataset.cymbuildSrc = jsFile;
+
+                script.onload = () => {
+                    script.dataset.loaded = "true";
+                    resolve();
+                };
+
+                script.onerror = () => {
+                    reject(new Error(`Failed to load script: ${jsFile}`));
+                };
+
+                document.head.appendChild(script);
+            });
+        }
+
+        async function loadStartupScripts() {
+            const scripts = [
+                "device-script.js",
+                "microphone.js",
+                "fileWorker.js",
+                "fileDownload.js",
+                "indexedDbHelper.js",
+                "interopFetch.js",
+                "indexedDbInterop.js",
+                "cymbuild-ui.js",
+                "tiff.js",
+                "scrollbar.js",
+                "GridResizeWidget.js",
+                "OpenLinkInNewTab.js",
+                "UsageDashboard.js",
+                "SchedulerJS/SchedulerJS.js",
+                "diagnostics-toggle.js"
+            ];
+
+            for (const script of scripts) {
+                await loadScriptSequentially(script);
+            }
+
+            if (!window.indexedDbInterop || typeof window.indexedDbInterop.getAll !== "function") {
+                throw new Error("indexedDbInterop.getAll is not available after startup script load.");
+            }
+        }
+
+        async function fetchAppSettings() {
+            const response = await fetch(`appsettings.json?v=${Date.now()}`, { cache: "no-store" });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch appsettings.json. HTTP ${response.status}`);
+            }
+
+            return await response.json();
+        }
+
+        function applyAppSettingsToUi(appSettings) {
+            window.appVersion = appSettings.Versioning?.PWAVersion || "dev";
+            window.environmentType = appSettings.Environment?.Type || "";
+
+            console.log("App Version:", window.appVersion);
+            console.log("Environment Type:", window.environmentType);
+
+            const versionEl = document.getElementById("versionText");
+            const siteEl = document.getElementById("siteType");
+
+            if (versionEl) {
+                versionEl.textContent = `Version ${window.appVersion}`;
+            }
+
+            if (siteEl) {
+                siteEl.textContent = `Site ${window.environmentType}`;
+            }
+        }
+
+        function checkSplashScreenVisibility() {
+            const splashScreenModal = document.getElementById("splashScreenModal");
+            if (splashScreenModal) {
+                splashScreenModal.style.display = "none";
+            }
+        }
+
+        function getErrorMessage(error) {
+            if (!error) {
+                return "";
+            }
+
+            if (typeof error === "string") {
+                return error;
+            }
+
+            if (error.message) {
+                return error.message;
+            }
+
+            try {
+                return JSON.stringify(error);
+            } catch {
+                return String(error);
+            }
+        }
+
+        function isTransientBootFailure(error) {
+            const message = getErrorMessage(error).toLowerCase();
+
+            return (
+                message.includes("mono_download_assets") ||
+                message.includes("failed 404") ||
+                message.includes("404") ||
+                message.includes("download") ||
+                message.includes("failed to fetch") ||
+                message.includes("networkerror") ||
+                message.includes("load resource") ||
+                message.includes("failed to start platform") ||
+                message.includes("integrity") ||
+                message.includes("digest") ||
+                message.includes("_framework") ||
+                message.includes(".wasm")
+            );
+        }
+
+        async function startBlazorWithRetry(maxAttempts = 6, delayMs = 5000) {
+            let lastError = null;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    console.info(`[Boot] Starting Blazor. Attempt ${attempt} of ${maxAttempts}...`);
+                    await Blazor.start();
+                    console.info("[Boot] Blazor started successfully.");
+                    return;
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`[Boot] Blazor start failed on attempt ${attempt}.`, error);
+
+                    if (!isTransientBootFailure(error) || attempt === maxAttempts) {
+                        break;
+                    }
+
+                    setRepairButtonState(false, `Preparing update... (${attempt}/${maxAttempts})`);
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+            }
+
+            throw lastError;
+        }
+
+        async function tryAutomaticRecovery(error) {
+            const alreadyAttempted = getSessionFlag("autoBootRepairAttempted") === "true";
+
+            if (alreadyAttempted) {
+                console.warn("[Boot] Automatic recovery already attempted in this session.");
+                return false;
+            }
+
+            if (!isTransientBootFailure(error)) {
+                console.warn("[Boot] Error does not look like a transient release/cache mismatch. Skipping auto-repair.");
+                return false;
+            }
+
+            console.warn("[Boot] Boot failure looks recoverable. Starting one-time automatic emergency repair.", error);
+
+            setSessionFlag("autoBootRepairAttempted", "true");
+            setRepairButtonState(false, "Repairing app automatically...");
+
+            setTimeout(() => {
+                window.cymBuildEmergencyRepair();
+            }, 250);
+
+            return true;
+        }
+
+        async function bootCymBuild() {
+            try {
+                setRepairButtonState(false, "Preparing update...");
+
+                window.serviceWorkerInterop?.enableForceReloadListener?.();
+
+                const appSettings = await fetchAppSettings();
+                applyAppSettingsToUi(appSettings);
+
+                await loadStartupScripts();
+
+                await startBlazorWithRetry(6, 5000);
+
+                if (window.environmentType) {
+                    window.serviceWorkerInterop?.sendEnvironmentType?.(window.environmentType);
+                }
+
+                checkSplashScreenVisibility();
+
+                setTimeout(function () {
+                    const splash = document.getElementById("splashScreenModal");
+                    if (splash) {
+                        splash.style.display = "none";
+                    }
+                }, 60000);
+
+                removeSessionFlag("bootWatchdogTriggered");
+                setRepairButtonState(true, "Repair / Refresh App");
+            } catch (error) {
+                console.error("bootCymBuild failed:", error);
+
+                const recoveryStarted = await tryAutomaticRecovery(error);
+                if (recoveryStarted) {
+                    return;
+                }
+
+                setRepairButtonState(true, "Repair / Refresh App");
+                throw error;
+            }
+        }
+
+        function setCookie(name, value, days) {
+            try {
+                const d = new Date();
+                d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+                const expires = "expires=" + d.toUTCString();
+                const secure = (location.protocol === "https:") ? "; Secure" : "";
+
+                document.cookie =
+                    encodeURIComponent(name) + "=" + encodeURIComponent(value ?? "") + ";" +
+                    expires + ";" +
+                    "path=/;" +
+                    "SameSite=Lax" +
+                    secure;
+            } catch (e) {
+                console.warn("setCookie failed:", e);
+            }
+        }
+
+        function getCookie(name) {
+            try {
+                const encodedName = encodeURIComponent(name) + "=";
+                const parts = document.cookie.split(";");
+
+                for (let i = 0; i < parts.length; i++) {
+                    let c = parts[i].trim();
+                    if (c.indexOf(encodedName) === 0) {
+                        return decodeURIComponent(c.substring(encodedName.length));
+                    }
+                }
+            } catch (e) {
+                console.warn("getCookie failed:", e);
+            }
+
+            return null;
+        }
+
+        function closeSplashScreen() {
+            const noShowCheckbox = document.getElementById("noShowUntilNextRelease");
+            const noShowChecked = noShowCheckbox ? noShowCheckbox.checked : false;
+
+            setCookie("splashScreenVersion", noShowChecked ? (window.appVersion || "0") : "0", 365);
+
+            const splashScreenModal = document.getElementById("splashScreenModal");
+            if (splashScreenModal) {
+                splashScreenModal.style.display = "none";
+            }
+        }
+
+        window.cymbuild = window.cymbuild || {};
+
+        window.cymbuild.downloadFile = function (url) {
+            const a = document.createElement("a");
+            a.href = url;
+            a.style.display = "none";
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        window.cymbuild.downloadFileBytes = function (fileName, contentType, base64Data) {
+            const binary = atob(base64Data || "");
+            const bytes = new Uint8Array(binary.length);
+
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+
+            const blob = new Blob([bytes], {
+                type: contentType || "application/octet-stream"
+            });
+
+            const objectUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = fileName || "download";
+            a.style.display = "none";
+            a.rel = "noopener";
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(function () {
+                URL.revokeObjectURL(objectUrl);
+            }, 1000);
+        };
+
+        window.cymbuildDocs = window.cymbuildDocs || {};
+
+        window.cymbuildDocs.openMailTo = function (subject, body) {
+            const url =
+                "mailto:?subject=" + encodeURIComponent(subject || "") +
+                "&body=" + encodeURIComponent(body || "");
+
+            window.location.href = url;
+        };
+
+        window.cymbuildDocs.registerDropZone = function (dropZoneElement, inputHostElement) {
+            if (!dropZoneElement || !inputHostElement) {
+                return;
+            }
+
+            if (dropZoneElement.dataset.dropZoneRegistered === "true") {
+                return;
+            }
+
+            dropZoneElement.dataset.dropZoneRegistered = "true";
+
+            const preventDefaults = function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            const getInputElement = function () {
+                return inputHostElement.querySelector('input[type="file"]');
+            };
+
+            ["dragenter", "dragover", "dragleave", "drop"].forEach(function (eventName) {
+                dropZoneElement.addEventListener(eventName, preventDefaults, false);
+            });
+
+            dropZoneElement.addEventListener("dragenter", function () {
+                dropZoneElement.classList.add("drag-over");
+            });
+
+            dropZoneElement.addEventListener("dragover", function () {
+                dropZoneElement.classList.add("drag-over");
+            });
+
+            dropZoneElement.addEventListener("dragleave", function (e) {
+                if (!dropZoneElement.contains(e.relatedTarget)) {
+                    dropZoneElement.classList.remove("drag-over");
+                }
+            });
+
+            dropZoneElement.addEventListener("drop", function (e) {
+                dropZoneElement.classList.remove("drag-over");
+
+                if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) {
+                    return;
+                }
+
+                const inputElement = getInputElement();
+                if (!inputElement) {
+                    console.warn("registerDropZone: file input not found inside host element.");
+                    return;
+                }
+
+                try {
+                    const dt = new DataTransfer();
+
+                    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                        dt.items.add(e.dataTransfer.files[i]);
+                    }
+
+                    inputElement.files = dt.files;
+                    inputElement.dispatchEvent(new Event("change", { bubbles: true }));
+                } catch (err) {
+                    console.error("Drop upload failed:", err);
+                }
+            });
+        };
+
+        window.fileDownload = window.fileDownload || {};
+        window.fileDownload._downloads = window.fileDownload._downloads || {};
+
+        window.fileDownload.downloadFileFromBytes = function (fileName, contentType, base64Data) {
+            const binary = atob(base64Data || "");
+            const bytes = new Uint8Array(binary.length);
+
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+
+            const blob = new Blob([bytes], {
+                type: contentType || "application/octet-stream"
+            });
+
+            const objectUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = fileName || "download";
+            a.style.display = "none";
+            a.rel = "noopener";
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(function () {
+                URL.revokeObjectURL(objectUrl);
+            }, 1000);
+        };
+
+        window.fileDownload.beginStreamedDownload = function (downloadId) {
+            window.fileDownload._downloads[downloadId] = {
+                chunks: []
+            };
+        };
+
+        window.fileDownload.appendChunkBase64 = function (downloadId, base64Chunk) {
+            const state = window.fileDownload._downloads[downloadId];
+            if (!state) {
+                throw new Error("Download state not found for " + downloadId);
+            }
+
+            const binary = atob(base64Chunk || "");
+            const bytes = new Uint8Array(binary.length);
+
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+
+            state.chunks.push(bytes);
+        };
+
+        window.fileDownload.finishStreamedDownload = function (downloadId, fileName, contentType) {
+            const state = window.fileDownload._downloads[downloadId];
+            if (!state) {
+                throw new Error("Download state not found for " + downloadId);
+            }
+
+            const blob = new Blob(state.chunks, {
+                type: contentType || "application/octet-stream"
+            });
+
+            const objectUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = fileName || "download";
+            a.style.display = "none";
+            a.rel = "noopener";
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(function () {
+                URL.revokeObjectURL(objectUrl);
+            }, 1000);
+
+            delete window.fileDownload._downloads[downloadId];
+        };
+
+        window.fileDownload.cancelStreamedDownload = function (downloadId) {
+            delete window.fileDownload._downloads[downloadId];
+        };
+
+        bootCymBuild();
+
+        document.addEventListener("DOMContentLoaded", function () {
+            setTimeout(() => {
+                const alreadyTriggered = getSessionFlag("bootWatchdogTriggered") === "true";
+                if (alreadyTriggered) {
+                    return;
+                }
+
+                const loadingText = document.querySelector(".loading-progress-text");
+                const isStillLoading = !!document.querySelector(".loading-progress");
+                const text = loadingText ? loadingText.innerText.trim() : "";
+
+                if (isStillLoading && text === "100%") {
+                    console.warn("[BootWatchdog] App appears stuck at 100%. Starting one-time automatic emergency repair.");
+                    setSessionFlag("bootWatchdogTriggered", "true");
+                    setRepairButtonState(false, "Repairing app automatically...");
+                    window.cymBuildEmergencyRepair();
+                }
+            }, 45000);
+        });
+
+        window.addEventListener("load", function () {
+            setTimeout(() => {
+                const errorUi = document.getElementById("blazor-error-ui");
+                const errorUiVisible =
+                    errorUi &&
+                    window.getComputedStyle(errorUi).display !== "none";
+
+                if (!errorUiVisible) {
+                    removeSessionFlag("autoBootRepairAttempted");
+                }
+            }, 5000);
+        });
+    </script>
+
+    <script>
+        window.cymBuild = window.cymBuild || {};
+
+        window.cymBuild.setDocumentTitle = function (title) {
+            document.title = title && title.trim() ? title : "CymBuild";
+        };
+    </script>
+
+    <script>
+        window.exportToPdf = async (elementId, fileName) => {
+            const { jsPDF } = window.jspdf;
+
+            const element = document.getElementById(elementId);
+            if (!element) return;
+
+            const selectorsToExpand = [
+                ".quote-type-scroll",
+                ".status-breakdown-scroll",
+                ".table-wrap",
+                ".chart-surface"
+            ];
+
+            const modifiedElements = [];
+
+            try {
+                selectorsToExpand.forEach(selector => {
+                    element.querySelectorAll(selector).forEach(el => {
+                        modifiedElements.push({
+                            el,
+                            overflow: el.style.overflow,
+                            overflowX: el.style.overflowX,
+                            overflowY: el.style.overflowY,
+                            maxHeight: el.style.maxHeight,
+                            height: el.style.height
+                        });
+
+                        el.style.overflow = "visible";
+                        el.style.overflowX = "visible";
+                        el.style.overflowY = "visible";
+                        el.style.maxHeight = "none";
+                        el.style.height = "auto";
+                    });
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 150));
+
+                const canvas = await html2canvas(element, {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: "#ffffff",
+                    windowWidth: element.scrollWidth,
+                    windowHeight: element.scrollHeight
+                });
+
+                const imgData = canvas.toDataURL("image/png");
+
+                const pdf = new jsPDF({
+                    orientation: "landscape",
+                    unit: "mm",
+                    format: "a4"
+                });
+
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+
+                const imgWidth = pageWidth;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft > 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+
+                pdf.save(fileName);
+            } finally {
+                modifiedElements.forEach(x => {
+                    x.el.style.overflow = x.overflow;
+                    x.el.style.overflowX = x.overflowX;
+                    x.el.style.overflowY = x.overflowY;
+                    x.el.style.maxHeight = x.maxHeight;
+                    x.el.style.height = x.height;
+                });
+            }
+        };
+    </script>
+</body>
+
+</html>

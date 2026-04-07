@@ -1,0 +1,123 @@
+﻿@page "/sagetest"
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Telerik.Blazor.Components
+@inject IToastService toastService
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<TelerikCard Class="p-4">
+    <TelerikCardHeader>
+        <div class="d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Sage 200 Test Integration</h4>
+            <TelerikDropDownList @bind-Value="SelectedExample"
+                                 Data="@Examples"
+                                 TextField="Text"
+                                 ValueField="Value"
+                                 Width="300px"
+                                 OnChange="@LoadExampleXml" />
+        </div>
+    </TelerikCardHeader>
+
+    <TelerikCardBody>
+        <div class="mb-3">
+            <label for="xmlInput" class="form-label fw-bold">XML Request</label>
+            <textarea id="xmlInput" class="form-control" rows="10" @bind="RequestXml" />
+        </div>
+        <div class="mb-3">
+            <button class="btn btn-primary" @onclick="ExecuteCall" disabled="@IsProcessing">
+                @(IsProcessing ? "Sending..." : "Send to Sage API")
+            </button>
+        </div>
+        <div>
+            <label class="form-label fw-bold">XML Response</label>
+            <pre class="bg-light p-3 rounded">@ResponseXml</pre>
+        </div>
+    </TelerikCardBody>
+</TelerikCard>
+
+@code {
+    private string RequestXml = string.Empty;
+    private string ResponseXml = string.Empty;
+    private bool IsProcessing = false;
+
+    private string SelectedExample = "FetchTaxCodes";
+
+    private readonly List<DropdownOption> Examples = new()
+    {
+        new() { Text = "Fetch Tax Codes", Value = "FetchTaxCodes" },
+        new() { Text = "Create Sample Customers", Value = "V2CreateCustomers" }
+    };
+
+    private class DropdownOption
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+
+    private async Task LoadExampleXml()
+    {
+        if (SelectedExample == "FetchTaxCodes")
+        {
+            RequestXml = @"<Request>
+    <Type>FetchTaxCodes</Type>
+    <Sage>
+        <UserName>SFAWI</UserName>
+        <Password>SFAWI</Password>
+        <DataSetName>Demo Data</DataSetName>
+    </Sage>
+</Request>";
+        }
+        else if (SelectedExample == "V2CreateCustomers")
+        {
+            RequestXml = @"<Request>
+  <Type>V2CreateCustomers</Type>
+  <Sage>
+    <UserName>SFAWI</UserName>
+    <Password>SFAWI</Password>
+    <DataSetName>Demo Data</DataSetName>
+  </Sage>
+  <DataObject>
+    &lt;Customers&gt;
+      &lt;Customer&gt;
+        &lt;CustomerAccountNumber&gt;COMP011&lt;/CustomerAccountNumber&gt;
+        &lt;CustomerAccountName&gt;COMP011&lt;/CustomerAccountName&gt;
+        &lt;ExternalReferenceID&gt;MYID1234&lt;/ExternalReferenceID&gt;
+      &lt;/Customer&gt;
+      &lt;Customer&gt;
+        &lt;CustomerAccountNumber&gt;COMP022&lt;/CustomerAccountNumber&gt;
+        &lt;CustomerAccountName&gt;COMP022&lt;/CustomerAccountName&gt;
+        &lt;ExternalReferenceID&gt;MYID999888777xyz&lt;/ExternalReferenceID&gt;
+      &lt;/Customer&gt;
+    &lt;/Customers&gt;
+  </DataObject>
+</Request>";
+        }
+    }
+
+    private async Task ExecuteCall()
+    {
+        var formHelper = new FormHelper(coreClient, sageIntegrationService, "00000000-0000-0000-0000-000000000000", userService);
+        try
+        {
+            IsProcessing = true;
+            ResponseXml = "Sending...";
+           // ResponseXml = await formHelper.ExecuteSageXmlAsync(RequestXml);
+        }
+        catch (Exception ex)
+        {
+            ResponseXml = $"❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadExampleXml();
+    }
+}

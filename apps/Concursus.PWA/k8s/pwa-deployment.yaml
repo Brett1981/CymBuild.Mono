@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cymbuild-pwa
+  labels:
+    app: cymbuild-pwa
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cymbuild-pwa
+  template:
+    metadata:
+      labels:
+        app: cymbuild-pwa
+    spec:
+      containers:
+      - name: pwa
+        image: your-registry.io/cymbuild/pwa:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: AzureAd__ClientSecret
+          valueFrom:
+            secretKeyRef:
+              name: cymbuild-secrets
+              key: azure-client-secret
+        - name: ShoreAPI__Url
+          valueFrom:
+            secretKeyRef:
+              name: cymbuild-secrets
+              key: shoreapi-url
+        - name: Grpc__SageApi
+          valueFrom:
+            secretKeyRef:
+              name: cymbuild-secrets
+              key: grpc-sageapi-url
+        - name: ASPNETCORE_ENVIRONMENT
+          value: "Production"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cymbuild-secrets
+type: Opaque
+data:
+  azure-client-secret: dEFTOFF+U2ViYW05dnh+bDVZNn5OWWZabG96UXBBR2pVUXdhN2FpQQ==         # base64 for your ClientSecret
+  shoreapi-url: YXBpOi8vMzlhYTdjNDYtNTIyOC00YTIyLTk3NGMtOWRkMDYxZDk2ODRj  # base64 encoded
+  grpc-sageapi-url: aHR0cHM6Ly9zYWdlLmNvbmN1cnN1cy5zby5jb20=     # base64 encoded
+
+            # echo -n 'actual-value-here' | base64

@@ -1,0 +1,232 @@
+﻿@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Helpers
+@using System.Linq
+@using System.Collections.Generic
+@using Google.Protobuf.WellKnownTypes
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JSRuntime
+
+<h3 class="dashboard-title">📊 System Usage Analytics</h3>
+
+<!-- Filtering Controls -->
+<div class="filter-container">
+    <TelerikDateRangePicker @bind-StartValue="StartDate" @bind-EndValue="EndDate" Format="dd MMM yyyy"
+    OnChange="FetchUsageReport" />
+
+    @if (Users.Any())
+    {
+        <TelerikDropDownList TItem="UserItem" TValue="string"
+                             Data="@Users"
+                             TextField="Username"
+                             ValueField="UserGuid"
+                             @bind-Value="SelectedUserGuid"
+                             FilterPlaceholder="Select a User"
+                             OnChange="@((object selectedValue) => OnUserChanged(selectedValue))">
+        </TelerikDropDownList>
+    }
+    else
+    {
+        <p>Loading users...</p>
+    }
+</div>
+
+<!-- Data Grid -->
+<TelerikGrid Data="@UsageReport" Pageable="true" Sortable="true" Height="400px">
+    <GridColumns>
+        <GridColumn Field="Username" Title="User Name" />
+        <GridColumn Field="FeatureName" Title="Feature Name" />
+        <GridColumn Field="UsageCount" Title="Usage Count" />
+        <GridColumn Field="WeeklyAverage" Title="Weekly Avg" />
+        <GridColumn Field="FirstAccessed" Title="First Accessed" />
+        <GridColumn Field="LastAccessed" Title="Last Accessed" />
+    </GridColumns>
+</TelerikGrid>
+
+<!-- Charts Section -->
+@if (UsageReport != null && UsageReport.Any())
+{
+    <div class="chart-container">
+        <!-- Feature Usage Breakdown -->
+        <!-- Bar Chart -->
+        <TelerikChart Width="600px" Height="400px" OnSeriesClick="OnBarClick">
+            <ChartSeriesItems>
+                <ChartSeries Type="ChartSeriesType.Bar" Data="@FeatureUsageCounts" Name="Feature Usage"
+                Color="blue">
+                    <ChartSeriesLabels Visible="true" Color="white" />
+                </ChartSeries>
+            </ChartSeriesItems>
+            <ChartCategoryAxes>
+                <ChartCategoryAxis Categories="@FeatureNames">
+                    <ChartCategoryAxisTitle Text="Features" />
+                </ChartCategoryAxis>
+            </ChartCategoryAxes>
+        </TelerikChart>
+
+        <button class="btn btn-secondary" @onclick="ResetUsageReport">🔄 Reset View</button>
+
+        <!-- Pie Chart -->
+        <TelerikChart Width="600px" Height="500px" OnSeriesClick="OnPieClick">
+            <ChartSeriesItems>
+                <ChartSeries Type="ChartSeriesType.Pie"
+                             Data="@FeatureUsageData"
+                             Field="@nameof(PieChartModel.UsageCount)"
+                             CategoryField="@nameof(PieChartModel.FeatureName)">
+                    <ChartSeriesLabels Visible="true" Position="ChartSeriesLabelsPosition.OutsideEnd" Rotation="0" Color="black" />
+                </ChartSeries>
+            </ChartSeriesItems>
+            <ChartLegend Position="ChartLegendPosition.Bottom"></ChartLegend>
+        </TelerikChart>
+    </div>
+}
+
+<!-- Export Buttons -->
+<div class="export-buttons">
+    <button class="btn btn-primary" @onclick="ExportToCSV">📥 Export to CSV</button>
+    <button class="btn btn-warning" @onclick="ExportToPDF">📄 Export to PDF</button>
+</div>
+
+@code {
+    private List<UsageData> UsageReport = new();
+    private DateTime StartDate = DateTime.UtcNow.AddDays(-30);
+    private DateTime EndDate = DateTime.UtcNow;
+    private List<UserItem> Users = new();
+    private string? SelectedUserGuid;
+
+    private List<UsageData> OriginalUsageReport = new(); // Stores unfiltered data
+
+    private string[] FeatureNames => UsageReport.Select(u => u.FeatureName).Distinct().ToArray();
+
+    private object[] FeatureUsageCounts =>
+        FeatureNames.Select(name => (object)UsageReport.Where(u => u.FeatureName == name).Sum(u => u.UsageCount)).ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+        await FetchUsageReport();
+    }
+
+    private async Task LoadUsers()
+    {
+        var ListOfUsers = await coreClient.UsersGetAsync(new UsersGetRequest()); // API Call to Fetch Users
+
+        if (ListOfUsers != null && ListOfUsers.Users.Any())
+        {
+            Users = ListOfUsers.Users
+                .Select(user => new UserItem { UserGuid = user.Guid, Username = user.FullName })
+                .ToList();
+
+            StateHasChanged(); // Force UI to update after fetching users
+        }
+    }
+
+    private async Task FetchUsageReport()
+    {
+        Console.WriteLine($"Fetching Usage Report for Days: {(EndDate - StartDate).Days}, User: {SelectedUserGuid ?? "All"}");
+
+        var request = new UsageReportRequest
+            {
+                Days = (EndDate - StartDate).Days,
+                UserGuid = SelectedUserGuid ?? string.Empty,
+                StartDateUtc = UiFormattingHelper.ToTimestamp(StartDate),
+                EndDateUtc = UiFormattingHelper.ToTimestamp(EndDate.AddDays(1).AddSeconds(-1))
+
+
+            };
+
+        try
+        {
+            var response = await coreClient.GetUsageReportAsync(request);
+
+            // Save the full dataset before any drill-down filtering
+            OriginalUsageReport = response.UsageData.ToList();
+            UsageReport = OriginalUsageReport;
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error calling GetUsageReport: {ex.Message}");
+        }
+    }
+
+    private async Task OnDateChanged()
+    {
+        if (StartDate != null && EndDate != null && EndDate > StartDate)
+        {
+            if ((EndDate - StartDate).Days == 0)
+                return; // skip 0-day requests if that's undesired
+
+            await FetchUsageReport();
+        }
+    }
+
+    private async Task OnUserChanged(object selectedValue)
+    {
+        SelectedUserGuid = selectedValue as string; // Assign selected value
+        Console.WriteLine($"User changed to: {SelectedUserGuid}"); // Debugging
+        await FetchUsageReport(); // Fetch updated data
+
+
+    }
+    private void ResetUsageReport()
+    {
+        UsageReport = OriginalUsageReport; // Restore original data
+        StateHasChanged();
+    }
+
+    private List<PieChartModel> FeatureUsageData =>
+    FeatureNames.Select(name => new PieChartModel
+        {
+            FeatureName = name,
+            UsageCount = UsageReport.Where(u => u.FeatureName == name).Sum(u => u.UsageCount)
+        }).ToList();
+
+    private void OnBarClick(ChartSeriesClickEventArgs args)
+    {
+        if (args.Category != null)
+        {
+            string clickedFeature = args.Category.ToString();
+            UsageReport = OriginalUsageReport.Where(u => u.FeatureName == clickedFeature).ToList();
+            StateHasChanged();
+        }
+    }
+
+    private void OnPieClick(ChartSeriesClickEventArgs args)
+    {
+        if (args.Category != null)
+        {
+            string clickedFeature = args.Category.ToString();
+            UsageReport = OriginalUsageReport.Where(u => u.FeatureName == clickedFeature).ToList();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ExportToCSV()
+    {
+        var csvContent = "Username,FeatureName,UsageCount,WeeklyAverage,FirstAccessed,LastAccessed\n" +
+                         string.Join("\n", UsageReport.Select(u => $"{u.Username},{u.FeatureName},{u.UsageCount},{u.WeeklyAverage},{u.FirstAccessed},{u.LastAccessed}"));
+        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.csv", $"data:text/csv;charset=utf-8,{csvContent}");
+    }
+
+    private async Task ExportToPDF()
+    {
+        var pdfContent = "System Usage Report\n\n" +
+                         string.Join("\n", UsageReport.Select(u => $"{u.Username} - {u.FeatureName}: First Accessed: {u.FirstAccessed} - {u.UsageCount} times (Last Accessed: {u.LastAccessed}) - Weekly Average: {u.WeeklyAverage}"));
+        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.pdf", $"data:text/plain;charset=utf-8,{pdfContent}");
+    }
+
+    public class UserItem
+    {
+        public string UserGuid { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+    }
+
+    public class PieChartModel
+    {
+        public string FeatureName { get; set; } = string.Empty;
+        public int UsageCount { get; set; }
+    }
+
+}

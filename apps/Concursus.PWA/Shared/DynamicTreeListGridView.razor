@@ -1,0 +1,248 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Pages
+@using Concursus.PWA.Services
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+@using Concursus.PWA.Classes;
+@using Concursus.PWA.Helpers;
+
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject Core.CoreClient CoreClient
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+<style>
+    .bActionBtn {
+        padding: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 5px !important;
+    }
+
+    .dynamic-batch-grid-modal {
+        max-height: 70vh; /* 70% of the viewport height */
+        max-width: 90vw; /* 90% of the viewport width */
+        overflow-y: auto; /* Enable vertical scrolling if content overflows */
+        overflow-x: auto; /* Enable horizontal scrolling if content overflows */
+        padding: 1rem; /* Optional: Add padding for better appearance */
+    }
+</style>
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+<ErrorBoundary>
+    <ChildContent>
+        <div class="d-flex flex-wrap justify-content-between">
+            <div class="p-2">
+                <h5 class="view-name">@ViewDefinition?.Name</h5>
+            </div>
+
+            <div class="p-2 form-buttons">
+              @*   <div class="button-group">
+                    @if (ViewDefinition is not null)
+                    {
+                        @if (ViewDefinition.AllowNew)
+                        {
+                            <button class="btn btn-success" type="button" @onclick="AddNew">
+                                <i class="bi bi-plus-circle-fill me-2" style="font-size: 1.2rem;"></i>
+                                New
+                            </button>
+                        }
+                    }
+                </div> *@
+            </div>
+        </div>
+        @if (ViewDefinition is not null)
+        {
+            @if (FullGrid)
+            {
+                <div class="grid-container">
+                    <TelerikTreeList TItem="ExpandoObject"
+                                     Data="@groupedData"
+                                     IdField="TreeListID"
+                                     ParentIdField="ParentID"
+                                     FilterMode="@TreeListFilterMode.FilterRow"
+                                     Pageable="true"
+                                     Sortable="false"
+                                     PageSize="10000"
+                                     Height="100%"
+                                     Resizable="true"
+                                     OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                     OnRowRender="@OnRowRenderHandler"
+                                     @ref="@GridRef">
+                        <TreeListColumns>
+                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(x => !x.IsHidden).OrderBy(o => o.ColumnOrder))
+                            {
+
+                                bool isExpandable = false;
+
+                                if (gvcd.Name == FirstOrderBy )
+                                    isExpandable = true;
+
+                                @* Add class to highlight row. *@
+                               
+                                <TreeListColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                Expandable="@isExpandable"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))" />
+                            }
+                        </TreeListColumns>
+                    </TelerikTreeList>
+                </div>
+                <div class="back-to-top-button">
+                    <button class="btn btn-secondary" @onclick="ScrollToTop">
+                        <i class="bi bi-arrow-up-circle"></i> Back To Top
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="dynamic-batch-grid-modal">
+                      <TelerikTreeList TItem="ExpandoObject"
+                                     Data="@groupedData"
+                                     IdField="TreeListID"
+                                     ParentIdField="ParentID"
+                                     FilterMode="@TreeListFilterMode.FilterRow"
+                                     Pageable="true"
+                                     Sortable="false"
+                                     PageSize="10000"
+                                     Height="100%"
+                                     Resizable="true"
+                                     OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                     OnRowRender="@OnRowRenderHandler"
+                                     @ref="@GridRef">
+                        <TreeListColumns>
+                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(x => !x.IsHidden).OrderBy(o => o.ColumnOrder))
+                            {
+
+
+                                bool isExpandable = false;
+
+                                if (gvcd.Name == FirstOrderBy )
+                                    isExpandable = true;
+
+                                @* Add class to highlight row. *@
+                               
+                                <TreeListColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                Expandable="@isExpandable"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))" />
+                            }
+                        </TreeListColumns>
+                    </TelerikTreeList>
+                </div>
+            }
+
+            @if (ViewDefinition.IsDetailWindowed)
+            {
+                <TelerikWindow @ref="ModalWindow"
+                               Class="responsive-window"
+                               Visible="@WindowIsVisible"
+                               Modal="true"
+                               CloseOnOverlayClick="false"
+                               VisibleChanged="@WindowVisibleChangedHandler"
+                               MaxHeight="100vh">
+                    <WindowTitle>@WindowTitle</WindowTitle>
+                    <WindowContent>
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")" Parameters="@_detailPageParameters" />
+                    </WindowContent>
+                    <WindowActions>
+                        <WindowAction Name="Minimize"></WindowAction>
+                        <WindowAction Name="Maximize"></WindowAction>
+                        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
+            }
+
+
+        }
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>
+
+<style>
+    .view-name {
+        padding: 5px;
+    }
+
+    .width-100 {
+        width: 100%;
+    }
+
+    .grid .k-grid-content tr {
+        line-height: 32px;
+    }
+
+    /* Ensure text overflow with ellipsis for grid cells */
+    .custom-ellipsis,
+    .k-grid td.custom-ellipsis,
+    .k-grid tr.custom-ellipsis .k-table-td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Container to enable horizontal scrolling */
+    .grid-container {
+        max-width: 100%; /* Ensure the container does not exceed the viewport width */
+        overflow-x: auto; /* Enable horizontal scrolling */
+    }
+
+        /* Adjusting the grid layout */
+        .grid-container .k-grid {
+            min-width: 1200px; /* Adjust this value based on your columns' total width */
+            width: 100%; /* This ensures the grid will take up all available width */
+            table-layout: fixed; /* Use fixed layout for the grid */
+        }
+
+    /* Style for the back-to-top button */
+    .back-to-top-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000; /* Ensure it is on top of other elements */
+        opacity: 0.5; /* Initial opacity set to 50% */
+        transition: opacity 0.3s ease; /* Smooth transition for hover effect */
+    }
+
+        /* Full opacity on hover for better visibility */
+        .back-to-top-button:hover {
+            opacity: 1;
+        }
+
+    .cancelButton {
+        background-color: #c82333 !important;
+        color: white !important;
+    }
+
+    .invalid-row {
+        background-color: #f8d7da; /* Light red background */
+        color: #721c24; /* Dark red text */
+        font-weight: bold; /* Bold text */
+        pointer-events: none; /* Makes rows unclickable */
+        opacity: 0.7; /* Reduce opacity to make it look disabled */
+    }
+
+    .invalid-row .k-checkbox {
+        pointer-events: none; /* Disable checkbox interactions */
+    }
+
+    .treelist-toggle-header {
+        background-color: #0d6efd !important;
+        color: #ffffff !important;
+    }
+
+    .treelist-toggle-header-2{
+        background-color: #fff3cd !important;
+        color: #000000 !important;
+    }
+</style>

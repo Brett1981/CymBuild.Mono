@@ -1,0 +1,46 @@
+﻿@using System.Collections.Generic
+
+<div class="tabs">
+    @foreach (var tab in TabItems)
+    {
+        <div @onclick="@(() => SetTabActive(tab))"
+             class="@GetTabClass(tab)">
+            @tab.Title
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+    public List<Tab> TabItems { get; set; } = new List<Tab>();
+
+    public void SetTabActive(Tab tabToActivate)
+    {
+        foreach (var tab in TabItems)
+        {
+            if (tab != tabToActivate && tab.IsActive)
+            {
+                tab.IsActive = false; // This will trigger IsActiveChanged automatically
+            }
+        }
+        if (!tabToActivate.IsActive)
+        {
+            tabToActivate.IsActive = true; // This will trigger IsActiveChanged automatically
+        }
+    }
+
+    private string GetTabClass(Tab tab)
+    {
+        return tab.IsActive ? "tab active" : "tab";
+    }
+
+    public void AddTab(Tab tab)
+    {
+        TabItems.Add(tab);
+        if (TabItems.Count == 1)
+        {
+            SetTabActive(tab); // Automatically activate the first tab
+        }
+    }
+}

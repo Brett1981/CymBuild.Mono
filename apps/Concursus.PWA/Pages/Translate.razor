@@ -1,0 +1,46 @@
+﻿@page "/translate"
+@inject TranslationServiceWrapper TranslationService
+@using Concursus.API
+@using CymBuild.API.Client.Services
+@using Microsoft.Extensions.Logging
+@using Grpc.Core
+
+<h3>Translate Text</h3>
+
+<button @onclick="TranslateText">Translate</button>
+
+@code {
+    private async Task TranslateText()
+    {
+        try
+        {
+            var request = new TranslateRequest
+                {
+                    TargetLanguage = "es", // Example target language
+                    LabelTranslation =
+                {
+                    new GoogleLanguageLabelTranslation
+                    {
+                        LanguageGuid = Guid.Empty.ToString(),
+                        LanguageLabelGuid = Guid.Empty.ToString(),
+                        Text = "Hello",
+                        Guid = Guid.Empty.ToString()
+                    }
+                }
+                };
+
+            var response = await TranslationService.TranslateTextAsync(request);
+            // Handle the response as needed
+        }
+        catch (RpcException ex)
+        {
+            // Log the exception or show a message to the user
+            Console.WriteLine($"gRPC Error translating text: {ex.Status.Detail}");
+        }
+        catch (Exception ex)
+        {
+            // Catch any other exceptions
+            Console.WriteLine($"An unexpected error occurred: {ex.Message}");
+        }
+    }
+}

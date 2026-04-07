@@ -1,0 +1,3 @@
+﻿CREATE USER [ESGL\Oliver.Eros]
+  WITHOUT LOGIN
+GO

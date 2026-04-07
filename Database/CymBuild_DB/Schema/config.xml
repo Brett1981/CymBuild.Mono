@@ -1,0 +1,6 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Configuration>
+  <Collation>SQL_Latin1_General_CP1_CI_AS</Collation>
+  <ServerVersion>16.00.0000</ServerVersion>
+  <Entity>Schema</Entity>
+</Configuration>

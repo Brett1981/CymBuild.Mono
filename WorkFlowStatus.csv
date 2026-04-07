@@ -1,0 +1,32 @@
+﻿,ENQUIRY,ENQUIRY SERVICES (ES),QUOTE,QUOTE ITEMS (QS),JOB
+,,,,,
+,New,NULL,NULL,NULL,NULL
+,Declined,May\May Not Exist but WF Status Declined,NULL,NULL,NULL
+,Review,Exists - ES Status = 'No Quote',NULL,NULL,NULL
+,Ready For Quote,Exists - ES Status = 'No Quote',NULL,NULL,NULL
+,Dead,May\May Not Exist but WF Status Dead,NULL,NULL,NULL
+Auto,Deadline Aproaching,May\May Not Exist (AUTOMATIC STATUS),NULL,NULL,NULL
+Auto,Deadline Missed,May\May Not Exist (AUTOMATIC STATUS),NULL,NULL,NULL
+Auto,Expired,May\May Not Exist (AUTOMATIC STATUS),NULL,NULL,NULL
+,,,,,
+,Quoting,ES Status = 'Quoting',Quoting,NULL,NULL
+,Ready To Send,ES Status = 'Ready To Send',Ready To Send,ITEM EXISTS (With Value),NULL
+,Sent,ES Status = 'Sent',Sent,ITEM EXISTS (With Value),NULL
+,1st Chase,ES Status = '1st Chase',1st Chase,ITEM EXISTS (With Value),NULL
+,2nd Chase,ES Status = '2nd Chase',2nd Chase,ITEM EXISTS (With Value),NULL
+,Accepted,ES Status = 'Accepted',Accepted,ITEM EXISTS (With Value),NULL
+,Rejected,ES Status = 'Rejected',Rejected,May\May Not Exist but WF Status Rejected,NULL
+,Declined,ES Status = 'Declined',Declined,May\May Not Exist but WF Status Declined,NULL
+,Dead,ES Status = 'Dead',Dead,May\May Not Exist but WF Status Dead,NULL
+Auto,Quote Deadline Aproaching,EXISTS - (AUTOMATIC STATUS),Quote Deadline Aproaching,May\May Not Exist (AUTOMATIC STATUS),NULL
+Auto,Quote Deadline Missing,EXISTS - (AUTOMATIC STATUS),Quote Deadline Missing,May\May Not Exist (AUTOMATIC STATUS),NULL
+Auto,Quote Expired,EXISTS - (AUTOMATIC STATUS),Quote Expired,May\May Not Exist (AUTOMATIC STATUS),NULL
+,,,,,
+,Complete,Complete,Complete,Job Created WF Status = New,New
+,Complete,Complete,Complete,Job Created WF Status = Job Started,Job Started
+,Complete,Complete,Complete,Job Created WF Status = Dormant,Dormant
+,Complete,Complete,Complete,Job Created WF Status = Cancelled,Cancelled
+,Complete,Complete,Complete,Job Created WF Status = Dead,Dead
+,Complete,Complete,Complete,Job Created WF Status = Complete For Review,Complete For Review
+,Complete,Complete,Complete,Job Created WF Status = Reviewed,Reviewed
+,Complete,Complete,Complete,Job Created WF Status = Complete,Complete

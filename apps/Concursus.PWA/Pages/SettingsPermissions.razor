@@ -1,0 +1,122 @@
+﻿@page "/Permissions"
+@using Concursus.API.Client;
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@inject NavigationManager NavManager
+@inject Core.CoreClient coreClient
+@inject IJSRuntime JSRuntime;
+@inject UserService userService
+@inject ModalService modalService
+@inject AppConfiguration appConfiguration
+
+@attribute [Authorize]
+<TelerikWindow @ref="ModalWindow" Class="responsive-window" Visible="@ModalWindowIsVisible" VisibleChanged="VisibleChangedHandler" Modal="true" CloseOnOverlayClick="false" MaxHeight="100vh">
+    <WindowTitle>@WindowTitle</WindowTitle>
+    <WindowContent>
+        <h4>
+            <i class="@HeaderCssIcon" style="font-size: 1.2rem;"></i> @HeaderText
+        </h4>
+        @if (!string.IsNullOrEmpty(@GridCodeSelection))
+        {
+            <DynamicGrid GridCode="@GridCodeSelection" ParentGuid="@GetParentGuid()" TransientVirtualProperties="@TransientVirtualProperties" />
+        }
+        @if (!string.IsNullOrEmpty(@LoadPageUrl))
+        {
+            <DynamicComponent Type="@System.Type.GetType(@LoadPageUrl)" Parameters="@DetailPageParameters" />
+        }
+    </WindowContent>
+    <WindowActions>
+        <WindowAction Name="MinRimize"></WindowAction>
+        <WindowAction Name="Maximize"></WindowAction>
+        <WindowAction Name="Close" OnClick="@CloseWindowCross"></WindowAction>
+    </WindowActions>
+</TelerikWindow>
+
+@code
+{
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public EventCallback CloseWindow { get; set; }
+    [Parameter] public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public bool Windowed { get; set; } = true;
+
+    // [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public EventCallback GridUpdated { get; set; }
+
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+    [Parameter] public string? SerializedDataObjectReference { get; set; } = "";
+
+    [Parameter] public string RecordGuid { get; set; } = Guid.Empty.ToString();
+
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+
+    public List<API.Client.MenuItem>? MenuItems { get; set; }
+    public TelerikWindow ModalWindow { get; set; }
+    private string? GridCodeSelection { get; set; }
+    private string HeaderCssIcon { get; set; } = "";
+    private string HeaderText { get; set; } = "";
+    private string? LoadPageUrl { get; set; }
+    private bool ModalWindowIsVisible { get; set; } = false;
+    private bool windowIsClosable { get; set; } = true;
+    private string? WindowTitle { get; set; }
+    protected FormHelper? formHelper;
+    private IDictionary<string, object> DetailPageParameters = new Dictionary<string, object>();
+    public API.Client.MenuItem? ClickedItem { get; set; }
+
+    private string GetParentGuid()
+    {
+        try
+        {
+            // Retrieve the value associated with the "RecordGuid
+            // (ParentDataObjectReference)" key when loading a DynamicGrid
+            if (DetailPageParameters.TryGetValue("RecordGuid", out var parentGuid))
+                return parentGuid?.ToString();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("Message", "An error occurred while trying to get the parent guid.");
+            ex.Data.Add("PageMethod", "SettingsPermissions/GetParentGuid()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        // If the key is not found, you can return a default value or handle it
+        // as needed
+        return Guid.Empty.ToString();
+    }
+
+    protected void CloseWindowCross()
+    {
+        ModalWindowIsVisible = false;
+        CloseWindow.InvokeAsync();
+    }
+
+    private void VisibleChangedHandler(bool currVisible) // this will always come in as false
+    {
+        ModalWindowIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+            // Open the Modal showing the permissions dialog set LoadPageUrl
+            // to empty as GridCode required instead
+            DetailPageParameters.Clear();
+            DetailPageParameters.Add("SerializedDataObjectReference", SerializedDataObjectReference);
+            DetailPageParameters.Add("ParentDataObjectReference", ParentDataObjectReference);
+            DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
+            DetailPageParameters.Add("OnError", EventCallback.Factory.Create(this, OnError));
+            DetailPageParameters.Add("RecordGuid", RecordGuid);
+            LoadPageUrl = " Concursus.PWA.Shared.Permissions";
+            GridCodeSelection = "";
+            WindowTitle = "Permissions";
+            HeaderCssIcon = "";
+            HeaderText = "Permissions Set";
+            ModalWindowIsVisible = true;
+        return base.OnAfterRenderAsync(firstRender);
+    }
+
+}

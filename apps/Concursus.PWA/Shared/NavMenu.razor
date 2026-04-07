@@ -1,0 +1,284 @@
+﻿@using Concursus.API.Client
+@using Concursus.API.Client.Classes
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Classes
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Options
+@using Microsoft.JSInterop
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JSRuntime
+@inject StateService stateService
+@inject ModalService modalService
+@inject NavigationManager NavManager
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject OfflineSyncService SyncService
+@inject IToastService NotificationService
+@inject SyncQueueState SyncQueueState
+@inject IOptions<ClientConfiguration> Config
+
+@implements IAsyncDisposable
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid top-row-container">
+        <a class="navbar-brand cymbuild-brand" href="">
+            <img src="icon-192.png"
+                 alt="CymBuild"
+                 class="cymbuild-logo" />
+
+            <span class="brand-name">CymBuild</span>
+
+            <span class="version-badge">
+                v@(Config.Value.Versioning.PWAVersion)
+            </span>
+
+            @if (!string.Equals(Config.Value.Environment.Type, "LIVE", StringComparison.OrdinalIgnoreCase))
+            {
+                <span class="env-badge env-@Config.Value.Environment.Type.ToLowerInvariant()">
+                    @if (NavManager.BaseUri.Contains("bre.socotec.co.uk:9402") || NavManager.BaseUri.Contains("cymbuild-dev"))
+                    {
+                        @("QA")
+                    }
+                    else
+                    {
+                        @Config.Value.Environment.Type
+                    }
+                   
+                </span>
+            }
+        </a>
+
+        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </div>
+</div>
+
+@if (DeviceInfoService.IsMobile)
+{
+    <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+        <nav class="flex-column">
+            <CascadingValue Value="syncQueueCount" IsFixed="false">
+                <LoginDisplay />
+            </CascadingValue>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="jobs/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("63542427-46ab-4078-abd1-1d583c24315c"))">
+                    <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i> Jobs
+                </NavLink>
+            </div>
+        </nav>
+    </div>
+
+
+}
+else
+{
+    <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
+        <nav class="flex-column">
+            <CascadingValue Value="syncQueueCount" IsFixed="false">
+                <LoginDisplay />
+            </CascadingValue>
+
+            <div class="nav-status-section px-3">
+                <div class="nav-status-toolbar">
+                    <div class="nav-status-left">
+                        <ServiceWorkerButton />
+                    </div>
+
+                    <div class="nav-status-right">
+                        <SageStatusIndicator />
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-section-divider"></div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All" >
+                    <i class="bi bi-house-fill me-2"></i> Home
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="projects/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("67e61cfd-d454-4be1-9db9-532ba3de8475"))">
+                    <i class="bi bi-file-earmark-ppt-fill me-2"></i> Client Projects
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="scheduleTeam">
+                    <i class="bi bi-calendar-month-fill me-2"></i> Schedule
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="crm/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("40476ecc-d19a-4de9-90df-e1f45cd72fb2"))">
+                    <i class="bi bi-person-vcard-fill me-2"></i> CRM
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="structures/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("2cfbff39-93cd-436b-b8ca-b2fcf7609707"))">
+                    <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i> Assets
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="enquiries/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("3b4f2df9-b6cf-4a49-9eed-2206473867a1"))">
+                    <i class="bi bi-search me-2" style="font-size: 1.2rem;"></i> Enquiries
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="quotes/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("1c4794c1-f956-4c32-b886-5500ac778a56"))">
+                    <i class="bi bi-newspaper me-2" style="font-size: 1.2rem;"></i> Quoting
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="jobs/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("63542427-46ab-4078-abd1-1d583c24315c"))">
+                    <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i> Jobs
+                </NavLink>
+            </div>
+@*     @if (EnvironmentType == "DEV")
+    { *@
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="/authorisation/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("ACF5AD06-09FD-412B-ADFD-E6F7D408DCCD"))">
+                        <i class="bi bi-shield-lock-fill me-2" style="font-size: 1.2rem;"></i> Authorisation
+                </NavLink>
+            </div>
+    @* } *@
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="finance/00000000-0000-0000-0000-000000000000" @onclick="@(() => OnNavItemClick("3679DB86-9A2F-45BD-9E37-8E40967166D1"))">
+                    <i class="bi bi-bank2 me-2" style="font-size: 1.2rem;"></i> Finance
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="settings" @onclick="@(() => OnNavItemClick(""))">
+                    <i class="bi bi-gear-fill me-2" style="font-size: 1.2rem;"></i> Settings
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="dev" @onclick="@(() => OnNavItemClick(""))">
+                    <i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="quote-dashboard" @onclick="@(() => OnNavItemClick(""))">
+                    <i class="bi bi-info me-2" style="font-size: 1.2rem;"></i> Quote Dashboard (Old)
+                    </NavLink>
+            </div>
+
+
+        </nav>
+    </div>
+}
+
+@code {
+    private bool _collapseNavMenu = true;
+    private bool isTaskListVisible = true;
+    private int syncQueueCount { get; set; } = 0;
+    private FormHelper? formHelper;
+    private HubConnection? hubConnection;
+    [CascadingParameter] public string EnvironmentType { get; set; } = "DEV";
+    private string? NavMenuCssClass => _collapseNavMenu ? "collapse" : null;
+
+    private async Task OnNavItemClick(string featureName = "")
+    {
+        if (!string.IsNullOrEmpty(featureName))
+        {
+            formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            Guid userId = ParseAndReturnEmptyGuidIfInvalid(userService.Guid);
+            await formHelper.LogUsageAsync(userId, featureName);
+        }
+        ClientFunctions.ResetStateService(stateService);
+        modalService.ResetModalService();
+    }
+
+    public static Guid ParseAndReturnEmptyGuidIfInvalid(string inputGuid)
+    {
+        if (Guid.TryParse(inputGuid, out var parsedGuid))
+            return parsedGuid;
+        // Return an empty Guid if the inputGuid is not a valid Guid
+        return Guid.Empty;
+    }
+    private void ToggleNavMenu()
+    {
+        _collapseNavMenu = !_collapseNavMenu;
+    }
+    private void ToggleTasks()
+    {
+        isTaskListVisible = !isTaskListVisible;
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSyncQueueCount();
+        await SetupHubConnection();
+    }
+    private async Task SetupHubConnection()
+    {
+        if (hubConnection is not null && hubConnection.State == HubConnectionState.Connected)
+            return;
+
+        string apiUrl = EnvironmentType switch
+        {
+            "LIVE" => "https://bre.socotec.co.uk:9601",
+            "TEST" => "https://bre.socotec.co.uk:9501",
+            "DEV" => "https://bre.socotec.co.uk:9401",
+            _ => "https://localhost:5033"
+        };
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl($"{apiUrl}/fileProcessingHub")
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On("SyncQueueUpdated", async () =>
+        {
+            Console.WriteLine("📡 Received SyncQueueUpdated via SignalR");
+
+            // Update state on the Blazor render context
+            await InvokeAsync(async () =>
+            {
+                await LoadSyncQueueCount();
+                NotificationService.ShowInfo($"{syncQueueCount} items pending sync");
+                Console.WriteLine($"🔔 syncQueueCount: {syncQueueCount}");
+                StateHasChanged(); // this now works correctly
+            });
+        });
+
+        hubConnection.Reconnecting += error =>
+        {
+            Console.WriteLine($"Reconnecting to hub: {error?.Message}");
+            return Task.CompletedTask;
+        };
+
+        hubConnection.Reconnected += id =>
+        {
+            Console.WriteLine($"Reconnected to hub with ID: {id}");
+            return Task.CompletedTask;
+        };
+
+        hubConnection.Closed += async error =>
+        {
+            Console.WriteLine($"Hub connection closed: {error?.Message}");
+            await Task.Delay(2000);
+            await hubConnection.StartAsync();
+        };
+
+        await hubConnection.StartAsync();
+        await hubConnection.InvokeAsync("RegisterConnectionId", hubConnection.ConnectionId, userService.Email);
+    }
+    private async Task LoadSyncQueueCount()
+    {
+        var items = await SyncService.GetSyncQueueAsync();
+        SyncQueueState.SetCount(items?.Count ?? 0);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+}

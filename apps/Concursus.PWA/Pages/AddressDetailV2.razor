@@ -1,0 +1,310 @@
+﻿@page "/AddressDetailV2/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+
+@using System
+@using System.Linq
+@using System.Threading.Tasks
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Controls
+@using Concursus.Components.Shared.Helpers
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+
+@attribute [Authorize]
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<PageTitle>Address Detail V2 (Experimental)</PageTitle>
+
+<div class="container-fluid mt-3">
+    <div class="row">
+        <div class="col-12">
+            <h2 class="mb-3">
+                <i class="bi bi-building me-2" style="font-size: 1.2rem;"></i>
+                Address Detail V2 (Experimental Layout)
+            </h2>
+            <p class="text-muted">
+                This page renders the Address entity using the new V2 <code>PageViewDefinition</code> pipeline,
+                including live values from the underlying <code>DataObject</code>.
+                The original <strong>AddressDetail</strong> page (and all other entity pages) remain unchanged
+                and should be used for real work while V2 is being evaluated.
+            </p>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info">
+                    Loading metadata and data for Address entity…
+                </div>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <strong>Failed to load V2 view definition/data.</strong><br />
+                    @_loadError
+                </div>
+            </div>
+        </div>
+    }
+    else if (_pageViewDefinition is not null)
+    {
+        <div class="row mb-3">
+            <div class="col-12 d-flex align-items-center gap-2">
+                <button class="btn btn-primary btn-sm"
+                        @onclick="SaveAsync"
+                        disabled="@(_isSaving || _dataObject is null)">
+                    @if (_isSaving)
+                    {
+                        <span>Saving…</span>
+                    }
+                    else
+                    {
+                        <span>Save (V2 experimental)</span>
+                    }
+                </button>
+
+                @if (!string.IsNullOrWhiteSpace(_saveSuccess))
+                {
+                    <span class="text-success small ms-2">@_saveSuccess</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(_saveError))
+                {
+                    <span class="text-danger small ms-2">@_saveError</span>
+                }
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <V2FormRenderer ViewDefinition="_pageViewDefinition"
+                                DataObject="_dataObject" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning">
+                    No V2 view definition available for this entity.
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string RecordGuid { get; set; } = string.Empty;
+    [Parameter] public string SerializedDataObjectReference { get; set; } = string.Empty;
+    [Parameter] public string ReturnUrl { get; set; } = string.Empty;
+
+    private PageViewDefinition? _pageViewDefinition;
+    private DataObject? _dataObject;
+
+    private bool _isLoading = true;
+    private string? _loadError;
+
+    private FormHelper? _formHelper;
+    private bool _isSaving;
+    private string? _saveError;
+    private string? _saveSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string AddressEntityTypeGuid = "45dd03aa-35f7-4b77-837d-6b563e3171f1";
+
+        try
+        {
+            _isLoading = true;
+            _loadError = null;
+
+            _formHelper = new FormHelper(coreClient, sageIntegrationService, AddressEntityTypeGuid, userService);
+
+            await _formHelper.LoadMetaDataAsync(isInformationPage: false);
+
+            var entityType = _formHelper.EntityType;
+            _pageViewDefinition = ViewDefinitionBuilder.BuildPageViewDefinition(entityType);
+
+            var dataObjectReference = new DataObjectReference(RecordGuid, AddressEntityTypeGuid);
+
+            _dataObject = await _formHelper.ReadDataObjectAsync(RecordGuid, dataObjectReference);
+
+            // Populate dropdowns using the SAME proven pattern as StructureDetailV2
+            if (_pageViewDefinition != null)
+            {
+                await V2DropdownLoader.PopulateDropdownOptionsAsync(
+                    _pageViewDefinition,
+                    LoadDropdownOptionsForFieldAsync
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    //  Dropdown loader for V2 (identical semantics to StructureDetailV2)
+    // ------------------------------------------------------------------------
+
+    private async Task<IReadOnlyList<DropdownOption>> LoadDropdownOptionsForFieldAsync(FieldDropdownConfig config)
+    {
+        if (coreClient is null || _dataObject is null)
+        {
+            return Array.Empty<DropdownOption>();
+        }
+
+        try
+        {
+            // DefinitionId = EntityProperty.DropDownListDefinitionGuid (string)
+            var definitionGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(config.DefinitionId);
+            if (definitionGuid == Guid.Empty)
+            {
+                return Array.Empty<DropdownOption>();
+            }
+
+            var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_dataObject.Guid);
+
+            // Current selected value for THIS field (important for many dropdown definitions)
+            var currentValueGuid = GetCurrentDropdownGuid(config);
+
+            var request = new DropDownDataListRequest
+            {
+                Guid = definitionGuid.ToString(),
+                ParentGuid = Guid.Empty.ToString(), // Address page has no explicit parent context
+                RecordGuid = recordGuid.ToString(),
+                CurrentSelectedValueGuid = currentValueGuid.ToString()
+            };
+
+            var reply = await coreClient.DropDownDataListAsync(request);
+
+            if (reply?.Items == null || reply.Items.Count == 0)
+            {
+                return Array.Empty<DropdownOption>();
+            }
+
+            // These names match your StructureDetailV2 mapping:
+            var options = reply.Items
+                .Select(item => new DropdownOption
+                {
+                    Value = item.Value,
+                    Label = item.Name,
+                    Group = item.Group,
+                    ColourHex = item.ColourHex
+                })
+                .ToList();
+
+            return options;
+        }
+        catch
+        {
+            return Array.Empty<DropdownOption>();
+        }
+    }
+
+    /// <summary>
+    /// Looks up the current dropdown GUID value for the field being populated.
+    /// Requires FieldDropdownConfig.FieldId to be set to the EntityPropertyGuid.
+    /// </summary>
+    private Guid GetCurrentDropdownGuid(FieldDropdownConfig config)
+    {
+        if (_dataObject?.DataProperties == null || string.IsNullOrWhiteSpace(config.FieldId))
+        {
+            return Guid.Empty;
+        }
+
+        var prop = _dataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, config.FieldId, StringComparison.OrdinalIgnoreCase));
+
+        if (prop?.Value == null)
+        {
+            return Guid.Empty;
+        }
+
+        try
+        {
+            // Dropdown values are stored as StringValue (Guid string)
+            if (prop.Value.Is(StringValue.Descriptor))
+            {
+                prop.Value.TryUnpack(out StringValue sv);
+
+                if (!string.IsNullOrWhiteSpace(sv?.Value) &&
+                    Guid.TryParse(sv.Value, out var parsed))
+                {
+                    return parsed;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return Guid.Empty;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_formHelper is null || _dataObject is null)
+        {
+            _saveError = "Form is not ready.";
+            _saveSuccess = null;
+            return;
+        }
+
+        _isSaving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
+        try
+        {
+            var (message, newDataObject) = await _formHelper.UpsertDataObject(
+                _dataObject,
+                entityQueryGuid: null,
+                validateOnly: false,
+                IsBulkUpdate: false);
+
+            if (!string.IsNullOrEmpty(message))
+            {
+                _saveError = message;
+            }
+            else if (!string.IsNullOrEmpty(newDataObject.ErrorReturned))
+            {
+                _saveError = newDataObject.ErrorReturned;
+            }
+            else
+            {
+                _dataObject = newDataObject;
+                _saveSuccess = "Record saved successfully (V2 experimental).";
+            }
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

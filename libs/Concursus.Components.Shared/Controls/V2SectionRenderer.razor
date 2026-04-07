@@ -1,0 +1,55 @@
+﻿@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+
+@if (Section is null)
+{
+    <div class="v2-section v2-section--empty">
+        <em>No section data.</em>
+    </div>
+}
+else if (Section.Fields is null || Section.Fields.Count == 0)
+{
+    <div class="v2-section v2-section--no-fields">
+        @if (!string.IsNullOrWhiteSpace(Section.Title))
+        {
+            <h3 class="v2-section__title">@Section.Title</h3>
+        }
+        <div class="v2-section__body">
+            <em>No fields in this section.</em>
+        </div>
+    </div>
+}
+else
+{
+    <div class="v2-section">
+        @if (!string.IsNullOrWhiteSpace(Section.Title))
+        {
+            <h3 class="v2-section__title">@Section.Title</h3>
+        }
+
+        <div class="v2-section__body">
+            <div class="v2-section__field-grid">
+                @foreach (var field in Section.Fields)
+                {
+                    <div class="v2-section__field-cell">
+                        <V2FieldRenderer FieldDefinition="field" DataObject="DataObject" />
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The V2 section definition to render.
+    /// </summary>
+    [Parameter]
+    public SectionViewDefinition? Section { get; set; }
+
+    /// <summary>
+    /// The DataObject to use when rendering field values within this section.
+    /// </summary>
+    [Parameter]
+    public DataObject? DataObject { get; set; }
+}

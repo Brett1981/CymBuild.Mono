@@ -1,0 +1,157 @@
+﻿@page "/AccountContactDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Newtonsoft.Json
+@using System.Web
+@using Google.Protobuf;
+@using Google.Protobuf.WellKnownTypes;
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject NavigationManager NavManager
+@inject RefreshService refreshService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inherits EditPageBase
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="@_EntityTypeGuid"
+          Windowed="@Windowed"
+          IsInformationPage="true"
+          @bind-RecordGuid="@RecordGuid"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          ModalId="@ModalId"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle></FormTitle>
+    <FormBody>
+        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@editPage.entityProperties"
+                            IsMainRecordContext="@IsMainRecordContext"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                            dataObject="@editPage.dataObject"
+                            RecordGuid="@RecordGuid"
+                            inputUpdated="@editPage.HandleInputUpdated" />
+
+
+        <DynamicGrid
+            DoubleClickDisabled="true"
+            GridCode="CONTACTDETAILS"
+            ParentDataObjectReference="@editPage.MyDataObjectReference"
+            ParentGuid="@RecordGuid"
+            ParentRowStatus="@editPage.dataObject.RowStatus"                
+            TransientVirtualProperties="@TransientVirtualProperties" />
+
+    </FormBody>
+</EditPage>
+
+<style>
+    #newBtn{
+        display:none;
+    }
+</style>
+
+@code {
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private static string accountContactsGuid { get; set; } = "4caf8d87-9f86-49bc-9b78-3fc8e8851f8c";
+    private static string contactsGuid = "fbdcc47f-1d4e-4ad1-8de5-e08cd296fdfa";
+
+    private string _EntityTypeGuid { get; set; } = accountContactsGuid;
+
+
+
+    private API.Client.FormHelper? _formHelper;
+
+    private bool isRendering;
+    private Timer? debounceTimer;
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+
+        if(!firstRender){
+            if (editPage != null)
+            {
+
+                _EntityTypeGuid = contactsGuid;
+
+                //Load up the formHelper for entity type of Contacts.
+                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(contactsGuid).ToString(), userService);
+
+
+                //Get the contactId value.
+                var contactIdField = editPage.dataObject.DataProperties.Where(x => x.EntityPropertyGuid.ToString() == "29cd6c6b-37b5-4352-9655-6482b0b24134").FirstOrDefault();
+
+                if (contactIdField != null)
+                {
+                    contactIdField.Value.TryUnpack(out StringValue unpackedVal);
+
+                    if (unpackedVal.Value != null)
+                    {
+                        var val = unpackedVal.Value;
+
+                        RecordGuid = val;
+
+                        if (ParentDataObjectReference != null)
+                        {
+                            ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                            ParentDataObjectReference.DataObjectGuid = new Guid(val);
+                            ParentDataObjectReference.EntityTypeGuid = new Guid(_EntityTypeGuid);
+
+                            await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+                        }
+
+                        var dataObject = await _formHelper.ReadDataObjectAsync(val, ParentDataObjectReference);
+                        var entityProps = await _formHelper.GetEntityType();
+                        var filteredEntityProps = entityProps.EntityProperties.Where(x => x.IsIncludedInformation == true).ToList();
+
+                        foreach (var i in filteredEntityProps)
+                            i.IsReadOnly = true;
+
+
+                        RecordGuid = dataObject.Guid;
+                        editPage.dataObject = dataObject;
+                        editPage.entityPropertyGroups = entityProps.EntityPropertyGroups.ToList();
+                        editPage.entityProperties = filteredEntityProps;
+
+
+                        StateHasChanged();
+                    }
+
+                }
+            }
+        }
+    }
+
+
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            editPage.ChangeEntityTypeLabel("Contacts", "bi-person");
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the DynamicEdit page.");
+            ex.Data.Add("PageMethod", "DynamicEdit/OnParametersSetAsync()");
+            await OnError.InvokeAsync(ex);
+        }
+        finally
+        {
+            isRendering = false;
+        }
+    }
+}

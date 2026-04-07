@@ -1,0 +1,778 @@
+﻿@page "/team-availability"
+@using System.Collections.ObjectModel
+@using Google.Protobuf.WellKnownTypes
+@using Telerik.Blazor.Components
+@using Telerik.Blazor
+@inject IToastService toastService
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JS
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
+@using TeamMember = Concursus.PWA.Shared.Scheduler.Classes.TeamMember
+@using Concursus.PWA.Helpers
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+
+<PageTitle>Team Availability</PageTitle>
+
+<div class="d-flex flex-row justify-content-end">
+
+</div>
+
+<div class="legend-panel mb-3 p-2 border rounded bg-light">
+    <SchedulerLegend />
+</div>
+
+<div>
+    @* <AvailabilityEventModal   /> *@
+    <SchedulerTaskButton UserID="UserID" TeamID="UnitId" appointment="@availabilityEventForModal" _detailPageParameters="@_detailPageParameters"  ModalShowing="@ShowModal" CloseModalCllback="@CloseEditHandlerModal" />
+</div>
+
+
+<div class="toolbar mb-3">
+    <div class="form-check d-inline-block me-3">
+        <TelerikCheckBox @bind-Value="showWork" Id="chk-work" OnChange="@UpdateFilter" />
+        <label class="form-check-label" for="chk-work">Show Work</label>
+    </div>
+
+
+    <div class="form-check d-inline-block me-3">
+        <TelerikCheckBox @bind-Value="showAbsence" Id="chk-absence" OnChange="@UpdateFilter" />
+        <label class="form-check-label" for="chk-absence">Show Absence</label>
+    </div>
+
+    <div class="form-check d-inline-block me-3">
+        <TelerikCheckBox @bind-Value="showHolidays" Id="chk-holiday" />
+        <label class="form-check-label" for="chk-holiday">Show Public Holidays</label>
+    </div>
+
+
+    @* <TelerikButton OnClick="@ExportCsv" Class="ms-3">Export CSV</TelerikButton> *@
+    @* <TelerikButton OnClick="@ExportPdf">Export PDF</TelerikButton> *@
+    @* <TelerikButton OnClick="@TogglePrint">@(printMode ? "Exit Print Mode" : "Print View")</TelerikButton> *@
+</div>
+
+
+
+@if (teamMembers.Any())
+{
+    <div class="mb-5">
+        <div class="d-flex flex-row justify-content-between">
+            @*  <p class="text-muted">
+                Loaded @teamMembers.Count team members.
+                Grouping by: @string.Join(", ", groupedResources)
+            </p> *@
+
+            <TelerikMultiSelect 
+            TItem="TeamMember"
+            TValue="object"
+            Data="@teamMemberForCombo"
+            TextField="Name"   
+            Width="600px"
+            ValueField="Id"        
+            Placeholder="Filter by person"
+            ValueChanged="@((List<object> selection) => @FilterByUser(selection))" />
+        </div>
+    </div>
+
+
+
+    <div class="d-flex flex-row">
+        <TelerikScheduler 
+        Date="firstOfMonth"
+        TItem="AvailabilityEvent"
+        @ref="SchedulerRef"
+        @key="availabilityEvents"
+        Data="@FilteredEvents"
+        Height="100%"
+        Width="100%"
+        View="mainView"
+        OnItemRender="@RenderHalfDayMarker"
+        OnCellRender="@HighlightSpecialDays"
+        StartField="Start"
+        EndField="End"
+        AllowUpdate="true"
+        AllowCreate="true"
+        ViewChanged="ViewChangedHandler"
+        OnEdit="@EditHandler" 
+        OnCancel="@CancelHandler"   
+        DateChanged="@DateChangedHandler"
+        OnCreate="@AddAppointment">
+
+            @*Templates - makes them empty but on hover still displays the title + start date *@
+            <ItemTemplate>
+                @{
+                    var appointment = context as AvailabilityEvent;
+                    var cssClass = "tooltip-" + Guid.NewGuid().ToString("N"); // "N" removes dashes
+                    var start = UiFormattingHelper.FormatDateForUI(appointment.Start, false);
+
+                    var hint = appointment.CssClass == "scheduled-work"
+                    ? $"Job: {appointment.JobNumber} {appointment?.Title} - {start}"
+                    : $"{appointment?.Title} - {start}";
+                }
+
+                <div title="@hint" class="@cssClass">
+                    <span style="visibility: hidden;">@appointment?.Title</span>
+                </div>
+            </ItemTemplate>
+
+            <AllDayItemTemplate>
+                @{
+                    var appointment = context as AvailabilityEvent;
+                    var cssClass = "tooltip-" + Guid.NewGuid().ToString("N"); // "N" removes dashes
+                    var start = UiFormattingHelper.FormatDateForUI(appointment?.Start, false);
+
+                    var hint = appointment.CssClass == "scheduled-work"
+                    ? $"Job: {appointment.JobNumber} {appointment?.Title} - {start}"
+                    : $"{appointment?.Title} - {start}";
+                }
+
+
+                <div title="@hint" class="@cssClass">
+                    <span style="visibility: hidden;">@appointment?.Title</span>
+                </div>
+            </AllDayItemTemplate>
+
+
+            <SchedulerSettings>
+                <SchedulerGroupSettings Resources="@groupedResources"
+                Orientation="@SchedulerGroupOrientation.Vertical" />
+
+                <!--Scheduler Popup settings-->
+                <SchedulerPopupEditSettings Width="600px"
+                MinWidth="500px"
+                MaxHeight="99vh"
+                Title="Edit Event"
+                Class="custom-popup">
+                </SchedulerPopupEditSettings>
+                <SchedulerPopupEditFormSettings ButtonsLayout="FormButtonsLayout.Stretch">
+                </SchedulerPopupEditFormSettings>
+
+            </SchedulerSettings>
+            <SchedulerViews>
+
+                <!-- WEEK VIEW -->
+                <SchedulerWeekView 
+                StartTime="@DayStart" 
+                EndTime="@DayEnd" 
+                WorkDayStart="@WorkDayStart"
+                WorkDayEnd="@WorkDayEnd"/>
+
+                <!--MONTH VIEW-->
+                <SchedulerMonthView />
+
+                <!-- TIMELINE VIEW -->
+                <SchedulerTimelineView 
+                StartTime="@DayStart"
+                EndTime="@DayEnd"
+                WorkDayStart="@WorkDayStart"
+                WorkDayEnd="@WorkDayEnd"
+                SlotDuration="720"
+                SlotDivisions="1"
+                NumberOfDays="31" 
+                ColumnWidth="40"/>
+
+
+                <SchedulerDayView 
+                StartTime="@DayStart"    
+                EndTime="@DayEnd"
+                WorkDayStart="@WorkDayStart"
+                WorkDayEnd="@WorkDayEnd" />
+
+
+            </SchedulerViews>
+            <SchedulerResources>
+                <SchedulerResource 
+                Field="TeamMemberId"
+                Title="Team Member"
+                Data="@teamMembersForView"
+                TextField="Name"
+                ValueField="Id"
+                ColorField="Color" />
+            </SchedulerResources>
+        </TelerikScheduler>
+    </div>
+}
+else
+{
+    <p class="text-info">Loading team members...</p>
+}
+
+
+<DynamicGrid @ref="@gridRef" GridCode="SCHEDULING" FullGrid="true" />
+
+
+
+<script>
+
+</script>
+
+
+@code {
+
+    DynamicGrid gridRef { get; set; }
+
+    private FormHelper formHelper { get; set; }
+    TelerikScheduler<AvailabilityEvent> SchedulerRef { get; set; }
+    SchedulerView mainView { get; set; } = SchedulerView.Timeline;
+
+    //User related data
+    private int UserID { get; set; }
+    private int UnitId { get; set; }
+
+    //Variables for holding events
+    private ObservableCollection<AvailabilityEvent> availabilityEvents = new();
+    private List<AvailabilityEvent> ScheduledActivities = new();
+    private List<DateTime> bankHolidays { get; set; } = new();
+    private IEnumerable<AvailabilityEvent> FilteredEvents { get; set; }
+
+    //teamMembers:Used as a storage variable. If a filter is reset, we can just assign this variable to "teamMembersForView"
+    private ObservableCollection<TeamMember> teamMembers { get; set; } = new();
+    //teamMembersForView: utilises teamMembers to load. 
+    private ObservableCollection<TeamMember> teamMembersForView { get; set; } = new();
+    //Collection of users the users can pick from in the combo box. 
+    private List<TeamMember> teamMemberForCombo { get; set; } = new();
+
+    private bool _hasLoaded;
+
+
+
+    public bool IsAllDay { get; set; } = false;
+    private readonly List<string> groupedResources = new() { "TeamMemberId" };
+
+    private DateTime firstOfMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+
+    //Controller boolean values for showing data.
+    private bool showAbsence = true;
+    private bool showWork = true;
+    private bool showHolidays = true;
+    private bool printMode = false;
+
+    //Dates
+    private DateTime today = DateTime.Now;
+    private DateTime DayStart => new DateTime(2000, 1, 1, 0, 0, 0);
+    private DateTime DayEnd => new DateTime(2000, 1, 1, 23, 59, 59);
+    private DateTime WorkDayStart => new DateTime(2000, 1, 1, 9, 0, 0);
+    private DateTime WorkDayEnd => new DateTime(2000, 1, 1, 17, 0, 0);
+
+    private DateTime Max = new DateTime(2050, 12, 31);
+    private DateTime Min = new DateTime(1950, 1, 1);
+    private int DebounceDelay { get; set; } = 200;
+
+    //Absence related variables
+    private bool ShowAbsence { get; set; } = false;
+    private DateTime StartDate { get; set; } 
+    private DateTime EndDate { get; set; }
+
+    //Modal controller
+    private AvailabilityEvent availabilityEventForModal { get; set; }
+    private bool ShowModal { get; set; } = false;
+    private IDictionary<string, object> _detailPageParameters { get; set; } = new Dictionary<string, object>();
+
+
+
+
+
+
+    // Add a new method to update filtered events whenever filter settings change
+
+
+    private async Task UpdateFilter()
+    {
+        availabilityEvents.Clear();
+        await GetData();
+    }
+
+
+    public async Task GetUserId()
+    {
+        try
+        {
+            //Get the current user ID.
+            UserID = userService?.UserId ?? -1;
+
+            if (UserID == -1)
+                throw new Exception("The current user could not be detected");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"There was an error getting the user ID: {ex.Message} ");
+        }
+    }
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && SchedulerRef is not null)
+        {
+            await InvokeAsync(() => SchedulerRef.Rebind());
+        }
+
+        //Applying "AM" & "PM" to headers on TimeLine view.
+        if(!firstRender && mainView == SchedulerView.Timeline){
+            try
+            {
+                await Task.Delay(100);
+                await JS.InvokeVoidAsync("FormetSchedulerTimeSlotHeaders");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+        }
+        
+    }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!_hasLoaded)
+        {
+            _hasLoaded = true;
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        await GetUserId();
+        await LoadTeamMembersWithData();
+
+        GetNationalBankHolidays();
+
+        await GetData();
+    }
+
+    protected override void OnInitialized()
+    {
+        //Init the formHelper here.
+        formHelper = new FormHelper(coreClient, sageIntegrationService, "00000000-0000-0000-0000-000000000000", userService);
+        base.OnInitialized();
+    }
+
+
+
+    private async Task GetData(){
+
+        try
+        {
+            DateTime endDate = new();
+
+            if (mainView == SchedulerView.Timeline)
+                endDate = firstOfMonth.AddDays(40);
+            else if (mainView == SchedulerView.Month)
+                endDate = firstOfMonth.AddDays(31);
+            else if (mainView == SchedulerView.Week)
+                endDate = firstOfMonth.AddDays(7);
+
+
+            foreach (var usr in teamMembers)
+            {
+                var userID = usr.Id;
+
+                if (showWork)
+                    await GetScheduledActivitiesPerUser(userID, firstOfMonth, endDate);
+
+                if (showAbsence)
+                    await GetScheduledAbsencesPerUser(userID, firstOfMonth, endDate);
+            }
+
+            FilteredEvents = availabilityEvents
+               .Where(e =>
+                   (showAbsence && e.IsAbsence) ||
+                   (showWork && !e.IsAbsence));
+        } 
+        catch(Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+
+    }
+
+
+    private async Task DateChangedHandler(DateTime currDate)
+    {
+
+        firstOfMonth = currDate;
+
+        await GetData();
+
+        FilteredEvents = availabilityEvents
+              .Where(e =>
+                  (showAbsence && e.IsAbsence) ||
+                  (showWork && !e.IsAbsence));
+
+        SchedulerRef.Rebind();
+    }
+
+
+
+
+    private async Task LoadTeamMembersWithData(){
+
+        UnitId = await formHelper.GetOrganisationalUnitForUser(UserID);
+        var EfteamMembers = await formHelper.GetTeamMembersAsync(UnitId);
+
+        teamMembers.Clear();
+
+        foreach (var tm in EfteamMembers)
+        {
+            if (int.TryParse(tm.Id, out int userID))
+            {
+
+                teamMembers.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+                teamMemberForCombo.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+            }
+        }
+
+        //Assign to view.
+        teamMembersForView = teamMembers; 
+    }
+
+    /*
+    * Used when the user double clicks an appointment 
+    * 
+    */
+    void EditHandler(SchedulerEditEventArgs args)
+    {
+        args.IsCancelled = true; //Prevents default modal to pop up.
+        availabilityEventForModal = args.Item as AvailabilityEvent;
+
+        availabilityEventForModal.TeamMemberNameAsString = teamMemberForCombo?.Where(usr => usr.Id == availabilityEventForModal.TeamMemberId).FirstOrDefault().Name;
+
+        //Do not open scheduled-work - rely on the hint on hover instead.
+        if (availabilityEventForModal.CssClass == "scheduled-work")
+            return;
+
+        var parentDataObjectReference = new DataObjectReference(availabilityEventForModal.Guid, "8899e76e-31bd-492b-9739-eb100610e92d");
+
+        _detailPageParameters.Clear();
+        _detailPageParameters.Add("Windowed", true);
+        _detailPageParameters.Add("ModalId", Guid.NewGuid().ToString());
+        _detailPageParameters.Add("IsDetailWindowed", true);
+        _detailPageParameters.Add("UserID", availabilityEventForModal.TeamMemberId); //Ensure to get the corresponding userID (e.g. where the user has double clicked)
+        _detailPageParameters.Add("TeamID", UnitId);
+        _detailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
+        _detailPageParameters.Add("appointment", availabilityEventForModal);
+        _detailPageParameters.Add("RecordGuid", availabilityEventForModal.Guid);
+        _detailPageParameters.Add("gridRef", gridRef);
+        _detailPageParameters.Add("reloadScheduler", EventCallback.Factory.Create(this, GetData));
+
+        ShowModal = true;
+    }
+
+
+    void CloseEditHandlerModal(){
+        ShowModal = false;
+    }
+
+
+    void CancelHandler(SchedulerCancelEventArgs args)
+    {
+        // you can know when a user wanted to modify an appointment but decided not to
+        // the model you get contains the new data from the edit form so you can see what they did
+        AvailabilityEvent item = args.Item as AvailabilityEvent;
+    }
+
+
+    /*
+    * Returns all pending activities assigned to jobs per user.
+    */
+    private async Task GetScheduledActivitiesPerUser(int userID, DateTime StartDate, DateTime EndDate)
+    {
+        try
+        {
+            var scheduledActivitiesForUser = await formHelper.GetScheduledActivities(userID, StartDate, EndDate);
+            var id = 6000;
+
+            foreach (var act in scheduledActivitiesForUser)
+            {
+                availabilityEvents.Add(new AvailabilityEvent
+                    {
+                        Id = id++,
+                        Title = act.Title,
+                        TeamMemberId = act.UserId,
+                        Start = act.StartDate.ToDateTime(),
+                        End = act.EndDate.ToDateTime(),
+                        IsAbsence = false,
+                        CssClass = "scheduled-work",
+                        JobNumber = act.JobNumber,
+                        Note = act.Note
+                    });
+            }
+        } 
+        catch(Exception ex){
+            Console.WriteLine(ex.Message);
+        }
+       
+    }
+
+
+    /*
+    * Returns all abscenses (added by the user)
+    */
+    private async Task GetScheduledAbsencesPerUser(int UserID, DateTime StartDate, DateTime EndDate)
+    {
+
+
+        try
+        {
+            var id = 0;
+
+            var absences = await formHelper.GetNonActivityEvents(UserID, StartDate, EndDate);
+
+            foreach (var a in absences)
+            {
+                if (!showAbsence) continue;
+
+                //Calculate the correct CSS class
+                var cssClass = GetAbsencePeriod(a.StartTime.ToDateTime(), a.EndTime.ToDateTime());
+
+                availabilityEvents.Add(new AvailabilityEvent
+                    {
+                        Id = id++,
+                        Title = a.EventName,
+                        TeamMemberId = a.MemberId,
+                        Start = a.StartTime.ToDateTime(),
+                        End = a.EndTime.ToDateTime(),
+                        IsAbsence = true,
+                        CssClass = cssClass,
+                        Guid = a.Guid,
+                        AbsenceTypeID = a.AbsenceTypeID,
+                        TeamMemberNameAsString = teamMemberForCombo.Where(usr => usr.Id == a.MemberId).FirstOrDefault().Name
+
+                    });
+            }
+        } 
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        
+
+        Console.WriteLine(availabilityEvents);
+
+    }
+
+    //Returns either absence-am, absence-pm, or absence-full
+    private string GetAbsencePeriod(DateTime start, DateTime end){
+
+        string absencePeriodCSS = "";
+
+        try
+        {
+            //Get the total hours
+            TimeSpan duration = end - start;
+            double totalHours = Math.Round(duration.TotalHours);
+
+            if (totalHours <= 5)
+                if (start.Hour < 12)
+                    absencePeriodCSS = "absence-am";
+                else
+                    absencePeriodCSS = "absence-pm";
+            else
+                absencePeriodCSS = "absence-full";
+
+        } catch(Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+        return absencePeriodCSS;
+    }
+
+
+    private async void GetNationalBankHolidays(){
+        var _holidays = await formHelper.GetHolidaysAsync();
+
+        foreach (var day in _holidays)
+            bankHolidays.Add(day.Date.ToDateTime().Date);
+
+        Console.WriteLine(bankHolidays);
+    }
+
+
+    private void RenderHalfDayMarker(SchedulerItemRenderEventArgs args)
+    {
+        if (args.Item is AvailabilityEvent e){
+            args.Class = e.CssClass;
+
+            //Clearing the availabilityEvents completely will prevent the CSS being applied.
+            //Remove them one-by-one after applying the CSS?
+            availabilityEvents.Remove(e);
+            Console.WriteLine(availabilityEvents.Count());
+        }
+
+    }
+
+    //Marks the public holidays using CSS.
+    private void HighlightSpecialDays(SchedulerCellRenderEventArgs args)
+    {
+        if (!showHolidays && !IsWeekend(args.Start)) return;
+
+        if (IsWeekend(args.Start))
+            args.Class = "scheduler-weekend";
+
+        if(bankHolidays.Contains(args.Start.Date))
+            args.Class = "scheduler-holiday";
+    }
+
+    private bool IsWeekend(DateTime date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+
+
+    private void ExportCsv()
+    {
+        // Implement CSV export (e.g., using StringBuilder or TelerikGrid export logic)
+        toastService.ShowInfo("Export to CSV coming soon.");
+    }
+
+    private void ExportPdf()
+    {
+        // Implement PDF export (e.g., using jsinterop with pdfmake or Telerik PDF export service)
+        toastService.ShowInfo("Export to PDF coming soon.");
+    }
+
+    /*
+    * Event that should fire when the user selects a value from the "Filter By Person" dropdown field.
+    */
+    private async Task FilterByUser(List<object> selection){ //ID
+
+
+        //Reset the Scheduler view to show all users.
+        if(selection == null || selection.Count == 0)
+        {
+            teamMembersForView = teamMembers;
+        } 
+        else 
+        {
+            var selectedUsers = selection.Select(o => o.ToString()).ToList();
+            teamMembersForView = new ObservableCollection<TeamMember>(teamMembers.Where(usr => selectedUsers.Contains(usr.Id.ToString())));
+        }
+
+        await GetData();
+    }
+
+    /*
+    * Handler for when the user changes view - prevents the scheduler from re-rendering & resetting the view.
+    */
+    private async Task ViewChangedHandler(SchedulerView view){
+
+        try
+        {
+            mainView = view;
+            await GetData();
+            StateHasChanged();
+            SchedulerRef.Rebind();
+        } catch(Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+       
+    }
+
+   
+    private void TogglePrint() => printMode = !printMode;
+
+
+    async Task AddAppointment(SchedulerCreateEventArgs args){
+
+        availabilityEventForModal = args.Item as AvailabilityEvent;
+
+    }
+
+}
+
+
+<style>
+
+    .k-scheduler .k-nonwork-hour {
+        background-color: white !important;
+    }
+     /* Legend panel */
+     .legend-box {
+         display: inline-block;
+         width: 20px;
+         height: 15px;
+         margin-right: 6px;
+         vertical-align: middle;
+         border-radius: 3px;
+     }
+
+         /* Color mappings */
+         .legend-box.absence-am {
+             background-color: #ffc107;
+            border: 1px solid #c82333;
+         }
+
+         .legend-box.absence-pm {
+            background-color: #FF0000;
+             border: 1px solid #c82333;
+         }
+
+         .legend-box.absence-full {
+            background-color: #808080;
+            border: 1px solid #c82333;
+         }
+
+         .legend-box.scheduled-work {
+             background-color: #328ca8;
+             border: 1px solid #87ceeb;
+         }
+
+         .legend-box.scheduler-weekend {
+             background-color: lightgray;
+             border: 1px solid #ccc;
+         }
+
+         .legend-box.scheduler-holiday {
+             background-color: #ffe5e5;
+             border: 1px dashed #dc3545;
+         }
+
+
+    /* Weekend slot styling */
+    .k-scheduler .scheduler-weekend {
+        background-color: lightgray !important;
+    }
+
+    /* Highlight public holidays */
+    .k-scheduler .scheduler-holiday {
+        background-color: #ffe5e5 !important;
+        border: 1px dashed #dc3545;
+    }
+
+    /* Scheduled work (light blue) */
+    .k-scheduler .scheduled-work {
+        background-color: #328ca8 !important;
+        color: black;
+        border: 1px solid #87ceeb;
+    }
+
+     /* Morning Absence (orange) */
+     .k-scheduler .absence-am {
+         background-color: #ffc107 !important;
+         color: black;
+        border: 1px solid #c82333;
+     }
+
+     /* Afternoon Absence (red) */
+     .k-scheduler .absence-pm {
+         background-color: #dc3545 !important;
+         color: white;
+         border: 1px solid #c82333;
+     }
+
+     /* Full Day Absence (gray) */
+     .k-scheduler .absence-full {
+        background-color: #808080 !important;
+        color: black;
+        border: 1px solid #c82333;
+     }
+
+</style>

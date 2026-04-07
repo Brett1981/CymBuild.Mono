@@ -1,0 +1,80 @@
+﻿@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@using System.Globalization
+@typeparam T
+@inherits InputBase<T>
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+@*
+    ─────────────────────────────────────────────────────────────
+    TrackableInputBase<T>
+    ─────────────────────────────────────────────────────────────
+    PURPOSE:
+    A reusable Blazor input component that wraps standard <InputText>
+    or other <InputBase<T>> types to automatically log user changes
+    using UserInteractionTrackerService for QA and debugging purposes.
+
+    🔁 REPLACES:
+    - <InputText @bind-Value="model.Name" />
+    - <InputNumber>, <InputTextArea>, or any <InputBase<T>> input.
+
+    USAGE EXAMPLE:
+    <TrackableInputBase T="string"
+                        FieldName="Name"
+                        @bind-Value="dataObject.Name"
+                        class="form-control" />
+
+    📒 PARAMETERS:
+    - T: The type of value (e.g., string, int, decimal).
+    - FieldName: A friendly label for logging (required for clear logs).
+    - Value: The model-bound value.
+    - class: CSS class for styling.
+    - AdditionalAttributes: Optional input attributes passed through.
+
+    🧠 LOGGING:
+    Logs the user input after `onblur` in the format:
+    "Field 'Name' changed to 'New value'" (with timestamp in service).
+
+    🔒 NOTE:
+    Use this to gain insight into what users typed before an error
+    occurred, aiding reproducibility and automated Jira ticket context.
+
+    🚫 LIMITATION:
+    - You must provide `T` explicitly (Blazor limitation).
+    - Only tracks after blur (onblur event), not real-time.
+
+*@
+
+<input class="@CssClass"
+       @bind="CurrentValue"
+       @bind:event="oninput"
+       @attributes="AdditionalAttributes"
+       @onblur="LogInteraction" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownField";
+    [Parameter] public new string CssClass { get; set; } = "";
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction()
+    {
+        string log = $"Field '{FieldName}' changed to '{CurrentValueAsString}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    protected override bool TryParseValueFromString(string? value, out T result, out string validationErrorMessage)
+    {
+        if (BindConverter.TryConvertTo<T>(value, CultureInfo.CurrentCulture, out var parsedValue))
+        {
+            result = parsedValue!;
+            validationErrorMessage = string.Empty;
+            return true;
+        }
+
+        result = default!;
+        validationErrorMessage = $"The {FieldName} field is not valid.";
+        return false;
+    }
+
+}

@@ -1,0 +1,47 @@
+﻿@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikTextArea Value="Value"
+                 ValueChanged="@(EventCallback.Factory.Create<string?>(this, HandleValueChanged))"
+                 ValueExpression="ValueExpression"
+                 Id="@Id"
+                 Class="@Class"
+                 Placeholder="@PlaceHolder"
+                 OnBlur="@(() => LogInteraction(Value))"
+                 ReadOnly="@ReadOnly"
+                 @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownTextArea";
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<string?>>? ValueExpression { get; set; }
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public string? PlaceHolder { get; set; }
+    [Parameter] public bool ReadOnly { get; set; } = false;
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(string? value)
+    {
+        string log = $"TextArea '{FieldName}' changed to: '{value}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(string? newValue)
+    {
+        Value = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+
+    }
+}

@@ -1,0 +1,124 @@
+﻿@using Concursus.Components.Shared.Services
+@using System.Text.Json
+
+@inject OfflineSyncService SyncService
+@inject IJSRuntime JS
+@inject IToastService Toast
+
+<TelerikTabStrip>
+    <TabStripTab Title="Offline Sync Queue">
+    <div class="p-4">
+        <TelerikButton OnClick="ReloadQueue">🔄 Refresh</TelerikButton>
+        <TelerikButton OnClick="TriggerBackgroundSync" Class="ml-2">📤 Force Sync</TelerikButton>
+            <TelerikButton OnClick="EnqueueTest">🧪 Add Test Sync Item</TelerikButton>
+
+    </div>
+
+        <TelerikGrid Data="syncItems" Pageable="true" Height="400px">
+            <GridColumns>
+                <GridColumn Field="Id" Title="ID" Width="240px" />
+                <GridColumn Field="Endpoint" Title="Endpoint" Width="240px" />
+                <GridColumn Field="Method" Title="Method" Width="100px" />
+                <GridColumn Field="Timestamp" Title="Timestamp" Width="180px" />
+                <GridCommandColumn Width="200px">
+                    <GridCommandButton OnClick="@(e => RetryItem((SyncQueueItem)e.Item))">Retry</GridCommandButton>
+                    <GridCommandButton OnClick="@(e => DeleteItem((SyncQueueItem)e.Item))">Delete</GridCommandButton>
+                </GridCommandColumn>
+            </GridColumns>
+        </TelerikGrid>
+    </TabStripTab>
+    <TabStripTab Title="Error Queue">
+        <div class="p-4">
+            <TelerikButton OnClick="ReloadErrors">🧹 Refresh Errors</TelerikButton>
+        </div>
+            <TelerikGrid Data="errorItems" Pageable="true" Height="400px">
+                <GridColumns>
+                    <GridColumn Field="Id" Title="ID" Width="200px" />
+                    <GridColumn Field="StoreName" Title="Store" Width="150px" />
+                    <GridColumn Field="Error" Title="Error Message" Width="300px" />
+                    <GridColumn Field="Timestamp" Title="Timestamp" Width="180px" />
+                    <GridCommandColumn Width="160px">
+                        <GridCommandButton OnClick="@(e => ViewJson((SyncQueueErrorItem)e.Item))">View JSON</GridCommandButton>
+                        <GridCommandButton OnClick="@(e => DeleteError((SyncQueueErrorItem)e.Item))">Delete</GridCommandButton>
+                    </GridCommandColumn>
+                </GridColumns>
+            </TelerikGrid>
+        </TabStripTab>
+</TelerikTabStrip>
+
+@code {
+    private List<SyncQueueItem> syncItems = new();
+    private List<SyncQueueErrorItem> errorItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadQueue();
+        await ReloadErrors();
+    }
+
+    private async Task ReloadQueue()
+    {
+        syncItems = await SyncService.GetSyncQueueAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReloadErrors()
+    {
+        errorItems = await SyncService.GetAllAsync<SyncQueueErrorItem>("ErrorQueue");
+        StateHasChanged();
+    }
+
+    private async Task RetryItem(SyncQueueItem item)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("syncInterop.postData", item.Endpoint, item.Method, item.Payload);
+            await SyncService.DeleteItemAsync("SyncQueue", item.Id);
+            Toast.ShowSuccess("Sync retried successfully");
+            await ReloadQueue();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"❌ Retry failed: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteItem(SyncQueueItem item)
+    {
+        await SyncService.DeleteItemAsync("SyncQueue", item.Id);
+        await ReloadQueue();
+        Toast.ShowInfo("Sync entry deleted");
+    }
+
+    private async Task DeleteError(SyncQueueErrorItem item)
+    {
+        await SyncService.DeleteItemAsync("ErrorQueue", item.Id);
+        Toast.ShowInfo("Deleted error item");
+        await ReloadErrors();
+    }
+
+    private async Task ViewJson(SyncQueueErrorItem item)
+    {
+        await JS.InvokeVoidAsync("alert", item.RawJson);
+    }
+
+    private async Task EnqueueTest()
+    {
+        var testPayload = JsonSerializer.Serialize(new { message = "Hello from offline" });
+        await SyncService.EnqueueSyncCommandAsync("/api/test", testPayload, "POST");
+        Toast.ShowInfo("Test sync item added.");
+    }
+    private async Task TriggerBackgroundSync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("syncInterop.triggerSync");
+            Toast.ShowInfo("Background sync registered.");
+        }
+        catch (JSException jsEx)
+        {
+            Toast.ShowWarning("Background sync not supported.");
+            Console.Error.WriteLine($"Sync registration failed: {jsEx.Message}");
+        }
+    }
+}

@@ -1,0 +1,2520 @@
+﻿syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/any.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/wrappers.proto";
+
+option csharp_namespace = "Concursus.API.Core";
+
+package core;
+
+service Core {
+  rpc DashboardMetricsGet (DashboardMetricsGetRequest) returns (DashboardMetricsGetResponse);
+  rpc DataObjectDelete (DataObjectDeleteRequest) returns (DataObjectDeleteResponse);
+  rpc DataObjectGet (DataObjectGetRequest) returns (DataObjectGetResponse);
+  rpc DataObjectListGet(DataObjectGetRequest) returns (stream DataObjectListGetResponse);
+  rpc DataObjectListGetSingle(DataObjectGetRequest) returns (DataObjectListGetResponse);
+  rpc DataObjectUpsert (DataObjectUpsertRequest) returns (DataObjectUpsertResponse);
+    rpc DocumentsCreateFolder (DocumentsCreateFolderRequest) returns (DocumentsCreateFolderResponse);
+  rpc DocumentsDelete (DocumentsDeleteRequest) returns (DocumentsDeleteResponse);
+  rpc DocumentsDownload (DocumentsDownloadRequest) returns (DocumentsDownloadResponse);
+  rpc DocumentsList (DocumentsListRequest) returns (DocumentsListResponse);
+  rpc DocumentsResolve (DocumentsResolveRequest) returns (DocumentsResolveResponse);
+  rpc DocumentsUpload (DocumentsUploadRequest) returns (DocumentsUploadResponse);
+
+  rpc DownloadFile (FileRequest) returns (stream ChunkMsg);
+  rpc DropDownDataList (DropDownDataListRequest) returns (DropDownDataListReply);
+  rpc DropDownListDefinitionGet (DropDownListDefinitionGetRequest) returns (DropDownListDefinitionGetResponse);
+  rpc EntityPropertyDefaultGet (EntityPropertyDefaultRequest) returns (EntityPropertyDefaultResponse);
+  rpc EntityTypeGet (EntityTypeGetRequest) returns (EntityTypeGetResponse);
+  rpc ExecuteMenuItemPost (ExecuteMenuItemRequest) returns (ExecuteMenuItemResponse);
+  rpc GetMergeDocumentItems (GetMergeDocumentItemsRequest) returns (GetMergeDocumentItemsResponse);
+  rpc GetMergeDocumentItemIncludes (GetMergeDocumentItemIncludesRequest) returns (GetMergeDocumentItemIncludesResponse);
+  rpc GetMergeDocumentItemTypes (GetMergeDocumentItemTypesRequest) returns (GetMergeDocumentItemTypesResponse);
+  rpc GridDataList (GridDataListRequest) returns (GridDataListReply);
+  rpc GridDefinitionList (GridDefinitionListRequest) returns (GridDefinitionListReply);
+  rpc GridDefinitionUpsert (GridDefinitionUpsertRequest) returns (GridDefinitionUpsertReply);
+  rpc GridViewColumnDefinitionDelete (GridViewColumnDefinitionDeleteRequest) returns (GridViewColumnDefinitionDeleteReply);
+  rpc GridViewColumnDefinitions (GridViewColumnDefinitionsRequest) returns (GridViewColumnDefinitionsReply);
+  rpc GridViewColumnDefinitionUpsert (GridViewColumnDefinitionUpsertRequest) returns (GridViewColumnDefinitionUpsertReply);
+  rpc GridViewDefinitions (GridViewDefinitionsRequest) returns (GridViewDefinitionsReply);
+  rpc GridViewDefinitionUpsert (GridViewDefinitionUpsertRequest) returns (GridViewDefinitionUpsertReply);
+  rpc NotificationsForUserGet (NotificationsForUserGetRequest) returns (NotificationsForUserGetResponse);
+  rpc ObjectSecurityList (ObjectSecurityListRequest) returns (ObjectSecurityListResponse);
+  rpc ObjectSharePointPathCollectionGet (ObjectSharePointPathCollectionGetRequest) returns (ObjectSharePointPathCollectionGetResponse);
+  rpc OrganisationalUnitsGet (OrganisationalUnitsGetRequest) returns (OrganisationalUnitsGetResponse);
+  rpc RecentItemsCreate (RecentItem) returns (RecentItem);
+  rpc RecentItemsGet (RecentItemRequest) returns (RecentItemResponse);
+  rpc RecordHistoryGet (RecordHistoryGetRequest) returns (RecordHistoryGetResponse);
+  rpc RecordUrlGet (RecordUrlGetRequest) returns (RecordUrlGetResponse);
+  rpc ReportingParametersGet (ReportingParametersGetRequest) returns (ReportingParametersGetResponse);
+  rpc ReportingTemplatesGet (ReportingTemplatesGetRequest) returns (ReportingTemplatesGetResponse);
+  rpc ReportUpsert (ReportUpsertRequest) returns (ReportUpsertResponse);
+  rpc ScheduleItemsGet (ScheduleItemsGetRequest) returns (ScheduleItemsGetResponse);
+  rpc ScheduleItemStatusGet (ScheduleItemStatusGetRequest) returns (ScheduleItemStatusGetResponse);
+  rpc ScheduleItemTypesGet (ScheduleItemTypesGetRequest) returns (ScheduleItemTypesGetResponse);
+  rpc SharePointDocumentDetailsGet (SharePointDocumentDetailsGetRequest) returns (SharePointDocumentDetailsGetResponse);
+  rpc SharepointDocumentsGet (SharepointDocumentsGetRequest) returns (SharepointDocumentsGetResponse);
+  rpc SharePointCreate (SharePointCreateRequest) returns (SharePointCreateResponse);
+  rpc SystemDataGet (google.protobuf.Empty) returns (SystemDataGetResponse);
+  rpc UserGroupDelete (UserGroupDeleteRequest) returns (UserGroupDeleteResponse);
+  rpc UserGroupList (UserGroupListRequest) returns (UserGroupListResponse);
+  rpc UserInfoGet (UserInfoGetRequest) returns (UserInfoGetResponse);
+  rpc UpdateUserSignature (UserInfoUpdateRequest) returns (UserInfoUpdateResponse);
+  rpc UserPreferencesGet (UserPreferencesGetRequest) returns (UserPreferencesGetResponse);
+  rpc UsersGet (UsersGetRequest) returns (UsersGetResponse);
+  rpc UserGetByGuid (UserGetByGuidRequest) returns (UserGetByGuidResponse);
+  rpc ExecuteGridMenuAction(ExecuteGridMenuItemRequest) returns (ExecuteGridMenuItemResponse);
+  rpc UploadFile (SharePointFileUploadRequest) returns (SharePointFileUploadResponse);
+  rpc UploadFileChunk(stream ChunkMsg) returns (UploadStatus);
+  rpc GetSharePointURL(GetSharePointURLMessageRequest) returns (GetSharePointURLMessage); //CBLD-415
+  rpc CheckPhotoFilesAtUrl(PhotoFileCheckRequest) returns (PhotoFileCheckResponse);
+  rpc SaveWidgetLayout(WidgetLayoutPOST) returns (WidgetLayoutSaveResponse);
+  rpc WidgetLayoutGet(WidgetLayoutGetRequest) returns (WidgetLayoutGetResponse);
+  rpc ConvertTiffToPng (ConvertImageRequest) returns (ConvertImageResponse);
+  rpc GetSignatoryInfo(GetSignatoryInfoRequest) returns (GetSignatoryInfoResponse);
+  rpc LogUsage (UsageRequest) returns (UsageResponse);
+  rpc GetUsageReport (UsageReportRequest) returns (UsageReportResponse);
+  rpc GetTeamMembers (TeamRequest) returns (TeamMemberListResponse);
+  rpc GetScheduledWork (TeamRequest) returns (AvailabilityListResponse);
+  rpc ImportLegacyStatuses(ImportLegacyStatusesReq) returns (ImportLegacyStatusesRes);
+  rpc GetQuoteDashboardData(GetQuoteDashboardDataReq) returns (GetQuoteDashboardDataRes);
+  rpc GetThresholdsForOrgUnit(GetQuoteThresholdReq) returns (GetQuoteThresholdRes);
+
+  rpc GetHolidays (HolidayReq) returns (PublicHolidayListResponse);
+  rpc GetNonActivityEvents (GetNonActivityEventsReq) returns (NonActivityEventsResp);
+  rpc GetScheduledActivities (ScheduledActivitiesReq) returns (ScheduledActivitiesRes);
+  rpc GetOrganisationalUnitForUser (OrganisationalUnitForUserReq) returns (OrganisationalUnitForUserRes);
+  rpc GetAutomatedInvoicingKPI(AutomatedInvoicingKPIReq) returns (AutomatedInvoicingKPIRes);
+  rpc JobClosureDecision (JobClosureDecisionRequest) returns (JobClosureDecisionResponse);
+  // Generic Approve/Reject for AUTHORISATION queue (Quotes/Enquiries/other)
+  rpc AuthorisationDecision (AuthorisationDecisionRequest) returns (AuthorisationDecisionResponse);
+  // CYB-43 Invoice Processing Mode (Automated/Manual/Paused)
+  rpc JobInvoiceProcessingModeGet (JobInvoiceProcessingModeGetRequest) returns (JobInvoiceProcessingModeGetResponse);
+  rpc JobInvoiceProcessingModeSet (JobInvoiceProcessingModeSetRequest) returns (JobInvoiceProcessingModeSetResponse);
+  rpc JobInvoicePendingTriggerCountGet (JobInvoicePendingTriggerCountGetRequest) returns (JobInvoicePendingTriggerCountGetResponse);
+  rpc JobInvoiceGenerateFromPendingTriggers (JobInvoiceGenerateFromPendingTriggersRequest) returns (google.protobuf.Empty);
+  rpc JobInvoiceSchedulesGet (JobInvoiceSchedulesGetRequest) returns (JobInvoiceSchedulesGetResponse);
+
+  rpc GetInvoiceRequestItemsByGuid (GetInvoiceRequestItemsByGuidReq) returns (GetInvoiceRequestItemsByGuidRes);
+  rpc DeleteInvoiceRequest (DeleteInvoiceRequestReq) returns (DeleteInvoiceRequestRes);
+  rpc GetWaitStatsDashboard (GetWaitStatsDashboardRequest) returns (GetWaitStatsDashboardResponse);
+  rpc GetCymBuildSchemaDashboard (GetCymBuildSchemaDashboardRequest) returns (GetCymBuildSchemaDashboardResponse);
+
+  rpc DocumentsDownloadFile (DocumentsDownloadFileRequest) returns (DocumentsDownloadFileResponse);
+  rpc DocumentsDownloadFileStream (DocumentsDownloadFileStreamRequest) returns (stream DocumentsDownloadFileStreamResponse);
+
+  rpc AddressLookupSearch (AddressLookupSearchRequest) returns (AddressLookupSearchResponse);
+  rpc AddressLookupResolve (AddressLookupResolveRequest) returns (AddressLookupResolveResponse);
+
+  rpc DocumentsNavigationGet (DocumentsNavigationGetRequest) returns (DocumentsNavigationGetResponse);
+
+  rpc SageHealthGet (SageHealthGetRequest) returns (SageHealthGetResponse);
+  rpc SageFetchSalesOrders (SageFetchSalesOrdersRequest) returns (SageFetchSalesOrdersResponse);
+  rpc SageFetchCustomerTransactions (SageFetchCustomerTransactionsRequest) returns (SageFetchCustomerTransactionsResponse);
+  rpc SageCreateSalesOrder (SageCreateSalesOrderRequest) returns (SageCreateSalesOrderResponse);
+  rpc TransactionSageSubmissionRequeue (TransactionSageSubmissionRequeueRequest) returns (TransactionSageSubmissionRequeueReply);
+  rpc DocumentsCreateEmailDraft(DocumentsCreateEmailDraftRequest)
+      returns (DocumentsCreateEmailDraftResponse);
+}
+
+enum JobClosureDecisionType  {
+  JOB_CLOSURE_DECISION_UNSPECIFIED = 0;
+  JOB_CLOSURE_DECISION_APPROVE = 1;
+  JOB_CLOSURE_DECISION_REJECT = 2;
+}
+
+// CYB-43 Invoice Processing Mode (0=Automated, 1=Manual, 2=Paused)
+enum InvoiceProcessingMode {
+  INVOICE_PROCESSING_MODE_AUTOMATED = 0;
+  INVOICE_PROCESSING_MODE_MANUAL = 1;
+  INVOICE_PROCESSING_MODE_PAUSED = 2;
+}
+
+message DocumentsEmailAttachmentRef {
+  string driveId = 1;
+  string itemId = 2;
+  string fileName = 3;
+}
+
+message DocumentsCreateEmailDraftRequest {
+  string subject = 1;
+  string body = 2;
+  bool isHtmlBody = 3;
+
+  repeated string toRecipients = 4;
+  repeated string ccRecipients = 5;
+  repeated string bccRecipients = 6;
+
+  repeated DocumentsEmailAttachmentRef attachments = 7;
+
+  string recordGuid = 8;
+  int32 entityTypeId = 9;
+  string recordNumber = 10;
+  string recordDescription = 11;
+  string recordLocation = 12;
+}
+
+message DocumentsCreateEmailDraftResponse {
+  bool success = 1;
+  string draftId = 2;
+  string webLink = 3;
+  int32 attachedCount = 4;
+  string errorReturned = 5;
+}
+
+
+message TransactionSageSubmissionRequeueRequest {
+  repeated string transactionGuids = 1;
+}
+
+message TransactionSageSubmissionRequeueResultItem {
+  int64 transactionId = 1;
+  string transactionGuid = 2;
+  bool resetStatusRow = 3;
+  int32 resetOutboxRows = 4;
+}
+
+message TransactionSageSubmissionRequeueReply {
+  int32 requeuedTransactionCount = 1;
+  int32 resetOutboxRowCount = 2;
+  int32 resetStatusRowCount = 3;
+  string message = 4;
+  repeated TransactionSageSubmissionRequeueResultItem items = 5;
+}
+
+message SageHealthGetRequest {
+}
+
+message SageHealthGetResponse {
+  string status = 1;
+  string raw_response = 2;   // legacy/debug
+  string error_returned = 3;
+
+  bool is_healthy = 4;
+  google.protobuf.StringValue detail = 5;
+}
+
+message SageFetchSalesOrdersRequest {
+  string dataset = 1;
+  string order_id = 2;
+  string filter_operator = 3;
+  bool force = 4;
+}
+
+message SageSalesOrder {
+  string account_reference = 1;
+  string document_no = 2;
+  google.protobuf.StringValue customer_order_no = 3;
+  google.protobuf.StringValue document_date = 4;
+
+  // Any source fields not yet formally mapped
+  google.protobuf.Struct additional_fields = 5;
+}
+
+message SageFetchSalesOrdersResponse {
+  string status = 1;
+  string detail = 2;
+  string raw_json = 3;       // legacy/debug
+  string error_returned = 4;
+
+  repeated SageSalesOrder sales_orders = 5;
+}
+
+message SageFetchCustomerTransactionsRequest {
+  string dataset = 1;
+  string account_reference = 2;
+  string document_no = 3;
+  int32 sys_trader_tran_type = 4;
+  bool has_sys_trader_tran_type = 5;
+  bool force = 6;
+}
+
+message SageCustomerTransaction {
+  google.protobuf.StringValue transaction_reference = 1;
+  google.protobuf.StringValue account_reference = 2;
+  google.protobuf.StringValue second_reference = 3;
+  google.protobuf.Int32Value sys_trader_tran_type = 4;
+  google.protobuf.StringValue transaction_date = 5;
+
+  google.protobuf.DoubleValue net_amount = 6;
+  google.protobuf.DoubleValue tax_amount = 7;
+  google.protobuf.DoubleValue gross_amount = 8;
+  google.protobuf.DoubleValue outstanding_amount = 9;
+
+  // Any source fields not yet formally mapped
+  google.protobuf.Struct additional_fields = 10;
+}
+
+message SageFetchCustomerTransactionsResponse {
+  string status = 1;
+  string detail = 2;
+  string raw_json = 3;       // legacy/debug
+  string error_returned = 4;
+
+  repeated SageCustomerTransaction transactions = 5;
+}
+
+message SageCreateSalesOrderLine {
+  string item_description = 1;
+  string nominal_ref = 2;
+  int32 quantity = 3;
+  double unit_price = 4;
+  string line_type = 5;
+  string nominal_cc = 6;
+  string nominal_dept = 7;
+  int32 tax_code = 8;
+  bool has_tax_code = 9;
+}
+
+message SageCreateSalesOrderRequest {
+  string dataset = 1;
+  string account_reference = 2;
+  string customer_order_no = 3;
+  string document_date = 4;
+  bool has_use_invoice_address = 5;
+  bool use_invoice_address = 6;
+  bool has_override_on_hold = 7;
+  bool override_on_hold = 8;
+  bool has_allow_credit_limit_exception = 9;
+  bool allow_credit_limit_exception = 10;
+  string analysis_code01_value = 11;
+  string analysis_code02_value = 12;
+  string analysis_code03_value = 13;
+  repeated SageCreateSalesOrderLine lines = 14;
+}
+
+message SageCreateSalesOrderResponse {
+  string status = 1;
+  string order_id = 2;
+  string detail = 3;
+  string raw_json = 4;       // legacy/debug
+  string error_returned = 5;
+
+  bool success = 6;
+}
+
+message DocumentsNavigationGetRequest {
+  int32 userId = 1;
+  string recordGuid = 2;
+  int32 entityTypeId = 3;
+}
+
+message DocumentsNavigationGetResponse {
+  repeated DocumentsNavigationItem items = 1;
+  string errorReturned = 2;
+}
+
+message DocumentsNavigationItem {
+  int32 projectId = 1;
+  string projectGuid = 2;
+  int32 projectNumber = 3;
+  int32 projectEntityTypeId = 4;
+  string projectEntityTypeName = 5;
+
+  int32 entityTypeId = 6;
+  string entityTypeName = 7;
+  string entityTypeGuid = 8;
+  bool hasDocuments = 9;
+
+  string navigationGroup = 10;
+  int32 navigationSortOrder = 11;
+  string navigationKey = 12;
+
+  int32 recordId = 13;
+  string recordGuid = 14;
+  string recordNumber = 15;
+  string recordTitle = 16;
+  string recordSubtitle = 17;
+  string recordSortValue = 18;
+
+  google.protobuf.Int32Value relatedAccountId = 19;
+  google.protobuf.Int32Value relatedAssetId = 20;
+  string accountRole = 21;
+
+  google.protobuf.Int32Value sharepointStructureId = 22;
+  google.protobuf.Int32Value sharePointSiteId = 23;
+  string sharepointSiteName = 24;
+  string sharepointSiteIdentifier = 25;
+  string sharepointSiteUrl = 26;
+
+  bool hasSharepointStructure = 27;
+  bool canBrowseDocuments = 28;
+}
+
+message AddressLookupSearchRequest {
+  string search_text = 1;
+  string context = 2;
+  bool force_api = 3;
+}
+
+message AddressLookupSearchResponse {
+  repeated LookupAddressSuggestionContract address_suggestions = 1;
+  repeated LookupAddressRecordContract postcode_addresses = 2;
+  string error_returned = 3;
+}
+
+message AddressLookupResolveRequest {
+  string id = 1;
+  string context = 2;
+}
+
+message AddressLookupResolveResponse {
+  LookupAddressRecordContract address = 1;
+  string error_returned = 2;
+}
+
+message LookupAddressSuggestionContract {
+  string id = 1;
+  string suggestion = 2;
+  string udprn = 3;
+  string urls = 4;
+}
+
+message LookupAddressRecordContract {
+  string number = 1;
+  string formatted_address = 2;
+  string line1 = 3;
+  string line2 = 4;
+  string town = 5;
+  string county = 6;
+  string postcode = 7;
+  string country = 8;
+  string uprn = 9;
+  string local_authority = 10;
+  string authority_code = 11;
+  bool has_latitude = 12;
+  double latitude = 13;
+  bool has_longitude = 14;
+  double longitude = 15;
+}
+
+message DocumentsDownloadFileRequest {
+  string driveId = 1;
+  string itemId = 2;
+}
+
+message DocumentsDownloadFileResponse {
+  string fileName = 1;
+  string contentType = 2;
+  bytes data = 3;
+  string errorReturned = 4;
+}
+
+message DocumentsDownloadFileStreamRequest {
+  string driveId = 1;
+  string itemId = 2;
+  int32 chunkSizeBytes = 3;
+}
+
+message DocumentsDownloadFileStreamResponse {
+  string fileName = 1;
+  string contentType = 2;
+  bytes data = 3;
+  string errorReturned = 4;
+}
+
+message GetCymBuildSchemaDashboardRequest {
+}
+
+message GetCymBuildSchemaDashboardResponse {
+  CymBuildSchemaSummaryContract summary = 1;
+  repeated CymBuildSchemaObjectCountContract object_counts = 2;
+  repeated CymBuildSchemaIntegrityCheckContract integrity_checks = 3;
+  repeated CymBuildSchemaLargestTableContract largest_tables = 4;
+  repeated CymBuildSchemaBoundObjectContract schema_bound_objects = 5;
+}
+
+message CymBuildSchemaSummaryContract {
+  google.protobuf.Timestamp snapshot_utc = 1;
+  int32 schemas_monitored = 2;
+  int32 total_objects_monitored = 3;
+  int32 table_count = 4;
+  int32 view_count = 5;
+  int32 procedure_count = 6;
+  int32 function_count = 7;
+  int32 non_schema_bound_object_count = 8;
+  string largest_table_name = 9;
+  int64 largest_table_row_count = 10;
+  double largest_table_reserved_mb = 11;
+}
+
+message CymBuildSchemaObjectCountContract {
+  string schema_name = 1;
+  int32 table_count = 2;
+  int32 view_count = 3;
+  int32 procedure_count = 4;
+  int32 function_count = 5;
+  int32 total_object_count = 6;
+}
+
+message CymBuildSchemaIntegrityCheckContract {
+  string check_name = 1;
+  bool is_ok = 2;
+  string status_text = 3;
+  string detail = 4;
+}
+
+message CymBuildSchemaLargestTableContract {
+  string schema_name = 1;
+  string table_name = 2;
+  int64 row_count = 3;
+  double reserved_mb = 4;
+  double used_mb = 5;
+  double data_mb = 6;
+  double index_mb = 7;
+}
+
+message CymBuildSchemaBoundObjectContract {
+  string schema_name = 1;
+  string object_name = 2;
+  string object_type = 3;
+  string object_type_desc = 4;
+  bool is_schema_bound = 5;
+  string status_text = 6;
+}
+
+message GetWaitStatsDashboardRequest {
+  int32 top_count = 1;
+  double cpu_pressure_signal_threshold_pct = 2;
+}
+
+message GetWaitStatsDashboardResponse {
+  WaitStatsDashboardSummaryContract summary = 1;
+  repeated WaitCategoryDistributionContract categories = 2;
+  repeated TopWaitTypeContract top_waits = 3;
+  repeated ActiveWaitContract active_waits = 4;
+  SignalResourceWaitSummaryContract signal_resource_summary = 5;
+  repeated WaitRecommendationContract recommendations = 6;
+}
+
+message WaitStatsDashboardSummaryContract {
+  google.protobuf.Timestamp snapshot_utc = 1;
+  string database_name = 2;
+  string server_name = 3;
+  google.protobuf.Timestamp sql_server_start_time = 4;
+  int32 seconds_since_restart = 5;
+  int64 total_wait_time_ms = 6;
+  double total_wait_time_seconds = 7;
+  int64 total_signal_wait_time_ms = 8;
+  double total_signal_wait_time_seconds = 9;
+  int64 total_resource_wait_time_ms = 10;
+  double total_resource_wait_time_seconds = 11;
+  double signal_wait_pct = 12;
+  double resource_wait_pct = 13;
+  bool is_cpu_pressure_highlighted = 14;
+  string cpu_pressure_message = 15;
+}
+
+message WaitCategoryDistributionContract {
+  string wait_category = 1;
+  int64 wait_time_ms = 2;
+  double wait_time_seconds = 3;
+  int64 signal_wait_time_ms = 4;
+  int64 resource_wait_time_ms = 5;
+  int64 waiting_tasks_count = 6;
+  double pct_of_total_wait_time = 7;
+}
+
+message TopWaitTypeContract {
+  string wait_type = 1;
+  string wait_category = 2;
+  int64 waiting_tasks_count = 3;
+  int64 wait_time_ms = 4;
+  double wait_time_seconds = 5;
+  int64 signal_wait_time_ms = 6;
+  double signal_wait_seconds = 7;
+  int64 resource_wait_time_ms = 8;
+  double resource_wait_seconds = 9;
+  int64 max_wait_time_ms = 10;
+  double avg_wait_ms_per_task = 11;
+  double pct_of_total_wait_time = 12;
+  double pct_signal_within_wait = 13;
+}
+
+message ActiveWaitContract {
+  google.protobuf.Timestamp snapshot_utc = 1;
+  int32 session_id = 2;
+  int32 request_id = 3;
+  string status = 4;
+  string command = 5;
+  string wait_type = 6;
+  int64 current_wait_ms = 7;
+  string last_wait_type = 8;
+  string wait_resource = 9;
+  bool has_blocking_session_id = 10;
+  int32 blocking_session_id = 11;
+  int64 cpu_time_ms = 12;
+  int64 total_elapsed_time_ms = 13;
+  int64 reads = 14;
+  int64 writes = 15;
+  int64 logical_reads = 16;
+  int64 granted_query_memory = 17;
+  bool has_dop = 18;
+  int32 dop = 19;
+  bool has_parallel_worker_count = 20;
+  int32 parallel_worker_count = 21;
+  string database_name = 22;
+  string host_name = 23;
+  string program_name = 24;
+  string login_name = 25;
+  string running_statement = 26;
+  string batch_text = 27;
+}
+
+message SignalResourceWaitSummaryContract {
+  int64 total_wait_time_ms = 1;
+  int64 signal_wait_time_ms = 2;
+  int64 resource_wait_time_ms = 3;
+  double signal_wait_pct = 4;
+  double resource_wait_pct = 5;
+  string signal_wait_assessment = 6;
+}
+
+message WaitRecommendationContract {
+  int32 priority = 1;
+  string pattern = 2;
+  string recommendation = 3;
+  string supporting_metric = 4;
+}
+
+
+message GetInvoiceRequestItemsByGuidReq{
+	int32 UserId = 1;
+	string InvoiceReqGuid = 2;
+}
+
+message GetInvoiceRequestItemsByGuidRes{
+	repeated string Guid = 1;
+}
+
+message DeleteInvoiceRequestReq{
+	string Guid = 1;
+}
+
+message DeleteInvoiceRequestRes{
+	bool status = 1;
+    string errorReturned = 2;
+}
+
+message JobInvoiceSchedulesGetRequest {
+  int32 userId = 1;
+  string parentGuid = 2; // Job Guid
+}
+
+message JobInvoiceScheduleDto {
+  int64 id = 1;
+  string guid = 2;
+  string name = 3;
+  string descriptionOfWork = 4;
+  double amount = 5;
+  string triggerId = 6;
+  google.protobuf.Timestamp expectedDateUtc = 7;
+}
+
+message JobInvoiceSchedulesGetResponse {
+  repeated JobInvoiceScheduleDto schedules = 1;
+}
+
+message JobInvoiceProcessingModeGetRequest {
+  string jobGuid = 1;
+}
+
+message JobInvoiceProcessingModeGetResponse {
+  InvoiceProcessingMode mode = 1;
+  string errorReturned = 99;
+}
+
+message JobInvoiceProcessingModeSetRequest {
+  string jobGuid = 1;
+  InvoiceProcessingMode newMode = 2;
+  string changedByUserGuid = 3;
+  string reason = 4;
+  string source = 5; // e.g. "JobDetail"
+}
+
+message JobInvoiceProcessingModeSetResponse {
+  InvoiceProcessingMode oldMode = 1;
+  InvoiceProcessingMode newMode = 2;
+  string errorReturned = 99;
+}
+
+message JobInvoicePendingTriggerCountGetRequest {
+  string jobGuid = 1;
+}
+
+message JobInvoicePendingTriggerCountGetResponse {
+  int32 pendingCount = 1;
+  string errorReturned = 99;
+}
+
+message JobInvoiceGenerateFromPendingTriggersRequest {
+  string jobGuid = 1;
+  string requesterUserGuid = 2;
+  string notes = 3;
+}
+
+message JobClosureDecisionRequest {
+  int32 userId = 1;        // Authoriser identity ID (INT)
+  string jobGuid = 2;      // Job GUID
+  JobClosureDecisionType decision = 3;
+  string comment = 4;      // Required for reject; optional for approve
+}
+
+message JobClosureDecisionResponse {
+  bool success = 1;
+  string message = 2;
+
+  string jobGuid = 3;
+  JobClosureDecisionType decision = 4;
+  string storedComment = 5;           // comment actually persisted (defaulted for approve)
+  google.protobuf.Timestamp decisionDateTimeUtc = 6;
+}
+
+// Generic Authorisation decision
+enum AuthorisationDecisionType {
+  AUTHORISATION_DECISION_UNSPECIFIED = 0;
+  AUTHORISATION_DECISION_APPROVE = 1;
+  AUTHORISATION_DECISION_REJECT = 2;
+}
+
+message AuthorisationDecisionRequest {
+  int32 userId = 1;
+  string recordGuid = 2;        // DataObjectGuid
+  string entityTypeName = 3;    // "Enquiries", "Quotes", etc.
+  bool approve = 4;             // true=approve false=reject
+  string comment = 5;           // required for reject
+}
+
+message AuthorisationDecisionResponse {
+  bool success = 1;
+  string message = 2;
+
+  string recordGuid = 3;
+  string entityTypeName = 4;
+  bool approve = 5;
+
+  string storedComment = 6;
+  google.protobuf.Timestamp decisionDateTimeUtc = 7;
+
+  string fromStatusGuid = 8;
+  string toStatusGuid = 9;
+}
+
+message AutomatedInvoicingKPIReq{
+
+}
+
+message AutomatedInvoicingKPIRes{
+	double Average = 1;
+	double Sum = 2;
+	int32  NumberOfPending = 3;
+	int32  NumberOfPaid = 4;
+	int32  NumberOfOverdue = 5;
+}
+
+message DocumentsResolveRequest {
+  string recordGuid = 1;
+  string entityQueryGuid = 2;
+  string sharePointUrlHint = 3; // optional
+  int32 entity_type_id = 4;
+}
+
+message DocumentCapabilities {
+  bool canDownload = 1;
+  bool canUpload = 2;
+  bool canDelete = 3;
+  bool canCreateFolder = 4;
+}
+
+message DocumentsLocation {
+  string recordGuid = 1;
+  string entityQueryGuid = 2;
+  string siteId = 3;
+  string driveId = 4;
+  string rootFolderId = 5;
+  string rootFolderName = 6;
+  string sharePointWebUrl = 7;
+  DocumentCapabilities capabilities = 8;
+}
+
+message DocumentsResolveResponse {
+  DocumentsLocation location = 1;
+  string errorReturned = 99;
+}
+
+message DocumentsListRequest {
+  string siteId = 1;
+  string driveId = 2;
+  string folderId = 3;
+  int32 pageSize = 4;
+  string pageToken = 5;     // opaque; we store nextLink here
+  string searchText = 6;    // optional (basic name filter for now)
+}
+
+message DocumentsListItem {
+	string id = 1;
+	string name = 2;
+	bool isFolder = 3; bool
+	hasChildren = 4;
+	int64 size = 5;
+	google.protobuf.Timestamp createdUtc = 6;
+	google.protobuf.Timestamp lastModifiedUtc = 7;
+	string mimeType = 8;
+	string webUrl = 9; // Optional per-item permissions/capabilities (handy for UI enable/disable)
+	bool canDownload = 10;
+	bool canUpload = 11;
+	bool canDelete = 12;
+	bool canCreateFolder = 13;
+	string description = 14; // e.g. for folders, we can return a description like "3 files, 2 folders"
+}
+
+message DocumentsCreateFolderRequest {
+  string siteId = 1;
+  string driveId = 2;
+  string parentFolderId = 3; // if empty/null => create under drive root (your API can treat "" as root)
+  string folderName = 4;
+  string conflictBehavior = 5; // "rename" | "fail" | "replace" (Graph uses @microsoft.graph.conflictBehavior)
+}
+
+message DocumentsCreateFolderResponse {
+  DocumentsListItem folder = 1;   // returns the created folder as an item
+  string folderId = 2;
+  string folderName = 3;
+  string webUrl = 4;
+  string errorReturned = 99;
+}
+
+message DocumentsUploadRequest {
+  string siteId = 1;
+  string driveId = 2;
+  string folderId = 3;        // target folder itemId (or empty => root)
+  string fileName = 4;
+  bytes content = 5;     // optional
+  bytes data = 6;             // simple upload (fine for smaller payloads)
+  bool overwrite = 7;         // optional
+}
+
+message DocumentsUploadResponse {
+  DocumentsListItem item = 1; // uploaded file item
+  string itemId = 2;
+  string webUrl = 3;
+  string errorReturned = 99;
+}
+
+message DocumentsDownloadRequest {
+  string siteId = 1;
+  string driveId = 2;
+  string itemId = 3;          // file itemId
+}
+
+message DocumentsDownloadResponse {
+  string fileName = 1;
+  bytes content = 2;
+  int64 sizeBytes = 3;
+  string errorReturned = 99;
+}
+
+message DocumentsDeleteRequest {
+  string siteId = 1;
+  string driveId = 2;
+  string itemId = 3;
+}
+
+message DocumentsDeleteResponse {
+  bool success = 1;
+  string errorReturned = 99;
+}
+
+message DocumentsListResponse {
+  repeated DocumentsListItem items = 1;
+  string nextPageToken = 2;
+  string errorReturned = 99;
+}
+
+message GetQuoteThresholdReq{
+	int32 UserId = 1;
+}
+
+message GetQuoteThresholdRes{
+	double QuoteThreshold = 1;
+	string error_returned = 2;
+}
+
+
+message QuoteDashboardData{
+	int32 QuoteID = 1;
+	string QuoteNumber = 2;
+	string Guid = 3;
+	google.protobuf.Timestamp Date = 4;
+	string Status = 5;
+	string Client = 6;
+	string QuoteType = 7;
+	double QuoteValue = 8;
+
+}
+
+message GetQuoteDashboardDataReq{
+
+}
+
+message GetQuoteDashboardDataRes{
+	repeated QuoteDashboardData res = 1;
+	string error_returned = 2;
+}
+
+
+
+message ImportLegacyStatusesReq {
+
+}
+
+message ImportLegacyStatusesRes {
+    bool status = 1;
+    string errorReturned = 2;
+}
+
+
+message TeamMember {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message AvailabilityEvent {
+  int32 id = 1;
+  string title = 2;
+  string team_member_id = 3;
+  google.protobuf.Timestamp start = 4;
+  google.protobuf.Timestamp end = 5;
+  bool is_absence = 6;
+}
+
+message ScheduledActivitiesReq{
+	int32 UserId = 1;
+	google.protobuf.Timestamp StartDate = 2;
+	 google.protobuf.Timestamp EndDate = 3;
+}
+
+message ScheduledActivitiesRes{
+	repeated ScheduledActivity ScheduledActivities = 1;
+}
+
+message ScheduledActivity{
+	int32  UserId = 1;
+	google.protobuf.Timestamp StartDate = 2;
+	google.protobuf.Timestamp EndDate = 3;
+	string Title = 4;
+	string JobNumber = 5;
+	string Note = 6;
+}
+
+
+message GetNonActivityEventsReq{
+	int32 UserId = 1;
+	google.protobuf.Timestamp StartDate = 2;
+	google.protobuf.Timestamp EndDate = 3;
+}
+
+message NonActivityEventsResp{
+	repeated NonActivityEvents NonActivityEvents = 1;
+}
+
+//Used for adding entries to the scheduler (absence)
+message NonActivityEvents{
+	int32 ID = 1;
+	string EventName = 2;
+	google.protobuf.Timestamp StartTime = 3;
+	google.protobuf.Timestamp EndTime = 4;
+	int32 TeamId = 5;
+	int32 MemberId = 6;
+	string Guid = 7;
+	int32 AbsenceTypeID = 8;
+}
+
+
+message HolidayReq{
+
+}
+
+message PublicHoliday {
+	int32 ID  = 1;
+	google.protobuf.Timestamp Date = 2;
+	string DayName = 3;
+	string MonthName = 4;
+	string YearInWords = 5;
+	string FormattedDate = 6;
+	string HolidayName = 7;
+	bool IsBankHoliday = 8;
+	string Region = 9;
+	int32 FiscalQuarter = 10;
+	int32 FiscalYear = 11;
+	int32 DayOfYear = 12;
+	int32 WeekOfYear = 13;
+}
+
+message OrganisationalUnitForUserReq{
+	int32 UserId = 1;
+}
+
+message OrganisationalUnitForUserRes{
+	OrganisationalUnitForUser OrganisationalUnitIDForUser = 1;
+}
+
+message OrganisationalUnitForUser{
+	int32 OrganisationUnitId = 1;
+}
+
+message TeamRequest {
+  int32 organisational_unit_id = 1;
+}
+
+message TeamMemberListResponse {
+  repeated TeamMember team_members = 1;
+  string error_returned = 2;
+}
+
+message AvailabilityListResponse {
+  repeated AvailabilityEvent events = 1;
+  string error_returned = 2;
+}
+
+message PublicHolidayListResponse {
+  repeated PublicHoliday holidays = 1;
+  string error_returned = 2;
+}
+message UsageRequest {
+  string user_id = 1;
+  string feature_name = 2;
+}
+
+message UsageResponse {
+  string message = 1;
+}
+
+message UsageReportRequest {
+  int32 days = 1;
+  string user_guid = 2;
+  google.protobuf.Timestamp start_date_utc = 3;
+  google.protobuf.Timestamp end_date_utc = 4;
+}
+
+message UsageReportResponse {
+  repeated UsageData usage_data = 1;
+}
+
+message UsageData {
+  string username = 1;
+  string feature_name = 2;
+  int32 usage_count = 3;
+  string last_accessed = 4;
+  string first_accessed = 5;
+  int32 weekly_average = 6;
+}
+
+// Message representing a single SignatureInfo record
+message SignatureInfo {
+    string email_address = 1;
+    string full_name = 2;
+    string job_guid = 3;
+    string enquiry_guid = 4;
+    string quote_guid = 5;
+    bool is_active = 6;
+    string job_title = 7;
+    string job_type_name = 8;
+    bytes signature = 9;
+    string user_guid = 10;
+}
+
+// Request message for getting signatory info
+message GetSignatoryInfoRequest {
+    string job_guid = 1;
+    string quote_guid = 2;
+    string enquiry_guid = 3;
+}
+
+// Response message containing a list of SignatureInfo
+message GetSignatoryInfoResponse {
+    repeated SignatureInfo signatures = 1;
+}
+
+message MergeDocumentItemType {
+    int32 id = 1;
+    string guid = 2;
+    string name = 3;
+    bool is_image_type = 4;
+    string row_status = 5;
+    string row_version = 6;
+}
+
+message GetMergeDocumentItemTypesRequest {
+    int32 user_id = 1; // User ID for authorization/filtering
+}
+
+message GetMergeDocumentItemTypesResponse {
+    repeated MergeDocumentItemType merge_document_item_types = 1;
+    string error_returned = 2; // Optional error message
+}
+
+message MergeDocumentItemInclude {
+    string guid = 1;
+    int32 sort_order = 2;
+    string source_document_entity_property = 3;
+    string source_sharepoint_item_entity_property = 4;
+    string included_merge_document = 5;
+    string merge_document_item_guid = 6;
+    string row_status = 7;
+    string row_version = 8;
+}
+
+message GetMergeDocumentItemIncludesRequest {
+    string merge_document_item_guid = 1; // Parent GUID
+}
+
+message GetMergeDocumentItemIncludesResponse {
+    repeated MergeDocumentItemInclude merge_document_item_includes = 1;
+    string error_returned = 2; // Optional error message
+}
+
+message GetMergeDocumentItemsRequest {
+    string merge_document_guid = 1; // Parent GUID
+}
+
+message MergeDocumentItem {
+    string guid = 1;
+    string merge_document_item_type = 2;
+    string bookmark_name = 3;
+    string entity_type = 4;
+    string sub_folder_path = 5;
+    int32 image_columns = 6;
+    string row_status = 7;
+    string row_version = 8;
+	repeated MergeDocumentItemInclude includes = 9;
+	string entity_type_guid = 10;
+	string linked_entity_type_guid = 11;
+}
+
+message GetMergeDocumentItemsResponse {
+    repeated MergeDocumentItem merge_document_items = 1;
+    string error_returned = 2; // Optional error field
+}
+// Request message for converting an image
+message ConvertImageRequest {
+  bytes imageData = 1; // The TIFF file as binary data
+}
+
+// Response message with the converted PNG
+message ConvertImageResponse {
+  string base64Png = 1; // The converted PNG as base64 string
+}
+
+message GridViewDefinitionForWidgets {
+	int32 Id = 1;
+	string RowVersion = 2;
+	string Code = 3;
+	string Name = 4;
+	repeated GridViewColumnDefinition Columns = 5;
+	string DetailPageUri = 6;
+	string DefaultSortColumnName = 7;
+	int32 GridDefinitionId = 8;
+	string SqlQuery = 9;
+	string SecurableCode = 10;
+	int32 DisplayOrder = 11;
+	string DisplayGroupName = 12;
+	string MetricSqlQuery = 13;
+	bool ShowMetric = 14;
+	string Guid = 15;
+	string GridDefinitionGuid = 16;
+	bool IsDetailWindowed = 17;
+	string EntityTypeGuid = 18;
+	string MetricTypeGuid = 19;
+	int32 MetricMin = 20;
+	int32 MetricMax = 21;
+	int32 MetricMinorUnit = 22;
+	int32 MetricMajorUnit = 23;
+	int32 MetricStartAngle = 24;
+	int32 MetricEndAngle = 25;
+	bool MetricReversed = 26;
+	double MetricRange1Min = 27;
+	double MetricRange1Max = 28;
+	double MetricRange1ColourHex = 29;
+	double MetricRange2Min = 30;
+	double MetricRange2Max = 31;
+	double MetricRange2ColourHex = 32;
+	string DrawIconCss = 33;
+	bool IsDefaultSortDescending = 34;
+	bool AllowNew = 35;
+	int32 GridViewTypeId = 36; //OE - CBLD-265
+	repeated GridViewActions GridViewActions = 37;
+
+	//Extended variables
+	string GridViewCode = 38;
+}
+//CBLD-408
+message DashboardMetricForWidgets {
+	string Label = 1;
+	int32 SortOrder = 2;
+	double Min = 3;
+	double Max = 4;
+	double MinorUnit = 5;
+	double MajorUnit = 6;
+	int32 StartAngle = 7;
+	int32 EndAngle = 8;
+	bool Reverse = 9;
+	repeated DashboardMetricValue Values = 10;
+	repeated DashboardMetricRange Ranges = 11;
+	string MetricTypeName = 12;
+	string MetricSqlQuery = 13;
+	string Guid = 14;
+	string PageUri = 15;
+	string DisplayGroupName = 16;
+	int32 DisplayOrder = 17;
+	string EnquiryId = 18;
+	string Code = 19;
+	string GridViewCode = 20;
+}
+
+//CBLD-408
+message WidgetLayoutGetRequest {
+
+}
+//CBLD-408
+message WidgetLayoutGetResponse {
+	string WidgetLayout = 1;
+	repeated DashboardMetricForWidgets DashboardMetrics = 2;
+	repeated GridViewDefinitionForWidgets GridViewDefinitions = 3;
+}
+
+message PhotoFileCheckRequest {
+    string sharePointUrl = 1;
+}
+
+message PhotoFileCheckResponse {
+    int32 numberOfPhotos = 1;
+    string errorReturned = 2;
+}
+
+// Request message (empty for now)
+message ObjectSharePointPathCollectionGetRequest {}
+
+// Response message containing a list of ObjectSharePointPaths
+message ObjectSharePointPathCollectionGetResponse {
+    repeated ObjectSharePointPath objectSharePointPaths = 1;
+}
+
+// Definition of the ObjectSharePointPath message
+message ObjectSharePointPath {
+    string objectGuid = 1;
+    string sharePointSiteIdentifier = 2;
+    string folderPath = 3;
+    string fullSharePointUrl = 4;
+}
+/*
+Types
+*/
+message ChunkMsg {
+    string FileName = 1;
+    int64 FileSize = 2;
+	string storageUrl = 3;
+    bytes Chunk = 4;
+}
+
+message FileRequest {
+    string FilePath = 1;
+}
+
+message UploadStatus {
+    bool Success = 1;
+    string Message = 2;
+}
+
+message ActionMenuItem {
+	string Label = 1;
+	string IconCss = 2;
+	string Type = 3;
+	string EntityTypeGuid = 4;
+	string EntityQueryGuid = 5;
+	string Guid = 6;
+	int32 Id = 7;
+	int32 SortOrder = 8;
+	bool RedirectToTargetGuid = 9;
+}
+
+message MenuItem {
+    string document_guid = 1;
+    string document_id = 2;
+    string drive_id = 3;
+    string entity_query_guid = 4;
+    string entity_type_guid = 5;
+    string filename_template = 6;
+    string icon = 7; // Protobuf does not support object, so it is represented as a string or a more specific type.
+    bool is_read_only = 8; // Defaults to false
+    bool is_separator = 9;
+    repeated MenuItem items = 10; // Recursive definition for nested MenuItems
+    string linked_entity_type_guid = 11;
+    string object_guid = 12;
+    bool open_in_new_tab = 13; // Defaults to false
+    string _guid = 14;
+    string record_guid = 15;
+    string text = 16;
+    string type = 17;
+    string url = 18;
+    int32 sort_order = 19; // Defaults to 0
+    bool redirect_to_target_guid = 20; // Defaults to false
+    repeated MergeDocumentItem merge_document_items = 21; // Reference to MergeDocumentItem
+	bool allow_pdf_only = 22;
+	bool allow_excel_output_only = 23;
+}
+
+//CBLD-415 a.
+message GetSharePointURLMessageRequest{
+	DataObject DataObject = 1;
+}
+
+//CBLD-415 b.
+message GetSharePointURLMessage{
+	string Message = 1;
+}
+//CBLD-265: To be moved to its correct alphabetical order.
+message GridViewActions{
+	string Title     = 1;
+	string Statement = 2;
+	string Guid      = 3;
+}
+
+message ExecuteGridMenuItemResponse{
+	int32 rowsAffected = 1;
+	string ErrorReturned = 2;
+}
+
+message ExecuteGridMenuItemRequest{
+	string Statement = 1;
+	string Guid      = 2;
+}
+
+message GridViewActionsResponse{
+	repeated GridViewActions Actions = 1;
+}
+
+//CBLD-259
+message EntityPropertyActions{
+	int32 RowStatus   = 1;
+	string RowVersion = 2;
+	string Guid       = 3;
+	string Statement  = 4;
+}
+
+message DashboardMetric {
+	string Label = 1;
+	int32 SortOrder = 2;
+	double Min = 3;
+	double Max = 4;
+	double MinorUnit = 5;
+	double MajorUnit = 6;
+	int32 StartAngle = 7;
+	int32 EndAngle = 8;
+	bool Reverse = 9;
+	repeated DashboardMetricValue Values = 10;
+	repeated DashboardMetricRange Ranges = 11;
+	string MetricTypeName = 12;
+	string MetricSqlQuery = 13;
+	string Guid = 14;
+	string PageUri = 15;
+	string DisplayGroupName = 16;
+	int32 DisplayOrder = 17;
+	string EnquiryId = 18;
+}
+
+message DashboardMetricRange {
+	string ColourHex = 1;
+	double MinValue = 2;
+	double MaxValue = 3;
+}
+
+message DashboardMetricsGetRequest {
+
+}
+
+message DashboardMetricsGetResponse {
+	repeated DashboardMetric Metrics = 1;
+	string ErrorReturned = 2;
+}
+
+message DashboardMetricValue {
+	string ColourHex = 1;
+	double Value = 2;
+}
+
+message DataCompositeFilter {
+	repeated DataFilter Filters = 1;
+	repeated DataCompositeFilter CompositeFilters = 2;
+	string LogicalOperator = 3;
+}
+
+message DataFilter {
+	string ColumnName = 1;
+	string Operator = 2;
+	google.protobuf.Value Value = 3;
+	string DataType = 4;
+	string Guid = 5;
+}
+
+message DataObject {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string EntityTypeGuid = 4;
+	repeated DataProperty DataProperties = 5;
+	repeated ObjectSecurity ObjectSecurity = 6;
+	string Label = 7;
+	repeated DataPill DataPills = 8;
+	int64 DatabaseId = 9;
+	string SharePointUrl = 10;
+	bool HasValidationMessages = 11;
+	ProgressData ProgressData = 12;
+	repeated ActionMenuItem ActionMenuItems = 13;
+	repeated MergeDocument MergeDocuments = 14;
+	string LinkedEntityTypeGuid = 15;
+	string SharePointSiteIdentifier = 16;
+	string SharePointFolderPath = 17;
+	repeated ValidationResults ValidationResults = 18;
+	bool HasDocuments = 19;
+	string ErrorReturned = 20;
+	bool SaveButtonDisabled = 21; //CBLD-381
+}
+
+message ValidationResults {
+	bool IsHidden = 1;
+	bool IsInformationOnly = 2;
+	bool IsInvalid = 3;
+	bool IsReadOnly = 4;
+	string Message = 5;
+	string TargetGuid = 6;
+	string TargetType = 7;
+}
+message DataObjectCompositeFilter {
+	repeated DataObjectFilter Filters = 1;
+	repeated DataObjectCompositeFilter CompositeFilters = 2;
+	string LogicalOperator = 3;
+}
+
+message DataObjectDeleteRequest {
+	DataObject DataObject = 1;
+	string EntityQueryGuid = 2;
+	repeated EntityQueryParameterValue EntityQueryParameterValues = 3;
+}
+
+message DataObjectDeleteResponse {
+	bool Success = 1;
+	string ErrorReturned = 2;
+}
+
+message DataObjectFilter {
+	string ColumnName = 1;
+	string Operator = 2;
+	google.protobuf.Value Value = 3;
+	string DataType = 4;
+	string _guid = 5;
+}
+
+message DataObjectGetRequest {
+	string Guid = 1;
+	string EntityTypeGuid = 2;
+	string EntityQueryGuid = 3;
+	bool ForInformationView = 4;
+	repeated string ObjectGuids = 5;
+	map<string, google.protobuf.Any> TransientVirtualProperties = 6;
+}
+
+message DataObjectGetResponse {
+	DataObject DataObject = 1;
+	string ErrorReturned = 2;
+}
+
+message DataObjectListGetRequest {
+	string EntityTypeGuid = 1;
+	repeated EntityQueryParameterValue Parameters = 2;
+	repeated DataObjectCompositeFilter Predicate = 3;
+	repeated DataObjectSort Sort = 4;
+	int32 PageSize = 5;
+	int32 PageNumber = 6;
+	int64 ParentId = 7;
+	string EntityQueryGuid = 8;
+}
+
+message DataObjectListGetResponse {
+	repeated DataObject DataObjects = 1;
+	int32 TotalRows = 2;
+	int32 PageNumber = 3;
+	string ErrorReturned = 4;
+}
+
+message DataObjectSecurity {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string DataObjectGuid = 4;
+	string UserGuid = 5;
+	string GroupGuid = 6;
+	bool CanRead = 7;
+	bool CanWrite = 8;
+	string UserIdentity = 9;
+	//string GroupIdentity = 10;
+	int32 Id = 10;
+}
+
+message DataObjectSort {
+	string ColumnName = 1;
+	string Direction = 2;
+}
+
+message DataObjectUpsertRequest {
+	DataObject DataObject = 1;
+	DataObject DeltaDataObject = 2; //OE - CBLD-436
+	string EntityQueryGuid = 3;
+	repeated EntityQueryParameterValue EntityQueryParameterValues = 4;
+	bool ValidateOnly = 5;
+	bool SkipValidation = 6;
+}
+
+message DataObjectUpsertResponse {
+	DataObject DataObject = 1;
+	string ErrorReturned = 2;
+}
+
+message DataPill {
+	string Value = 1;
+	string Class = 2;
+	int32 SortOrder = 3;
+}
+
+message DataProperty {
+	string EntityPropertyGuid = 1;
+	google.protobuf.Any Value = 2;
+	bool IsInvalid = 3;
+	string ValidationMessage = 4;
+	bool IsReadOnly = 5;
+	bool IsEnabled = 6;
+	bool IsRestricted = 7;
+	bool IsHidden = 8;
+	bool IsVirtual = 9; //OE: CBLD-473
+}
+
+message DataSort {
+	string ColumnName = 1;
+	string Direction = 2;
+}
+
+message DriveItem {
+  string Id = 1;
+  string Name = 2;
+  string WebUrl = 3;
+  ItemReference ParentReference = 4;
+  string DriveId = 5;
+  google.protobuf.Timestamp CreatedDateTime = 6;
+  google.protobuf.Timestamp LastModifiedDateTime = 7;
+  int64 Size = 8;
+  string CTag = 9;
+  repeated Permission Permissions = 10;
+    // Nested message for permissions
+  message Permission {
+    string Id = 1;
+    string Roles = 2;
+    IdentitySet GrantedTo = 3;
+    // Nested message for identity set
+    message IdentitySet {
+      Identity User = 1;
+      Identity Application = 2;
+      Identity Device = 3;
+    }
+  }
+  // Nested message for identity
+  message Identity {
+    string Id = 1;
+    string DisplayName = 2;
+  }
+  // Nested message for ItemReference
+  message ItemReference {
+    string DriveId = 1;
+    string DriveType = 2;
+    string Id = 3;
+    string Path = 4;
+  }
+}
+
+message DriveListItem {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp CreatedDateTime = 3;
+  google.protobuf.Timestamp LastModifiedDateTime = 4;
+  int64 size = 5;
+  string mime_type = 6;
+  string web_url = 7;
+  DriveListItem parent_folder = 8;
+  SharePointFile sharePointFile = 9;
+  string ErrorReturned = 10;
+}
+
+message DropDownDataListItem {
+	string Name = 1;
+	string Value = 2;
+	bool IsDefault = 3;
+	string Group = 4;
+	string ColourHex = 5; //CBLD-570
+}
+
+message DropDownDataListReply {
+	repeated DropDownDataListItem items = 1;
+}
+
+message DropDownDataListRequest {
+	string Guid = 1;
+	bool isAddingAllowed = 2;
+	repeated DataObjectCompositeFilter Filters = 3;
+	string ParentGuid = 4;
+	string RecordGuid = 5;
+	string CurrentSelectedValueGuid = 6;
+}
+
+message DropDownListDefinition {
+	int32 Id = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Code = 4;
+	string NameColumn = 5;
+	string ValueColumn = 6;
+	string SqlQuery = 7;
+	string DefaultSortColumnName = 8;
+	string IsDefaultColumn = 9;
+	string DetailPageUrl = 10;
+	bool IsDetailWindowed = 11;
+	string InformationPageUrl = 12;
+	string GroupColumn = 13;
+	string ColourHexColumn = 14; //CBLD-570
+}
+
+message DropDownListDefinitionGetRequest {
+	string Guid = 1;
+}
+
+message DropDownListDefinitionGetResponse {
+	DropDownListDefinition DropDownListDefinition = 1;
+	string InformationPageUrl = 2;
+	string ErrorReturned = 3;
+}
+
+message EntityDataType {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+}
+
+message EntityHoBT {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string SchemaName = 4;
+	string ObjectName = 5;
+	string EntityTypeGuid = 6;
+	string ObjectType = 7;
+	bool IsMainHoBT = 8;
+	bool IsReadOnlyOffline = 9;
+	repeated ObjectSecurity ObjectSecurity = 10;
+}
+
+message EntityProperty {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	string LanguageLabelGuid = 5;
+	string EntityDataTypeGuid = 6;
+	bool IsReadOnly = 7;
+	bool IsImmutable = 8;
+	bool IsHidden = 9;
+	bool IsCompulsory = 10;
+	int32 MaxLength = 11;
+	int32 Precision = 12;
+	int32 Scale = 13;
+	bool DoNotTrackChanges = 14;
+	string EntityPropertyGroupGuid = 15;
+	int32 SortOrder = 16;
+	int32 GroupSortOrder = 18;
+	string EntityTypeGuid = 19;
+	repeated ObjectSecurity ObjectSecurity = 20;
+	string EntityDataTypeName = 21;
+	string Label = 22;
+	bool IsObjectLabel = 23;
+	string DropDownListDefinitionGuid = 24;
+	repeated EntityPropertyDependant DependantProperties = 25;
+	bool IsParentRelationship = 26;
+	string EntityHoBTGuid = 27;
+	bool IsDetailWindowed = 28;
+	string DetailPageUri = 29;
+	string ForeignEntityTypeGuid = 30;
+	bool IsUpperCase = 31;
+	string InformationPageUri = 32;
+	DropDownListDefinition DropDownListDefinition = 33;
+	string SqlDefaultValueStatement = 34;
+	string FixedDefaultValue = 35;
+	bool IsIncludedInformation = 36;
+	repeated EntityPropertyActions PropertyActions = 37; //CBLD-259
+	bool AllowBulkChange = 38; //CBLD-260
+	bool SelectedForBulkChange = 39; //CBLD-260
+	string Value = 40; //CBLD-260
+	bool IsSelectedForBulkChange = 41; //CBLD-260
+	bool IsVirtual = 42; //2. OE: CBLD-473
+	bool ShowOnMobile = 43;
+	bool IsAlwaysVisibleInGroup = 44;
+	bool IsAlwaysVisibleInGroup_Mobile = 45;
+	string ExternalSearchPageUrl = 46;
+	bool IsLongitude = 47;
+	bool IsLatitude = 48;
+}
+
+message EntityPropertyDefaultRequest {
+	EntityProperty entityProperty = 1;
+	string ParentGuid = 2;
+	string RecordGuid = 3;
+}
+
+message EntityPropertyDefaultResponse {
+	google.protobuf.Any defaultValue = 1;
+	string ErrorReturned = 2;
+}
+
+message EntityPropertyDependant {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string ParentEntityPropertyGuid = 4;
+	string DependantEntityPropertyGuid = 5;
+}
+
+message EntityPropertyGroup {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	bool IsHidden = 5;
+	int32 SortOrder = 6;
+	string LanguageLabelGuid = 7;
+	string Label = 8;
+	string Layout = 9;
+	bool ShowOnMobile = 10;
+	bool IsCollapsable = 11;
+	bool IsDefaultCollapsed = 12;
+	bool IsDefaultCollapsed_Mobile = 13;
+}
+
+message EntityQuery {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	string Statement = 5;
+	string EntityTypeGuid = 6;
+	bool IsDefaultCreate = 7;
+	bool IsDefaultRead = 8;
+	bool IsDefaultUpdate = 9;
+	bool IsDefaultDelete = 10;
+	bool IsScalarExecute = 11;
+	repeated EntityQueryParameter EntityQueryParameters = 12;
+	string EntityHoBTGuid = 13;
+	bool IsDefaultValidation = 14;
+	bool IsDefaultDataPills = 15;
+	bool IsDefaultProgressData = 16;
+}
+
+message EntityQueryParameter {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	EntityDataType EntityDataType = 5;
+	string MappedEntityPropertyGuid = 6;
+}
+
+message EntityQueryParameterValue {
+	string Name = 1;
+	google.protobuf.Any Value = 2;
+}
+
+message EntityType {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	bool IsReadOnlyOffline = 5;
+	bool IsRequiredSystemData = 6;
+	bool HasDocuments = 7;
+	string LanguageLabelGuid = 8;
+	bool DoNotTrackChanges = 9;
+	repeated EntityProperty EntityProperties = 10;
+	repeated ObjectSecurity ObjectSecurity = 11;
+	repeated EntityQuery EntityQueries = 12;
+	repeated EntityPropertyGroup EntityPropertyGroups = 13;
+	string Label = 14;
+	repeated EntityHoBT EntityHoBTs = 15;
+	string IconCss = 16;
+	bool IsVirtual = 17;
+}
+
+message EntityTypeGetRequest {
+	string Guid = 1;
+	bool IsInformationView = 2;
+}
+
+message EntityTypeGetResponse {
+	EntityType entityType = 1;
+	string ErrorReturned = 2;
+}
+
+message ExecuteMenuItemRequest {
+	string  EntityQueryGuid = 1;
+	DataObject DataObject = 2;
+}
+
+message ExecuteMenuItemResponse {
+	DataObject DataObject = 1;
+	bool ExitOnSuccess = 2;
+	string ErrorReturned = 3;
+}
+
+message FileHashes {
+  int32 crc32_hash = 1;
+  string quick_xor_hash = 2;
+  string sha1_hash = 3;
+
+}
+
+message GridDataColumn {
+	string Name = 1;
+	string Value = 2;
+}
+
+message GridDataListReply {
+	repeated GridDataRow DataTable = 1;
+	int32 TotalRows = 2;
+}
+
+message GridDataListRequest {
+	string GridViewCode = 1;
+	string GridCode = 2;
+	repeated DataCompositeFilter Filters = 3;
+	repeated DataSort Sort = 4;
+	int32 Page = 5;
+	int32 PageSize = 6;
+	string ParentGuid = 7;
+}
+
+message GridDataRow {
+	repeated GridDataColumn Columns = 1;
+}
+
+message GridDefinition {
+	int32 id = 1;
+	string RowVersion = 2;
+	string Code = 3;
+    string Name = 4;
+	string PageUri = 5;
+	string TabName = 6;
+	repeated GridViewDefinition Views = 7;
+	bool ShowAsTiles = 8;
+	string Guid = 9;
+}
+
+message GridDefinitionListReply {
+	repeated GridDefinition Grids = 1;
+}
+
+message GridDefinitionListRequest {
+	string Code = 1;
+	int32 Id = 2;
+	bool ForUi = 3;
+	bool ForExport = 4;
+}
+
+message GridDefinitionUpsertReply {
+	GridDefinition GridDefinition = 1;
+}
+
+message GridDefinitionUpsertRequest {
+	GridDefinition GridDefinition = 1;
+}
+
+message GridViewColumnDefinition {
+	int32 Id = 1;
+	string RowVersion = 2;
+	string Name = 3;
+	int32 ColumnOrder = 4;
+	string Title = 5;
+	bool IsPrimaryKey = 6;
+	bool IsHidden = 7;
+	bool IsFiltered = 8;
+	bool IsCombo = 9;
+	int32 GridViewDefinitionId = 10;
+	string Guid = 11;
+	string GridViewDefinitionGuid = 12;
+	bool IsLongitude = 13;
+	bool IsLatitude = 14;
+	string Width = 15;
+	string DisplayFormat =16;
+	//CBLD-338
+	string TopHeaderCategory = 17;
+	int32 TopHeaderCategoryOrder = 18;
+
+}
+
+message GridViewColumnDefinitionDeleteReply {
+	bool Success = 1;
+}
+
+message GridViewColumnDefinitionDeleteRequest {
+	GridViewColumnDefinition GridViewColumnDefinition = 1;
+}
+
+message GridViewColumnDefinitionsReply {
+	repeated GridViewColumnDefinition columns = 1;
+}
+
+message GridViewColumnDefinitionsRequest {
+	oneof kind {
+		int32 GridViewDefinitionId = 1;
+		int32 Id = 2;
+	}
+}
+
+message GridViewColumnDefinitionUpsertReply {
+	GridViewColumnDefinition GridViewColumnDefinition = 1;
+}
+
+message GridViewColumnDefinitionUpsertRequest {
+	GridViewColumnDefinition GridViewColumnDefinition = 1;
+}
+
+message GridViewDefinition {
+	int32 Id = 1;
+	string RowVersion = 2;
+	string Code = 3;
+	string Name = 4;
+	repeated GridViewColumnDefinition Columns = 5;
+	string DetailPageUri = 6;
+	string DefaultSortColumnName = 7;
+	int32 GridDefinitionId = 8;
+	string SqlQuery = 9;
+	string SecurableCode = 10;
+	int32 DisplayOrder = 11;
+	string DisplayGroupName = 12;
+	string MetricSqlQuery = 13;
+	bool ShowMetric = 14;
+	string Guid = 15;
+	string GridDefinitionGuid = 16;
+	bool IsDetailWindowed = 17;
+	string EntityTypeGuid = 18;
+	string MetricTypeGuid = 19;
+	int32 MetricMin = 20;
+	int32 MetricMax = 21;
+	int32 MetricMinorUnit = 22;
+	int32 MetricMajorUnit = 23;
+	int32 MetricStartAngle = 24;
+	int32 MetricEndAngle = 25;
+	bool MetricReversed = 26;
+	double MetricRange1Min = 27;
+	double MetricRange1Max = 28;
+	double MetricRange1ColourHex = 29;
+	double MetricRange2Min = 30;
+	double MetricRange2Max = 31;
+	double MetricRange2ColourHex = 32;
+	string DrawIconCss = 33;
+	bool IsDefaultSortDescending = 34;
+	bool AllowNew = 35;
+	int32 GridViewTypeId = 36; //OE - CBLD-265
+	repeated GridViewActions GridViewActions = 37;
+	bool AllowBulkChange = 38; // [OE: CBLD-260]
+	bool ShowOnMobile = 39;
+	//Tree List Settings
+	string TreeListFirstOrderBy = 40;
+	string TreeListSecondOrderBy = 41;
+	string TreeListThirdOrderBy = 42;
+	string TreeListOrderBy = 43;
+	string TreeListGroupBy = 44;
+	//Filtered Grid Settings
+	string FilteredListCreatedOnColumn = 45;
+	string FilteredListGroupBy = 46;
+	string FilteredListRedStatusIndicatorTxt = 47;
+	string FilteredListOrangeStatusIndicatorTxt = 48;
+	string FilteredListGreenStatusIndicatorTxt = 49;
+}
+
+message GridViewDefinitionsReply {
+	repeated GridViewDefinition views = 1;
+}
+
+message GridViewDefinitionsRequest {
+	oneof kind {
+		int32 GridDefinitionId = 1;
+		int32 Id = 2;
+	}
+}
+
+message GridViewDefinitionUpsertReply {
+	GridViewDefinition GridViewDefinition = 1;
+}
+
+message GridViewDefinitionUpsertRequest {
+	GridViewDefinition GridViewDefinition = 1;
+}
+
+message Group {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+}
+
+message Language {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	string Locale = 5;
+}
+
+message LanguageLabel {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Name = 4;
+	repeated LanguageLabelTranslation LanguageLabelTranslations = 5;
+}
+
+message LanguageLabelTranslation {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string Text = 4;
+	string LanguageLabelGuid = 5;
+	string LanguageGuid = 6;
+}
+
+message MapMarker {
+	repeated double LatLng = 1;
+	string PageUri = 2;
+	string EntityTypeGuid = 3;
+	string RecordGuid = 4;
+}
+
+message MergeDocument {
+    string name = 1;
+    string filename_template = 2;
+    string entity_type_guid = 3;
+    string drive_id = 4;
+    string document_id = 5;
+    string linked_entity_type_guid = 6;
+    string guid = 7;
+    int32 id = 8;
+    string record_guid = 9;
+    string parent_record_guid = 10;
+    repeated MergeDocumentItem items = 11;
+	bool AllowPDFOnly = 12;
+	bool AllowExcelOutputOnly = 13;
+	bool ProduceOneOutputPerRow = 14;
+}
+
+message Notification {
+	int64 Id = 1;
+	string RowVersion = 2;
+	int32 UserId = 3;
+	bool IsRead = 4;
+	google.protobuf.Timestamp StartDateTimeUtc = 5;
+	google.protobuf.Timestamp EndDateTimeUtc = 6;
+	bool IsPersistent = 7;
+}
+
+message NotificationsForUserGetRequest {
+	int32 UserId = 1;
+}
+
+message NotificationsForUserGetResponse {
+	repeated Notification Notifications = 1;
+	string ErrorReturned = 2;
+}
+
+message ObjectSecurity {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string DataObjectGuid = 4;
+	string UserGuid = 5;
+	string GroupGuid = 6;
+	string GroupName = 7;
+	bool CanRead = 8;
+	bool CanWrite = 9;
+	string UserIdentity = 10;
+	string GroupIdentity = 11;
+	string DefaultGroupIdentity = 12;
+	int64 Id = 13;
+}
+
+message ObjectSecurityListRequest {
+	string GroupGuid = 1;
+	string RecordGuid = 2;
+}
+
+message ObjectSecurityListResponse {
+	repeated ObjectSecurity ObjectSecurity = 1;
+	string ErrorReturned = 2;
+}
+//CBLD-405: Additional fields have been added.
+message OrganisationalUnit {
+	int32 Id = 1;
+	string Guid = 2;
+	string Name = 3;
+	string ParentOrganisationalUnitGuid = 4;
+	bool IsDivision = 5;
+	bool IsBusinessUnit = 6;
+	bool IsDepartment = 7;
+	bool IsTeam = 8;
+}
+
+/*
+Message Parameters
+*/
+
+message OrganisationalUnitsGetRequest {
+	int32 UserId = 1;
+}
+
+message OrganisationalUnitsGetResponse {
+	repeated OrganisationalUnit OrganisationalUnits = 1;
+	string ErrorReturned = 2;
+}
+
+message ProgressData {
+	int32 FirstValue = 1;
+	string FirstDescription = 2;
+	bool FirstComplete = 3;
+	int32 PreviousValue = 4;
+	string PreviousDescription = 5;
+	bool PreviousComplete = 6;
+	int32 MidValue = 7;
+	string MidDescription = 8;
+	bool MidComplete = 9;
+	int32 NextValue = 10;
+	string NextDescription = 11;
+	bool NextComplete = 12;
+	int32 LastValue = 13;
+	string LastDescription = 14;
+	bool LastComplete = 15;
+}
+
+message RecentItem{
+	string EntityTypeGuid = 1;
+	string UserGuid = 2;
+	string RecordGuid = 3;
+	string Label = 4;
+	google.protobuf.Timestamp DateTime = 5;
+	string DetailPageUri = 6;
+	string EntityTypeLabel = 7;
+	string ErrorReturned = 8;
+}
+
+message RecentItemRequest{
+	int32 UserId = 1;
+}
+
+message RecentItemResponse{
+	repeated RecentItem RecentItems = 1;
+	string ErrorReturned = 2;
+}
+
+message RecordHistory {
+	int64 Id = 1;
+	string schemaName = 2;
+	string tableName = 3;
+	string columnName = 4;
+	int64 rowId = 5;
+	google.protobuf.Timestamp dateTimeUtc = 6;
+	int32 userId = 7;
+	string SqlUser = 8;
+	string PreviousValue = 9;
+	string NewValue = 10;
+	string UserName = 11;
+}
+
+message RecordHistoryGetRequest {
+	string schemaName = 1;
+	string tableName = 2;
+	int64 recordId = 3;
+}
+
+message RecordHistoryGetResponse {
+	repeated RecordHistory recordHistory = 1;
+	string ErrorReturned = 2;
+}
+
+message RecordSearch {
+	int64 Id = 1;
+	string Name = 2;
+}
+
+/* Scheduler */
+
+message RecordUrlGetRequest {
+	string EntityType = 1;
+	int64 RowId = 2;
+}
+
+message RecordUrlGetResponse {
+	string Url = 1;
+	string ErrorReturned = 2;
+}
+
+message ReportingParameters {
+	string Guid = 1;
+	string ReportingTemplateCode = 2;
+	int64 ReportId = 3;
+	string EditPage = 4;
+	string ReportName = 5;
+	int64 RecordId = 6;
+	int64 FolderId = 7;
+	string FileTitle = 8;
+	string FileSubject = 9;
+	string FileBody = 10;
+	int32 RootFolderId = 11;
+	int32 AreaFolderId = 12;
+	string SqlConnectionString = 13;
+	string ReportFileName = 14;
+	string ReportRowVersion = 15;
+	int32 ReportingTemplateId = 16;
+}
+
+message ReportingParametersGetRequest {
+	string ReportPath = 1;
+	string RootFolder = 2;
+	int64 RecordId = 3;
+	string SubFolder = 4;
+	int64 ReportId = 5;
+}
+
+message ReportingParametersGetResponse {
+	ReportingParameters ReportingParameters = 1;
+	string ErrorReturned = 2;
+}
+
+message ReportingTemplate {
+	int32 id = 1;
+	string Code = 2;
+	string Name = 3;
+	string Label = 5;
+}
+
+message ReportingTemplatesGetRequest {
+	string TemplateAreaName = 1;
+}
+
+message ReportingTemplatesGetResponse {
+	repeated ReportingTemplate ReportingTemplates = 1;
+	string ErrorReturned = 2;
+}
+
+message ReportUpsertRequest {
+	ReportingParameters Report = 1;
+}
+
+message ReportUpsertResponse {
+	ReportingParameters Report = 1;
+	string ErrorReturned = 2;
+}
+
+message ScheduleItem {
+	int64 Id = 1;
+	string Guid = 2;
+	google.protobuf.Timestamp Start = 3;
+	google.protobuf.Timestamp End = 4;
+	string Title = 5;
+	string Description = 6;
+	bool IsAllDay = 7;
+	string RecurrenceRule = 8;
+	int32 RecurrenceId = 9;
+	string RecurrenceExceptions = 10;
+	string StartTimezone = 11;
+	string EndTimezone = 12;
+	int32 UserId = 13;
+	int32 StatusId = 14;
+	int32 TypeId = 15;
+	string JobNumber = 16;
+}
+
+message ScheduleItemsGetRequest {
+	bool CurrentUserOnly =1;
+}
+
+message ScheduleItemsGetResponse {
+	repeated ScheduleItem ScheduleItems = 1;
+	string ErrorReturned = 2;
+}
+
+message ScheduleItemStatus {
+	int32 Id = 1;
+	string Name = 2;
+	string Color = 3;
+}
+
+message ScheduleItemStatusGetRequest {
+
+}
+
+message ScheduleItemStatusGetResponse {
+	repeated ScheduleItemStatus ScheduleItemStatus = 1;
+	string ErrorReturned = 2;
+}
+
+message ScheduleItemType {
+	int32 Id = 1;
+	string Name = 2;
+	string Color = 3;
+}
+
+message ScheduleItemTypesGetRequest {
+
+}
+
+message ScheduleItemTypesGetResponse {
+	repeated ScheduleItemType ScheduleItemTypes = 1;
+	string ErrorReturned = 2;
+}
+
+message SharePointCreateRequest {
+	DataObjectUpsertRequest DataObjectUpsertRequest = 1;
+	DataObject DataObject = 2;
+}
+
+message SharePointCreateResponse {
+	bool Success = 1;
+	DataObject DataObject = 2;
+	string ErrorReturned = 3;
+}
+
+message SharePointDocumentDetailsGetRequest {
+	string SharePointSiteID = 1;
+	string SharePointTemplateFolderName = 2;
+}
+
+message SharePointDocumentDetailsGetResponse {
+	repeated DriveListItem DriveListItem = 1;
+	string ErrorReturned = 2;
+}
+
+message SharepointDocumentsGetRequest {
+	string SiteId = 1;
+	string DocumentId = 2;
+	string DocumentGuid = 3;
+	string RecordGuid = 4;
+	string ParentRecordGuid = 5;
+	string EntityTypeGuid = 6;
+	string LinkedEntityTypeGuid = 7;
+	string FilenameTemplate = 8;
+	MergeDocument mergeDocument = 9; // Add MergeDocument
+	string OutputType = 10;
+	bool AllowPDFOnly = 11;
+	bool AllowExcelOutputOnly = 12;
+}
+
+message SharepointDocumentsGetResponse {
+	DriveItem DriveItem = 1;
+	string DownloadUrl = 2;
+	string ErrorReturned = 3;
+}
+
+message SharePointFile{
+  FileHashes FileHashes = 1;
+  string mime_type = 2;
+  string file_type = 3;
+  string share_id = 4;
+  bool shared = 5;
+  string owner = 6;
+  google.protobuf.Timestamp CreatedDateTime = 7;
+  google.protobuf.Timestamp LastModifiedDateTime = 8;
+
+}
+
+message SharePointFileUploadRequest {
+	string fileName = 1;
+    bytes data = 2;
+    string storageUrl = 3;
+}
+
+message SharePointFileUploadResponse {
+    bool isSuccess = 1;
+    string errorMessage = 2;
+}
+
+message SharePointSite {
+  // Unique identifier for the site.
+  string id = 1;
+  // Display name of the site.
+  string display_name = 2;
+  // Web URL of the site.
+  string web_url = 3;
+  // Date and time when the site was created.
+  google.protobuf.Timestamp created_date_time = 4;
+  // Description of the site.
+  string description = 5;
+  // Date and time when the site was last modified.
+  google.protobuf.Timestamp last_modified_date_time = 6;
+  // Name of the site.
+  string name = 7;
+  // Root URL of the site.
+  string root = 8;
+}
+
+message SynchronisationError {
+	int32 RowStatus = 1;
+	string RowVersion = 2;
+	string Guid = 3;
+	string EntityPropertyGuid = 4;
+	string RecordGuid = 5;
+	google.protobuf.Any ProposedValue = 6;
+	string ProposedByUserGuid = 7;
+	google.protobuf.Timestamp ProposedDateTime = 8;
+	bool IsResolved = 9;
+}
+
+message SystemDataGetResponse {
+	repeated Language Languages = 1;
+	repeated LanguageLabel LanguageLabels = 2;
+	repeated EntityType EntityTypes = 3;
+	repeated User Users = 4;
+	repeated Group Groups = 5;
+	string ErrorReturned = 6;
+}
+
+message User {
+	int32 UserId = 1;
+	string Email = 2;
+	string FirstName = 3;
+	string LastName = 4;
+	bool OnHoliday = 5;
+	string MobileNo = 6;
+	string Guid = 7;
+	repeated UserGroup UserGroups = 8;
+	string FullName = 9;
+	string JobTitle = 10;
+	double BillableRate = 11;
+	bytes Signature = 12;
+}
+
+message UserGroup {
+	int32 Id = 1;
+	string RowVersion = 2;
+	int32 GroupId = 3;
+	int32 UserId = 4;
+	string GroupName = 5;
+	string Guid = 6;
+	string GroupGuid = 7;
+	string UserGuid = 8;
+}
+
+message UserGroupDeleteRequest {
+	UserGroup UserGroup = 1;
+}
+
+message UserGroupDeleteResponse {
+	bool Success = 1;
+	string ErrorReturned = 2;
+}
+
+message UserGroupListRequest {
+	int32 UserId = 1;
+}
+
+message UserGroupListResponse {
+	repeated UserGroup UserGroups = 1;
+	string ErrorReturned = 2;
+}
+
+message UserGroupUpsertRequest {
+	UserGroup UserGroup = 1;
+}
+
+message UserGroupUpsertResponse {
+	UserGroup UserGroup = 1;
+	string ErrorReturned = 2;
+}
+
+message UserInfoGetRequest {
+	string Username = 1;
+	string Guid = 2;
+}
+
+message UserInfoUpdateRequest {
+	User User = 1;
+}
+
+message UserInfoUpdateResponse {
+	User User = 1;
+	string ErrorReturned = 2;
+}
+
+message UserInfoGetResponse {
+	User User = 1;
+	string ErrorReturned = 2;
+}
+
+message UserPreferences {
+	int32 Id = 1;
+	string Guid = 2;
+	int32 SystemLanguageID = 3;
+	string WidgetLayout = 4; //CBLD-408
+}
+
+message UserPreferencesGetRequest {
+	int32 UserId = 1;
+}
+
+//CBLD-408
+message WidgetLayoutPOST {
+	int32 UserId = 1;
+	string WidgetLayout = 2;
+}
+//CBLD-408
+message WidgetLayoutSaveResponse{
+	string RowsAffected = 1;
+	string ErrorMessage = 2;
+}
+
+message UserPreferencesGetResponse {
+	UserPreferences userPreferences = 1;
+	string ErrorReturned = 2;
+}
+
+message UserPreferencesUpdateRequest {
+	UserPreferences userPreferences = 1;
+}
+
+message UserPreferencesUpdateResponse {
+	UserPreferences userPreferences = 1;
+	string ErrorReturned = 2;
+}
+
+message UserGetByGuidRequest {
+	string Guid = 1;
+}
+
+message UserGetByGuidResponse {
+	User User = 1;
+	string ErrorReturned = 2;
+}
+message UsersGetRequest {
+
+}
+
+message UsersGetResponse {
+	repeated User Users = 1;
+	string ErrorReturned = 2;
+}

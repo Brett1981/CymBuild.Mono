@@ -1,0 +1,1 @@
+C:\nuget.exe push bin\Release\Concursus.API.Client.7.0.0.49.nupkg ShoreNuG$t2021! -Source https://inspection.shoreengineering.co.uk:9504/nuget

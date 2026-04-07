@@ -1,0 +1,17 @@
+﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+
+CREATE PROCEDURE [SCore].[DeleteDataObject]
+(
+	@Guid UNIQUEIDENTIFIER
+)
+AS
+BEGIN
+	SET NOCOUNT ON
+
+	UPDATE	SCore.DataObjects
+	SET		RowStatus = 254
+	WHERE	(Guid = @Guid)
+END
+GO

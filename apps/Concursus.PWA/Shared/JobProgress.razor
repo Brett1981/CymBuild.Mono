@@ -1,0 +1,75 @@
+﻿@using Concursus.API.Core
+
+@if (DataObject?.ProgressData is not null)
+{
+    @if (DataObject.ProgressData.FirstValue > 0)
+    {
+        <div class="progresscontainer ">
+            <ul class="progressbar d-flex flex-row justify-content-around">
+                <li class="@(DataObject.ProgressData.FirstComplete ? "done" : "")" data-visual-label="@DataObject.ProgressData.FirstValue">@DataObject.ProgressData.FirstDescription</li>
+                <li class="@(DataObject.ProgressData.PreviousComplete ? "done" : "")" data-visual-label="@DataObject.ProgressData.PreviousValue">@DataObject.ProgressData.PreviousDescription</li>
+                <li class="@(DataObject.ProgressData.MidComplete ? "done" : "")" data-visual-label="@DataObject.ProgressData.MidValue">@DataObject.ProgressData.MidDescription</li>
+                <li class="@(DataObject.ProgressData.NextComplete ? "done" : "")" data-visual-label="@DataObject.ProgressData.NextValue"> @DataObject.ProgressData.NextDescription</li>
+                <li class="@(DataObject.ProgressData.LastComplete ? "done" : "")" data-visual-label="@DataObject.ProgressData.LastValue">@DataObject.ProgressData.LastDescription</li>
+            </ul>
+        </div>
+    }
+}
+<style>
+    .progresscontainer {
+        width: 100%;
+    }
+
+        .progresscontainer li {
+            font-size: 1rem;
+        }
+
+    .progressbar {
+        counter-reset: step;
+    }
+
+        .progressbar li {
+            flex-grow: 3;
+            list-style: none;
+            display: inline-block;
+            position: relative;
+            text-align: center;
+        }
+
+            .progressbar li:before {
+                content: attr(data-visual-label);
+                width: 30px;
+                height: 30px;
+                line-height: 30px;
+                border-radius: 100%;
+                display: block;
+                text-align: center;
+                margin: 0 auto 10px auto;
+                background: linear-gradient(180deg, #efefef 0%, #cfcfcf 70%);
+                position: relative;
+                z-index: +1;
+            }
+
+            .progressbar li:after {
+                content: "";
+                position: absolute;
+                width: 100%;
+                height: 1px;
+                background: linear-gradient(180deg, #0082de 0%, #033a67 70%);
+                top: 15px;
+                left: -50%;
+            }
+
+            .progressbar li:first-child:after {
+                content: none;
+            }
+
+            .progressbar li.done:before {
+                background: linear-gradient(180deg, #0082de 0%, #033a67 70%);
+                color: white;
+            }
+
+            .progressbar li.done + li:after {
+                background: linear-gradient(180deg, #0082de 0%, #033a67 70%);
+            }
+</style>

@@ -1,0 +1,56 @@
+﻿@using CymBuild_Outlook_Common.Models
+@using System.IO
+
+@if (Attachments != null && Attachments.Any())
+{
+    <table class="table table-striped mt-3">
+        <thead>
+            <tr>
+                <th>Preview</th>
+                <th width="55px">Name</th>
+                <th width="45px">Type</th>
+                <th>Inline</th>
+                <th width="55px">Immutable ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var attachment in Attachments)
+            {
+                <tr>
+                    <td>
+                        <div class="attachment-icon">
+                            @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
+                            {
+                                <img src="@attachment.AttachmentImageURL" class="img-thumbnail" alt="Image Preview" />
+                            }
+                            else
+                            {
+                                <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
+                            }
+                        </div>
+                    </td>
+                    <td class="shortened-name" title="@attachment.AttachmentName">
+                        @(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)
+                    </td>
+                    <td>@attachment.AttachmentType</td>
+                    <td>@(attachment.Inline ? "Yes" : "No")</td>
+                    <td class="shortened-name" title="@attachment.ImmutableID">@attachment.ImmutableID</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="alert alert-warning" role="alert">
+        No attachments found.
+    </div>
+}
+
+@code {
+    [Parameter]
+    public List<AttachmentInfo> Attachments { get; set; }
+
+    [Parameter]
+    public MailRead MailReadData { get; set; }
+}

@@ -1,0 +1,33 @@
+﻿@code {
+    [Parameter]
+    public RenderFragment ChildContent { get; set; }
+    [Parameter]
+    public string Title { get; set; }
+    private bool _isActive;
+    [Parameter]
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (_isActive != value)
+            {
+                _isActive = value;
+                IsActiveChanged.InvokeAsync(value);
+            }
+        }
+    }
+
+    [Parameter]
+    public EventCallback<bool> IsActiveChanged { get; set; }
+
+    [CascadingParameter]
+    public Tabs ParentTabs { get; set; }
+
+    protected string CssClass => IsActive ? "tab active" : "tab";
+
+    private void ActivateTab()
+    {
+        ParentTabs?.SetTabActive(this);
+    }
+}

@@ -1,0 +1,51 @@
+﻿@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Controls
+
+@if (ViewDefinition is null)
+{
+    <div class="v2-form-renderer v2-form-renderer--empty">
+        <em>No view definition provided.</em>
+    </div>
+}
+else
+{
+    <div class="v2-form-renderer">
+        @if (!string.IsNullOrWhiteSpace(ViewDefinition.Title))
+        {
+            <h2 class="v2-form-renderer__title">@ViewDefinition.Title</h2>
+        }
+
+        @if (ViewDefinition.Sections is not null && ViewDefinition.Sections.Count > 0)
+        {
+            <div class="v2-form-renderer__sections">
+                @foreach (var section in ViewDefinition.Sections.OrderBy(s => s.Order))
+                {
+                    <V2SectionRenderer Section="section" DataObject="DataObject" />
+                }
+            </div>
+        }
+        else
+        {
+            <div class="v2-form-renderer__no-sections">
+                <em>No sections defined for this page.</em>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The V2 view definition of the page to render.
+    /// Built from EntityType metadata using ViewDefinitionBuilder.BuildPageViewDefinition.
+    /// </summary>
+    [Parameter]
+    public PageViewDefinition? ViewDefinition { get; set; }
+
+    /// <summary>
+    /// The DataObject representing the current record, as returned by FormHelper.ReadDataObjectAsync.
+    /// May be null during initial layout experiments.
+    /// </summary>
+    [Parameter]
+    public DataObject? DataObject { get; set; }
+}

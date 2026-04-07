@@ -1,0 +1,293 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+@using Google.Protobuf.WellKnownTypes
+@using System.Collections
+@using static Concursus.PWA.Shared.MessageDisplay
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+@inherits ComponentBase
+
+<TelerikButton OnClick="OpenBatchEditModal" Class="btn btn-primary py-2 mx-1">Bulk Update</TelerikButton>
+
+@if (ModalWindowIsVisible)
+{
+    <TelerikWindow Title="Select Items for Batch Edit." Visible="@ModalWindowIsVisible" OnClose="CloseModal">
+        <DynamicBatchGridView @ref="DBG"
+                              Items="@BatchSelection"
+                              OnSelectionChanged="BatchSelectionChanged" />
+
+        <div class="modal-actions">
+            <TelerikButton OnClick="NextStep" Class="btn btn-primary py-2">Next</TelerikButton>
+            <TelerikButton OnClick="CloseModal" Class="btn btn-danger py-2">Cancel</TelerikButton>
+        </div>
+    </TelerikWindow>
+}
+
+@if (PropertySelectionVisible)
+{
+    <TelerikWindow Title="Select Properties to Change." Visible="@PropertySelectionVisible" OnClose="CloseModal">
+        <FlexPropertyGroup @ref="FlexPropertyGroup"
+                           IsBulkEdit="true"
+                           dataObject="@dataObject"
+                           entityProperties="EntityProperties"
+                           inputUpdated="HandlePropertySelection" />
+
+        <div class="modal-actions">
+            <TelerikButton OnClick="ConfirmSelection" Class="btn btn-primary py-2">Next</TelerikButton>
+            <TelerikButton OnClick="CloseModal" Class="btn btn-danger py-2">Cancel</TelerikButton>
+        </div>
+    </TelerikWindow>
+}
+
+@if (ConfirmationVisible)
+{
+    <TelerikWindow Title="Confirm Changes" Visible="@ConfirmationVisible" OnClose="CloseModal">
+        <DynamicGridView Items="PreviewItems" />
+
+        <div class="modal-actions">
+            <TelerikButton OnClick="ConfirmAndSave" Class="btn btn-primary py-2">Confirm</TelerikButton>
+            <TelerikButton OnClick="CloseModal" Class="btn btn-danger py-2">Cancel</TelerikButton>
+        </div>
+    </TelerikWindow>
+}
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+@code {
+    // Modals visibility control
+    private bool ModalWindowIsVisible { get; set; }
+    private bool PropertySelectionVisible { get; set; }
+    private bool ConfirmationVisible { get; set; }
+
+    // Dependencies and injected services
+    private API.Client.FormHelper? _formHelper { get; set; }
+    private MessageDisplay? _messageDisplay { get; set; }
+
+    // Parameters for event handling
+
+    [Parameter] public EventCallback OnOpenBatchGrid { get; set; }
+    [Parameter] public GridViewDefinition? ViewDefinition { get; set; }
+
+    // Data objects and collections
+    public DataObject dataObject { get; set; } = new DataObject();
+    private IEnumerable<ExpandoObject> BatchSelection { get; set; } = new List<ExpandoObject>();
+    private List<API.Core.EntityProperty> EntityProperties { get; set; } = new List<API.Core.EntityProperty>();
+    private List<ExpandoObject> PreviewItems { get; set; } = new List<ExpandoObject>();
+    private EntityType EntityTypeProperties { get; set; } = new EntityType();
+
+    // Error handling
+    private MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
+    private string ErrorMessage { get; set; } = "";
+    private string PageMethod { get; set; } = "GridButtonMenu";
+
+    private DynamicBatchGridView DBG { get; set; }
+    private FlexPropertyGroup FlexPropertyGroup { get; set; }
+
+    private async Task OpenBatchEditModal()
+    {
+        if (OnOpenBatchGrid.HasDelegate)
+        {
+            await OnOpenBatchGrid.InvokeAsync(); // Trigger batch grid modal in DynamicGridView
+        }
+    }
+
+    private async Task NextStep()
+    {
+        // Move to property selection modal
+        ModalWindowIsVisible = false;
+        PropertySelectionVisible = true;
+
+        await LoadEntityProperties();
+        StateHasChanged();
+    }
+
+    private async Task LoadEntityProperties()
+    {
+        _formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+        EntityTypeProperties = await _formHelper.GetEntityType();
+        EntityProperties = EntityTypeProperties.EntityProperties.Where(x => x.AllowBulkChange).ToList();
+    }
+
+    private void HandlePropertySelection(InputUpdatedArgs args)
+    {
+        var entityId = args.EntityId.ToString();
+        var newValue = args.NewValue;
+
+        var property = EntityProperties.FirstOrDefault(p => p.Guid == entityId);
+        if (property != null)
+        {
+            property.SelectedForBulkChange = true; // Enable selection for bulk change
+                                                   // Attempt to unpack the Any type to a string
+            if (newValue.TryUnpack(out StringValue stringValue))
+            {
+                property.Value = stringValue.Value; // Assign the unpacked string value
+            }
+            else
+            {
+                // Handle the case where newValue could not be unpacked to string
+                OnError(new Exception("Unable to convert value to string."));
+            }
+        }
+    }
+
+    private void ConfirmSelection()
+    {
+        PropertySelectionVisible = false;
+        ConfirmationVisible = true;
+
+        // Prepare PreviewItems for confirmation modal
+        PreviewItems = BatchSelection.Select(item =>
+        {
+            foreach (var property in EntityProperties.Where(p => p.SelectedForBulkChange))
+            {
+                var expandoDict = (IDictionary<string, object>)item;
+                expandoDict[property.Name] = property.Value;
+            }
+            return item;
+        }).ToList();
+
+        StateHasChanged();
+    }
+
+    private async Task ConfirmAndSave()
+    {
+        foreach (var item in PreviewItems)
+        {
+            // Access the existing DataProperties collection from dataObject
+            foreach (var property in EntityProperties.Where(p => p.SelectedForBulkChange))
+            {
+                var targetProperty = dataObject.DataProperties.FirstOrDefault(dp => dp.EntityPropertyGuid == property.Guid);
+                if (targetProperty != null)
+                {
+                    targetProperty.Value = Any.Pack(new StringValue { Value = property.Value }); // Update the value directly
+                }
+            }
+
+            // Save changes for the updated dataObject
+            var response = await _formHelper.UpsertDataObject(dataObject, null, false);
+            if (!string.IsNullOrEmpty(response.Item1))
+            {
+                OnError(new Exception(response.Item1));
+                return;
+            }
+        }
+
+        CloseAllModals();
+    }
+
+    private void CloseAllModals()
+    {
+        ModalWindowIsVisible = false;
+        PropertySelectionVisible = false;
+        ConfirmationVisible = false;
+        StateHasChanged();
+    }
+
+    // private void OnError(Exception ex)
+    // {
+    //     ErrorMessage = ex.Message;
+    //     MessageType = MessageDisplay.ShowMessageType.Error;  // Set MessageType for error
+    //     messageDisplay.ShowError(true);
+    //     StateHasChanged();
+    // }
+
+    public async Task OnError(Exception error)
+    {
+
+        if (string.IsNullOrEmpty(error.Message))
+        {
+            Console.WriteLine("GridButtonMenu: Error message is empty. Aborting.");
+            return;
+        }
+
+        ErrorMessage = error.Message;
+        PageMethod = error.Data.Contains("PageMethod")
+            ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
+            : "Not Set";
+        Console.WriteLine($"GridButtonMenu: PageMethod = {PageMethod}");
+
+        if (error.Data.Contains("MessageType"))
+        {
+            MessageType = (ShowMessageType)(error.Data["MessageType"] ?? ShowMessageType.Information);
+        }
+        else
+        {
+            MessageType = ShowMessageType.Error;
+            Console.WriteLine("GridButtonMenu: MessageType not found in error.Data. Defaulted to Error.");
+        }
+
+        // Extract all exception data
+        var exceptionData = error.Data.Count > 0
+            ? error.Data.Cast<DictionaryEntry>().ToDictionary(
+                de => de.Key?.ToString() ?? "UnknownKey",
+                de => de.Value!)
+            : null;
+
+        if (exceptionData != null)
+        {
+            foreach (var kvp in exceptionData)
+                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+        }
+
+        _messageDisplay.UpdateExceptionData(exceptionData);
+        _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
+        _messageDisplay.ShowError(true);
+
+        Console.WriteLine("GridButtonMenu: MessageDisplay updated and error shown.");
+
+        // AI Error Reporting (only for actual errors)
+        if (MessageType == ShowMessageType.Error)
+        {
+            try
+            {
+                var context = new
+                {
+                    ErrorMessage = error.Message,
+                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
+                    StackTrace = error.StackTrace ?? "No stack trace",
+                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
+                    Data = error.Data.Cast<DictionaryEntry>()
+                        .ToDictionary(
+                            de => de.Key?.ToString() ?? "UnknownKey",
+                            de => de.Value?.ToString() ?? "null"
+                        )
+                };
+
+                var log = InteractionTracker.GetAllLogs();
+                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
+                error.Data["UserInteractionLog"] = description;
+                Console.WriteLine($"GridButtonMenu: UserInteractionLog = {description}");
+
+                var result = await AiErrorReporter.ReportAsync(error, context);
+
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                {
+                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
+                    _messageDisplay.ShowError(true);
+                }
+                else
+                {
+                    Console.WriteLine("GridButtonMenu: AI Error Reporter returned no UI message.");
+                }
+            }
+            catch (Exception aiEx)
+            {
+                Console.WriteLine($"GridButtonMenu: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    private void CloseModal()
+    {
+        CloseAllModals();
+    }
+}

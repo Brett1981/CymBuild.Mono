@@ -1,0 +1,89 @@
+﻿@page "/ContactDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using System.Web
+@inherits EditPageBase
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="fbdcc47f-1d4e-4ad1-8de5-e08cd296fdfa"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+            <TabStripTab Title="Contact">
+                <HeaderTemplate>
+                    <i class="bi bi-person-fill me-2" style="font-size: 1.2rem;"></i> Contact
+                </HeaderTemplate>
+                <Content>
+                    <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                        entityProperties="@editPage.entityProperties"
+                                        entityPropertyGroups="@editPage.entityPropertyGroups"
+                                        IsMainRecordContext="@IsMainRecordContext"
+                                        dataObject="@editPage.dataObject"
+                                        RecordGuid="@RecordGuid"
+                                        inputUpdated="@editPage.HandleInputUpdated"/>
+
+                    <DynamicGrid GridCode="CONTACTDETAILS" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentGuid="@RecordGuid" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Job History">
+                <HeaderTemplate>
+                    <i class="bi bi-calendar-week-fill me-2" style="font-size: 1.2rem;"></i>History
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="CONTACTJOBHISTORY" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentGuid="@RecordGuid"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+        </TelerikTabStrip>
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter]
+    public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter]
+    public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                //await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting the parameters for the Job Detail page.");
+            ex.Data.Add("PageMethod", "JobDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+}

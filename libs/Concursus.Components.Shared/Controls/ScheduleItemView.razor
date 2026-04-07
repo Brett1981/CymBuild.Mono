@@ -1,0 +1,57 @@
+﻿@page "/scheduleItemView"
+@attribute [Authorize]
+@using Blazored.Modal
+@using Blazored.Modal.Services
+
+<div class="modal fade show d-block" tabindex="-1" role="dialog">
+    <div class="modal-backdrop fade show" @onclick="CancelAsync"></div>
+    <div class="modal-dialog" style="z-index: 1050">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Schedule</h5>
+                <button type="button" class="close" aria-label="Close" @onclick="CloseAsync">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-3"><strong>Start Date:</strong></div>
+                    <div class="col-md-9">@StartDateTime</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3"><strong>End Date:</strong></div>
+                    <div class="col-md-9">@EndDateTime</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3"><strong>Title:</strong></div>
+                    <div class="col-md-9">@Title</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3"><strong>Description:</strong></div>
+                    <div class="col-md-9">@Description</div>
+                </div>
+                <div class="row">
+                    <div class="col-md-3"><strong>Job Number:</strong></div>
+                    <div class="col-md-9">@JobNumber</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="CloseAsync">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? StartDateTime { get; set; }
+    [Parameter] public string? EndDateTime { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? JobNumber { get; set; }
+
+    [CascadingParameter] BlazoredModalInstance BlazoredModal { get; set; } = default!;
+
+    private Task CloseAsync() => BlazoredModal.CloseAsync(ModalResult.Ok(true));
+    private Task CancelAsync() => BlazoredModal.CancelAsync();
+    // Add other properties as needed
+}

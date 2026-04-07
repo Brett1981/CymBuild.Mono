@@ -1,0 +1,29 @@
+﻿using Concursus.API.Client;
+using Concursus.API.Client.Classes;
+using Concursus.API.Client.Models;
+
+namespace Concursus.Components.Shared.Controls;
+
+public partial class NavMenu
+{
+    private bool _collapseNavMenu = true;
+
+    private string? NavMenuCssClass => _collapseNavMenu ? "collapse" : null;
+
+    private async Task OnNavItemClick(string featureName)
+    {
+        Guid userId = userService.GetCurrentUserId();
+        await formHelper.LogUsageAsync(userId, featureName);
+        ClientFunctions.ResetStateService(stateService);
+        modalService.ResetModalService();
+    }
+    private void OnNavItemClick()
+    {
+        
+    }
+
+    private void ToggleNavMenu()
+    {
+        _collapseNavMenu = !_collapseNavMenu;
+    }
+}

@@ -1,0 +1,1 @@
+DBCC CHECKIDENT ('SCore.Workflow', RESEED);

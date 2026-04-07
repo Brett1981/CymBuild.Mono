@@ -1,0 +1,86 @@
+﻿@using CymBuild_Outlook_Common.Models
+
+@code {
+    [Parameter] public IEnumerable<RecordSearchResult> SelectedRecords { get; set; } = new List<RecordSearchResult>();
+    [Parameter] public EventCallback<RecordSearchResult> OnRemove { get; set; }
+
+    private void RemoveItem(RecordSearchResult record)
+    {
+        OnRemove.InvokeAsync(record);
+    }
+
+    private const int MaxLines = 3;
+
+    private string LimitText(string text, int maxLines)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
+        if (lines.Length <= maxLines)
+            return text;
+
+        return string.Join(Environment.NewLine, lines.Take(maxLines)) + Environment.NewLine + "...";
+    }
+}
+
+<div class="selected-items-box">
+    @if (SelectedRecords != null && SelectedRecords.Any())
+    {
+        <ul>
+            @foreach (var record in SelectedRecords)
+            {
+                <li class="selected-item">
+                    <div class="record-details">
+                        <span>@LimitText(record.Name + " (" + record.EntityTypeName + ")", MaxLines)</span>
+                    </div>
+                    <button @onclick="() => RemoveItem(record)" class="remove-button">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<style>
+    .selected-items-box {
+        background-color: white;        
+        border-radius: 5px;
+    }
+
+        .selected-items-box ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .selected-items-box li.selected-item {
+            display: flex;
+            background-color: #e0f7fa;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            padding: 5px;
+            font-size: 0.9em; /* Reduced font size */
+            border: 1px solid #4dd0e1; /* Border color complementing the background */
+            border-radius: 8px;
+        }
+
+    .record-details {
+        white-space: pre-line; /* Ensure new lines are respected */
+        max-height: 3.2em; /* Roughly 2 lines based on line-height */
+        overflow: hidden;
+    }
+
+    .remove-button {
+        background-color: transparent;
+        color: #f44336;
+        border: none;
+        cursor: pointer;
+        font-size: 1.4em; /* Increased icon size */
+    }
+
+        .remove-button:hover {
+            color: #d32f2f;
+        }
+</style>

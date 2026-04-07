@@ -1,0 +1,70 @@
+[
+    {
+        "auth_fire": {
+            "source": "cymbuild-fireengineering-authorisation",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "eddy.khoury@socotec.co.uk",
+                "ashish.kirori@socotec.co.uk",
+                "wayne.somanna@socotec.ie",
+                "jiayu.hu@socotec.co.uk",
+                "krupa.john@socotec.co.uk",
+                "karla.sandoval@socotec.co.uk",
+                "tabea.uhr@socotec.co.uk"
+            ]
+        }
+    },
+    {
+        "auth_struct": {
+            "source": "cymbuild-structuralengineering-authorisation",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "panos.rousakis@socotec.co.uk",
+                "gabriela.alonso@socotec.co.uk"
+            ]
+        }
+    },
+    {
+        "auth_envelope": {
+            "source": "cymbuild-builidingenvelope-authorisation",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "irfan.hadhi@socotec.co.uk"
+            ]
+        }
+    },
+    {
+        "bid_fire": {
+            "source": "cymbuild-fireengineering-bid",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "eddy.khoury@socotec.co.uk",
+                "ashish.kirori@socotec.co.uk",
+                "andrea.galeano@socotec.co.uk",
+                "wayne.somanna@socotec.ie",
+                "jiayu.hu@socotec.co.uk",
+                "krupa.john@socotec.co.uk",
+                "karla.sandoval@socotec.co.uk"
+            ]
+        }
+    },
+    {
+        "bid_struct": {
+            "source": "cymbuild-structuralengineering-bid",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "panos.rousakis@socotec.co.uk",
+                "gabriela.alonso@socotec.co.uk"
+            ]
+        }
+    },
+    {
+        "bid_envelope": {
+            "source": "cymbuild-builidingenvelope-bid",
+            "recipients": [
+                "stephen.kavanagh@socotec.co.uk",
+                "irfan.hadhi@socotec.co.uk"
+            ]
+        }
+    }
+]

@@ -1,0 +1,447 @@
+﻿@*
+    ───────────────────────────────────────────────────────────────────────────────
+    CymBuild EditPage
+    ───────────────────────────────────────────────────────────────────────────────
+    PURPOSE:
+    Metadata-driven dynamic edit page for all CymBuild entities.
+    Supports dynamic rendering, inline validation, SignalR live updates, AI error tracking,
+    and metadata-bound field logic via `FormBody`, `DataObject`, and `EntityProperties`.
+
+    🔁 REPLACES:
+    Static, entity-specific forms
+    ➜
+    A universal editing surface for any entity type, driven by backend metadata.
+
+    📒 FEATURES:
+    - Dynamic entity editing powered by `dataObject.DataProperties`
+    - Two-way model binding via `_editContext`
+    - Save, Save & Exit, and dynamic task menu (`ButtonMenu`)
+    - SignalR live sync support (for multi-user edit/locks/etc.)
+    - AI-driven error capture (`AiErrorReporter`)
+    - Modal photo and camera launcher for job-linked galleries
+    - Detail and Info modal launchers via metadata URIs
+    - Dynamic toolbar and back-to-top UX
+    - Optional file channel for background uploads
+
+    🧠 LOGIC:
+    - NavigationLock for unsaved changes detection
+    - Form submission buttons adjust based on validation state
+    - Auto-disables Save if validation fails or no changes made
+    - Launches detail/info modals using `DynamicComponent` + `EntityProperty.DetailPageUri`
+    - AI overlay shows error or sync messages dynamically
+
+    🛠️ DEPENDENCIES:
+    - Core.CoreClient, SageIntegrationClient, StateService, ModalService
+    - Blazor’s NavigationManager, IJSRuntime, IConfiguration
+    - Services: `UserService`, `UserInteractionTrackerService`, `AiErrorReporter`
+    - Components: `FormBody`, `ButtonMenu`, `MessageDisplay`, `CustomErrorBoundary`
+    - Telerik UI and Bootstrap
+
+    🔐 SAFETY:
+    - Custom error boundary wrapping child content
+    - Graceful fallbacks via `ErrorContent` if exception is raised
+
+    🧪 QA & UI ENHANCEMENTS:
+    - Overlay messaging with fade for background actions
+    - Live file/image capture and gallery trigger for specific entity types
+    - Dynamic field rendering logs tracked via `UserInteractionTrackerService`
+    - Mobile-aware logic for modal/dialog launching and visibility
+
+    ⚠️ KNOWN USAGE:
+    - Used across all main CRUD operations in CymBuild
+    - Works alongside dynamic grids, dashboard entries, and workflows
+
+    📎 RELATED FILES:
+    - `EditPage.razor.cs` (code-behind)
+    - `FormHelper.cs` (gRPC interactions)
+    - `DynamicInputRenderer.razor` (nested input controls per field)
+    - `SignatureControl.razor`, `Trackable*` components for input instrumentation
+
+*@
+
+@page "/edit"
+@using Concursus.API.Client.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@using Google.Protobuf.WellKnownTypes
+@using System.Threading.Channels
+@using Concursus.PWA.Services
+@using Concursus.Components.Shared.Services
+
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject StateService stateService
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject Channel<FileModel> _fileChannel
+@inject IConfiguration Configuration
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inherits CustomErrorBoundary
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+<CustomErrorBoundary @ref="_customErrorBoundary">
+    <ChildContent>
+        <div class="@DialogCss" tabindex="-1" z-index="100">
+            <!-- OE - Fix for CBLD-140-->
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Exit Page</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @onclick=this.Cancel></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Changes have been made, Are you sure you want to exit without saving?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" @onclick=this.Navigate>Yes</button>
+                        <button type="button" class="btn btn-primary" @onclick=this.Cancel>Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <NavigationLock OnBeforeInternalNavigation=this.OnNavigation />
+
+        <EditForm EditContext="@_editContext">
+            <div class="d-flex flex-wrap justify-content-between">
+
+                <div class="p-2">
+                    <h4>
+                        <i class="@EntityTypeIcon"></i> @EntityTypeLabel :- <small class="text-muted">@ObjectLabel</small>
+                    </h4>
+                </div>
+                <div class="p-2 form-buttons d-flex align-items-center">
+
+                    @* Centralised flags so we don't miss any button *@
+                    @{
+                        var hideActions = HideDefaultActions;
+                        var disableActions = DisableDefaultActions;
+                    }
+
+                    @if (!hideActions)
+                    {
+                        @if (dataObject.DataProperties.Count > 0)
+                        {
+                            @if (!IsInformationPage && !string.IsNullOrEmpty(@ReturnUrl))
+                            {
+                                @FormButtons
+
+                                @if (!IsBulkUpdate)
+                                {
+                                    @* --------------------------
+                                       Gallery / Camera (existing)
+                                       -------------------------- *@
+                                    @if (EntityTypeGuid == "571a9397-7e28-4bef-8ddc-fd4c56787bde")
+                                    {
+                                        @if (!string.IsNullOrEmpty(dataObject?.SharePointUrl))
+                                        {
+                                            @if (NumberOfPhotos > 0)
+                                            {
+                                                <span class="badge bg-success me-2">
+                                                    @NumberOfPhotos Photos
+                                                </span>
+                                            }
+
+                                            <div class="d-inline-flex align-items-center">
+                                                <button type="button"
+                                                        class="btn btn-secondary me-2 custom-button"
+                                                        title="Open Gallery"
+                                                        @onclick="OpenGallery"
+                                                        disabled="@(disableActions || SaveButtonDisabled || dataObject.HasValidationMessages)">
+                                                    <i class="bi bi-images"></i>
+                                                    <span class="sr-only"></span>
+                                                </button>
+                                            </div>
+
+                                            <button type="button"
+                                                    class="btn btn-secondary me-2 custom-button"
+                                                    title="Open Camera"
+                                                    @onclick="OpenCamera"
+                                                    disabled="@(disableActions || SaveButtonDisabled || dataObject.HasValidationMessages)">
+                                                <i class="bi bi-camera"></i>
+                                                <span class="sr-only"></span>
+                                            </button>
+                                        }
+                                    }
+
+                                    @* --------------------------
+                                       Tasks menu (ButtonMenu)
+                                       NOTE: ButtonMenu has no Disabled parameter, so we gate it here.
+                                       -------------------------- *@
+                                    @if (!disableActions)
+                                    {
+                                        <div class="btn btn-primary form-action-menu" id="taskMenubtn">
+                                            <ButtonMenu @ref="_buttonMenuRef"
+                                                        dataObject="@dataObject"
+                                                        GridUpdated="@GridUpdated"
+                                                        ParentDataObjectReference="MyDataObjectReference"
+                                                        ReturnUrl="@ReturnUrl"
+                                                        EntityProperties="@entityProperties"
+                                                        ParentGuid="@MyDataObjectReference.DataObjectGuid.ToString()"
+                                                        EntityTypeGuid="@EntityTypeGuid"
+                                                        OnError="@OnError"
+                                                        OnClose="@CloseWindow"
+                                                        RecieveItemDoubleClick="@ReceiveItemDoubleClick"
+                                                        ReSyncDataObject="@ReSyncDataObject"
+                                                        SaveDataObject="@SaveDataObject"
+                                                        DeleteOperationPerformed="@DeleteOperationPerformed"
+                                                        DeleteOperationPerformedChanged="@((value) => DeleteOperationPerformed = value)" 
+                                                        @bind-HasChanges="@HasChanges"/>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @* Disabled placeholder so the header layout stays consistent *@
+                                        <button type="button"
+                                                class="btn btn-primary me-2"
+                                                title="Tasks are disabled in this context"
+                                                disabled="disabled">
+                                            Tasks
+                                        </button>
+                                    }
+
+                                    @* --------------------------
+                                       Save buttons (existing logic preserved)
+                                       + we add disableActions into each case
+                                       -------------------------- *@
+                                    @if (@SaveButtonDisabled || DeleteOperationPerformed || disableActions)
+                                    {
+                                        <button class="btn btn-warning" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, false))"
+                                                disabled="true">
+                                            <i class="bi bi-save-fill"></i> Save
+                                        </button>
+                                        <button class="btn btn-warning" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, true))"
+                                                disabled="true">
+                                            <i class="bi bi-save-fill"></i> Save and Exit
+                                        </button>
+                                    }
+                                    else if (HasValidationMessages)
+                                    {
+                                        <button class="btn btn-warning mb-1 disabled" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, false))" value="Save">
+                                            <i class="bi bi-save-fill"></i> Save
+                                        </button>
+                                        <button class="btn btn-warning mb-1 disabled" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, true))" value="SaveExit">
+                                            <i class="bi bi-save-fill"></i> Save and Exit
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-success" id="Savebtn" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, false))"
+                                                disabled="@(disableActions)">
+                                            <i class="bi bi-save-fill"></i> Save
+                                        </button>
+                                        <button class="btn btn-success" id="SaveAndExitbtn" type="button"
+                                                @onclick="@(() => FormSubmitted(_editContext, true, true))"
+                                                disabled="@(disableActions)">
+                                            <i class="bi bi-save-fill"></i> Save and Exit
+                                        </button>
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    @* Keep overlay exactly as-is *@
+                    @if (isPreparingStorageUrl)
+                    {
+                        <div class="loading-overlay">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="sr-only">Loading...</span>
+                            </div>
+                            <p>Preparing storage location...</p>
+                        </div>
+                    }
+                </div>
+            </div>
+            @{
+                // Job EntityTypeGuid: 63542427-46ab-4078-abd1-1d583c24315c
+                var showFinancialOverview =
+                string.Equals(EntityTypeGuid, "63542427-46ab-4078-abd1-1d583c24315c", StringComparison.OrdinalIgnoreCase);
+            }
+
+            <DataPillRow DataPills="@dataObject.DataPills.ToList()"
+                         ShowFinancialOverview="@showFinancialOverview"
+                         InvoiceProcessingModeText="@InvoiceProcessingModeText"
+                         InvoiceProcessingModeCss="@InvoiceProcessingModeCss"
+                         InvoiceProcessingModeTooltip="@InvoiceProcessingModeTooltip" />
+            <div style="@(IsLoading ? "position: relative;" : "")">
+                @if (IsLoading)
+                {
+                    <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1000; background-color: rgba(255, 255, 255, 0.5);"></div>
+                }
+                @FormBody
+                @if (!@Windowed)
+                {
+                    <div class="back-to-top-button">
+                        <button class="btn btn-secondary" @onclick="ScrollToTop">
+                            <i class="bi bi-arrow-up-circle"></i> Back To Top
+                        </button>
+                    </div>
+                }
+                @if (_showOverlay)
+                {
+                    <div class="overlay">
+                        <div class="overlay-content">
+                            @foreach (var message in _messages)
+                            {
+                                <p>@message</p>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </EditForm>
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</CustomErrorBoundary>
+
+<style>
+    .page li {
+        font-size: 1.154rem;
+        line-height: 1.5;
+    }
+
+    .report-button-wrapper {
+        width: 100%;
+        text-align: center;
+    }
+
+    .loader-indicator {
+        margin-left: 5px;
+    }
+
+    .form-buttons .btn {
+        margin-left: 0.25rem;
+    }
+
+    .overlay {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 1050;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none; /* Makes the overlay non-clickable */
+    }
+
+    .overlay-content {
+        background-color: white;
+        padding: 20px;
+        border-radius: 5px;
+        text-align: center;
+    }
+
+        .overlay-content p {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+    .form-action-menu {
+    }
+
+        .form-action-menu .k-menu.k-menu-horizontal:not(.k-context-menu) {
+            padding: 0;
+        }
+
+        .form-action-menu .k-in {
+            padding-block: 0;
+            padding-inline: 0;
+        }
+
+        .form-action-menu .k-menu:not(.k-context-menu) {
+            background-color: transparent;
+        }
+
+            .form-action-menu .k-menu:not(.k-context-menu) > .k-item {
+                color: #ffffff;
+            }
+
+        .form-action-menu .k-menu-link-text {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-weight: 400;
+            line-height: 1.5;
+            font-size: 1rem;
+        }
+
+        .form-action-menu .k-menu-vertical > .k-separator {
+            border-color: Red;
+        }
+
+    .loading-indicator {
+        border: 5px solid #f3f3f3; /* Light grey background */
+        border-top: 5px solid #3498db; /* Blue spinner */
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 2s linear infinite;
+    }
+
+    .back-to-top-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000; /* Ensure it is on top of other elements */
+        opacity: 0.5; /* Initial opacity lets set it to 50% */
+        transition: opacity 0.3s ease; /* Smooth hover effect rather than instant change */
+    }
+
+        .back-to-top-button:hover {
+            opacity: 1; /* Full opacity on hover */
+        }
+
+    .show-dialog {
+        display: block;
+    }
+
+    .button-menu-container {
+        gap: 10px; /* Adds spacing between flex items */
+    }
+
+    .custom-button {
+        background-color: #007bff; /* Custom background color */
+        border-color: #007bff;
+    }
+
+        .custom-button:hover {
+            background-color: #0056b3; /* Darker background color on hover */
+            border-color: #0056b3;
+        }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+
+        /*     .spinner-border {
+                                                width: 3rem;
+                                                height: 3rem;
+                                                margin-right: 1rem;
+                                            } */
+
+        .loading-overlay p {
+            font-size: 1.2rem;
+        }
+
+</style>

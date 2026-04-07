@@ -1,0 +1,290 @@
+﻿    /* =========================
+           Review modal sizing
+           ========================= */
+    .closure-review-window {
+        width: min(980px, 96vw) !important;
+    }
+
+        .closure-review-window .k-window-content {
+            max-height: 80vh !important;
+            overflow: auto !important;
+        }
+    /* ============================================================
+           DEFAULT (leave our other grids alone)
+           ============================================================ */
+    .grid-container {
+        max-width: 100%;
+    }
+        /* ============================================================
+           CLOSURE QUEUE GRID ONLY (scoped)
+           Fixes:
+           - header/body alignment
+           - horizontal scrollbar appears
+           - no double-scroll containers
+           ============================================================ */
+        .grid-container.auth-queue-grid {
+            overflow: hidden; /* no second scroll container */
+        }
+            /* the grid body is the one true scroller */
+            .grid-container.auth-queue-grid .k-grid-content {
+                overflow: auto !important;
+                scrollbar-gutter: stable; /* keeps header/body aligned in Chrome */
+            }
+            /* keep header from becoming its own scroller */
+            .grid-container.auth-queue-grid .k-grid-header-wrap {
+                overflow: hidden !important;
+            }
+            /* FORCE horizontal overflow (this is what brings the horizontal bar back) */
+            .grid-container.auth-queue-grid .k-grid-header-table,
+            .grid-container.auth-queue-grid .k-grid-table {
+                width: max-content !important;
+                min-width: 1800px; /* adjust if you want the bar sooner/later */
+                table-layout: fixed !important;
+            }
+            /* keep header text readable */
+            .grid-container.auth-queue-grid .k-grid th {
+                white-space: nowrap;
+            }
+            /* ============================================================
+           Actions column: fixed width, never shrink
+           HeaderClass works on the TH. :contentReference[oaicite:2]{index=2}
+           TD doesn't get the class, so we target first column cells too.
+           ============================================================ */
+            .grid-container.auth-queue-grid th.actions-col {
+                width: 260px !important;
+                min-width: 260px !important;
+                max-width: 260px !important;
+                white-space: nowrap !important;
+            }
+
+            .grid-container.auth-queue-grid .k-grid-table tbody tr > td:first-child {
+                width: 260px !important;
+                min-width: 260px !important;
+                max-width: 260px !important;
+                white-space: nowrap !important;
+            }
+
+                .grid-container.auth-queue-grid .k-grid-table tbody tr > td:first-child .actions-cell {
+                    flex-wrap: nowrap !important;
+                    white-space: nowrap !important;
+                }
+
+    .auth-dashboard .auth-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-left: 8px;
+    }
+
+    .auth-dashboard .auth-toggle-label {
+        font-weight: 600;
+        color: #374151;
+    }
+    /* ============================================================
+           Cell truncation (kept)
+           ============================================================ */
+    .custom-ellipsis {
+        display: inline-block;
+        max-width: 50ch;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+
+    .custom-ellipsis,
+    .k-grid td.custom-ellipsis,
+    .k-grid tr.custom-ellipsis .k-table-td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* ============================================================
+           Existing layout styles (kept)
+           ============================================================ */
+    .view-name {
+        padding: 5px;
+    }
+
+    .width-100 {
+        width: 100%;
+    }
+
+    .grid .k-grid-content tr {
+        line-height: 32px;
+    }
+
+    .back-to-top-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        opacity: 0.5;
+        transition: opacity 0.3s ease;
+    }
+
+        .back-to-top-button:hover {
+            opacity: 1;
+        }
+
+    .k-grid .k-grouping-row {
+        position: static;
+        z-index: auto;
+        top: 0;
+    }
+
+        .k-grid .k-grouping-row td {
+            position: sticky;
+            z-index: 2;
+            top: inherit;
+            bottom: inherit;
+            min-width: 100%;
+        }
+
+    #newBtn {
+        padding: .5rem !important;
+    }
+
+    .highlight-total-row {
+        font-weight: bold;
+        background-color: #ADD8E6 !important;
+    }
+
+    .filter-control {
+        display: flex;
+        flex-direction: column;
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    .quick-filter-toolbar,
+    .custom-range-panel {
+        display: flex;
+        gap: 8px;
+        padding: 12px 0;
+    }
+
+    .quick-filter-toolbar {
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    .custom-range-panel {
+        margin-right: 10px;
+        margin-left: 10px;
+    }
+
+    .status-explanation ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .status-explanation li {
+        display: flex;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+
+    .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+        .dot.red {
+            background-color: red;
+        }
+
+        .dot.yellow {
+            background-color: gold;
+        }
+
+        .dot.green {
+            background-color: limegreen;
+        }
+
+    .activeButton {
+        background-color: #0d6efd !important;
+        color: white !important;
+    }
+    /* AUTHOREVIEW ONLY visual scope */
+    .auth-dashboard .kpi-summary {
+        margin-top: 10px;
+    }
+
+    .auth-dashboard .auth-toolbar {
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    .OverThreshold {
+        background-color: #0d6efd !important;
+        color: white !important;
+    }
+
+    .kpi-summary, .kpi-summary2 {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 20px;
+        margin-left: 10px;
+    }
+
+    .kpi-summary2 {
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    .kip-figures {
+        display: flex;
+        flex-direction: row;
+    }
+
+    .kpi-card {
+        background: #f3f4f6;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+
+    .kpi-title {
+        font-weight: bold;
+        margin-bottom: 8px;
+    }
+
+    .kpi-value {
+        font-size: 1.5em;
+        color: #111827;
+    }
+    /* AUTHOREVIEW: updating indicator */
+    .auth-updating-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: .5rem;
+        margin-left: auto;
+        padding: .25rem .6rem;
+        border-radius: 999px;
+        font-size: 0.85rem;
+        color: #6c757d;
+        background: #f6f7f9;
+        border: 1px solid #e6e8ee;
+        white-space: nowrap;
+    }
+
+    .auth-spinner {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid rgba(108, 117, 125, 0.25);
+        border-top-color: rgba(108, 117, 125, 0.9);
+        animation: auth-spin 0.8s linear infinite;
+    }
+
+    @keyframes auth-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }

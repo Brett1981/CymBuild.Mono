@@ -1,0 +1,620 @@
+﻿@page "/StructureDetailV2/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+
+@using System
+@using System.Collections.Generic
+@using System.Linq
+@using System.Threading.Tasks
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Controls
+@using Concursus.Components.Shared.Helpers
+@using Concursus.PWA.Classes
+@using Concursus.API.Client.GeoData
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Telerik.Blazor.Components
+@using Telerik.Blazor.Components.Map
+
+@attribute [Authorize]
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Structure Detail V2 (Experimental)</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="container mt-4">
+        <div class="alert alert-info">
+            Loading structure details...
+        </div>
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">
+            @_loadError
+        </div>
+    </div>
+}
+else if (_pageViewDefinition is null || _dataObject is null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-warning">
+            Unable to load structure metadata or data.
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">
+                <i class="bi bi-building me-2"></i>
+                Structure Detail V2 (Experimental)
+            </h4>
+
+            <div class="btn-group">
+                <button class="btn btn-sm btn-primary" @onclick="SaveAsync">
+                    <i class="bi bi-save me-1"></i> Save
+                </button>
+                <button class="btn btn-sm btn-secondary" @onclick="Cancel">
+                    <i class="bi bi-x-circle me-1"></i> Cancel
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs (Bootstrap, no Telerik) -->
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 0 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(0)">
+                    <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i> Asset
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 1 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(1)">
+                    <i class="bi bi-calendar-week-fill me-2" style="font-size: 1.2rem;"></i> History
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 2 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(2)">
+                    <i class="bi bi-house-down-fill me-2" style="font-size: 1.2rem;"></i> Child Assets
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content pt-3">
+            <!-- Tab 0: Asset (V2 form + map) -->
+            <div class="tab-pane fade @(ActiveTabIndex == 0 ? "show active" : "")" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-12 col-lg-6">
+                        <V2FormRenderer ViewDefinition="_pageViewDefinition"
+                                        DataObject="_dataObject" />
+                    </div>
+                    <div class="col-md-12 col-lg-6">
+                        <div class="card shadow-sm p-2 m-2 flex-fill" style="min-width: 250px;">
+                            <div class="card-body">
+                                <h6 class="card-title mb-3">
+                                    <i class="bi bi-geo-alt-fill me-2"></i> Location
+                                </h6>
+
+                                <TelerikMap @ref="MapRef"
+                                            Center="@MapCenter"
+                                            MinZoom="3"
+                                            MaxZoom="19"
+                                            Zoom="@MapZoom"
+                                            WrapAround="false"
+                                            OnZoomEnd="@OnZoomEnd"
+                                            OnClick="@OnMapClick">
+                                    <MapLayers>
+                                        <MapLayer Type="@MapLayersType.Tile"
+                                                  Attribution="@MapAttribution"
+                                                  Subdomains="@MapSubdomains"
+                                                  UrlTemplate="@MapUrlTemplate">
+                                        </MapLayer>
+                                        <MapLayer Type="@MapLayersType.Marker"
+                                                  Data="@MarkerData"
+                                                  LocationField="@nameof(Concursus.API.Core.MapMarker.LatLng)"
+                                                  TitleField="@nameof(Concursus.API.Core.MapMarker.EntityTypeGuid)">
+                                            <MapLayerMarkerSettings>
+                                                <MapLayerMarkerSettingsTooltip>
+                                                    <Template Context="mapContext">
+                                                        @{
+                                                            var dataItem = mapContext.DataItem as Concursus.API.Core.MapMarker;
+                                                        }
+                                                        <div>@dataItem?.EntityTypeGuid</div>
+                                                    </Template>
+                                                </MapLayerMarkerSettingsTooltip>
+                                            </MapLayerMarkerSettings>
+                                        </MapLayer>
+                                    </MapLayers>
+                                </TelerikMap>
+
+                                <div class="mt-2 small text-muted">
+                                    Click on the map to set the location. Latitude/Longitude will be stored on the record.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 1: History -->
+            <div class="tab-pane fade @(ActiveTabIndex == 1 ? "show active" : "")" role="tabpanel">
+                @if (_dataObject is not null)
+                {
+                    <V2DynamicGrid GridCode="PROPERTYJOBS"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@_dataObjectReference"
+                                 ParentRowStatus="@_dataObject.RowStatus" />
+                }
+            </div>
+
+            <!-- Tab 2: Child Assets -->
+            <div class="tab-pane fade @(ActiveTabIndex == 2 ? "show active" : "")" role="tabpanel">
+                @if (_dataObject is not null)
+                {
+                    <V2DynamicGrid GridCode="ASSETSCHILDREN"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@_dataObjectReference"
+                                 ParentRowStatus="@_dataObject.RowStatus" />
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code
+{
+    // --- Route parameters ---
+    [Parameter] public string RecordGuid { get; set; } = string.Empty;
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ReturnUrl { get; set; }
+
+    // --- Events / callbacks (for consistency with other pages) ---
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    // --- V2 core state (metadata + data) ---
+    private FormHelper? _formHelper;
+    private PageViewDefinition? _pageViewDefinition;
+    private DataObject? _dataObject;
+    private DataObjectReference? _dataObjectReference;
+
+    private bool _isLoading;
+    private string? _loadError;
+
+    // --- Tabs ---
+    protected int ActiveTabIndex { get; set; } = 0;
+
+    // --- Map + geodata state ---
+    private readonly Geodata _geoData = new();
+
+    private TelerikMap? MapRef { get; set; }
+    private double MapZoom { get; set; } = 6;
+    private double[] MapCenter { get; set; } = new double[] { 54.0, -2.0 };
+    private List<Concursus.API.Core.MapMarker> MarkerData { get; set; } = new();
+
+    public string[] MapSubdomains { get; set; } = new[] { "a", "b", "c" };
+    public string MapUrlTemplate { get; set; } =
+        "https://#= subdomain #.tile.openstreetmap.org/#= zoom #/#= x #/#= y #.png";
+    public string MapAttribution { get; set; } =
+        "&copy; <a href='https://osm.org/copyright'>OpenStreetMap contributors</a>";
+
+    private bool _mapInitialised;
+
+    // --- EntityProperty Guids used for map/postcode/geo wiring ---
+    private const string PostcodePropertyGuid = "64e674c3-e42d-4a4b-8747-16212d7db19d";
+    private const string LatitudePropertyGuid = "14bf36ce-da62-4dc3-b832-dd9b485ff32e";
+    private const string LongitudePropertyGuid = "8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba";
+
+    private const string CountyPropertyGuid = "313686fc-322f-45cd-87bf-8131c333a1a9";
+    private const string CountryPropertyGuid = "a4a1588d-38b5-4a10-9c91-a2fccc2562f9";
+
+    // ------------------------------------------------------------------------
+    //  Lifecycle
+    // ------------------------------------------------------------------------
+
+    protected override async Task OnInitializedAsync()
+    {
+        const string StructureEntityTypeGuid = "2cfbff39-93cd-436b-b8ca-b2fcf7609707";
+
+        try
+        {
+            _isLoading = true;
+            _loadError = null;
+
+            _formHelper = new FormHelper(coreClient, sageIntegrationService, StructureEntityTypeGuid, userService);
+
+            await _formHelper.LoadMetaDataAsync(isInformationPage: false);
+
+            var entityType = _formHelper.EntityType;
+            _pageViewDefinition = ViewDefinitionBuilder.BuildPageViewDefinition(entityType);
+
+            _dataObjectReference = new DataObjectReference(
+                RecordGuid,
+                StructureEntityTypeGuid
+            );
+
+            _dataObject = await _formHelper.ReadDataObjectAsync(RecordGuid, _dataObjectReference);
+
+            if (_pageViewDefinition != null)
+            {
+                await V2DropdownLoader.PopulateDropdownOptionsAsync(
+                    _pageViewDefinition,
+                    LoadDropdownOptionsForFieldAsync
+                );
+            }
+
+            InitialiseMapFromDataObject();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            await HandleErrorAsync(ex, "StructureDetailV2/OnInitializedAsync()");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && MapRef != null && !_mapInitialised)
+        {
+            _mapInitialised = true;
+            MapRef.Refresh();
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    // ------------------------------------------------------------------------
+    //  Tabs
+    // ------------------------------------------------------------------------
+
+    private void SetActiveTab(int index)
+    {
+        ActiveTabIndex = index;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Save / Cancel
+    // ------------------------------------------------------------------------
+
+    private async Task SaveAsync()
+    {
+        if (_formHelper is null || _dataObject is null)
+        {
+            return;
+        }
+
+        try
+        {
+            SyncMapToDataObject();
+
+            var (message, updatedDataObject) = await _formHelper.UpsertDataObject(
+                _dataObject,
+                entityQueryGuid: null,
+                validateOnly: false,
+                IsBulkUpdate: false
+            );
+
+            _dataObject = updatedDataObject;
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _loadError = message;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ReturnUrl))
+            {
+                NavigationManager.NavigateTo(ReturnUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "StructureDetailV2/SaveAsync()");
+        }
+    }
+
+    private void Cancel()
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl))
+        {
+            NavigationManager.NavigateTo(ReturnUrl);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    //  Dropdown loader for V2 (aligned with ShoreInput semantics)
+    // ------------------------------------------------------------------------
+
+    private async Task<IReadOnlyList<DropdownOption>> LoadDropdownOptionsForFieldAsync(FieldDropdownConfig config)
+    {
+        if (coreClient is null || _dataObject is null)
+        {
+            return Array.Empty<DropdownOption>();
+        }
+
+        try
+        {
+            var definitionGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(config.DefinitionId);
+            if (definitionGuid == Guid.Empty)
+            {
+                return Array.Empty<DropdownOption>();
+            }
+
+            var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_dataObject.Guid);
+
+            // Determine the current selected value for THIS field (if any).
+            var currentValueGuid = GetCurrentDropdownGuid(config);
+
+            var request = new DropDownDataListRequest
+            {
+                Guid = definitionGuid.ToString(),
+                ParentGuid = Guid.Empty.ToString(),      // No explicit parent context here
+                RecordGuid = recordGuid.ToString(),
+                CurrentSelectedValueGuid = currentValueGuid.ToString()
+            };
+
+            var reply = await coreClient.DropDownDataListAsync(request);
+
+            if (reply?.Items == null || reply.Items.Count == 0)
+            {
+                return Array.Empty<DropdownOption>();
+            }
+
+            var options = reply.Items
+                .Select(item => new DropdownOption
+                {
+                    Value = item.Value,
+                    Label = item.Name,
+                    Group = item.Group,
+                    ColourHex = item.ColourHex
+                })
+                .ToList();
+
+            return options;
+        }
+        catch
+        {
+            return Array.Empty<DropdownOption>();
+        }
+    }
+
+    /// <summary>
+    /// Looks up the current dropdown GUID value for a given FieldDropdownConfig
+    /// by matching FieldId (EntityProperty.Guid) to DataProperty.EntityPropertyGuid.
+    /// Returns Guid.Empty if no value is present.
+    /// </summary>
+    private Guid GetCurrentDropdownGuid(FieldDropdownConfig config)
+    {
+        if (_dataObject?.DataProperties == null || string.IsNullOrWhiteSpace(config.FieldId))
+        {
+            return Guid.Empty;
+        }
+
+        var prop = _dataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, config.FieldId, StringComparison.OrdinalIgnoreCase));
+
+        if (prop?.Value == null)
+        {
+            return Guid.Empty;
+        }
+
+        try
+        {
+            if (prop.Value.Is(StringValue.Descriptor))
+            {
+                prop.Value.TryUnpack(out StringValue sv);
+                if (!string.IsNullOrWhiteSpace(sv?.Value) &&
+                    Guid.TryParse(sv.Value, out var parsed))
+                {
+                    return parsed;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return Guid.Empty;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Map helpers
+    // ------------------------------------------------------------------------
+
+    private void InitialiseMapFromDataObject()
+    {
+        if (_dataObject is null)
+        {
+            return;
+        }
+
+        var lat = GetDoubleProperty(LatitudePropertyGuid) ?? 0.0;
+        var lon = GetDoubleProperty(LongitudePropertyGuid) ?? 0.0;
+
+        if (lat != 0.0 && lon != 0.0)
+        {
+            MapCenter = new[] { lat, lon };
+            MapZoom = 19;
+            MarkerData.Clear();
+            MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+        }
+        else
+        {
+            MapCenter = new[] { 54.0, -2.0 };
+            MapZoom = 6;
+            MarkerData.Clear();
+            MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+        }
+    }
+
+    private void SyncMapToDataObject()
+    {
+        if (_dataObject is null)
+        {
+            return;
+        }
+
+        if (MapCenter is { Length: 2 })
+        {
+            var lat = Math.Round(MapCenter[0], 6);
+            var lon = Math.Round(MapCenter[1], 6);
+
+            SetDoubleProperty(LatitudePropertyGuid, lat);
+            SetDoubleProperty(LongitudePropertyGuid, lon);
+        }
+    }
+
+    private void OnZoomEnd(MapZoomEndEventArgs args)
+    {
+        MapZoom = args.Zoom;
+    }
+
+    public void OnMapClick(MapClickEventArgs args)
+    {
+        _ = SetLocationValues(args.Location);
+    }
+
+    private async Task SetLocationValues(MapLocation location)
+    {
+        try
+        {
+            var roundedLatitude = Math.Round(location.Latitude, 6);
+            var roundedLongitude = Math.Round(location.Longitude, 6);
+
+            MarkerData.Clear();
+            MapCenter = new[] { roundedLatitude, roundedLongitude };
+            MapZoom = 19;
+            MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+
+            SetDoubleProperty(LatitudePropertyGuid, roundedLatitude);
+            SetDoubleProperty(LongitudePropertyGuid, roundedLongitude);
+
+            if (MapRef is not null)
+            {
+                MapRef.Refresh();
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "StructureDetailV2/SetLocationValues()");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    //  DataObject helpers
+    // ------------------------------------------------------------------------
+
+    private double? GetDoubleProperty(string entityPropertyGuid)
+    {
+        if (_dataObject?.DataProperties == null)
+        {
+            return null;
+        }
+
+        var prop = _dataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, entityPropertyGuid, StringComparison.OrdinalIgnoreCase));
+
+        if (prop?.Value == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (prop.Value.Is(DoubleValue.Descriptor))
+            {
+                prop.Value.TryUnpack(out DoubleValue dv);
+                return dv?.Value;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
+    }
+
+    private void SetDoubleProperty(string entityPropertyGuid, double value)
+    {
+        if (_dataObject is null)
+        {
+            return;
+        }
+
+        var prop = _dataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, entityPropertyGuid, StringComparison.OrdinalIgnoreCase));
+
+        if (prop == null)
+        {
+            prop = new DataProperty
+            {
+                EntityPropertyGuid = entityPropertyGuid,
+                IsEnabled = true,
+                IsHidden = false,
+                IsInvalid = false,
+                IsReadOnly = false,
+                IsRestricted = false,
+                ValidationMessage = string.Empty,
+                Value = new Any()
+            };
+
+            _dataObject.DataProperties.Add(prop);
+        }
+
+        var dv = new DoubleValue { Value = value };
+        prop.Value = Any.Pack(dv);
+        prop.IsInvalid = false;
+        prop.ValidationMessage = string.Empty;
+    }
+
+    // ------------------------------------------------------------------------
+    //  Error handling
+    // ------------------------------------------------------------------------
+
+    private async Task HandleErrorAsync(Exception ex, string method)
+    {
+        ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+        ex.Data["AdditionalInfo"] = "An error occurred while processing your request.";
+        ex.Data["PageMethod"] = method;
+
+        if (OnError.HasDelegate)
+        {
+            await OnError.InvokeAsync(ex);
+        }
+    }
+}

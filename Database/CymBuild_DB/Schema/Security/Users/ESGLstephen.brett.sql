@@ -1,0 +1,3 @@
+﻿CREATE USER [ESGL\stephen.brett]
+  WITHOUT LOGIN
+GO

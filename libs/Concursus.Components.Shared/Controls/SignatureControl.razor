@@ -1,0 +1,199 @@
+﻿@using System.IO
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Google.Protobuf
+@using Microsoft.AspNetCore.Components.Forms
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime js
+@using Telerik.Blazor.Components
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<div class="signature-container">
+    <!-- Upload signature image file -->
+    <InputFile OnChange="OnImageUpload" class="form-control-file" />
+
+    <!-- Show uploaded or existing signature -->
+    @if (isImageDisplayed)
+    {
+        <img src="@imageSource" style="border:1px solid black; width:400px; height:200px;" />
+    }
+    else
+    {
+        <!-- Telerik Signature Control for drawing -->
+        <TelerikSignature @bind-Value="@SignatureValue" Width="400px" Height="200px" StrokeWidth="2" />
+    }
+
+    <!-- Save and Clear Signature Buttons -->
+    <button class="sigbtn btn-primary mt-2" @onclick="SaveSignature">Save Signature</button>
+    <button class="sigbtn btn-secondary mt-2" @onclick="ClearSignature">Clear Signature</button>
+
+    <!-- Simple Confirmation Message -->
+    @if (showConfirmation)
+    {
+        <div class="confirmation-message">
+            ✔️ Saved successfully
+        </div>
+    }
+</div>
+
+<style>
+    .signature-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        position: relative;
+    }
+
+    .form-control-file {
+        margin-bottom: 0.5rem;
+        width: 200px;
+    }
+
+    .sigbtn {
+        width: 150px;
+        align-self: flex-start;
+    }
+
+    /* Confirmation message styling */
+    .confirmation-message {
+        color: green;
+        font-weight: bold;
+        margin-top: 1rem;
+        font-size: 1.1rem;
+    }
+</style>
+
+@code {
+    private string SignatureValue { get; set; } = string.Empty;
+    private byte[] signatureByteArray = Array.Empty<byte>();
+    private string? imageSource;
+    private bool isImageDisplayed = false;
+    private bool showConfirmation = false;
+
+    // Parameter to accept a byte array (existing signature)
+    [Parameter]
+    public byte[] ExistingSignature { get; set; } = Array.Empty<byte>();
+
+    // EventCallback to expose signatureByteArray to parent
+    [Parameter]
+    public EventCallback<byte[]> OnSignatureSaved { get; set; }
+
+    // EventCallback to notify parent of a cleared signature
+    [Parameter]
+    public EventCallback OnSignatureCleared { get; set; }
+
+    [Parameter]
+    public API.Core.User user { get; set; } = new API.Core.User();
+
+    protected FormHelper? formHelper;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.CompletedTask;
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        if (ExistingSignature != null && ExistingSignature.Length > 0)
+        {
+            // Convert the existing signature to a Base64 string and display it
+            imageSource = $"data:image/png;base64,{Convert.ToBase64String(ExistingSignature)}";
+            SignatureValue = imageSource;
+            isImageDisplayed = true;
+        }
+        return base.OnParametersSetAsync();
+    }
+
+    // Handle image file upload
+    private async Task OnImageUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+
+        if (file != null)
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream().CopyToAsync(stream);
+            // Format the base64 string with the correct content type
+            if (file.ContentType == "image/tiff" || file.Name.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase))
+            {
+                formHelper = new FormHelper(coreClient,sageIntegrationService, Guid.Empty.ToString(), userService);
+                // Call the gRPC service to convert TIFF to PNG
+                var tiffBytes = stream.ToArray();
+                var pngBytes = await formHelper.ConvertTiffToPngAsync(tiffBytes);
+                imageSource = $"data:image/png;base64,{pngBytes}";
+                isImageDisplayed = true;
+            }
+            else
+            {
+                // Handle non-TIFF images (convert to Base64 string for rendering)
+                signatureByteArray = stream.ToArray();
+                imageSource = $"data:{file.ContentType};base64,{Convert.ToBase64String(signatureByteArray)}";
+                isImageDisplayed = true;
+            }
+            SignatureValue = imageSource;
+        }
+    }
+
+    // Save the drawn or uploaded signature to byte array
+    private async Task SaveSignature()
+    {
+        formHelper = new FormHelper(coreClient,sageIntegrationService, Guid.Empty.ToString(), userService);
+
+        if (!string.IsNullOrEmpty(SignatureValue))
+        {
+            // Remove any data URI prefix, handling any image type dynamically
+            var base64Data = SignatureValue.Contains(",") ? SignatureValue.Split(',')[1] : SignatureValue;
+
+            try
+            {
+                signatureByteArray = Convert.FromBase64String(base64Data);
+            }
+            catch (FormatException ex)
+            {
+                Console.WriteLine("Error during Base64 conversion: " + ex.Message);
+                // Handle the error as needed, e.g., notify the user or log the issue
+                return;
+            }
+        }
+
+        if (signatureByteArray != null && signatureByteArray.Length > 0)
+        {
+            user.Signature = ByteString.CopyFrom(signatureByteArray);
+            user = await formHelper.UpdateUserSignature(user);
+
+            // Show confirmation message
+            showConfirmation = true;
+            await InvokeAsync(StateHasChanged);
+
+            // Hide the confirmation message after 2 seconds
+            var timer = new System.Timers.Timer(2000);
+            timer.Elapsed += (sender, e) =>
+            {
+                showConfirmation = false;
+                InvokeAsync(StateHasChanged);
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
+        }
+
+        // Trigger the EventCallback to pass signatureByteArray to the parent
+        await OnSignatureSaved.InvokeAsync(signatureByteArray);
+    }
+
+
+    // Clear the current signature (reset image and drawing)
+    private async Task ClearSignature()
+    {
+        SignatureValue = string.Empty;
+        imageSource = null;
+        isImageDisplayed = false;
+
+        // Trigger StateHasChanged to update the UI
+        StateHasChanged();
+
+        // Trigger the EventCallback to notify the parent that the signature has been cleared
+        await OnSignatureCleared.InvokeAsync();
+    }
+}

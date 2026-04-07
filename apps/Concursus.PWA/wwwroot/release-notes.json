@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "notes": [
+    "Version Release Notes added to initialization.",
+    "When your version of CymBuild is out of date, a message will display warning you of an update. The system will refresh automatically.",
+    "Better system Caching - improved performance, This is the start of something new so will be ongoing and improvements all the time.",
+    "Ability to search on a records Reference (Not Unique) added.",
+    "Filters and Sorting abilities greatly improved, now allowing multiple variations",
+    "Ability to merge Accounts - (Restricted to users with permissions - Training will be given)",
+    "New Finance Memos added to Accounts, Finance and Jobs",
+    "When selecting a Time within a Date Selection Box, to aid simplicity the Minutes now only show 15 in intervals for easier selection",
+    {
+      "text": "When navigating or using the Dev/Test Site, you will now be presented with a scrolling navigation bar informing you of this:",
+      "url": "https://bre.socotec.co.uk:9502",
+      "urlText": "bre.socotec.co.uk:9502"
+    },
+    "Over 30 bug fixes and improvements including better binding and message interaction."
+
+  ]
+}

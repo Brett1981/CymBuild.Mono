@@ -1,0 +1,406 @@
+﻿@using System.Globalization
+@using System.Text
+@inject IJSRuntime JsRuntime
+
+<div class="dashboard-container">
+    <h2>Dashboard</h2>
+
+    @*     <div class="export-bar">
+        <TelerikButton OnClick="@ExportToCsv">Export to CSV</TelerikButton>
+        <TelerikButton OnClick="@ExportToPdf">Export to PDF</TelerikButton>
+    </div> *@
+    <div class="filter-bar">
+        <label>Time frame:</label>
+        <select @bind="Grouping">
+            @foreach (TimeGrouping g in Enum.GetValues(typeof(TimeGrouping)))
+            {
+                <option value="@g">@g.ToString()</option>
+            }
+        </select>
+    </div>
+    <div class="filter-bar">
+        <label>Date Range:</label>
+        <input type="date" value="@StartDate.ToString("yyyy-MM-dd")" @onchange="OnStartDateChanged" />
+        <input type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
+    </div>
+
+    <div class="filter-bar">
+        <label>Filter by Value:</label>
+        <input type="range" min="0" max="100000" step="1000" value="@ValueFilter" @oninput="OnValueFilterChanged" />
+        <span>@ValueFilter.ToString("C0", CultureInfo.CurrentCulture)</span>
+    </div>
+
+    <div class="kpi-summary">
+        <div class="kpi-card">
+            <div class="kpi-title">Total Value</div>
+            <div class="kpi-value">@TotalQuoteValue.ToString("C0", CultureInfo.CurrentCulture)</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Average Quote Value</div>
+            <div class="kpi-value">@AverageQuoteValue.ToString("C0", CultureInfo.CurrentCulture)</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Quotes Above £50K</div>
+            <div class="kpi-value">@QuotesAboveFiftyKCount (@PercentageAboveFiftyK%)</div>
+        </div>
+    </div>
+
+    <div class="kpi-summary">
+        <div class="kpi-card">
+            <div class="kpi-title">Date-Filtered Total</div>
+            <div class="kpi-value">@DateRangeTotal.ToString("C0", CultureInfo.CurrentCulture)</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Date-Filtered Avg</div>
+            <div class="kpi-value">@DateRangeAverage.ToString("C0", CultureInfo.CurrentCulture)</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Above £50K (Date)</div>
+            <div class="kpi-value">@DateRangeAboveFiftyK</div>
+        </div>
+    </div>
+    <div class="kpi-summary">
+        <div class="kpi-card">
+            <div class="kpi-title">Quotes Sent</div>
+            <div class="kpi-value">@QuotesSent</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Quotes Accepted</div>
+            <div class="kpi-value">@QuotesAccepted</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-title">Quotes Rejected</div>
+            <div class="kpi-value">@QuotesRejected</div>
+        </div>
+    </div>
+
+    <TelerikChart>
+        <ChartSeriesItems>
+            @foreach (var statusGroup in FilteredChartData.GroupBy(q => q.Status))
+            {
+                foreach (var quoteTypeGroup in statusGroup.GroupBy(q => q.QuoteType))
+                {
+                    var combinedLabel = $"{statusGroup.Key} - {quoteTypeGroup.Key}";
+                    <ChartSeries Type="ChartSeriesType.Column"
+                    Name="@combinedLabel"
+                    Data="@quoteTypeGroup.ToList()"
+                    Field="Value"
+                    CategoryField="Label"
+                    Color="@GetColorForStatus(statusGroup.Key)">
+                        <ChartSeriesStack Group="@quoteTypeGroup.Key" />
+                        <ChartSeriesTooltip Visible="true">
+                            <Template>
+                                @{
+                                    var tooltipContext = context as Telerik.Blazor.Components.ChartSeriesTooltipTemplateContext;
+                                    var data = tooltipContext?.DataItem as QuoteChartData;
+                                }
+                                <div style="padding: 4px;">
+                                    <strong>@data?.Label</strong><br />
+                                    Status: @data?.Status<br />
+                                    Type: @data?.QuoteType<br />
+                                    Client: @data?.Client<br />
+                                    Date: @data?.Date.ToString("dd MMM yyyy")
+                                </div>
+                            </Template>
+                        </ChartSeriesTooltip>
+                    </ChartSeries>
+                }
+            }
+        </ChartSeriesItems>
+
+        <ChartCategoryAxes>
+            <ChartCategoryAxis Categories="@ValueRangeLabels.ToArray()" />
+        </ChartCategoryAxes>
+
+        <ChartLegend Position="ChartLegendPosition.Right" />
+    </TelerikChart>
+
+</div>
+
+@code {
+    private decimal TotalQuoteValue = 2350000;
+    private decimal AverageQuoteValue = 445000;
+    private int QuotesAboveFiftyKCount = 15;
+    private int PercentageAboveFiftyK = 30;
+    private int QuotesSent = 0;
+    private int QuotesAccepted = 0;
+    private int QuotesRejected = 0;
+    private List<string> Clients => ChartData.Select(c => c.Client).Distinct().ToList();
+    private List<string> QuoteTypes => new() { "CDM PD", "CDM PCI", "BRAC WORK" };
+
+    private List<string> ValueRangeLabels => FilteredChartData.Select(d => d.Label).Distinct().ToList();
+
+    private decimal DateRangeTotal = 0;
+    private decimal DateRangeAverage = 0;
+    private int DateRangeAboveFiftyK = 0;
+
+    public enum TimeGrouping { Daily, Weekly, Monthly }
+
+    private TimeGrouping Grouping
+    {
+        get => grouping;
+        set
+        {
+            grouping = value;
+            FilterChart();
+        }
+    }
+    private TimeGrouping grouping = TimeGrouping.Weekly;
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime StartDate
+    {
+        get => startDate;
+        set
+        {
+            startDate = value;
+            FilterChart();
+        }
+    }
+
+    private DateTime endDate = DateTime.Today;
+    private DateTime EndDate
+    {
+        get => endDate;
+        set
+        {
+            endDate = value;
+            FilterChart();
+        }
+    }
+
+    private int ValueFilter = 50000;
+    private Dictionary<string, string> QuoteTypeColors = new();
+    private Dictionary<string, string> QuoteStatusColors = new();
+    private Random rand = new();
+    private Timer? filterDebounceTimer;
+
+
+    private string GetColorForQuoteType(string quoteType)
+    {
+        if (!QuoteTypeColors.ContainsKey(quoteType))
+        {
+            var color = $"#{rand.Next(0x1000000):X6}"; // Random HEX color
+            QuoteTypeColors[quoteType] = color;
+        }
+        return QuoteTypeColors[quoteType];
+    }
+    private string GetColorForStatus(string status)
+    {
+        if (!QuoteStatusColors.ContainsKey(status))
+        {
+            var color = $"#{rand.Next(0x1000000):X6}";
+            QuoteStatusColors[status] = color;
+        }
+        return QuoteStatusColors[status];
+    }
+    private string GetTimeGroupLabel(DateTime date)
+    {
+        return Grouping switch
+        {
+            TimeGrouping.Daily => date.ToString("dd MMM"),
+            TimeGrouping.Weekly => $"Week {CultureInfo.CurrentCulture.Calendar.GetWeekOfYear(date, CalendarWeekRule.FirstDay, DayOfWeek.Monday)}",
+            TimeGrouping.Monthly => date.ToString("MMM yyyy"),
+            _ => date.ToString("dd MMM")
+        };
+    }
+
+    private List<QuoteChartData> ChartData = new()
+    {
+        // CDM PD - Various statuses
+        new QuoteChartData { Label = "0-25K", Value = 4, Min = 0, Max = 25000, Date = DateTime.Today.AddDays(-28), Status = "Sent", Client = "Socotec", QuoteType = "CDM PD" },
+        new QuoteChartData { Label = "25-50K", Value = 3, Min = 25001, Max = 50000, Date = DateTime.Today.AddDays(-24), Status = "Accepted", Client = "Socotec", QuoteType = "CDM PD" },
+        new QuoteChartData { Label = "50-75K", Value = 2, Min = 50001, Max = 75000, Date = DateTime.Today.AddDays(-18), Status = "Rejected", Client = "Shore", QuoteType = "CDM PD" },
+        new QuoteChartData { Label = "75K+", Value = 2, Min = 75001, Max = int.MaxValue, Date = DateTime.Today.AddDays(-5), Status = "Accepted", Client = "Stark", QuoteType = "CDM PD" },
+
+        // CDM PCI - Mixed
+        new QuoteChartData { Label = "0-25K", Value = 6, Min = 0, Max = 25000, Date = DateTime.Today.AddDays(-12), Status = "Sent", Client = "Shore", QuoteType = "CDM PCI" },
+        new QuoteChartData { Label = "25-50K", Value = 5, Min = 25001, Max = 50000, Date = DateTime.Today.AddDays(-11), Status = "Rejected", Client = "Stark", QuoteType = "CDM PCI" },
+        new QuoteChartData { Label = "50-75K", Value = 3, Min = 50001, Max = 75000, Date = DateTime.Today.AddDays(-10), Status = "Accepted", Client = "Shore", QuoteType = "CDM PCI" },
+        new QuoteChartData { Label = "75K+", Value = 1, Min = 75001, Max = int.MaxValue, Date = DateTime.Today.AddDays(-4), Status = "Sent", Client = "Socotec", QuoteType = "CDM PCI" },
+
+        // BRAC WORK - More variety
+        new QuoteChartData { Label = "0-25K", Value = 2, Min = 0, Max = 25000, Date = DateTime.Today.AddDays(-22), Status = "Accepted", Client = "Stark", QuoteType = "BRAC WORK" },
+        new QuoteChartData { Label = "25-50K", Value = 7, Min = 25001, Max = 50000, Date = DateTime.Today.AddDays(-17), Status = "Sent", Client = "Socotec", QuoteType = "BRAC WORK" },
+        new QuoteChartData { Label = "50-75K", Value = 4, Min = 50001, Max = 75000, Date = DateTime.Today.AddDays(-13), Status = "Rejected", Client = "Shore", QuoteType = "BRAC WORK" },
+        new QuoteChartData { Label = "75K+", Value = 3, Min = 75001, Max = int.MaxValue, Date = DateTime.Today.AddDays(-8), Status = "Accepted", Client = "Stark", QuoteType = "BRAC WORK" }
+    };
+
+    private List<QuoteChartData> FilteredChartData = new();
+
+    protected override void OnInitialized()
+    {
+        FilterChart();
+    }
+
+    private void OnFilterChanged(object value)
+    {
+        FilterChart();
+    }
+
+    private void FilterChart()
+    {
+        var rangeFiltered = ChartData
+    .Where(d => d.Date >= StartDate && d.Date <= EndDate)
+    .Where(d => d.Max <= ValueFilter)
+    .Select(d => new QuoteChartData
+        {
+            Label = GetTimeGroupLabel(d.Date),
+            Value = d.Value,
+            Min = d.Min,
+            Max = d.Max,
+            Date = d.Date,
+            Status = d.Status,
+            Client = d.Client,
+            QuoteType = d.QuoteType
+        })
+    .ToList();
+
+        FilteredChartData = rangeFiltered;
+
+        DateRangeTotal = FilteredChartData.Sum(r => r.Max * r.Value);
+        DateRangeAverage = FilteredChartData.Any() ? DateRangeTotal / FilteredChartData.Sum(r => r.Value) : 0;
+        DateRangeAboveFiftyK = FilteredChartData.Where(r => r.Max > 50000).Sum(r => r.Value);
+
+        QuotesSent = FilteredChartData.Count(q => q.Status == "Sent");
+        QuotesAccepted = FilteredChartData.Count(q => q.Status == "Accepted");
+        QuotesRejected = FilteredChartData.Count(q => q.Status == "Rejected");
+    }
+
+    private async Task ExportToCsv()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("Label,Min,Max,Value,Date");
+        foreach (var item in FilteredChartData)
+        {
+            csv.AppendLine($"{item.Label},{item.Min},{item.Max},{item.Value},{item.Date:yyyy-MM-dd}");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        await JsRuntime.InvokeVoidAsync("BlazorDownloadFile", "quote_data.csv", "text/csv", base64);
+    }
+
+    private async Task ExportToPdf()
+    {
+        var pdfContent = $"Quote Dashboard\nDate Range: {StartDate:d} - {EndDate:d}\n\n" +
+                         string.Join("\n", FilteredChartData.Select(q => $"{q.Label}: {q.Value} quotes"));
+        var bytes = Encoding.UTF8.GetBytes(pdfContent);
+        var base64 = Convert.ToBase64String(bytes);
+        await JsRuntime.InvokeVoidAsync("BlazorDownloadFile", "quote_data.pdf", "application/pdf", base64);
+    }
+
+    private void OnStartDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var result))
+        {
+            StartDate = result;
+            DebounceFilter();
+        }
+    }
+
+    private void OnEndDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var result))
+        {
+            EndDate = result;
+            DebounceFilter();
+        }
+    }
+
+    private void OnValueFilterChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value))
+        {
+            ValueFilter = value;
+            DebounceFilter();
+        }
+    }
+
+    private void DebounceFilter()
+    {
+        filterDebounceTimer?.Dispose();
+        filterDebounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                FilterChart();
+                StateHasChanged();
+            });
+        }, null, 200, Timeout.Infinite);
+    }
+
+    public class QuoteChartData
+    {
+        public string Label { get; set; } = "Unspecified";
+        public int Value { get; set; }
+        public int Min { get; set; }
+        public int Max { get; set; }
+        public DateTime Date { get; set; }
+        public string Status { get; set; } = "Unknown";
+        public string Client { get; set; } = "Unknown";
+        public string QuoteType { get; set; } = "Unknown";
+    }
+}
+
+<style>
+    .dashboard-container {
+        padding: 20px;
+    }
+
+    .kpi-summary {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 20px;
+    }
+
+    .kpi-card {
+        background: #f3f4f6;
+        padding: 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+
+    .kpi-title {
+        font-weight: bold;
+        margin-bottom: 8px;
+    }
+
+    .kpi-value {
+        font-size: 1.5em;
+        color: #111827;
+    }
+
+    .filter-bar, .export-bar {
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .quote-type-legend {
+        margin-top: 16px;
+        padding: 12px;
+        background-color: #f9fafb;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .legend-color {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+    }
+</style>

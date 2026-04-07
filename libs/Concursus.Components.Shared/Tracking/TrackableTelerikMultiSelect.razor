@@ -1,0 +1,83 @@
+﻿@typeparam TItem
+@typeparam TValue
+
+@using Telerik.Blazor.Components
+@using Microsoft.AspNetCore.Components.Rendering
+@using System.Linq.Expressions
+@using Concursus.Components.Shared.Services
+
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikMultiSelect TItem="TItem"
+                    TValue="TValue"
+                    Data="@Data"
+                    Value="Value"
+                    ValueChanged="@(EventCallback.Factory.Create<List<TValue>?>(this, HandleValueChanged))"
+                    ValueExpression="ValueExpression"
+                    TextField="@TextField"
+                    ValueField="@ValueField"
+                    Placeholder="@Placeholder"
+                    Filterable="@Filterable"
+                    AutoClose="@AutoClose"
+                    Id="@Id"
+                    Width="@Width"
+                    @attributes="AdditionalAttributes"
+                    @ref="MultiRef"
+                    OnBlur="@(() => LogInteraction(Value))">
+                    <ItemTemplate Context="context">
+                        @if (@ItemTemplate != null)
+                        {
+                            @ItemTemplate(context)
+                        }
+                        else
+                        {
+                            <span>@context.ToString()</span>
+                        }
+                    </ItemTemplate>
+</TelerikMultiSelect>
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownMultiSelect";
+
+    [Parameter] public IEnumerable<TItem>? Data { get; set; }
+
+    [Parameter] public List<TValue>? Value { get; set; }
+    [Parameter] public EventCallback<List<TValue>?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<List<TValue>?>>? ValueExpression { get; set; }
+
+    [Parameter] public string TextField { get; set; } = "";
+    [Parameter] public string ValueField { get; set; } = "";
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Placeholder { get; set; } = "Select...";
+    [Parameter] public bool Filterable { get; set; } = true;
+    [Parameter] public bool AutoClose { get; set; } = false;
+
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private TelerikMultiSelect<TItem, TValue>? MultiRef { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(List<TValue>? selectedItems)
+    {
+        var count = selectedItems?.Count ?? 0;
+        string log = $"MultiSelect '{FieldName}' selected: {count} item(s)";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(List<TValue>? newValue)
+    {
+        Value = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+
+    }
+
+
+}

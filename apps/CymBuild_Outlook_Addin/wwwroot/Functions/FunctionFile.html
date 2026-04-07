@@ -1,0 +1,38 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="
+            default-src 'self' data: https://*.socotec.co.uk
+            https://cdn.jsdelivr.net
+            https://code.jquery.com
+            https://cdnjs.cloudflare.com
+            'unsafe-inline' 'unsafe-eval';
+        ">
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <title></title>
+    <script src="https://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.9.1.min.js" type="text/javascript"></script>
+    <script src="/js/office.js" type="text/javascript"></script>
+    <script src="/js/CymBuildFunctions.js?1564" type="text/javascript"></script>
+</head>
+<body>
+    <!-- NOTE: The body is empty on purpose. Since this is invoked via a button, there is no UI to render. -->
+</body>
+</html>
+<script>
+    // Initialize Office and register handlers
+    Office.onReady().then(() => {
+        Office.actions.associate("handleNewMessageCompose", handleNewMessageCompose);
+        Office.actions.associate("handleQuickAction", handleQuickAction);
+    });
+
+    // Add error handling
+    function handleNewMessageCompose(event) {
+        try {
+            console.log("New message compose triggered");
+            event.completed({ allowEvent: true });
+        } catch (error) {
+            event.completed({ allowEvent: false, error: error.message });
+        }
+    }
+</script>

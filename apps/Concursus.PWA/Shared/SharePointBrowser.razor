@@ -1,0 +1,213 @@
+﻿@using Concursus.API.Client.Models
+@using Concursus.API.Core;
+@using Concursus.API.Client;
+@using Concursus.PWA.Helpers;
+@using Microsoft.AspNetCore.Components;
+@using System.Dynamic;
+@using Concursus.PWA.Classes
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+@if (IsWindowOpen)
+{
+    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup">
+        <div class="card-body">
+            <div>
+                <h5>Documents:</h5>
+                @if (driveListItems.Count > 0)
+                {
+                    <!-- TelerikGrid to display SharePoint drive list items -->
+                    <TelerikGrid TItem="DriveListItem"
+                                 Data="@driveListItems"
+                                 Pageable="true"
+                                 Sortable="true"
+                                 Resizable="true"
+                                 Height="400px"
+                                 SelectionMode="GridSelectionMode.Single"
+                                 OnRowDoubleClick="OnRowDoubleClickHandler">
+                        <GridColumns>
+
+                            @* <GridColumn Field="Id" Title="Document ID" /> *@
+                            <GridColumn Field="Name" Title="Document Name"/>
+                            <GridColumn Field="CreatedDateTime" Title="Created Date">
+                                <Template>
+                                    @{
+                                        var item = (DriveListItem)context;
+
+                                        var formattedCreatedDateTime = UiFormattingHelper.FormatDateForUI(
+                                        UiFormattingHelper.NormalizeToLocal(item.CreatedDateTime),
+                                        false
+                                        );
+
+                                    }
+                                    @formattedCreatedDateTime
+                                </Template>
+                            </GridColumn>
+                            <GridColumn Field="LastModifiedDateTime" Title="Last Modified Date">
+                                <Template>
+                                    @{
+                                        var item = (DriveListItem)context;
+
+                                        var formattedLastModifiedDateTime = UiFormattingHelper.FormatDateForUI(
+                                        UiFormattingHelper.NormalizeToLocal(item.LastModifiedDateTime),
+                                        false
+                                        );
+                                    }
+                                    @formattedLastModifiedDateTime
+                                </Template>
+                            </GridColumn>
+                            <GridColumn Field="Size" Title="File Size">
+                                <Template>
+                                    @{
+                                        var item = (DriveListItem)context;
+
+                                        // Access the Size property from the current row item
+                                        var size = item.Size;
+
+                                        // Convert bytes to megabytes
+                                        var sizeInMB = size / (1024.0 * 1024.0);
+
+                                        // Format the size with two decimal places
+                                        var formattedSize = $"{sizeInMB:F2} MB";
+                                    }
+                                    @formattedSize
+                                </Template>
+                            </GridColumn>
+                            <!-- Add more columns as needed -->
+                        </GridColumns>
+                    </TelerikGrid>
+                }
+
+                else
+                {
+                    <p>No documents found.</p>
+                }
+
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    [Parameter]
+    public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
+
+    [Parameter]
+    public string SharePointSiteId { get; set; }
+
+    [Parameter]
+    public EventCallback<DriveListItem> OnItemDoubleClick { get; set; }
+
+    [Parameter]
+    public bool IsWindowOpen { get; set; } = true;
+
+    [Parameter]
+    public EventCallback CloseWindow { get; set; }
+
+    [Parameter] public string TemplateFolderName { get; set; } = "Job Folders";
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    private string _siteId = string.Empty;
+    protected FormHelper? formHelper;
+    private List<DriveListItem> driveListItems = new();
+
+    // Method to retrieve SharePoint drive list items from Microsoft Graph API
+    private async Task LoadDriveListItems()
+    {
+        try
+        {
+            // Call Microsoft Graph API to get SharePoint sites (you need to implement this)
+            var _driveListItem = await formHelper.GetSharePointSitesAsync(_siteId, TemplateFolderName);
+
+            foreach (var item in _driveListItem)
+            {
+                if(!string.IsNullOrEmpty(item.ErrorReturned))
+                {
+                    throw new Exception(item.ErrorReturned);
+                };
+                driveListItems.Add(new DriveListItem
+                {
+                    Id = item.Id,
+                    Name = item.Name,
+                    CreatedDateTime = item.CreatedDateTime,
+                    LastModifiedDateTime = item.LastModifiedDateTime,
+                    WebUrl = item.WebUrl,
+                    MimeType = item.MimeType,
+                    Size = item.Size,
+                    ParentFolder = item.ParentFolder,
+                    SharePointFile = item.SharePointFile
+                });
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while loading SharePoint drive list items.");
+            ex.Data.Add("PageMethod", "SharePointBrowser/LoadDriveListItems()");
+            _= OnError.InvokeAsync(ex);
+        }
+
+    }
+
+    // Method to handle double-click on a row
+    private void OnRowDoubleClickHandler(GridRowClickEventArgs args)
+    {
+        try
+        {
+            // Get the clicked drive list item
+            var clickedItem = args.Item as DriveListItem;
+
+            // Check if the item is not null
+            if (clickedItem != null)
+            {
+                // For information, let's just print the details to the console
+                Console.WriteLine($"Item ID: {clickedItem.Id}, Name: {clickedItem.Name}, WebUrl: {clickedItem.WebUrl}, Size: {clickedItem.Size}");
+
+                // Invoke the event to notify the parent component
+                OnItemDoubleClick.InvokeAsync(clickedItem);
+
+                // Set the parameter to false to hide the window
+                IsWindowOpen = false;
+
+                // Callback to notify the parent about the window status
+                CloseWindow.InvokeAsync(IsWindowOpen);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while handling double-click on a row.");
+            ex.Data.Add("PageMethod", "SharePointBrowser/OnRowDoubleClickHandler()");
+            _= OnError.InvokeAsync(ex);
+        }
+
+    }
+
+    // OnInitializedAsync is called when the component is initialized
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            formHelper = new FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+            _siteId = SharePointSiteId;
+            // Load SharePoint drive list items when the component is initialized
+            await LoadDriveListItems();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the SharePointBrowser component.");
+            ex.Data.Add("PageMethod", "SharePointBrowser/OnInitializedAsync()");
+            _= OnError.InvokeAsync(ex);
+        }
+
+    }
+
+}

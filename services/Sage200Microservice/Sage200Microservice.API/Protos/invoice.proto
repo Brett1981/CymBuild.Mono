@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+option csharp_namespace = "Sage200Microservice.API.Protos.Invoice";
+
+package invoice;
+
+// The invoice service definition
+service InvoiceService {
+  // Creates a customer
+  rpc CreateCustomer (CreateCustomerRequest) returns (CreateCustomerResponse);
+  
+  // Checks the status of an invoice
+  rpc CheckInvoiceStatus (InvoiceStatusRequest) returns (InvoiceStatusResponse);
+  
+  // Creates a sales order invoice
+  rpc CreateSalesOrderInvoice (CreateSalesOrderInvoiceRequest) returns (CreateSalesOrderInvoiceResponse);
+}
+
+// Create customer request
+message CreateCustomerRequest {
+  string customer_name = 1;
+  string customer_code = 2;
+  string address_line1 = 3;
+  string address_line2 = 4;
+  string city = 5;
+  string postcode = 6;
+  string telephone = 7;
+  string email = 8;
+}
+
+// Create customer response
+message CreateCustomerResponse {
+  bool success = 1;
+  string message = 2;
+  int64 customer_id = 3;
+  string customer_code = 4;
+}
+
+// Invoice status request
+message InvoiceStatusRequest {
+  string invoice_reference = 1;
+}
+
+// Invoice status response
+message InvoiceStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string invoice_reference = 3;
+  bool is_paid = 4;
+  bool is_credited = 5;
+  double outstanding_value = 6;
+  double allocated_value = 7;
+  double gross_value = 8;
+  repeated TransactionHistory allocation_history = 9;
+}
+
+// Transaction history item
+message TransactionHistory {
+  string transaction_type = 1;
+  string transaction_reference = 2;
+  double allocated_value = 3;
+  string date = 4;
+}
+
+// Create sales order invoice request
+message CreateSalesOrderInvoiceRequest {
+  int64 customer_id = 1;
+  repeated OrderLine lines = 2;
+  string order_date = 3;
+}
+
+// Order line
+message OrderLine {
+  string product_code = 1;
+  double quantity = 2;
+  double unit_price = 3;
+}
+
+// Create sales order invoice response
+message CreateSalesOrderInvoiceResponse {
+  bool success = 1;
+  string message = 2;
+  int64 order_id = 3;
+  string order_reference = 4;
+}

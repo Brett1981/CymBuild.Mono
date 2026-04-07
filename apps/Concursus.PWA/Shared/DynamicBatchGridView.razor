@@ -1,0 +1,579 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Pages
+@using Concursus.PWA.Services
+@using Concursus.PWA.Classes
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject Core.CoreClient CoreClient
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserService userService
+
+@attribute [Authorize]
+
+<style>
+    .bActionBtn {
+        padding: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 5px !important;
+    }
+
+    .dynamic-batch-grid-modal {
+        max-height: 70vh;
+        max-width: 90vw;
+        overflow-y: auto;
+        overflow-x: auto;
+        padding: 1rem;
+    }
+</style>
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+@if (IsBulkProcessing)
+{
+    <h5>Select Items for Bulk Editing</h5>
+}
+
+<ErrorBoundary>
+    <ChildContent>
+        <div class="d-flex flex-wrap justify-content-between">
+            <div class="p-2">
+                <h5 class="view-name">@ViewDefinition?.Name</h5>
+            </div>
+
+            <div class="p-2 form-buttons">
+                <div class="button-group">
+                    @if (ViewDefinition is not null && !IsBulkProcessing)
+                    {
+                        @if (ShowInvoiceMergeButton)
+                        {
+                            <TelerikWindow Modal="true"
+                                           @bind-Visible="@isMergeLoadingScreenVisible"
+                                           CloseOnOverlayClick="false"
+                                           Width="50%"
+                                           Height="30%">
+                                <WindowContent>
+                                    <div class="loading-container" style="text-align:center; margin:20px;">
+                                        <TelerikLoader Visible="true"
+                                                       Size="@ThemeConstants.Loader.Size.Medium"
+                                                       ThemeColor="@ThemeConstants.Loader.ThemeColor.Tertiary"
+                                                       Type="@LoaderType.ConvergingSpinner" />
+                                        <p style="margin-top:15px;">
+                                            The selected invoice requests are being merged.<br />
+                                            Please wait...
+                                        </p>
+                                    </div>
+                                </WindowContent>
+                            </TelerikWindow>
+
+                            <button class="btn btn-outline-primary mx-2" type="button" @onclick="MergeInvoiceRequests">
+                                <i class="bi bi-arrow-left-right mx-1" style="font-size: 1.2rem;"></i>
+                                Merge (@(SelectedItems?.Count ?? 0)) Invoice Requests
+                            </button>
+                        }
+
+                        @if (ViewDefinition.AllowNew)
+                        {
+                            <button class="btn btn-success" type="button" @onclick="AddNew">
+                                <i class="bi bi-plus-circle-fill me-2" style="font-size: 1.2rem;"></i>
+                                New
+                            </button>
+                        }
+                    }
+
+                    @if (!IsBulkProcessing)
+                    {
+                        <div class="bActionBtn btn btn-primary mb-1">
+                            <BatchButtonMenu @ref="@_buttonMenuRef"
+                                             @bind-GridRef="@ViewDefinition"
+                                             OnError="@OnError"
+                                             PerformGridAction="@PerformAction"
+                                             SelectedItems="@SelectedItems"
+                                             OnRefreshRequested="@reloadGridData" />
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (ViewDefinition is not null)
+        {
+            <div class="filter-control">
+                <div class="status-explanation">
+                    <ul>
+                        @if (RedIndicator != "")
+                        {
+                            <li><span class="dot red"></span>   @RedIndicator</li>
+                        }
+                        else if (GreenIndicator != "")
+                        {
+                            <li><span class="dot green"></span> @GreenIndicator</li>
+                        }
+                    </ul>
+                </div>
+
+                <div class="quick-filter-toolbar">
+                    @if (CreatedOnColumn != "")
+                    {
+                        <div>
+                            <TelerikButton Class="@QuickFilter7DaysCSS"
+                                           OnClick="@(() => ShowRecordsFromXDay(-7))">
+                                Last 7 Days
+                            </TelerikButton>
+
+                            <TelerikButton Class="@QuickFilter90DaysCSS"
+                                           OnClick="@(() => ShowRecordsFromXDay(-90))">
+                                Last 90 Days
+                            </TelerikButton>
+
+                            <TelerikButton OnClick="@ToggleCustomRange">
+                                Custom Range...
+                            </TelerikButton>
+
+                            <TelerikButton Class="@QuickFilterGroupByCSS"
+                                           OnClick="@(() => GroupByButton() )">
+                                Group by @GroupByColumTranslation
+                            </TelerikButton>
+                        </div>
+                    }
+                </div>
+
+                @if (showCustomRange)
+                {
+                    <div class="custom-range-panel">
+                        <label for="StartDate" class="form-label">From:</label>
+                        <TelerikDatePicker Id="StartDate"
+                                           Format="dd/MM/yyyy"
+                                           @bind-Value="@customStartDate" />
+
+                        <label for="EndDate" class="form-label">To:</label>
+                        <TelerikDatePicker Id="EndDate"
+                                           Format="dd/MM/yyyy"
+                                           @bind-Value="@customEndDate" />
+
+                        <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
+                        <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
+                    </div>
+                }
+            </div>
+
+            @if (FullGrid)
+            {
+                <div class="grid-container">
+                    @if (IsSageSubmissionMonitorView)
+                    {
+                        <div class="d-flex justify-content-end mb-2">
+                            <TelerikButton OnClick="@RequeueSelectedSageSubmissionsAsync"
+                                           Enabled="@CanRequeueSelectedSageSubmissions">
+                                <i class="bi bi-arrow-repeat me-2"></i>
+                                @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
+                            </TelerikButton>
+                        </div>
+                    }
+
+                    <TelerikGrid TItem="ExpandoObject"
+                                 OnRead="@ReadItems"
+                                 Pageable="true"
+                                 Sortable="true"
+                                 PageSize="50"
+                                 Height="100%"
+                                 Resizable="true"
+                                 SelectedItems="@SelectedItems"
+                                 SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
+                                 OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                 @ref="@GridRef"
+                                 FilterMode="@GridFilterMode.FilterMenu"
+                                 SelectionMode="@GridSelectionMode.Multiple"
+                                 OnRowRender="@OnRowRenderHandler"
+                                 OnRowClick="@OnRowClickHandler"
+                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                                 OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+                        <GridSettings>
+                            <GridPagerSettings InputType="PagerInputType.Input"
+                                               PageSizes=null
+                                               ButtonCount="5"
+                                               Responsive="true"
+                                               Position="PagerPosition.Bottom">
+                            </GridPagerSettings>
+                        </GridSettings>
+                        <GridColumns>
+                            <GridCheckboxColumn Width="30px" />
+                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
+                            {
+                                @if (gvcd.Name == "ID")
+                                {
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true">
+                                        <Template>
+                                            @{
+                                                var chaseOverdueLabel = "dot red";
+                                                var chaseDueThisWeekLabel = "dot yellow";
+                                                var noChaseDateNeededLabel = "dot green";
+
+                                                var indicatorToAssign = "";
+
+                                                var item = (IDictionary<string, object>)context;
+                                                var ExpectedDate = item["ExpectedDate"].ToString();
+
+                                                if (DateTime.TryParse(ExpectedDate, out DateTime expDate))
+                                                {
+                                                    var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
+                                                    indicatorToAssign = daysSinceExpectedDate >= 1
+                                                        ? chaseOverdueLabel
+                                                        : noChaseDateNeededLabel;
+                                                }
+                                                else
+                                                {
+                                                    indicatorToAssign = noChaseDateNeededLabel;
+                                                }
+                                            }
+
+                                            <div class="custom-ellipsis">
+                                                <li>
+                                                    <span class="@indicatorToAssign"></span>
+                                                    @item["ID"]
+                                                </li>
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+                                else
+                                {
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="typeof(string)"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true"
+                                                DisplayFormat="@gvcd.DisplayFormat">
+                                        <Template>
+                                            <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(gvcd.Name)(context))
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+                            }
+                        </GridColumns>
+                    </TelerikGrid>
+                </div>
+
+                <div class="back-to-top-button">
+                    <button class="btn btn-secondary" @onclick="ScrollToTop">
+                        <i class="bi bi-arrow-up-circle"></i> Back To Top
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="dynamic-batch-grid-modal">
+                    @if (IsSageSubmissionMonitorView)
+                    {
+                        <div class="d-flex justify-content-end mb-2">
+                            <TelerikButton OnClick="@RequeueSelectedSageSubmissionsAsync"
+                                           Enabled="@CanRequeueSelectedSageSubmissions">
+                                <i class="bi bi-arrow-repeat me-2"></i>
+                                @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
+                            </TelerikButton>
+                        </div>
+                    }
+
+                    <TelerikGrid TItem="ExpandoObject"
+                                 OnRead="@ReadItems"
+                                 Pageable="true"
+                                 Sortable="true"
+                                 PageSize="50"
+                                 Height="100%"
+                                 Resizable="true"
+                                 SelectedItems="@SelectedItems"
+                                 SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
+                                 @ref="@GridRef"
+                                 FilterMode="@GridFilterMode.FilterMenu"
+                                 SelectionMode="@GridSelectionMode.Multiple"
+                                 OnRowRender="@OnRowRenderHandler"
+                                 OnRowClick="@OnRowClickHandler"
+                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                                 OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+                        <GridSettings>
+                            <GridPagerSettings InputType="PagerInputType.Input"
+                                               PageSizes=null
+                                               ButtonCount="5"
+                                               Responsive="true"
+                                               Position="PagerPosition.Bottom">
+                            </GridPagerSettings>
+                        </GridSettings>
+                        <GridColumns>
+                            <GridCheckboxColumn Width="30px" />
+                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
+                            {
+                                @if (gvcd.Name == "ID")
+                                {
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true">
+                                        <Template>
+                                            @{
+                                                var chaseOverdueLabel = "dot red";
+                                                var chaseDueThisWeekLabel = "dot yellow";
+                                                var noChaseDateNeededLabel = "dot green";
+
+                                                var indicatorToAssign = "";
+
+                                                var item = (IDictionary<string, object>)context;
+                                                var ExpectedDate = item["ExpectedDate"].ToString();
+
+                                                if (DateTime.TryParse(ExpectedDate, out DateTime expDate))
+                                                {
+                                                    var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
+                                                    indicatorToAssign = daysSinceExpectedDate >= 1
+                                                        ? chaseOverdueLabel
+                                                        : noChaseDateNeededLabel;
+                                                }
+                                                else
+                                                {
+                                                    indicatorToAssign = noChaseDateNeededLabel;
+                                                }
+
+                                                Console.WriteLine("Indicator => " + indicatorToAssign);
+                                            }
+
+                                            <div class="custom-ellipsis">
+                                                <li>
+                                                    <span class="@indicatorToAssign"></span>
+                                                    @item["ID"]
+                                                </li>
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+                                else
+                                {
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="typeof(string)"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true"
+                                                DisplayFormat="@gvcd.DisplayFormat">
+                                        <Template>
+                                            <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(gvcd.Name)(context))
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+                            }
+                        </GridColumns>
+                    </TelerikGrid>
+                </div>
+            }
+
+            @if (ViewDefinition.IsDetailWindowed)
+            {
+                <TelerikWindow @ref="ModalWindow"
+                               Class="responsive-window"
+                               Visible="@WindowIsVisible"
+                               Modal="true"
+                               CloseOnOverlayClick="false"
+                               VisibleChanged="@WindowVisibleChangedHandler"
+                               MaxHeight="100vh">
+                    <WindowTitle>@WindowTitle</WindowTitle>
+                    <WindowContent>
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")" Parameters="@_detailPageParameters" />
+                    </WindowContent>
+                    <WindowActions>
+                        <WindowAction Name="Minimize"></WindowAction>
+                        <WindowAction Name="Maximize"></WindowAction>
+                        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
+            }
+
+            @if (isBulkRecordChangeVisible)
+            {
+                <TelerikWindow @ref="ModalWindow"
+                               Class="responsive-window"
+                               Visible="@isBulkRecordChangeVisible"
+                               Modal="true"
+                               CloseOnOverlayClick="false"
+                               VisibleChanged="@WindowVisibleChangedHandler"
+                               MaxHeight="100vh">
+                    <WindowTitle>Select Items To Change</WindowTitle>
+                    <WindowContent>
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.BulkRecordChange")" Parameters="@_detailPageParameters" />
+                    </WindowContent>
+                    <WindowActions>
+                        <WindowAction Name="Minimize"></WindowAction>
+                        <WindowAction Name="Maximize"></WindowAction>
+                        <WindowAction Name="Close" OnClick="@CancelBulkEdit"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
+            }
+        }
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>
+
+@if (IsBulkProcessing)
+{
+    <div class="modal-actions">
+        <TelerikButton OnClick="MoveNext" Class="btn btn-primary py-2">Next</TelerikButton>
+        <TelerikButton OnClick="CancelBulkEdit" Class="btn btn-danger py-2 cancelButton">Cancel</TelerikButton>
+    </div>
+}
+
+<style>
+    .view-name {
+        padding: 5px;
+    }
+
+    .width-100 {
+        width: 100%;
+    }
+
+    .grid .k-grid-content tr {
+        line-height: 32px;
+    }
+
+    .custom-ellipsis,
+    .k-grid td.custom-ellipsis,
+    .k-grid tr.custom-ellipsis .k-table-td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .grid-container {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+        .grid-container .k-grid {
+            min-width: 1200px;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+    .back-to-top-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        opacity: 0.5;
+        transition: opacity 0.3s ease;
+    }
+
+        .back-to-top-button:hover {
+            opacity: 1;
+        }
+
+    .cancelButton {
+        background-color: #c82333 !important;
+        color: white !important;
+    }
+
+    .invalid-row {
+        background-color: #f8d7da;
+        color: #721c24;
+        font-weight: bold;
+        pointer-events: none;
+        opacity: 0.7;
+    }
+
+        .invalid-row .k-checkbox {
+            pointer-events: none;
+        }
+
+    .filter-control {
+        display: flex;
+        flex-direction: column;
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    .quick-filter-toolbar, .custom-range-panel {
+        display: flex;
+        gap: 8px;
+        padding: 12px 0;
+    }
+
+    .quick-filter-toolbar {
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    .custom-range-panel {
+        margin-right: 10px;
+        margin-left: 10px;
+    }
+
+    .status-explanation ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .status-explanation li {
+        display: flex;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+
+    .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+
+        .dot.red {
+            background-color: red;
+        }
+
+        .dot.yellow {
+            background-color: gold;
+        }
+
+        .dot.green {
+            background-color: limegreen;
+        }
+
+    .activeButton {
+        background-color: #0d6efd !important;
+        color: white !important;
+    }
+
+    .OverThreshold {
+        background-color: #0d6efd !important;
+        color: white !important;
+    }
+</style>

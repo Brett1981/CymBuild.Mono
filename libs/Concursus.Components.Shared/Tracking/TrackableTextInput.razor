@@ -1,0 +1,63 @@
+﻿@*
+    ────────────────────────────────────────────────────────────────
+    TrackableTextInput
+    ────────────────────────────────────────────────────────────────
+    PURPOSE:
+    Replaces <InputText> and logs user changes on blur, supports validation
+
+    🔁 REPLACES:
+    <InputText @bind-Value="model.Name" />
+    ➜
+    <TrackableTextInput FieldName="Name"
+                        @bind-Value="model.Name"
+                        class="form-control" />
+
+    🧠 LOGGING FORMAT:
+    Field 'Name' changed to 'New Value'
+*@
+
+@using Microsoft.AspNetCore.Components.Forms
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<InputText Value="Value"
+           ValueChanged="@(EventCallback.Factory.Create<string?>(this, HandleValueChanged))"
+           ValueExpression="ValueExpression"
+           class="@Class"
+           @onblur="TriggerOnBlur"
+           @attributes="AdditionalAttributes" />
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownTextInput";
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<string?>>? ValueExpression { get; set; }
+
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(string? value)
+    {
+        string log = $"Field '{FieldName}' changed to '{value}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(string? newValue)
+    {
+        Value = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+    }
+
+    private async Task TriggerOnBlur()
+    {
+        LogInteraction(Value);
+        await Task.CompletedTask;
+    }
+}

@@ -1,0 +1,60 @@
+﻿@using System.Linq
+@using Concursus.API.Core
+@using Concursus.Common.Shared.Helpers
+@using Concursus.Components.Shared.Classes
+
+@if (FieldDefinition is null)
+{
+    <span class="v2-field-value v2-field-value--empty">(no field definition)</span>
+}
+else if (DataObject is null)
+{
+    <span class="v2-field-value v2-field-value--no-data">(no data loaded)</span>
+}
+else
+{
+    var displayValue = GetDisplayValue();
+
+    <span class="v2-field-value v2-field-value--@FieldDefinition.ViewType.ToString().ToLowerInvariant()">
+        @displayValue
+    </span>
+}
+
+@code {
+    /// <summary>
+    /// The V2 field definition describing which DataProperty to bind.
+    /// </summary>
+    [Parameter]
+    public FieldViewDefinition? FieldDefinition { get; set; }
+
+    /// <summary>
+    /// The DataObject containing DataProperties for the current record.
+    /// This is the same DataObject returned by FormHelper.ReadDataObjectAsync.
+    /// </summary>
+    [Parameter]
+    public DataObject? DataObject { get; set; }
+
+    private string GetDisplayValue()
+    {
+        if (FieldDefinition == null || DataObject == null)
+        {
+            return string.Empty;
+        }
+
+        // Locate the DataProperty by EntityPropertyGuid.
+        // This is the canonical mapping between EntityProperty and DataProperty in your model.
+        var prop = DataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, FieldDefinition.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (prop == null || prop.Value == null)
+        {
+            return string.Empty;
+        }
+
+        // Use the existing shared helper to unpack the Any into a readable string.
+        // This avoids duplicating unpacking logic and stays faithful to your existing diagnostics.
+        return DataObjectDebugHelper.UnpackValue(prop.Value);
+    }
+}

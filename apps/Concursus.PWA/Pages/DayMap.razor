@@ -1,0 +1,69 @@
+﻿@page "/daymap/{date}"
+@attribute [Authorize]
+@using Concursus.API.Core
+@using Concursus.API.Client
+@using Google.Protobuf.WellKnownTypes
+@inject Core.CoreClient coreClient
+
+<h4>Schedule Day Map</h4>
+
+<div class="card shadow-sm p-2 m-2 flex-fill" style="min-width: 250px;">
+    <div class="card-body">
+        <div class="d-flex justify-content-around">
+            <TelerikDatePicker @bind-Value="@SelectedDate"
+                               Min="@Min"
+                               Max="@Max"
+                               DebounceDelay="@DebounceDelay"
+                               ShowWeekNumbers="true"
+                               Id="select-date">
+            </TelerikDatePicker>
+            <TelerikMultiSelect Data="@Users"
+                                @bind-Value="@SelectedUserIds"
+                                ValueField="@nameof(API.Core.User.Guid)"
+                                TextField="@nameof(API.Core.User.FullName)"
+                                OnChange="@LoadData"
+                                Placeholder="Select Users"
+                                DebounceDelay="@DebounceDelay"
+                                Id="u-multiselect" Width="100%">
+            </TelerikMultiSelect>
+            <TelerikMultiSelect Data="@OrganisationalUnits"
+                                @bind-Value="@SelectedOrganisationalUnitsIds"
+                                ValueField="@nameof(OrganisationalUnit.Guid)"
+                                TextField="@nameof(OrganisationalUnit.Name)"
+                                OnChange="@LoadData"
+                                DebounceDelay="@DebounceDelay"
+                                Placeholder="Select Org. Units"
+                                Id="ou-multiselect" Width="100%">
+            </TelerikMultiSelect>
+        </div>
+        <TelerikMap @ref="MapRef"
+                    Center="@MapCenter"
+                    Height="80vh"
+                    MinZoom="3"
+                    Zoom="5">
+            <MapLayers>
+                <MapLayer Type="@MapLayersType.Tile"
+                          Attribution="@MapAttribution"
+                          Subdomains="@MapSubdomains"
+                          UrlTemplate="@MapUrlTemplate">
+                </MapLayer>
+                <MapLayer Type="@MapLayersType.Marker"
+                          Data="@MarkerData"
+                          LocationField="@nameof(API.Core.MapMarker.LatLng)"
+                          TitleField="@nameof(API.Core.MapMarker.EntityTypeGuid)">
+                    <MapLayerMarkerSettings>
+                        <MapLayerMarkerSettingsTooltip>
+                            <Template Context="mapContext">
+                                @{
+                                    var dataItem = mapContext.DataItem as Concursus.API.Core.MapMarker;
+                                }
+
+                                <div>@dataItem.EntityTypeGuid</div>
+                            </Template>
+                        </MapLayerMarkerSettingsTooltip>
+                    </MapLayerMarkerSettings>
+                </MapLayer>
+            </MapLayers>
+        </TelerikMap>
+    </div>
+</div>

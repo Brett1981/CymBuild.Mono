@@ -1,0 +1,191 @@
+﻿@using System.IO
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime js
+
+<div class="signature-container">
+    <!-- Upload signature image file -->
+    <InputFile OnChange="OnImageUpload" class="form-control-file" />
+
+    <!-- Show uploaded/drawn signature as an image if available -->
+    @if (isImageDisplayed)
+    {
+        <img src="@imageSource" style="border:1px solid black; width:400px; height:200px;" />
+    }
+    else
+    {
+        <!-- Canvas for drawing the signature -->
+        <canvas @ref="canvasRef" width="400" height="200"
+                onmousedown="OnMouseDown"
+                onmousemove="OnMouseMove"
+                onmouseup="OnMouseUp"
+                onmouseout="OnMouseOut"
+                class="signature-canvas"></canvas>
+    }
+
+    <!-- Save Signature Button -->
+    <button class="btn btn-primary mt-2" @onclick="SaveSignature">Save Signature</button>
+</div>
+
+
+<script>
+    window.signaturePad = {
+        initializeCanvas: function (canvas) {
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height); // white background
+
+            let drawing = false;
+
+            canvas.addEventListener('mousedown', function (e) {
+                drawing = true;
+                ctx.moveTo(e.offsetX, e.offsetY);
+            });
+
+            canvas.addEventListener('mousemove', function (e) {
+                if (drawing) {
+                    ctx.lineTo(e.offsetX, e.offsetY);
+                    ctx.stroke();
+                }
+            });
+
+            canvas.addEventListener('mouseup', function () {
+                drawing = false;
+            });
+
+            canvas.addEventListener('mouseout', function () {
+                drawing = false;
+            });
+        },
+        drawOnCanvas: function (canvas, x, y) {
+            var ctx = canvas.getContext('2d');
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        },
+        exportCanvas: function (canvas) {
+            return canvas.toDataURL('image/png');
+        }
+    };
+
+        window.tiffHandler = {
+            handleTiff: function (tiffArray) {
+                // Convert the TIFF array to a Uint8Array for tiff.js
+                var byteArray = new Uint8Array(tiffArray);
+
+                // Decode TIFF and convert to a canvas
+                var tiff = new Tiff({ buffer: byteArray });
+                var canvas = tiff.toCanvas();
+
+                if (canvas) {
+                    // Set the canvas width and height to match the TIFF image
+                    canvas.width = 400;
+                    canvas.height = 200;
+
+                    // Replace the original signature canvas with the new TIFF canvas
+                    const originalCanvas = document.querySelector('.signature-canvas');
+                    originalCanvas.replaceWith(canvas);
+                } else {
+                    console.error("Could not decode TIFF file.");
+                }
+            }
+        };
+</script>
+
+
+<style>
+    .signature-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .form-control-file {
+        margin-bottom: 0.5rem;
+        width: 200px;
+    }
+
+    .signature-canvas {
+        border: 1px solid #ccc;
+        width: 400px;
+        height: 200px;
+    }
+
+    .btn {
+        width: 150px;
+        align-self: flex-start;
+    }
+</style>
+
+@code {
+    private ElementReference canvasRef;
+    private bool isDrawing = false;
+    private string base64Image = string.Empty;
+    private byte[] signatureByteArray = Array.Empty<byte>();
+    private string? imageSource;
+    private bool isImageDisplayed = false;
+
+    // Parameter to accept a byte array (existing signature)
+    [Parameter]
+    public byte[] ExistingSignature { get; set; } = Array.Empty<byte>();
+
+    // EventCallback to expose signatureByteArray to parent
+    [Parameter]
+    public EventCallback<byte[]> OnSignatureSaved { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (ExistingSignature.Length > 0)
+            {
+                // Display the existing signature if available
+                imageSource = $"data:image/png;base64,{Convert.ToBase64String(ExistingSignature)}";
+                isImageDisplayed = true;
+            }
+            await js.InvokeVoidAsync("signaturePad.initializeCanvas", canvasRef);
+        }
+    }
+
+    // Handle image file upload
+    private async Task OnImageUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        using var stream = new MemoryStream();
+        await file.OpenReadStream().CopyToAsync(stream);
+
+        if (file.ContentType == "image/tiff" || file.Name.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase))
+        {
+            // Use JavaScript to handle TIFF files
+            var tiffArray = stream.ToArray();
+            await js.InvokeVoidAsync("tiffHandler.handleTiff", tiffArray);
+        }
+        else
+        {
+            // Regular handling for non-TIFF images
+            signatureByteArray = stream.ToArray();
+            imageSource = $"data:image/png;base64,{Convert.ToBase64String(signatureByteArray)}";
+            isImageDisplayed = true;
+        }
+    }
+
+    // Handle drawing events on the canvas
+    private void OnMouseDown(MouseEventArgs e) => isDrawing = true;
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (!isDrawing) return;
+        js.InvokeVoidAsync("signaturePad.drawOnCanvas", canvasRef, e.OffsetX, e.OffsetY);
+    }
+    private void OnMouseUp(MouseEventArgs e) => isDrawing = false;
+    private void OnMouseOut(MouseEventArgs e) => isDrawing = false;
+
+    // Save the drawn or uploaded signature to byte array
+    private async Task SaveSignature()
+    {
+        // Export canvas as image data (base64) using JavaScript
+        var base64Image = await js.InvokeAsync<string>("signaturePad.exportCanvas", canvasRef);
+        signatureByteArray = Convert.FromBase64String(base64Image.Split(',')[1]);
+
+        // Trigger the EventCallback to pass signatureByteArray to the parent
+        await OnSignatureSaved.InvokeAsync(signatureByteArray);
+    }
+}
+

@@ -1,0 +1,2 @@
+﻿CREATE SCHEMA [SUserInterface] AUTHORIZATION [dbo]
+GO

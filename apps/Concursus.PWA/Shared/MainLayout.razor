@@ -1,0 +1,191 @@
+﻿@using Concursus.Components.Shared.Services
+@layout TelerikLayout
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject IToastService ToastService
+@implements IDisposable
+
+<TelerikNotification @ref="notificationRef"
+                     AnimationType="AnimationType.SlideIn"
+                     HorizontalPosition="NotificationHorizontalPosition.Right"
+                     VerticalPosition="NotificationVerticalPosition.Bottom"
+                     Class="global-toast">
+    <Template Context="context">
+        <div class="toast-wrapper @context.ThemeColor">
+            <div class="toast-message">@context.Text</div>
+            <div class="toast-time">just now</div>
+        </div>
+    </Template>
+</TelerikNotification>
+
+<div class="page">
+    <div class="sidebar shadow">
+        <NavMenu />
+    </div>
+
+    @* floating diagnostics *@
+    @if (IsDebug)
+    {
+        <TaskList />
+        <FloatingDiagnostics />
+    }
+    else if (showDiagnostics)
+    {
+        <FloatingDiagnostics />
+    }
+
+    <main>
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    private bool showDiagnostics;
+    private DotNetObjectReference<MainLayout>? dotNetRef;
+    private TelerikNotification? notificationRef;
+
+    private bool IsDebug
+    {
+        get
+        {
+#if DEBUG
+      return true;
+#else
+            return false;
+#endif
+        }
+    }
+
+    [JSInvokable]
+    public void ToggleDiagnostics()
+    {
+        showDiagnostics = !showDiagnostics;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // register key-handler only in RELEASE
+            if (!IsDebug)
+            {
+                dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("registerDiagnosticsToggle", dotNetRef);
+            }
+
+            // hook up toasts
+            if (ToastService is TelerikToastService t && notificationRef != null)
+            {
+                t.Register(notificationRef);
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}
+
+
+
+            <style>
+        /* Toast container */
+        .global-toast .k-notification-container {
+            z-index: 1500;
+            right: 30px;
+            bottom: 30px;
+            position: fixed;
+        }
+
+        /* Toast content styling */
+        .toast-wrapper {
+            padding: 10px 16px;
+            border-radius: 8px;
+            min-width: 300px;
+            color: white;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 12px;
+        }
+
+        .toast-message {
+            font-weight: 500;
+        }
+
+        .toast-time {
+            font-size: 12px;
+            font-style: italic;
+            opacity: 0.8;
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        /* Colors for different toast types */
+        .toast-wrapper.success {
+            background-color: #28a745;
+        }
+        /* green */
+        .toast-wrapper.warning {
+            background-color: #ffc107;
+            color: black;
+        }
+
+        .toast-wrapper.error {
+            background-color: #dc3545;
+        }
+
+        .toast-wrapper.info {
+            background-color: #17a2b8;
+        }
+
+    .floating-diagnostics-panel {
+        position: fixed;
+        top: 4rem;
+        right: 0;
+        width: 320px;
+        transition: transform 0.4s ease;
+        z-index: 9999;
+    }
+
+    .panel-closed {
+        transform: translateX(100%);
+    }
+
+    .panel-open {
+        transform: translateX(0);
+    }
+
+    .floating-panel-content {
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px 0 0 8px;
+        box-shadow: -2px 0 5px rgba(0,0,0,0.2);
+        padding: 1rem;
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+    }
+
+    .floating-tab-handle {
+        position: fixed;
+        top: 40%;
+        right: 0;
+        width: 120px;
+        height: 20px;
+        background-color: #333;
+        color: white;
+        border: 1px solid #444;
+        border-radius: 4px 0 0 4px;
+        transform: rotate(90deg);
+        transform-origin: right center;
+        cursor: pointer;
+        z-index: 10000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 0.8rem;
+    }
+            </style>

@@ -1,0 +1,81 @@
+﻿@page "/finance/{DrawerGuid}"
+@attribute [Authorize]
+@inject AppConfiguration appConfiguration
+
+@using System.Globalization
+@using Google.Protobuf.WellKnownTypes
+
+<h4><i class="bi bi-bank2 me-2" style="font-size: 1.2rem;"></i> Finance</h4>
+
+
+@* <DynamicGrid GridCode="GRIDVIEWACTIONS" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" /> *@
+
+
+<TelerikTabStrip>
+
+    <!-- Finance -->
+    <TabStripTab Title="Finance">
+        <DynamicGrid GridCode="FINANCE" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" TransientVirtualProperties="@TransientVirtualProperties" />
+     </TabStripTab>
+
+@*     @if (appConfiguration.EnvironmentType == "DEV")
+    { *@
+         <!-- Invoicing -->
+    <TabStripTab Title="Invoicing">
+        <TelerikTabStrip>
+            <!--Active Invoices-->
+            <TabStripTab Title="Batched">
+                <HeaderTemplate>
+                    <i class="bi bi-play-circle-fill me-2" style="font-size: 1.2rem;"></i>Batched
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="Invoicing" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+
+
+            <!--Completed Invoices-->
+            <TabStripTab Title="Live">
+                <HeaderTemplate>
+                    <i class="bi bi-check-circle-fill me-2" style="font-size: 1.2rem;"></i>Live
+                </HeaderTemplate>
+            </TabStripTab>
+        </TelerikTabStrip>
+    </TabStripTab>
+
+    @* } *@
+</TelerikTabStrip>
+
+
+
+<style>
+
+</style>
+
+
+@code {
+    [Parameter]
+    public string DrawerGuid { get; set; } = "";
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private bool isLoading { get; set; } = true;
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        isLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isLoading = false;
+            //StateHasChanged();
+        }
+    }
+}

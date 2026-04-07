@@ -1,0 +1,127 @@
+﻿
+@*
+    TrackableTelerikComboBox.razor
+    -------------------------------------------------
+    A wrapper for TelerikComboBox with optional ItemTemplate and user interaction tracking.
+    Replaces any usage of:
+
+    <TelerikComboBox ... />
+
+    With:
+
+<TrackableTelerikComboBox FieldName="Status"
+                          TValue="Guid"
+                          TItem="ComboDataItem"
+                          @bind-Value="model.Status"
+                          OnRead="ReadItemsAsync"
+                          Placeholder="Select status"
+                          TextField="Name"
+                          ValueField="Value"
+                          Filterable="true"
+                          FilterOperator="StringFilterOperator.Contains"
+                          ReadOnly="false"
+                          DebounceDelay="150"
+                          AdaptiveMode="AdaptiveMode.Auto"
+                          Width="100%"
+                          Id="status-combo">
+    <ItemTemplate Context="context">
+        <p style="color:@context.ColourHex">@context.Name</p>
+    </ItemTemplate>
+</TrackableTelerikComboBox>
+*@
+
+@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Rendering
+
+@typeparam TItem
+@typeparam TValue
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikComboBox TItem="TItem"
+                 TValue="TValue"
+                 Value="Value"
+                 ValueChanged="@(EventCallback.Factory.Create<TValue?>(this, HandleValueChanged))"
+                 ValueExpression="ValueExpression"
+                 OnRead="@(OnRead != null ? EventCallback.Factory.Create<ComboBoxReadEventArgs>(this, OnRead) : EventCallback.Factory.Create<ComboBoxReadEventArgs>(this, _ => Task.CompletedTask))"
+                 Placeholder="@Placeholder"
+                 TextField="@TextField"
+                 ValueField="@ValueField"
+                 Filterable="@Filterable"
+                 FilterOperator="@FilterOperator"
+                 Id="@Id"
+                 Width="@Width"
+                 ReadOnly="@ReadOnly"
+                 DebounceDelay="@DebounceDelay"
+                 AdaptiveMode="@AdaptiveMode"
+                 @attributes="AdditionalAttributes"
+                 @ref="@ComboRef"
+                 OnBlur="@(() => LogInteraction(Value))">
+
+                <ItemTemplate Context="context">
+                    @if (@ItemTemplate != null)
+                    {
+                        @ItemTemplate(context)
+                    }
+                    else
+                    {
+                        <span>@context.ToString()</span>
+                    }
+                </ItemTemplate>
+
+
+</TelerikComboBox>
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownComboBox";
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; } // 🧠 Required for validation
+
+
+    [Parameter] public Func<ComboBoxReadEventArgs, Task>? OnRead { get; set; }
+
+    [Parameter] public string Placeholder { get; set; } = "";
+    [Parameter] public string TextField { get; set; } = "";
+    [Parameter] public string ValueField { get; set; } = "";
+    [Parameter] public bool Filterable { get; set; } = true;
+    [Parameter] public StringFilterOperator FilterOperator { get; set; } = StringFilterOperator.Contains;
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public bool ReadOnly { get; set; } = false;
+    [Parameter] public int DebounceDelay { get; set; } = 200;
+    [Parameter] public AdaptiveMode AdaptiveMode { get; set; } = AdaptiveMode.None;
+
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; } = null;
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private TelerikComboBox<TItem, TValue>? ComboRef { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(TValue? value)
+    {
+        string log = $"TelerikComboBox '{FieldName}' changed to '{value}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+    private async Task HandleValueChanged(TValue? newValue)
+    {
+        Value = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+    }
+
+
+    /// <summary>
+    /// Rebinds the underlying TelerikComboBox.
+    /// </summary>
+    public void Rebind()
+    {
+        ComboRef?.Rebind();
+    }
+}

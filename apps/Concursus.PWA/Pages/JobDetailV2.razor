@@ -1,0 +1,690 @@
+﻿@page "/JobDetailV2/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+
+@using System
+@using System.Linq
+@using System.Threading.Tasks
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.PWA.Classes
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Controls
+@using Concursus.Components.Shared.Controls.Documents
+@using Concursus.Components.Shared.Helpers
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using System.Web
+
+@attribute [Authorize]
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject NavigationManager NavManager
+@inject RefreshService refreshService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<PageTitle>Job Detail V2 (Experimental)</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="container mt-4">
+        <div class="alert alert-info">
+            Loading job details...
+        </div>
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">
+            @_loadError
+        </div>
+    </div>
+}
+else if (_pageViewDefinition is null || _dataObject is null || _dataObjectReference is null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-warning">
+            Unable to load job metadata or data.
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-3">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">
+                <i class="bi bi-briefcase-fill me-2"></i>
+                Job Detail V2 (Experimental)
+            </h4>
+
+            <div class="btn-group">
+                <button class="btn btn-sm btn-primary" @onclick="SaveAsync" disabled="@_isSaving">
+                    <i class="bi bi-save me-1"></i> Save
+                </button>
+                <button class="btn btn-sm btn-secondary" @onclick="Cancel">
+                    <i class="bi bi-x-circle me-1"></i> Cancel
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_saveSuccess))
+        {
+            <div class="alert alert-success py-2 small">@_saveSuccess</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_saveError))
+        {
+            <div class="alert alert-danger py-2 small">@_saveError</div>
+        }
+
+        <!-- Tabs (Bootstrap, no Telerik) -->
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 0 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(0)">
+                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Job
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 1 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(1)">
+                    <i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 2 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(2)">
+                    <i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Details
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 3 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(3)">
+                    <i class="bi bi-signpost-split-fill me-2" style="font-size: 1.2rem;"></i> Milestones
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 4 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(4)">
+                    <i class="bi bi-activity me-2" style="font-size: 1.2rem;"></i> Activity
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 5 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(5)">
+                    <i class="bi bi-card-checklist me-2" style="font-size: 1.2rem;"></i> Actions
+                </button>
+            </li>
+
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 6 ? "active" : "")"
+                        type="button" role="tab"
+                        @onclick="() => SetActiveTab(6)">
+                    <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content pt-3">
+
+            <!-- Tab 0: Job -->
+            <div class="tab-pane fade @(ActiveTabIndex == 0 ? "show active" : "")" role="tabpanel">
+
+                <div class="row">
+                    <div class="col-12">
+                        <JobProgress @ref="jobProgressRef" DataObject="@_dataObject" />
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <V2DynamicGrid GridCode="RECORDSTATUS"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@_dataObjectReference"
+                                     ParentRowStatus="@_dataObject.RowStatus"
+                                     ResyncDataObject="@ResyncDataObject" />
+                    </div>
+                </div>
+
+                <div class="row mt-2">
+                    <div class="col-12">
+                        <V2FormRenderer ViewDefinition="_pageViewDefinition"
+                                        DataObject="_dataObject" />
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <V2DynamicGrid GridCode="JOB_MEMOS"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@_dataObjectReference"
+                                     ParentRowStatus="@_dataObject.RowStatus" />
+                    </div>
+                </div>
+
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <V2DynamicGrid GridCode="JOBMEMOS"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@_dataObjectReference"
+                                     ParentRowStatus="@_dataObject.RowStatus" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 1: Fees -->
+            <div class="tab-pane fade @(ActiveTabIndex == 1 ? "show active" : "")" role="tabpanel">
+
+                <V2DynamicGrid GridCode="JOBFEES"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="JOBFINANCEMEMO"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="JOBINVOICES"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus"
+                             Disabled="@GetValueAsBool("CannotBeInvoiced")" />
+
+                @* CBLD-253: temporarily disabled (mirrors original)
+                <V2DynamicGrid GridCode="JOBINVOICEREQUESTS"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus"
+                             Disabled="@GetValueAsBool("CannotBeInvoiced")" />
+                *@
+            </div>
+
+            <!-- Tab 2: Project Details -->
+            <div class="tab-pane fade @(ActiveTabIndex == 2 ? "show active" : "")" role="tabpanel">
+
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                        <i class="bi bi-info-circle me-2" style="color: #ffffff"></i>
+                        Information
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            Project Details are shared across all records linked to this project.
+                            Changes you make here will be visible on any Enquiry, Quote or Job for this project,
+                            even if they belong to a different Business Unit.
+                        </p>
+                    </div>
+                </div>
+
+                <V2DynamicGrid GridCode="JOBPROJECTDIRECTORY"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="JOBKEYDATES"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 3: Milestones -->
+            <div class="tab-pane fade @(ActiveTabIndex == 3 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="JOBMILESTONES"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 4: Activity -->
+            <div class="tab-pane fade @(ActiveTabIndex == 4 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="JOBACTIVITY"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 5: Actions -->
+            <div class="tab-pane fade @(ActiveTabIndex == 5 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="JOBACTIONS"
+                             OnActionCompleted="RefreshJobProgress"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 6: Documents -->
+            <div class="tab-pane fade @(ActiveTabIndex == 6 ? "show active" : "")" role="tabpanel">
+
+                <ErrorBoundary @ref="_docsBoundary">
+                    <ChildContent>
+                        @if (_formHelper is null
+                                            || _dataObject is null
+                                            || string.IsNullOrWhiteSpace(_dataObject.Guid)
+                                            || _dataObject.Guid == Guid.Empty.ToString())
+                        {
+                            <div class="alert alert-info mb-0">
+                                Documents are loading...
+                            </div>
+                        }
+                        else
+                        {
+                            <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                                   DataObject="_dataObject"
+                                                   EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0" />
+                        }
+                    </ChildContent>
+
+                    <ErrorContent Context="ex">
+                        <div class="alert alert-danger">
+                            <strong>Documents tab crashed.</strong><br />
+                            @ex.Message
+
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-light"
+                                        style="border-color:#fff;color:#fff;"
+                                        @onclick="RecoverDocumentsTab">
+                                    Recover
+                                </button>
+                            </div>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+
+        </div>
+    </div>
+}
+
+@code
+{
+    // ------------------------------------------------------------------------
+    // Route parameters (parity with non-V2 JobDetail)
+    // ------------------------------------------------------------------------
+    [Parameter] public string RecordGuid { get; set; } = string.Empty;
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ReturnUrl { get; set; }
+
+    // Parity parameters (kept; not using Telerik modal/windowing in V2 page itself)
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    // ------------------------------------------------------------------------
+    // Entity constants
+    // ------------------------------------------------------------------------
+    private const string JobEntityTypeGuid = "63542427-46ab-4078-abd1-1d583c24315c";
+
+    // ------------------------------------------------------------------------
+    // V2 core state
+    // ------------------------------------------------------------------------
+    private FormHelper? _formHelper;
+    private PageViewDefinition? _pageViewDefinition;
+    private DataObject? _dataObject;
+    private DataObjectReference? _dataObjectReference;
+
+    private bool _isLoading;
+    private bool _isSaving;
+    private string? _loadError;
+    private string? _saveError;
+    private string? _saveSuccess;
+
+    // Tabs
+    protected int ActiveTabIndex { get; set; } = 0;
+
+    // UI refs
+    private JobProgress? jobProgressRef;
+    private ErrorBoundary? _docsBoundary;
+
+    // ------------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------------
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _loadError = null;
+
+            EnsureFormHelper();
+
+            // If SerializedDataObjectReference is provided, use it (parity with existing JobDetail)
+            // Otherwise fall back to the standard "RecordGuid + EntityTypeGuid" reference.
+            _dataObjectReference = DeserializeDataObjectReferenceOrFallback();
+
+            // Load metadata
+            await _formHelper!.LoadMetaDataAsync(isInformationPage: false);
+
+            // Build V2 view definition
+            var entityType = _formHelper.EntityType;
+            _pageViewDefinition = ViewDefinitionBuilder.BuildPageViewDefinition(entityType);
+
+            // Load data
+            _dataObject = await _formHelper.ReadDataObjectAsync(RecordGuid, _dataObjectReference);
+
+            if (!string.IsNullOrWhiteSpace(_dataObject?.ErrorReturned))
+                throw new Exception(_dataObject.ErrorReturned);
+
+            // Dropdown pipeline (canonical)
+            if (_pageViewDefinition != null)
+            {
+                await V2DropdownLoader.PopulateDropdownOptionsAsync(
+                    _pageViewDefinition,
+                    LoadDropdownOptionsForFieldAsync
+                );
+            }
+
+            // Notify parent (parity)
+            if (_dataObjectReference != null)
+                await ParentDataObjectReferenceChanged.InvokeAsync(_dataObjectReference);
+
+            // Ensure progress control is synced
+            jobProgressRef?.RefreshProgress();
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            await HandleErrorAsync(ex, "JobDetailV2/OnInitializedAsync()");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Tabs
+    // ------------------------------------------------------------------------
+    private void SetActiveTab(int index) => ActiveTabIndex = index;
+
+    // ------------------------------------------------------------------------
+    // Save / Cancel
+    // ------------------------------------------------------------------------
+    private async Task SaveAsync()
+    {
+        if (_formHelper is null || _dataObject is null)
+            return;
+
+        _isSaving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
+        try
+        {
+            var (message, updatedDataObject) = await _formHelper.UpsertDataObject(
+                _dataObject,
+                entityQueryGuid: null,
+                validateOnly: false,
+                IsBulkUpdate: false
+            );
+
+            _dataObject = updatedDataObject;
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _saveError = message;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_dataObject.ErrorReturned))
+            {
+                _saveError = _dataObject.ErrorReturned;
+                return;
+            }
+
+            _saveSuccess = "Record saved successfully (V2 experimental).";
+
+            // Keep JobProgress in sync after save
+            jobProgressRef?.RefreshProgress();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "JobDetailV2/SaveAsync()");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl))
+            NavManager.NavigateTo(ReturnUrl!);
+        else
+            NavManager.NavigateTo("/");
+    }
+
+    // ------------------------------------------------------------------------
+    // Refresh hooks (mirrors original behaviour)
+    // ------------------------------------------------------------------------
+    private void RefreshJobProgress()
+    {
+        _ = LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            if (_formHelper is null)
+                EnsureFormHelper();
+
+            if (_dataObjectReference is null)
+                _dataObjectReference = DeserializeDataObjectReferenceOrFallback();
+
+            await _formHelper!.LoadMetaDataAsync(isInformationPage: false);
+
+            var refreshed = await _formHelper.ReadDataObjectAsync(RecordGuid, _dataObjectReference);
+
+            if (!string.IsNullOrWhiteSpace(refreshed.ErrorReturned))
+                throw new Exception(refreshed.ErrorReturned);
+
+            _dataObject = refreshed;
+
+            // re-populate dropdowns (options can be record/context dependent)
+            if (_pageViewDefinition != null)
+            {
+                await V2DropdownLoader.PopulateDropdownOptionsAsync(
+                    _pageViewDefinition,
+                    LoadDropdownOptionsForFieldAsync
+                );
+            }
+
+            StateHasChanged();
+            jobProgressRef?.RefreshProgress();
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "JobDetailV2/LoadDataAsync()");
+        }
+    }
+
+    // Used by RECORDSTATUS grid in the old page; keep hook compatible
+    private void ResyncDataObject()
+    {
+        RefreshJobProgress();
+    }
+
+    // ------------------------------------------------------------------------
+    // Documents tab recovery
+    // ------------------------------------------------------------------------
+    private void RecoverDocumentsTab()
+    {
+        _docsBoundary?.Recover();
+        StateHasChanged();
+    }
+
+    // ------------------------------------------------------------------------
+    // Dropdown loader (canonical StructureDetailV2 approach)
+    // ------------------------------------------------------------------------
+    private async Task<IReadOnlyList<DropdownOption>> LoadDropdownOptionsForFieldAsync(FieldDropdownConfig config)
+    {
+        if (coreClient is null || _dataObject is null)
+            return Array.Empty<DropdownOption>();
+
+        try
+        {
+            var definitionGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(config.DefinitionId);
+            if (definitionGuid == Guid.Empty)
+                return Array.Empty<DropdownOption>();
+
+            var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_dataObject.Guid);
+
+            var currentValueGuid = GetCurrentDropdownGuid(config);
+
+            var request = new DropDownDataListRequest
+            {
+                Guid = definitionGuid.ToString(),
+                ParentGuid = Guid.Empty.ToString(),
+                RecordGuid = recordGuid.ToString(),
+                CurrentSelectedValueGuid = currentValueGuid.ToString()
+            };
+
+            var reply = await coreClient.DropDownDataListAsync(request);
+
+            if (reply?.Items == null || reply.Items.Count == 0)
+                return Array.Empty<DropdownOption>();
+
+            return reply.Items.Select(item => new DropdownOption
+            {
+                Value = item.Value,
+                Label = item.Name,
+                Group = item.Group,
+                ColourHex = item.ColourHex
+            }).ToList();
+        }
+        catch
+        {
+            return Array.Empty<DropdownOption>();
+        }
+    }
+
+    private Guid GetCurrentDropdownGuid(FieldDropdownConfig config)
+    {
+        if (_dataObject?.DataProperties == null || string.IsNullOrWhiteSpace(config.FieldId))
+            return Guid.Empty;
+
+        var prop = _dataObject.DataProperties.FirstOrDefault(p =>
+            !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+            string.Equals(p.EntityPropertyGuid, config.FieldId, StringComparison.OrdinalIgnoreCase));
+
+        if (prop?.Value == null)
+            return Guid.Empty;
+
+        try
+        {
+            if (prop.Value.Is(StringValue.Descriptor))
+            {
+                prop.Value.TryUnpack(out StringValue sv);
+                if (!string.IsNullOrWhiteSpace(sv?.Value) && Guid.TryParse(sv.Value, out var parsed))
+                    return parsed;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return Guid.Empty;
+    }
+
+    // ------------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------------
+    private void EnsureFormHelper()
+    {
+        if (_formHelper != null) return;
+
+        _formHelper = new FormHelper(
+            coreClient,
+            sageIntegrationService,
+            JobEntityTypeGuid,
+            userService);
+    }
+
+    private DataObjectReference DeserializeDataObjectReferenceOrFallback()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(SerializedDataObjectReference))
+            {
+                var decoded = HttpUtility.UrlDecode(SerializedDataObjectReference);
+                var deserialized = JsonConvert.DeserializeObject<DataObjectReference>(decoded ?? string.Empty);
+
+                if (deserialized != null && deserialized.DataObjectGuid != Guid.Empty)
+                    return deserialized;
+            }
+        }
+        catch
+        {
+            // fallback below
+        }
+
+        return new DataObjectReference(RecordGuid, JobEntityTypeGuid);
+    }
+
+    /// <summary>
+    /// Convenience for Disabled bindings that exist in the old EditPage-based page.
+    /// Uses current _dataObject's DataProperties to find a bool-like value by EntityPropertyName.
+    /// If you want, we can later map this to a strongly-typed property guid instead.
+    /// </summary>
+    private bool GetValueAsBool(string entityPropertyName)
+    {
+        if (_dataObject?.DataProperties == null || string.IsNullOrWhiteSpace(entityPropertyName))
+            return false;
+        var entityProperties = _formHelper?.EntityType.EntityProperties.ToList();
+        var entityPropGuid = entityProperties?.FirstOrDefault(p => p.Name == entityPropertyName)?.Guid;
+        var value = _dataObject.DataProperties.FirstOrDefault(p => p.EntityPropertyGuid == entityPropGuid)?.Value;
+
+        if (value?.Value == null)
+            return false;
+
+        try
+        {
+            bool toReturn = value.Unpack<BoolValue>().Value;
+
+            Console.WriteLine(toReturn);
+
+            return toReturn; // Return null if value is null or parsing fails
+        }
+        catch { }
+
+        return false;
+    }
+
+    private async Task HandleErrorAsync(Exception ex, string method)
+    {
+        ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+        ex.Data["AdditionalInfo"] = "An error occurred while processing your request.";
+        ex.Data["PageMethod"] = method;
+
+        if (OnError.HasDelegate)
+            await OnError.InvokeAsync(ex);
+    }
+}

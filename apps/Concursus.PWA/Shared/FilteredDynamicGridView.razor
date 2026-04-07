@@ -1,0 +1,528 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Services
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+@using Concursus.Components.Shared.Services
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+@*  CBLD-540  *@
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+<ErrorBoundary>
+    <ChildContent>
+
+
+        <!--CBLD-408: Added -> allowNewButtonSection so we can hide the button on widgets
+            <div class="d-flex flex-wrap justify-content-between allowNewButtonSection">
+                        <div class="p-2">
+                            <h5 class="view-name">@ViewDefinition?.Name</h5>
+                        </div>
+
+                        <div class="p-2">
+                            <div class="button-group d-flex flex-row">
+                                @if (ViewDefinition is not null)
+                                {
+                                    @* [OE: CBLD-260] + [CBLD-515] *@
+                                    @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
+                                    {
+                                                <GridButtonMenu
+                                                    ViewDefinition="@ViewDefinition"
+                                                    OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                                    }
+
+
+                                           
+                                    @if (FullGrid)
+                                    {
+                                        <div class="button-menu-container d-flex flex-row align-items-center">
+                                            <GridFilterButton GridRef="@GridRef" />
+                                            </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+
+            </div>
+
+
+
+            @if (ViewDefinition is not null)
+            {
+                    <div class="filter-control">
+                        <div class="status-explanation">
+                            <ul>
+                                @if (RedIndicator != "")
+                                {
+                                    <li><span class="dot red"></span> @RedIndicator</li>
+                                }
+                                else if(GreenIndicator != "")
+                                {
+                                    <li><span class="dot green"></span> @GreenIndicator</li>
+                                }
+
+                          
+                            </ul>
+                        </div>
+
+                        <div class="quick-filter-toolbar">
+                            <div>
+                                <TelerikButton Class="@QuickFilter7DaysCSS" OnClick="@(() => ShowRecordsFromXDay(-7))">Last 7 Days</TelerikButton>
+                                <TelerikButton Class="@QuickFilter90DaysCSS" OnClick="@(() => ShowRecordsFromXDay(-90))">Last 90 Days</TelerikButton>
+                                <TelerikButton OnClick="@ToggleCustomRange">Custom Range...</TelerikButton>
+                            </div>
+
+                            <div class="quick-filter-group-by">
+                              <TelerikDropDownList
+                                 DefaultText="Order By:"
+                                 Data="@GroupByOptions"
+                                 ValueChanged="@(async(string val) => await GroupData(val))"
+                                 TextField="@nameof(OrderByItem.Text)"
+                                 ValueField="@nameof(OrderByItem.Id)"
+                                 Width="14em"
+                                 AdaptiveMode="@AdaptiveMode.Auto"/>
+                            </div>
+                        </div>
+
+                        @if (showCustomRange)
+                        {
+                            <div class="custom-range-panel">
+                                <label for="StartDate" class="form-label">From:</label>
+                                <TelerikDatePicker Id="StartDate" Format="dd/MM/yyyy"   @bind-Value="@customStartDate" />
+
+                                <label for="EndDate" class="form-label">To:</label>
+                                <TelerikDatePicker Id="EndDate" Format="dd/MM/yyyy" @bind-Value="@customEndDate" />
+
+                                <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
+                                <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
+                            </div>
+                        }
+                    </div>
+                       
+                    <div class="grid-container">
+                                <TelerikGrid 
+                                    TItem="ExpandoObject"
+                                    OnRead="@ReadItems"
+                                    Pageable="true"
+                                    Sortable="true"
+                                    PageSize="50"
+                                    Height="100%"
+                                    Width="100%"
+                                    Resizable="true"
+                                    OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                    @ref="@GridRef"
+                                    OnRowRender="@OnRowRenderHandler"
+                                    FilterMode="@GridFilterMode.FilterMenu"
+                                    SelectionMode="GridSelectionMode.Single"
+                                    OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                                    ScrollMode="@GridScrollMode.Scrollable"
+                                    OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+                        <GridSettings>
+                            <GridPagerSettings InputType="PagerInputType.Input"
+                                                PageSizes=null
+                                                ButtonCount="5"
+                                                Responsive="true"
+                                                Position="PagerPosition.Bottom">
+                            </GridPagerSettings>
+                        </GridSettings>
+                        <GridColumns>
+
+
+
+
+
+
+
+
+
+                        @{
+                                    //OE: [CBLD-348]: Variables to ensure that only the first column gets locked.
+                                    int index = 0;
+                                    bool isLocked = false;
+                                    int numOfItems = ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder).Count();
+                        }
+
+                        
+                        @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder))
+                        {
+                                      
+                            if (!isLocked && !gvcd.IsHidden)
+                            {
+
+
+                                if (string.IsNullOrEmpty(gvcd.Width) || gvcd.Width.StartsWith('0'))
+                                {
+                                    gvcd.Width = "240px";
+                                }
+
+                                //Set it to locked.
+                                if (numOfItems > 1)
+                                        isLocked = true;
+
+                                //Status Indicator labels
+                                var chaseOverdueLabel = "dot red";
+                                var chaseDueThisWeekLabel = "dot yellow";
+                                var noChaseDateNeededLabel = "dot green";
+                                var labelToAssign = "";
+
+                                if (gvcd.Name == "QuoteStatus")
+                                {
+                                        <GridColumn
+                                            Field="@gvcd.Name"
+                                            Title="@gvcd.Title"
+                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                            Visible="gvcd.IsHidden != true"
+                                            Filterable="@gvcd.IsFiltered"
+                                            Width="@gvcd.Width"
+                                            Sortable="true"
+                                            Resizable="true">
+                                            <Template>
+                                            @{
+
+                                               
+
+                                                var item = (IDictionary<string, object>)context;
+                                                var chaseDateStr = item["QuoteSentDate"].ToString();
+                                                var status = item["QuoteStatus"].ToString();
+
+                                                string[] statusesToExclude = ["Expired", "Complete", "Rejected", "Dead", "Accepted"];
+
+
+                                                if (DateTime.TryParse(chaseDateStr, out DateTime chaseDate))
+                                                {
+                                                    //Number of days passed since chase date 1
+                                                    var daysSinceChaseDate = (DateTime.Now - chaseDate).TotalDays;
+
+                                                    if (daysSinceChaseDate >= 14)
+                                                        labelToAssign = chaseOverdueLabel;
+                                                    else
+                                                        labelToAssign = noChaseDateNeededLabel;
+
+                                                    Console.WriteLine($"LabelToAssign:{labelToAssign}");
+                                                }
+                                                else
+                                                {
+                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
+                                                    labelToAssign = noChaseDateNeededLabel;
+                                                }
+
+
+                                                }
+                                                <div class="custom-ellipsis">
+                                                @if (!statusesToExclude.Contains(status))
+                                                {
+                                                    <li><span class="@labelToAssign"></span> @item["QuoteStatus"]</li>
+                                                } else
+                                                {
+                                                     @item["QuoteStatus"]
+                                                }
+                                               
+                                                 </div>
+                                                
+                                            </Template>
+                                    </GridColumn>
+
+                                }
+                                else if (gvcd.Name == "Date")
+                                {
+                                        <GridColumn
+                                            Field="@gvcd.Name"
+                                            Title="@gvcd.Title"
+                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                            Visible="gvcd.IsHidden != true"
+                                            Filterable="@gvcd.IsFiltered"
+                                            Width="@gvcd.Width"
+                                            Sortable="true"
+                                            Resizable="true">
+                                            <Template>
+                                            @{
+                                                var item = (IDictionary<string, object>)context;
+                                                //If the IsOverdue <> "", it means it needs to be chased.
+                                                var IsOverdue = item["IsOverdue"].ToString();
+
+
+
+
+                                                if (IsOverdue != "")
+                                                    labelToAssign = chaseOverdueLabel;
+                                                else
+                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
+                                                    labelToAssign = noChaseDateNeededLabel;
+                                                
+
+
+                                            }
+                                                <div class="custom-ellipsis">
+                                                @if (IsOverdue != "")
+                                                {
+                                                     <li><span class="@labelToAssign"></span> @item[gvcd.Name]</li>
+                                                }
+                                                else
+                                                {
+                                                    @item[gvcd.Name]
+                                                }
+
+                                                    </div>
+
+                                            </Template>
+                                    </GridColumn>
+                                }
+                                else
+                                {
+                                    <GridColumn 
+                                        Field="@gvcd.Name"
+                                        Title="@gvcd.Title"
+                                        FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                        Visible="gvcd.IsHidden != true"
+                                        Filterable="@gvcd.IsFiltered"
+                                        Width="@gvcd.Width"
+                                        Sortable="true"
+                                        Resizable="true">
+                                        <Template>
+                                                <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(gvcd.Name)(context))
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+                               
+                            }
+                            else
+                            {
+
+
+                                
+
+                                        <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true">
+                                        <Template>
+                                            <div class="custom-ellipsis">
+                                                    @(GetColumnTemplate(gvcd.Name)(context))
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+
+                                
+
+                            }
+
+                            if (!gvcd.IsHidden)
+                                index++;
+
+                        }
+                    </GridColumns>
+                </TelerikGrid>
+            </div>
+            <div class="back-to-top-button">
+                <button class="btn btn-secondary" @onclick="ScrollToTop">
+                    <i class="bi bi-arrow-up-circle"></i> Back To Top
+                </button>
+            </div>
+
+                    }
+
+        </ChildContent>
+        <ErrorContent Context="ex">
+            <ErrorDisplay ErrorMessage="@ex.Message"/>
+        </ErrorContent>
+    </ErrorBoundary>
+
+
+
+
+<script>
+        //Add event listener to when the page is loaded.
+    document.addEventListener("keypress", function (e) {
+
+
+        // Select the filter button by class
+        const filterButton = document.querySelector(".k-button-solid-primary");
+        const enterPressed = (e.key === 'Enter');
+
+        if (enterPressed) {
+            console.log("Enter has been pressed down!");
+            if (filterButton) filterButton.click();
+        }
+
+    });
+</script>
+
+<style>
+
+
+        .sticky {
+            position: sticky;
+            z-index: 100; /* Ensure the sticky header is above other elements */
+            background-color: white; /* Optional, to prevent content showing through */
+        }
+
+            .grid-container .k-grid td {
+                min-width: 100%;
+                width: 100%;
+        }
+
+
+        .view-name {
+            padding: 5px;
+        }
+
+        .width-100 {
+            width: 100%;
+        }
+
+        .grid .k-grid-content tr {
+            line-height: 32px;
+        }
+
+        .k-grid-content{
+            overflow: scroll !important;
+        }
+
+        /* Ensure text overflow with ellipsis for grid cells */
+        .custom-ellipsis,
+        .k-grid td.custom-ellipsis,
+        .k-grid tr.custom-ellipsis .k-table-td {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Container to enable horizontal scrolling */
+        .grid-container {
+            max-width: 100%; /* Ensure the container does not exceed the viewport width */
+            overflow-x: auto; /* Enable horizontal scrolling */
+        }
+
+        /* Adjusting the grid layout */
+        .grid-container .k-grid {
+    @* min-width: 1200px; /* Adjust this value based on your columns' total width */ *@
+            width: 100%; /* This ensures the grid will take up all available width */
+            table-layout: fixed; /* Use fixed layout for the grid */
+        }
+
+
+
+        /* Style for the back-to-top button */
+        .back-to-top-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000; /* Ensure it is on top of other elements */
+            opacity: 0.5; /* Initial opacity set to 50% */
+            transition: opacity 0.3s ease; /* Smooth transition for hover effect */
+        }
+
+        /* Full opacity on hover for better visibility */
+        .back-to-top-button:hover {
+            opacity: 1;
+        }
+
+
+        .k-grid .k-grouping-row {
+            position: static;
+            z-index: auto;
+            top: 0;
+        }
+
+        .k-grid .k-grouping-row td {
+            position: sticky;
+            z-index: 2;
+            top: inherit;
+            bottom: inherit;
+            min-width: 100%;
+        }
+
+        #newBtn{
+            padding: .5rem !important;
+        }
+
+        .highlight-total-row {
+            font-weight: bold;
+            background-color: #ADD8E6 !important;
+        }
+
+        .filter-control{
+            display:flex;
+            flex-direction:column;
+            margin-left: 10px;
+            margin-right: 10px;
+        }
+
+        .quick-filter-toolbar, .custom-range-panel {
+            display: flex;
+            gap: 8px;
+            padding: 12px 0;
+        }
+
+        .quick-filter-toolbar{
+            flex-direction:row;
+            justify-content: space-between;
+        }
+
+        .custom-range-panel{
+            margin-right: 10px;
+            margin-left: 10px;
+        }
+
+        .status-explanation ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .status-explanation li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .dot.red { background-color: red; }
+        .dot.yellow { background-color: gold; }
+        .dot.green { background-color: limegreen; }
+
+        .activeButton{
+            background-color: #0d6efd !important;
+            color: white !important;
+        }
+
+        .quick-filter-group-by{
+
+        }
+
+        .OverThreshold{
+            background-color: #0d6efd !important;
+            color: white !important;
+        }
+
+</style>

@@ -1,0 +1,59 @@
+﻿@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+
+@if (FieldDefinition is null)
+{
+    <div class="v2-field v2-field--empty">
+        <em>No field definition.</em>
+    </div>
+}
+else if (FieldDefinition.IsHidden || FieldDefinition.ViewType == FieldViewType.Hidden)
+{
+    <!-- Hidden field: intentionally not rendered in the UI. -->
+}
+else
+{
+    <div class="v2-field v2-field--@FieldDefinition.ViewType.ToString().ToLowerInvariant()">
+        <label class="v2-field__label">
+            @FieldDefinition.Title
+            @if (FieldDefinition.IsRequired)
+            {
+                <span class="v2-field__required-indicator">*</span>
+            }
+        </label>
+
+        <div class="v2-field__control">
+            @if (FieldDefinition.IsReadOnly)
+            {
+                <!-- Read-only mode: keep existing behaviour -->
+                <V2FieldValueRenderer FieldDefinition="FieldDefinition" DataObject="DataObject" />
+            }
+            else
+            {
+                <!-- Editable mode: Option A editor for core field types -->
+                <V2FieldEditor FieldDefinition="FieldDefinition" DataObject="DataObject" />
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(FieldDefinition.HelpText))
+        {
+            <div class="v2-field__help-text">
+                @FieldDefinition.HelpText
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The V2 field definition to render.
+    /// </summary>
+    [Parameter]
+    public FieldViewDefinition? FieldDefinition { get; set; }
+
+    /// <summary>
+    /// The DataObject containing the DataProperty for this field.
+    /// </summary>
+    [Parameter]
+    public DataObject? DataObject { get; set; }
+}

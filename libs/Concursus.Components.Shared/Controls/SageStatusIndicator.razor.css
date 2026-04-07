@@ -1,0 +1,82 @@
+﻿.sage-status-badge {
+    width: 36px;
+    height: 36px;
+    border-radius: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.05);
+    flex: 0 0 auto;
+    transition: transform 0.15s ease, background 0.2s ease;
+}
+
+    .sage-status-badge:hover {
+        transform: translateY(-1px);
+        background: rgba(255,255,255,0.08);
+    }
+
+.sage-status-icon-shell {
+    width: 22px;
+    height: 22px;
+    position: relative; /* REQUIRED */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sage-status-image {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+}
+
+/* STATES */
+
+.sage-status-enabled {
+    border-color: rgba(40,167,69,0.35);
+    background: rgba(40,167,69,0.12);
+}
+
+.sage-status-disabled {
+    border-color: rgba(220,53,69,0.4);
+    background: rgba(220,53,69,0.15);
+}
+
+.sage-status-inaccessible {
+    border-color: rgba(255,193,7,0.4);
+    background: rgba(255,193,7,0.18);
+}
+
+.sage-status-loading {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.18);
+    opacity: 0.75;
+}
+
+/* OVERLAYS */
+
+.sage-status-strike {
+    position: absolute;
+    width: 26px;
+    height: 2px;
+    background: #ffffff;
+    transform: rotate(-35deg);
+    border-radius: 999px;
+}
+
+.sage-status-warning {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    font-size: 0.55rem;
+    right: -4px;
+    bottom: -3px;
+    border-radius: 50%;
+    background: #fff8db;
+    color: #856404;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}

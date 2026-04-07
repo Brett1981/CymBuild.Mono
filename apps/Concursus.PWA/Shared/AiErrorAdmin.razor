@@ -1,0 +1,671 @@
+﻿@using System.Text.Json
+@using Concursus.Components.Shared.Dto
+@using Concursus.Components.Shared.Services
+@using Concursus.Components.Shared.Helpers
+@using System.Text
+@using Telerik.Blazor.Components
+
+@inject HttpClient Http
+@inject IConfiguration Config
+@inject IToastService Toast
+@inject UserInteractionTrackerService InteractionTracker
+@inject NavigationManager NavigationManager
+
+<h3>🧠 AI Error Admin</h3>
+
+@if (isLoading)
+{
+    <TelerikLoaderContainer LoaderType="LoaderType.Pulsing" Text="Loading AI errors..." />
+}
+<TelerikButton OnClick="@TriggerTestError" Class="mb-3">🧪 Test AI Error</TelerikButton>
+<TelerikButton OnClick="@SyncJiraTickets" ThemeColor="Primary" Class="mb-3 ms-2">🔄 Sync Jira Tickets</TelerikButton>
+
+<TelerikGrid TItem="AiErrorReportDto"
+OnRead="@GridRead"
+Pageable="true"
+FilterMode="GridFilterMode.FilterRow"
+Sortable="true"
+PageSize="10">
+    <GridColumns>
+        <GridColumn Title="Date">
+            <Template Context="item">
+                @(((AiErrorReportDto)item).CreatedUtc.ToString("g"))
+            </Template>
+        </GridColumn>
+
+        <GridColumn Field="JiraStatus" Title="Status">
+            <Template Context="item">
+                @{
+                    var status = ((AiErrorReportDto)item).JiraStatus ?? "";
+                    var cssClass = "badge-jira-status status-" + status.ToLowerInvariant().Replace(" ", "-").Replace("'", "").Replace(".", "").Replace("/", "-");
+                }
+                <span class="@cssClass">
+                    @(!string.IsNullOrWhiteSpace(status) ? status : "N/A")
+                </span>
+            </Template>
+        </GridColumn>
+
+        <GridColumn Field="JiraTicketKey" Title="Ticket" Filterable="true" />
+        <GridColumn Field="ErrorMessage" Title="Title">
+            <Template Context="item">
+                @{
+                    var aiItem = (AiErrorReportDto)item;
+                }
+                <span title="@aiItem.ErrorMessage">
+                    @(aiItem.ErrorMessage?.Length > 50 ? aiItem.ErrorMessage.Substring(0, 50) + "..." : aiItem.ErrorMessage)
+                </span>
+            </Template>
+        </GridColumn>
+
+        <GridColumn Field="AiAnalysis" Title="AI Description">
+            <Template Context="item">
+                @{
+                    var aiItem = (AiErrorReportDto)item;
+                }
+                <span title="@aiItem.AiAnalysis">
+                    @(aiItem.AiAnalysis?.Length > 50 ? aiItem.AiAnalysis.Substring(0, 50) + "..." : aiItem.AiAnalysis)
+                </span>
+            </Template>
+        </GridColumn>
+
+        <GridColumn Field="JiraDescription" Title="AiDescription">
+            <Template Context="item">
+                @{
+                    var aiItem = (AiErrorReportDto)item;
+                }
+                <span title="@aiItem.JiraDescription">
+                    @(aiItem.JiraDescription?.Length > 50 ? aiItem.JiraDescription.Substring(0, 50) + "..." : aiItem.JiraDescription)
+                </span>
+            </Template>
+        </GridColumn>
+
+
+        <GridColumn Title="Jira">
+            <Template Context="item">
+                @{
+                    var aiItem = (AiErrorReportDto)item;
+                }
+                @if (!string.IsNullOrWhiteSpace(aiItem.JiraUrl))
+                {
+                    <a href="@aiItem.JiraUrl" target="_blank">View</a>
+                }
+            </Template>
+        </GridColumn>
+
+        <GridColumn Field="JiraPriority" Title="Priority">
+            <Template Context="item">
+                @{
+                    var priority = ((AiErrorReportDto)item).JiraPriority ?? "";
+                    var cssClass = "badge-jira-priority " +
+                    (priority.StartsWith("P1") ? "priority-p1" :
+                    priority.StartsWith("P2") ? "priority-p2" :
+                    priority.StartsWith("P3") ? "priority-p3" :
+                    priority.StartsWith("P4") ? "priority-p4" :
+                    priority.StartsWith("P5") ? "priority-p5" : "priority-p5");
+                }
+                <span class="@cssClass">@priority</span>
+            </Template>
+        </GridColumn>
+
+        <GridColumn Title="Actions">
+            <Template Context="item">
+                @{
+                    var aiItem = (AiErrorReportDto)item;
+                }
+                <TelerikButton OnClick="@(() => ShowDetails(aiItem))">👁 View</TelerikButton>
+                <TelerikButton OnClick="@(() => RetryJiraSync(aiItem.Hash))">🔁 Retry</TelerikButton>
+            </Template>
+        </GridColumn>
+
+    </GridColumns>
+</TelerikGrid>
+<h4 class="mt-4">📋 Jira Sync Logs</h4>
+
+@if (syncLogs == null)
+{
+    <TelerikLoaderContainer LoaderType="LoaderType.Pulsing" Text="Loading logs..." />
+}
+else
+{
+    <TelerikButton OnClick="@LoadJiraLogs" Class="mt-3 mb-2 me-2">🔁 Refresh Logs</TelerikButton>
+
+    <TelerikDropDownList Data="@successFilterOptions"
+                         ValueField="Value"
+                         TextField="Text"
+                         @bind-Value="selectedSuccessFilter"
+                         Width="200px"
+                         OnChange="@((_) => ApplyLogFilter())"
+                         Class="mb-3" />
+
+    <TelerikGrid Data="@filteredLogs"
+                 Pageable="true"
+                 PageSize="10"
+                 Sortable="true"
+                 FilterMode="GridFilterMode.FilterRow"
+                 Class="mt-2">
+        <GridColumns>
+            <GridColumn Title="Result">
+                <Template Context="log">
+                    @if (((JiraSyncLogDto)log).Success)
+                    {
+                        <span title="Success">🟢</span>
+                    }
+                    else
+                    {
+                        <span title="Failed">🔴</span>
+                    }
+                </Template>
+            </GridColumn>
+            <GridColumn Field="@(nameof(JiraSyncLogDto.TimeStartedUtc))"
+                        Title="Start Time"
+                        DisplayFormat="{0:yyyy-MM-dd HH:mm}" />
+            <GridColumn Field="@(nameof(JiraSyncLogDto.TimeEndedUtc))"
+                        Title="End Time"
+                        DisplayFormat="{0:yyyy-MM-dd HH:mm}" />
+            <GridColumn Field="@(nameof(JiraSyncLogDto.Message))" Title="Message">
+                <Template Context="log">
+                    <span title="@((JiraSyncLogDto)log).Message">
+                        @(((JiraSyncLogDto)log).Message?.Length > 80
+                        ? ((JiraSyncLogDto)log).Message.Substring(0, 80) + "..."
+                        : ((JiraSyncLogDto)log).Message)
+                    </span>
+                </Template>
+            </GridColumn>
+        </GridColumns>
+    </TelerikGrid>
+
+}
+<TelerikWindow @bind-Visible="@detailsVisible" Width="800px">
+    <WindowTitle>AI + Jira Details</WindowTitle>
+    <WindowContent>
+        <p><strong>Ticket:</strong></p>
+        <pre>@selected?.JiraTicketKey</pre>
+
+        <p><strong>Status:</strong></p>
+        @{
+            var rawStatus = selected?.JiraStatus?.ToLowerInvariant() ?? "other";
+            var normalizedStatus = System.Text.RegularExpressions.Regex.Replace(rawStatus, @"[^a-z0-9\-]", "-");
+            var statusClass = $"badge-jira-status status-{normalizedStatus}";
+
+        }
+        <span class="@statusClass">@selected?.JiraStatus</span>
+
+        <p class="mt-2"><strong>Priority:</strong></p>
+        @{
+            var prio = selected?.JiraPriority ?? "";
+            var prioClass = prio.StartsWith("P1") ? "priority-p1" :
+            prio.StartsWith("P2") ? "priority-p2" :
+            prio.StartsWith("P3") ? "priority-p3" :
+            prio.StartsWith("P4") ? "priority-p4" :
+            prio.StartsWith("P5") ? "priority-p5" : "priority-p5";
+        }
+        <span class="badge-jira-priority @prioClass">@prio</span>
+
+        <p class="mt-3"><strong>Error Message:</strong></p>
+        <textarea class="form-control ai-field" readonly style="height:40px">@selected?.ErrorMessage</textarea>
+
+        <p><strong>AI Summary:</strong></p>
+        @if (!string.IsNullOrWhiteSpace(selected?.AiAnalysis) && selected.AiAnalysis.Trim().StartsWith("{"))
+        {
+            <div class="jira-description-box">
+                @((MarkupString)JiraDescriptionFormatter.ConvertAdfToHtml(selected.AiAnalysis))
+            </div>
+        }
+        else
+        {
+            <p><em>N/A</em></p>
+        }
+
+        <p><strong>Jira Description:</strong></p>
+        @if (!string.IsNullOrWhiteSpace(selected?.JiraDescription) && selected.JiraDescription.Trim().StartsWith("{"))
+        {
+            <div class="jira-description-box">
+                @((MarkupString)JiraDescriptionFormatter.ConvertAdfToHtml(selected.JiraDescription))
+            </div>
+        }
+        else
+        {
+            <p><em>No Jira description available</em></p>
+        }
+
+        <p><strong>Stack Trace:</strong></p>
+        <textarea class="form-control ai-field" readonly style="height:60px">@selected?.StackTrace</textarea>
+
+        <p><strong>Context:</strong></p>
+        <textarea class="form-control ai-field" readonly style="height:60px">@selected?.ContextJson</textarea>
+
+        <p><strong>Last Synced:</strong></p>
+        <pre>@selected?.JiraLastSyncedUtc?.ToString("g")</pre>
+
+        <div class="text-end mt-3">
+            <TelerikButton OnClick="@(() => detailsVisible = false)" ThemeColor="Primary" Class="me-2">Close</TelerikButton>
+        </div>
+    </WindowContent>
+</TelerikWindow>
+
+@code {
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    private List<AiErrorReportDto> errorReports = new();
+    private List<AiErrorReportDto> pagedItems = new();
+    private bool isLoading = false;
+    private bool isInitialLoad = true;
+    private bool hasLoadedOnce = false;
+    private AiErrorReportDto selected;
+    private bool detailsVisible = false;
+    private string baseUrl => Config["AiErrorService:BaseUrl"].TrimEnd('/') + "/";
+    private int totalCount = 0;
+    private GridReadEventArgs? lastGridArgs = null;
+    private TelerikGrid<AiErrorReportDto> GridRef { get; set; }
+    private List<JiraSyncLogDto> syncLogs;
+    private List<JiraSyncLogDto> filteredLogs = new();
+    private string selectedSuccessFilter = "All";
+    private List<FilterOption> successFilterOptions = new()
+{
+    new FilterOption { Text = "All Logs", Value = "All" },
+    new FilterOption { Text = "Only Success 🟢", Value = "Success" },
+    new FilterOption { Text = "Only Failed 🔴", Value = "Failed" }
+};
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJiraLogs();
+    }
+
+    private async Task LoadJiraLogs()
+    {
+        try
+        {
+            syncLogs = await Http.GetFromJsonAsync<List<JiraSyncLogDto>>($"{baseUrl}api/ErrorReport/jira-logs");
+            ApplyLogFilter();
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"❌ Failed to load sync logs: {ex.Message}");
+        }
+    }
+    private void ApplyLogFilter()
+    {
+        if (syncLogs == null)
+        {
+            filteredLogs = new List<JiraSyncLogDto>();
+            return;
+        }
+
+        filteredLogs = selectedSuccessFilter switch
+        {
+            "Success" => syncLogs.Where(l => l.Success).ToList(),
+            "Failed" => syncLogs.Where(l => !l.Success).ToList(),
+            _ => syncLogs
+        };
+    }
+
+    private async Task GridRead(GridReadEventArgs args)
+    {
+        try
+        {
+            isLoading = true;
+
+            var response = await Http.PostAsJsonAsync($"{baseUrl}api/ErrorReport/paged-source", args.Request);
+
+            var result = await response.Content.ReadFromJsonAsync<DataSourceResult<AiErrorReportDto>>();
+
+            args.Data = result?.Data ?? new List<AiErrorReportDto>();
+            args.Total = result?.Total ?? 0;
+
+            await RefreshStatusesForVisibleAsync(args.Data.Cast<AiErrorReportDto>().ToList());
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"❌ Grid read failed: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !hasLoadedOnce)
+        {
+            hasLoadedOnce = true;
+            if (GridRef != null)
+            {
+                await GridRef.SetStateAsync(new GridState<AiErrorReportDto>());
+            }
+        }
+    }
+
+    private async Task RefreshStatusesForVisibleAsync(List<AiErrorReportDto> visibleRows)
+    {
+        foreach (var row in visibleRows.Where(r => !string.IsNullOrWhiteSpace(r.JiraTicketKey)))
+        {
+            try
+            {
+                var result = await Http.GetFromJsonAsync<AiStatusDto>($"{baseUrl}api/ErrorReport/status/{row.JiraTicketKey}");
+                if (result != null)
+                {
+                    row.JiraStatus = result.JiraStatus;
+                    row.JiraPriority = result.JiraPriority;
+                    row.JiraLastSyncedUtc = result.JiraLastSyncedUtc;
+                    row.JiraDescription = result.JiraDescription;
+                    row.AiAnalysis = result.AIAnalysis;
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Toast.ShowWarning($"⚠️ Status check failed for {row.JiraTicketKey}: {ex.Message}");
+            }
+        }
+
+        StateHasChanged();
+        Toast.ShowSuccess("Jira sync complete.");
+    }
+
+
+
+    private async Task SyncJiraTickets()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync($"{baseUrl}api/ErrorReport/sync-jira", new { });
+            if (response.IsSuccessStatusCode)
+            {
+                errorReports = await Http.GetFromJsonAsync<List<AiErrorReportDto>>($"{baseUrl}api/ErrorReport/all");
+                StateHasChanged();
+                Toast.ShowSuccess("Jira sync complete.");
+            }
+            else
+            {
+                Toast.ShowWarning("⚠ Sync failed. See logs.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"❌ Sync error: {ex.Message}");
+        }
+        if (GridRef != null)
+        {
+            await GridRef.SetStateAsync(new GridState<AiErrorReportDto>());
+        }
+    }
+
+    private void ShowDetails(AiErrorReportDto report)
+    {
+        selected = report;
+        detailsVisible = true;
+    }
+
+    private async Task RetryJiraSync(string hash)
+    {
+        try
+        {
+            await Http.PostAsync($"{baseUrl}api/ErrorReport/retry/{hash}", null);
+            GridRef.Rebind(); // Triggers OnRead again cleanly
+            Toast.ShowInfo("🔁 Jira ticket re-created.");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowWarning($"⚠ Retry failed: {ex.Message}");
+        }
+    }
+
+    private async Task TriggerTestError()
+    {
+        try
+        {
+            Toast.ShowInfo("Test AI error: Exception will be thrown!");
+            Console.WriteLine("TriggerTestError: About to throw test exception...");
+            throw new InvalidOperationException("🚨 This is a test AI error from AiErrorAdmin!");
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowInfo("TriggerTestError: Exception caught, invoking OnError...");
+            Console.WriteLine($"TriggerTestError: Exception caught: {ex.Message}\n{ex.StackTrace}");
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "AiErrorAdmin/TriggerTestError()");
+            ex.Data.Add("AdditionalInfo", "Manual AI error test via admin interface.");
+            var log = InteractionTracker.GetAllLogs();
+            var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
+            ex.Data["UserInteractionLog"] = description;
+
+            Console.WriteLine($"TriggerTestError: UserInteractionLog: {description}");
+            if (OnError.HasDelegate)
+            {
+                Console.WriteLine("TriggerTestError: OnError delegate present, invoking...");
+                await OnError.InvokeAsync(ex);
+                Console.WriteLine("TriggerTestError: OnError.InvokeAsync complete.");
+            }
+            else
+            {
+                Console.WriteLine("TriggerTestError: No OnError delegate!");
+            }
+        }
+    }
+
+    private int ParseJiraKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return 0;
+        var parts = key.Split('-');
+        return parts.Length == 2 && int.TryParse(parts[1], out var num) ? num : 0;
+    }
+    public class AiStatusDto
+    {
+        public string JiraStatus { get; set; } = string.Empty;
+        public string JiraPriority { get; set; } = string.Empty;
+        public string AIAnalysis { get; set; } = "";
+        public string JiraDescription { get; set; }
+        public DateTime? JiraLastSyncedUtc { get; set; }
+    }
+    public class AiErrorReportDto
+    {
+        public string Hash { get; set; } = string.Empty;
+        public string UserId { get; set; } = string.Empty;
+        public string AiAnalysis { get; set; } = string.Empty;
+        public string JiraTicketKey { get; set; } = string.Empty;
+        public string JiraDescription { get; set; } = string.Empty;
+        public string JiraUrl { get; set; } = string.Empty;
+        public string JiraStatus { get; set; } = string.Empty;
+        public string JiraPriority { get; set; } = string.Empty;
+        public string ErrorMessage { get; set; } = string.Empty;
+        public string StackTrace { get; set; } = string.Empty;
+        public string ContextJson { get; set; } = string.Empty;
+        public DateTime CreatedUtc { get; set; }
+        public DateTime? JiraLastSyncedUtc { get; set; }
+    }
+
+    public class FilterOption
+    {
+        public string Text { get; set; }
+        public string Value { get; set; }
+    }
+}
+
+<style>
+    .ai-field {
+        height: 110px;
+        max-height: 200px;
+        min-height: 100px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-family: Consolas, monospace;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+    }
+
+    .jira-description-box {
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 8px;
+        border: 1px solid #ccc;
+        background-color: #fcfcfc;
+        font-family: "Segoe UI", sans-serif;
+        font-size: 0.9rem;
+        white-space: normal;
+    }
+
+        .jira-description-box p {
+            margin: 0 0 8px 0;
+        }
+
+        .jira-description-box ul {
+            margin-left: 1.5em;
+            padding-left: 1em;
+        }
+
+        .jira-description-box strong {
+            font-weight: bold;
+        }
+
+        .jira-description-box em {
+            font-style: italic;
+        }
+
+    .badge-jira-status {
+        padding: 0.4em 0.6em;
+        border-radius: 0.5em;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+    }
+
+    .badge.bg-success {
+        background-color: #27ae60;
+        color: white;
+    }
+
+    .badge.bg-danger {
+        background-color: #c0392b;
+        color: white;
+    }
+    .status-new {
+        background-color: #e74c3c;
+        color: #fff;
+    }
+    /* New */
+    .status-in-progress {
+        background-color: #f39c12;
+        color: #fff;
+    }
+    /* In Progress */
+    .status-resolved {
+        background-color: #27ae60;
+        color: #fff;
+    }
+    /* Resolved */
+    .status-awaiting-approval {
+        background-color: #95a5a6;
+        color: #fff;
+    }
+
+    .status-awaiting-discovery {
+        background-color: #c0392b;
+        color: #fff;
+    }
+
+    .status-awaiting-development {
+        background-color: #8e44ad;
+        color: #fff;
+    }
+
+    .status-ready-for-test {
+        background-color: #2980b9;
+        color: #fff;
+    }
+
+    .status-ready-for-development {
+        background-color: #1abc9c;
+        color: #fff;
+    }
+
+    .status-prioritised {
+        background-color: #d35400;
+        color: #fff;
+    }
+
+    .status-testing-failed {
+        background-color: #c0392b;
+        color: #fff;
+    }
+
+    .status-won-t-do {
+        background-color: black;
+        color: white;
+    }
+
+    .status-to-do {
+        background-color: #bdc3c7;
+        color: black;
+    }
+
+    .status-other {
+        background-color: #7f8c8d;
+        color: #fff;
+    }
+
+    .status-deployed-live {
+        background-color: #2ecc71;
+        color: #fff;
+    }
+
+    .status-development-in-progress {
+        background-color: #f1c40f;
+        color: #fff;
+    }
+
+    .status-in-testing {
+        background-color: #3498db;
+        color: #fff;
+    }
+
+    .status-ready-to-merge {
+        background-color: #9b59b6;
+        color: #fff;
+    }
+
+    .status-technical-review {
+        background-color: #34495e;
+        color: #fff;
+    }
+
+
+    /* Priority Colors */
+    .badge-jira-priority {
+        padding: 0.4em 0.6em;
+        border-radius: 0.5em;
+        font-size: 0.8rem;
+        font-weight: 500;
+        display: inline-block;
+    }
+
+    .priority-p1 {
+        background-color: #c0392b;
+        color: #fff;
+    }
+    /* Critical */
+    .priority-p2 {
+        background-color: #e67e22;
+        color: #fff;
+    }
+    /* High */
+    .priority-p3 {
+        background-color: #f1c40f;
+        color: #000;
+    }
+    /* Medium */
+    .priority-p4 {
+        background-color: #3498db;
+        color: #fff;
+    }
+    /* Low */
+    .priority-p5 {
+        background-color: #95a5a6;
+        color: #000;
+    }
+    /* Lowest */
+
+</style>

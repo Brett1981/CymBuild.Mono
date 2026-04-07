@@ -1,0 +1,1095 @@
+﻿@*
+    ───────────────────────────────────────────────────────────────────────────────
+    CymBuild Dynamic Property Renderer
+    ───────────────────────────────────────────────────────────────────────────────
+    ✅ PURPOSE:
+    Renders metadata-driven input controls (text, number, date, GUID, file, dropdown)
+    dynamically based on `EntityProperty` and `DataProperty`.
+    Enables UI flexibility in forms like `EditPage.razor`, `BulkEdit`, and dynamic modals.
+
+    🔁 REPLACES:
+    Hardcoded forms or field-by-field Blazor layouts
+    ➜
+    Fully dynamic, auto-validating, metadata-controlled rendering for all field types.
+
+    📒 SUPPORTED TYPES:
+    - Text: NVARCHAR(MAX)
+    - Boolean: BIT
+    - Integer: INT, BIGINT, SMALLINT, TINYINT
+    - Decimal: DOUBLE
+    - Date/Time: DATE, DATETIME2
+    - GUID: UNIQUEIDENTIFIER
+    - File/Signature: VARBINARY
+    - Dropdowns: With DropDownListDefinitionGuid
+    - Readonly variations for restricted properties
+
+    🧠 LOGIC:
+    - Renders label, input, validation UI, info/detail buttons, and field interactivity
+    - Respects `IsRestricted`, `IsReadOnly`, `IsInvalid`, mobile visibility rules, and `EntityDataTypeName`
+    - Includes interactive components:
+        • <TrackableTelerikComboBox> with dynamic lookup
+        • <TrackableTelerikDatePicker>, <TrackableTelerikDateTimePicker> with steps
+        • <SignatureControl> for binary input
+        • Modal popup for linked DetailPage/InformationPage via `EntityProperty.*Uri`
+
+    🛠️ DEPENDENCIES:
+    - Requires:
+        • EntityProperty, DataProperty, GuidValueBinding, etc.
+        • Injected Services: `UserService`, `DeviceInfoService`, `UserInteractionTrackerService`
+        • Telerik UI components
+        • SignatureControl (custom)
+        • ModalService + StateService for dynamic page rendering
+
+    🧩 TEMPLATING NOTES:
+    - Use `ItemTemplate` for colorized drop-down items (e.g., Sage highlight)
+    - All value bindings (@bind-Value) respect Blazor’s change tracking and validation
+    - Supports both single-record and BulkEdit scenarios
+
+    🧪 QA HIGHLIGHTS:
+    - Field-specific validation messaging
+    - Real-time interaction logging via `UserInteractionTrackerService`
+    - Mobile conditional suppression of heavy UI (e.g. dropdowns or modals)
+    - Compatibility with all supported DB field types via metadata
+
+    ⚠️ CAVEATS:
+    - Large component—consider refactoring into sub-controls for testability & reuse
+    - Ensure dropdown GUIDs and `EntityDataTypeName` mappings are synchronized in metadata
+
+*@
+
+@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Concursus.Components.Shared.Services
+@using Concursus.Components.Shared.Tracking
+@inject Core.CoreClient CoreClient
+@inject NavigationManager NavManager
+@inject StateService stateService
+@inject ModalService modalService
+@inject UserService userService
+@inject DeviceInfoService DeviceInfoService
+@inject UserInteractionTrackerService InteractionTracker
+
+@if (!(EntityProperty.IsHidden || DataProperty.IsHidden))
+{
+    // OE - Fix for CBLD-214 + CBLD-442.
+    if (PropertyName != EntityProperty.Label) PropertyName = EntityProperty.Label;
+    if (Placeholder != EntityProperty.Label) Placeholder = EntityProperty.Label;
+
+    @if (EntityProperty.DropDownListDefinitionGuid != Guid.Empty.ToString())
+    {
+        @if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && EntityProperty.ShowOnMobile))
+        {
+        <div class="col-auto m-1 flex-fill">
+            <div class="input-group col-auto">
+                <div class="input-group-text">
+                    <label for="@PropertyId">@PropertyName</label>
+                </div>
+                @if (IsBulkEdit)
+                {
+                    @if (DataProperty.IsRestricted)
+                    {
+                        <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                            <TrackableTelerikComboBox TItem="@API.Client.ComboDataItem"
+                            TValue="@Guid"
+                            DebounceDelay="@DebounceDelay"
+                            OnRead="@ReadItemsAsync"
+                            Placeholder="@Placeholder"
+                            TextField="Name"
+                            FieldName="@PropertyName"
+                            ValueField="Value"
+                            Filterable="true"
+                            FilterOperator="StringFilterOperator.Contains"
+                            Id="propertyId"
+                            Width="100%"
+                            ReadOnly="@EffectiveDisabled"
+                            AdaptiveMode="AdaptiveMode.Auto"
+                            @bind-Value="@GuidValueBinding"
+                            @ref="@Combo">
+                            </TrackableTelerikComboBox>
+
+                        </div>
+                    }
+                    else
+                    {
+
+                        <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                            <TrackableTelerikComboBox TItem="@API.Client.ComboDataItem"
+                            TValue="@Guid"
+                            DebounceDelay="@DebounceDelay"
+                            OnRead="@ReadItemsAsync"
+                            Placeholder="@Placeholder"
+                            TextField="Name"
+                            FieldName="@PropertyName"
+                            ValueField="Value"
+                            Filterable="true"
+                            FilterOperator="StringFilterOperator.Contains"
+                            Id="propertyId"
+                            Width="100%"
+                            ReadOnly="@EffectiveDisabled"
+                            AdaptiveMode="AdaptiveMode.Auto"
+                            @bind-Value="@GuidValueBinding"
+                            @ref="@Combo">
+                            </TrackableTelerikComboBox>
+                        </div>
+                        @if (!string.IsNullOrEmpty(EntityProperty.DetailPageUri) && !DeviceInfoService.IsMobile )
+                        {
+                            <button class="btn btn-outline-secondary" type="button" @onclick="HandleOnClick">
+                                <span class="bi bi-arrow-up-right-square"></span>
+                            </button>
+                        }
+                        @if (!string.IsNullOrEmpty(EntityProperty.InformationPageUri) && @GuidValueBinding != Guid.Empty)
+                        {
+                            <button class="btn btn-outline-secondary" type="button" @onclick="HandleModelOnClick">
+                                <span class="bi bi bi-info-circle"></span>
+                            </button>
+                        }
+
+                    }
+                }
+                else
+                {
+                    @if(DataProperty.IsRestricted)
+                    {
+                        <div class="combo-wrapper">
+                            <TrackableTelerikComboBox TItem="@API.Client.ComboDataItem"
+                            TValue="@Guid"
+                            DebounceDelay="@DebounceDelay"
+                            OnRead="@ReadItemsAsync"
+                            Placeholder="@Placeholder"
+                            TextField="Name"
+                                                          FieldName="@PropertyName"
+                            ValueField="Value"
+                            Filterable="true"
+                            FilterOperator="StringFilterOperator.Contains"
+                            Id="propertyId"
+                            Width="100%"
+                            ReadOnly="true"
+                            Value="@PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_emptyGuid.ToString())"
+                            AdaptiveMode="AdaptiveMode.Auto"
+                            @ref="@Combo">
+                            </TrackableTelerikComboBox>
+                        </div>
+                    }
+                    else
+                    {
+                            @if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && EntityProperty.ShowOnMobile))
+                        {
+                            <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+
+                                <TrackableTelerikComboBox TItem="@API.Client.ComboDataItem"
+                                TValue="@Guid"
+                                DebounceDelay="@DebounceDelay"
+                                OnRead="@ReadItemsAsync"
+                                Placeholder="@Placeholder"
+                                TextField="Name"
+                                                              FieldName="@PropertyName"
+                                ValueField="Value"
+                                Filterable="true"
+                                FilterOperator="StringFilterOperator.Contains"
+                                Id="propertyId"
+                                Width="100%"
+                                ReadOnly="DataProperty.IsReadOnly"
+                                AdaptiveMode="AdaptiveMode.Auto"
+                                @bind-Value="@GuidValueBinding"
+                                @ref="@Combo">
+                                    <ItemTemplate>
+
+                                        @{
+                                            //[CBLD-570]
+                                            // Handling to colour the text colour(Red -> has Sage code.)
+                                            // Note: Reverse colours -> black should be red &vice - versa
+                                            var txtColour = context.ColourHex;
+
+                                            if (EntityProperty.DropDownListDefinitionGuid == "0031902a-b82c-4b50-9b3d-194a5d30b931")
+                                            {
+                                                if (context.ColourHex == "#000000")
+                                                {
+                                                    txtColour = "#FF0000";
+                                                }
+                                                else
+                                                {
+                                                    txtColour = "#000000";
+                                                }
+                                            }
+
+                                        }
+                                        <p style=@($"color: {txtColour}")>@context.Name</p>
+                                </ItemTemplate>
+                                </TrackableTelerikComboBox>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(EntityProperty.DetailPageUri) && !DeviceInfoService.IsMobile)
+                        {
+                            <button class="btn btn-outline-secondary" type="button" @onclick="HandleOnClick">
+                                <span class="bi bi-arrow-up-right-square"></span>
+                            </button>
+                        }
+                        @if (!string.IsNullOrEmpty(EntityProperty.InformationPageUri) && @GuidValueBinding != Guid.Empty)
+                        {
+                            <button class="btn btn-outline-secondary" type="button" @onclick="HandleModelOnClick">
+                                <span class="bi bi bi-info-circle"></span>
+                            </button>
+                        }
+
+                        <div class="invalid-feedback">
+                            @DataProperty.ValidationMessage
+                        </div>
+                        <div class="valid-feedback"></div>
+                        }
+                    }
+
+
+            </div>
+        </div>
+        }
+    }
+    else
+    {
+
+        @if (IsBulkEdit) //CBLD-260
+        {
+            @if (DataProperty.IsRestricted)
+            {
+                @switch (EntityProperty.EntityDataTypeName)
+                {
+                    case "NVARCHAR(MAX)":
+                        <div class="col-auto w-100 m-1">
+                            <div class="input-group col-auto">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <textarea class="form-control form-control-sm"
+                                          id="@PropertyId"
+                                          name="@PropertyName" placeholder="@Placeholder" @onblur="HandleOnBlur" @oninput="HandleOnChange" readonly="true" style="height: 100px;"></textarea>
+
+                            </div>
+                        </div>
+                        break;
+                    case "BIT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <TrackableTelerikCheckBox FieldName="@PropertyName"
+                                                              @bind-Value="BoolValueBinding"
+                                                              Id="@PropertyId"
+                                                              Class="@ComputedBITCssClass"
+                                                              Enabled="false" />
+                                </div>
+                                <label class="form-control" for="@PropertyId"></label>
+
+                            </div>
+                        </div>
+                        break;
+                    case "BIGINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikNumericTextBox T="long"
+                                                                FieldName="@PropertyName"
+                                                                Value="BigIntValueBinding"
+                                                                ValueChanged="@(EventCallback.Factory.Create<long?>(this, (long? v) => BigIntValueBinding = v ?? -1L))"
+                                                                ValueExpression="() => BigIntValueBinding"
+                                                                Id="@PropertyId"
+                                                                Class="@ComputedBIGINTCssClass"
+                                                                Step="1"
+                                                                ReadOnly="true"
+                                                                Placeholder="@Placeholder" />
+                            </div>
+                        </div>
+                        break;
+                    case "INT":
+                    case "SMALLINT":
+                    case "TINYINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikNumericTextBox T="int"
+                                                                FieldName="@PropertyName"
+                                                                Value="IntValueBinding"
+                                                                ValueChanged="@(EventCallback.Factory.Create<int?>(this, (int? v) => IntValueBinding = v ?? -1))"
+                                                                ValueExpression="() => IntValueBinding"
+                                                                Id="@PropertyId"
+                                                                Class="@ComputedSMALLINTCssClass"
+                                                                Step="1"
+                                                                ReadOnly="true"
+                                                                Placeholder="@Placeholder" />
+                            </div>
+                        </div>
+                        break;
+                    case "DOUBLE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <input type="number"
+                                       step="@StepValue"
+                                       class="form-control form-control-sm)"
+                                       id="@PropertyId" name="@PropertyName" placeholder="@Placeholder" value="0" readonly="true">
+
+                            </div>
+                        </div>
+                        break;
+                    case "UNIQUEIDENTIFIER":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikTextBox FieldName="@PropertyName"
+                                                         Value="@GuidValueBinding.ToString()"
+                                                         ValueChanged="@(EventCallback.Factory.Create<string?>(this, s => GuidValueBinding = ParseGuid(s)))"
+                                                         ValueExpression="() => GuidValueBinding.ToString()"
+                                                         Id="@PropertyId"
+                                                         Class="@ComputedUNIQUEIDENTIFIERCssClass"
+                                                         Placeholder="@Placeholder"
+                                                         ReadOnly="true" />
+                            </div>
+                        </div>
+                        break;
+                    case "DATE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper)">
+                                    <TrackableTelerikDatePicker @bind-Value="@DateTimeValueBinding"
+                                                       Min="@_min"
+                                                       Max="@_max"
+                                                       DebounceDelay="@DebounceDelay"
+                                                       Id="select-date"
+                                                       FieldName="@PropertyName"
+                                                       class="value-null"
+                                                       ReadOnly="true"
+                                                       OnChange="@OnPickerChangeAsync">
+                                    </TrackableTelerikDatePicker>
+                                </div>
+
+                            </div>
+                        </div>
+                        break;
+                    case "VARBINARY":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                @* <SignatureControl ExistingSignature="@existingSignature" OnSignatureSaved="OnSignatureSaved" /> *@
+                                <SignatureControl ExistingSignature="@existingSignature" OnSignatureCleared="HandleSignatureCleared" OnSignatureSaved="HandleSignatureSaved" user="@user" />
+                            </div>
+                        </div>
+                        break;
+                    case "DATETIME2":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper)">
+                                    <TrackableTelerikDateTimePicker @bind-Value="@DateTimeValueBinding"
+                                                           Min="@_min"
+                                                           Max="@_max"
+                                                           DebounceDelay="@DebounceDelay"
+                                                           ShowWeekNumbers="true"
+                                                           Id="select-date"
+                                                           FieldName="@PropertyName"
+                                                           Format="dd MMM yyyy HH:mm"
+                                                           Class="value-null"
+                                                           ReadOnly="true"
+                                                           OnChange="@OnPickerChangeAsync">
+                                        <DateTimePickerSteps Minute="15" />
+                                    </TrackableTelerikDateTimePicker>
+                                </div>
+
+                            </div>
+                        </div>
+                        break;
+                    default:
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <input @ref="@InputRef"
+                                       type="@InputType"
+                                       class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                       id="@PropertyId"
+                                       name="@PropertyName"
+                                       placeholder="@Placeholder"
+                                       @bind-value="@StringValueBinding"
+                                       readonly="true">
+                            </div>
+                        </div>
+                        break;
+                }
+            }
+            else
+            {
+                if (!DeviceInfoService.IsMobile || (@EffectiveDisabled))
+                {
+                    @switch (EntityProperty.EntityDataTypeName)
+                    {
+                        case "NVARCHAR(MAX)":
+                            <div class="col-auto w-100 m-1">
+                                <div class="input-group col-auto">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <textarea class="form-control form-control-sm @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                                id="@PropertyId"
+                                                name="@PropertyName" placeholder="@Placeholder" @onblur="HandleOnBlur" @oninput="HandleOnChange"
+                                                readonly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))" style="height: 100px;">@StringValueBinding</textarea>
+
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "BIT":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <TrackableTelerikCheckBox FieldName="@PropertyName"
+                                                                  @bind-Value="BoolValueBinding"
+                                                                  Id="@PropertyId"
+                                                                  Class="@ComputedBITCssClass"
+                                                                  Enabled="@((!DataProperty.IsReadOnly || !Disabled || (!@EffectiveDisabled)))" />
+                                        <label class="form-control">@PropertyName</label>
+                                    </div>
+                                    <label class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")" for="@PropertyId">@PropertyName</label>
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "BIGINT":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <TrackableTelerikNumericTextBox T="long"
+                                                                    FieldName="@PropertyName"
+                                                                    Value="BigIntValueBinding"
+                                                                    ValueChanged="@(EventCallback.Factory.Create<long?>(this, (long? v) => BigIntValueBinding = v ?? -1L))"
+                                                                    ValueExpression="() => BigIntValueBinding"
+                                                                    Id="@PropertyId"
+                                                                    Class="@ComputedBIGINTCssClass"
+                                                                    Step="1"
+                                                                    ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)"
+                                                                    Placeholder="@Placeholder" />
+                                </div>
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                            break;
+                        case "INT":
+                        case "SMALLINT":
+                        case "TINYINT":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <TrackableTelerikNumericTextBox T="int"
+                                                                    FieldName="@PropertyName"
+                                                                    Value="IntValueBinding"
+                                                                    ValueChanged="@(EventCallback.Factory.Create<int?>(this, (int? v) => IntValueBinding = v ?? -1))"
+                                                                    ValueExpression="() => IntValueBinding"
+                                                                    Id="@PropertyId"
+                                                                    Class="@ComputedSMALLINTCssClass"
+                                                                    Step="1"
+                                                                    ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)"
+                                                                    Placeholder="@Placeholder" />
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "DOUBLE":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <input type="number"
+                                           step="@StepValue"
+                                           class="form-control form-control-sm @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                           id="@PropertyId" name="@PropertyName" placeholder="@Placeholder" @bind-value="DoubleValueBinding"
+                                           readonly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))">
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "UNIQUEIDENTIFIER":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <TrackableTelerikTextBox FieldName="@PropertyName"
+                                                             Value="@GuidValueBinding.ToString()"
+                                                             ValueChanged="@(EventCallback.Factory.Create<string?>(this, s => GuidValueBinding = ParseGuid(s)))"
+                                                             ValueExpression="() => GuidValueBinding.ToString()"
+                                                             Id="@PropertyId"
+                                                             Class="@ComputedUNIQUEIDENTIFIERCssClass"
+                                                             Placeholder="@Placeholder"
+                                                             ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)" />
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "DATE":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                                        <TrackableTelerikDatePicker @bind-Value="@DateTimeValueBinding"
+                                                            Min="@_min"
+                                                            Max="@_max"
+                                                            DebounceDelay="@DebounceDelay"
+                                                            ShowWeekNumbers="true"
+                                                            Id="select-date"
+                                                            FieldName="@PropertyName"
+                                                            Class="value-null"
+                                                            ReadOnly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))"
+                                                            OnChange="@OnPickerChangeAsync">
+                                        </TrackableTelerikDatePicker>
+                                    </div>
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "DATETIME2":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                                        <TrackableTelerikDateTimePicker @bind-Value="@DateTimeValueBinding"
+                                                                Min="@_min"
+                                                                Max="@_max"
+                                                                DebounceDelay="@DebounceDelay"
+                                                                ShowWeekNumbers="true"
+                                                                Id="select-date"
+                                                                Format="dd MMM yyyy HH:mm"
+                                                                FieldName="@PropertyName"
+                                                                Class="value-null"
+                                                                ReadOnly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))"
+                                                                OnChange="@OnPickerChangeAsync">
+                                            <DateTimePickerSteps Minute="15" />
+                                        </TrackableTelerikDateTimePicker>
+                                    </div>
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        case "VARBINARY":
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <SignatureControl ExistingSignature="@existingSignature" OnSignatureCleared="HandleSignatureCleared" OnSignatureSaved="HandleSignatureSaved" user="@user" />
+                                </div>
+                            </div>
+                            break;
+                        default:
+                            <div class="col-auto m-1 flex-fill">
+                                <div class="input-group">
+                                    <div class="input-group-text">
+                                        <label for="@PropertyId">@PropertyName</label>
+                                    </div>
+                                    <input @ref="@InputRef"
+                                           type="@InputType"
+                                           class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                           id="@PropertyId"
+                                           name="@PropertyName"
+                                           placeholder="@Placeholder"
+                                           @bind-value="@StringValueBinding"
+                                           readonly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))">
+                                    <div class="invalid-feedback">
+                                        @DataProperty.ValidationMessage
+                                    </div>
+                                    <div class="valid-feedback"></div>
+                                </div>
+                            </div>
+                            break;
+                        }
+
+                }
+            }
+        }
+        else
+        {
+            @if (DataProperty.IsRestricted)
+            {
+                @switch (EntityProperty.EntityDataTypeName)
+                {
+                    case "NVARCHAR(MAX)":
+                        <div class="col-auto w-100 m-1">
+                            <div class="input-group col-auto">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <textarea class="form-control form-control-sm"
+                                          id="@PropertyId"
+                                          name="@PropertyName" placeholder="@Placeholder" @onblur="HandleOnBlur" @oninput="HandleOnChange" readonly="true" style="height: 100px;"></textarea>
+
+                            </div>
+                        </div>
+                        break;
+                    case "BIT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <TrackableTelerikCheckBox FieldName="@PropertyName"
+                                                              @bind-Value="BoolValueBinding"
+                                                              Id="@PropertyId"
+                                                              Class="@ComputedBITCssClass"
+                                                              Enabled="false" />
+                                </div>
+                                <label class="form-control" for="@PropertyId"></label>
+
+                            </div>
+                        </div>
+                        break;
+                    case "BIGINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikNumericTextBox T="long"
+                                                                FieldName="@PropertyName"
+                                                                Value="BigIntValueBinding"
+                                                                ValueChanged="@(EventCallback.Factory.Create<long?>(this, (long? v) => BigIntValueBinding = v ?? -1L))"
+                                                                ValueExpression="() => BigIntValueBinding"
+                                                                Id="@PropertyId"
+                                                                Class="@ComputedBIGINTCssClass"
+                                                                Step="1"
+                                                                ReadOnly="true"
+                                                                Placeholder="@Placeholder" />
+                            </div>
+                        </div>
+                        break;
+                    case "INT":
+                    case "SMALLINT":
+                    case "TINYINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikNumericTextBox T="int"
+                                                                FieldName="@PropertyName"
+                                                                Value="IntValueBinding"
+                                                                ValueChanged="@(EventCallback.Factory.Create<int?>(this, (int? v) => IntValueBinding = v ?? -1))"
+                                                                ValueExpression="() => IntValueBinding"
+                                                                Id="@PropertyId"
+                                                                Class="@ComputedSMALLINTCssClass"
+                                                                Step="1"
+                                                                ReadOnly="true"
+                                                                Placeholder="@Placeholder" />
+
+                            </div>
+                        </div>
+                        break;
+                    case "DOUBLE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <input type="number"
+                                       step="@StepValue"
+                                       class="form-control form-control-sm)"
+                                       id="@PropertyId" name="@PropertyName" placeholder="@Placeholder" value="0" readonly="true">
+                            </div>
+                        </div>
+                        break;
+                    case "UNIQUEIDENTIFIER":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikTextBox FieldName="@PropertyName"
+                                                         Value="@GuidValueBinding.ToString()"
+                                                         ValueChanged="@(EventCallback.Factory.Create<string?>(this, s => GuidValueBinding = ParseGuid(s)))"
+                                                         ValueExpression="() => GuidValueBinding.ToString()"
+                                                         Id="@PropertyId"
+                                                         Class="@ComputedUNIQUEIDENTIFIERCssClass"
+                                                         Placeholder="@Placeholder"
+                                                         ReadOnly="true" />
+                            </div>
+                        </div>
+                        break;
+                    case "DATE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper)">
+                                    <TrackableTelerikDatePicker @bind-Value="@DateTimeValueBinding"
+                                                       Min="@_min"
+                                                       Max="@_max"
+                                                       DebounceDelay="@DebounceDelay"
+                                                       ShowWeekNumbers="true"
+                                                                FieldName="@PropertyName"
+                                                       Id="select-date"
+                                                       Class="value-null"
+                                                       ReadOnly="true"
+                                                       OnChange="@OnPickerChangeAsync">
+                                    </TrackableTelerikDatePicker>
+                                </div>
+
+                            </div>
+                        </div>
+                        break;
+                    case "VARBINARY":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                @* <SignatureControl ExistingSignature="@existingSignature" OnSignatureSaved="OnSignatureSaved" /> *@
+                                <SignatureControl ExistingSignature="@existingSignature" OnSignatureCleared="HandleSignatureCleared" OnSignatureSaved="HandleSignatureSaved" user="@user" />
+                            </div>
+                        </div>
+                        break;
+                    case "DATETIME2":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper)">
+                                    <TrackableTelerikDateTimePicker @bind-value="@DateTimeValueBinding"
+                                                           Min="@_min"
+                                                           Max="@_max"
+                                                           DebounceDelay="@DebounceDelay"
+                                                           ShowWeekNumbers="true"
+                                                           Id="select-date"
+                                                                    FieldName="@PropertyName"
+                                                           Format="dd MMM yyyy HH:mm"
+                                                           Class="value-null"
+                                                           ReadOnly="true"
+                                                           OnChange="@OnPickerChangeAsync">
+                                        <DateTimePickerSteps Minute="15" />
+                                    </TrackableTelerikDateTimePicker>
+                                </div>
+
+                            </div>
+                        </div>
+                        break;
+                    default:
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <input @ref="@InputRef"
+                                       type="@InputType"
+                                       class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                       id="@PropertyId"
+                                       name="@PropertyName"
+                                       placeholder="@Placeholder"
+                                       @bind-value="@StringValueBinding"
+                                       readonly="true">
+                            </div>
+                        </div>
+                        break;
+                }
+            }
+            else
+            {
+                if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && EntityProperty.ShowOnMobile))
+                {
+                @switch (EntityProperty.EntityDataTypeName)
+                {
+                    case "NVARCHAR(MAX)":
+                        <div class="col-auto w-100 m-1">
+                            <div class="input-group col-auto">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+
+                                @*
+                                    OE - CBLD-501: - 02/01/2025
+                                    Removed onblur="HandleOnBlur" as this was triggering when the user clicked off a field.
+                                    We are now relying on handling as the user is typing in real-time.
+
+                                    For this, the HandleOnChange function has also been updated with a timer - this is to prevent lagg/delay on the front-end as the user
+                                    is typing.
+                                *@
+                                <textarea class="form-control form-control-sm @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                          id="@PropertyId"
+                                          name="@PropertyName" placeholder="@Placeholder"  @oninput="HandleOnChange"
+                                              readonly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))" style="height: 100px;">@StringValueBinding</textarea>
+
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "BIT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                        <TrackableTelerikCheckBox FieldName="@PropertyName"
+                                                                  @bind-Value="BoolValueBinding"
+                                                                  Id="@PropertyId"
+                                                                  Class="@ComputedBITCssClass"
+                                                                  Enabled="@((!DataProperty.IsReadOnly || !Disabled || (!@EffectiveDisabled)))" />
+                                </div>
+                                <label class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")" for="@PropertyId">@PropertyName</label>
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "BIGINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                    <TrackableTelerikNumericTextBox T="long"
+                                                                    FieldName="@PropertyName"
+                                                                    Value="BigIntValueBinding"
+                                                                    ValueChanged="@(EventCallback.Factory.Create<long?>(this, (long? v) => BigIntValueBinding = v ?? -1L))"
+                                                                    ValueExpression="() => BigIntValueBinding"
+                                                                    Id="@PropertyId"
+                                                                    Class="@ComputedBIGINTCssClass"
+                                                                    Step="1"
+                                                                    ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)"
+                                                                    Placeholder="@Placeholder" />
+                            </div>
+                            <div class="invalid-feedback">
+                                @DataProperty.ValidationMessage
+                            </div>
+                            <div class="valid-feedback"></div>
+                        </div>
+                        break;
+                    case "INT":
+                    case "SMALLINT":
+                    case "TINYINT":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                    <TrackableTelerikNumericTextBox T="int"
+                                                                    FieldName="@PropertyName"
+                                                                    Value="IntValueBinding"
+                                                                    ValueChanged="@(EventCallback.Factory.Create<int?>(this, (int? v) => IntValueBinding = v ?? -1))"
+                                                                    ValueExpression="() => IntValueBinding"
+                                                                    Id="@PropertyId"
+                                                                    Class="@ComputedSMALLINTCssClass"
+                                                                    Step="1"
+                                                                    ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)"
+                                                                    Placeholder="@Placeholder" />
+
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "DOUBLE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                    <TrackableTelerikNumericTextBoxDouble FieldName="@PropertyName"
+                                                                          Value="DoubleValueBinding"
+                                                                          ValueChanged="@(EventCallback.Factory.Create<double?>(this, v => DoubleValueBinding = v ?? -1.0))"
+                                                                          ValueExpression="() => DoubleValueBinding"
+                                                                          Id="@PropertyId"
+                                                                          Class="@ComputedDOUBLECssClass"
+                                                                          Step="@ParseStepValue(StepValue)"
+                                                                          ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)"
+                                                                          Placeholder="@Placeholder" />
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "UNIQUEIDENTIFIER":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <TrackableTelerikTextBox FieldName="@PropertyName"
+                                     Value="@GuidValueBinding.ToString()"
+                                     ValueChanged="@(EventCallback.Factory.Create<string?>(this, s => GuidValueBinding = ParseGuid(s)))"
+                                     ValueExpression="() => GuidValueBinding.ToString()"
+                                     Id="@PropertyId"
+                                     Class="@ComputedUNIQUEIDENTIFIERCssClass"
+                                     Placeholder="@Placeholder"
+                                     ReadOnly="@(DataProperty.IsReadOnly || Disabled || EffectiveDisabled)" />
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "DATE":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                                    <TrackableTelerikDatePicker @bind-Value="@DateTimeValueBinding"
+                                                       Min="@_min"
+                                                       Max="@_max"
+                                                       DebounceDelay="@DebounceDelay"
+                                                       ShowWeekNumbers="true"
+                                                                    FieldName="@PropertyName"
+                                                       Id="select-date"
+                                                       Class="value-null"
+                                                       ReadOnly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))"
+                                                       OnChange="@OnPickerChangeAsync">
+                                    </TrackableTelerikDatePicker>
+                                </div>
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "DATETIME2":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <div class="combo-wrapper @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")">
+                                    <TrackableTelerikDateTimePicker @bind-Value="@DateTimeValueBinding"
+                                                           Min="@_min"
+                                                           Max="@_max"
+                                                           DebounceDelay="@DebounceDelay"
+                                                           ShowWeekNumbers="true"
+                                                           Id="select-date"
+                                                           Format="dd MMM yyyy HH:mm"
+                                                           FieldName="@PropertyName"
+                                                           Class="value-null"
+                                                           ReadOnly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))"
+                                                           OnChange="@OnPickerChangeAsync">
+                                        <DateTimePickerSteps Minute="15" />
+                                    </TrackableTelerikDateTimePicker>
+                                </div>
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                    case "VARBINARY":
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                <SignatureControl ExistingSignature="@existingSignature" OnSignatureCleared="HandleSignatureCleared" OnSignatureSaved="HandleSignatureSaved" user="@user" />
+                            </div>
+                        </div>
+                        break;
+                    default:
+                        <div class="col-auto m-1 flex-fill">
+                            <div class="input-group">
+                                <div class="input-group-text">
+                                    <label for="@PropertyId">@PropertyName</label>
+                                </div>
+                                    <input @ref="@InputRef"
+                                           type="@InputType"
+                                           class="form-control @(DataProperty.IsInvalid ? "is-invalid" : "is-data-valid")"
+                                           id="@PropertyId"
+                                           name="@PropertyName"
+                                           placeholder="@Placeholder"
+                                           @bind-value="@StringValueBinding"
+                                           readonly="@((DataProperty.IsReadOnly || Disabled || (@EffectiveDisabled)))">
+                                <div class="invalid-feedback">
+                                    @DataProperty.ValidationMessage
+                                </div>
+                                <div class="valid-feedback"></div>
+                            </div>
+                        </div>
+                        break;
+                }
+                }
+            }
+        }
+
+    }
+}
+
+<TelerikWindow @ref="ModalWindow" Class="responsive-window" Visible="@WindowIsVisible" Modal="true" CloseOnOverlayClick="false" VisibleChanged="@WindowVisibleChangedHandler" MaxHeight="100vh">
+    <WindowTitle>@WindowTitle</WindowTitle>
+    <WindowContent>
+        <DynamicComponent Type="@System.Type.GetType($" Concursus.PWA.Pages.{EntityProperty.DetailPageUri}")" Parameters="@_detailPageParameters"/>
+    </WindowContent>
+    <WindowActions>
+        <WindowAction Name="MinRimize"></WindowAction>
+        <WindowAction Name="Maximize"></WindowAction>
+        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+    </WindowActions>
+</TelerikWindow>
+
+<TelerikWindow @ref="ModalWindow" Class="responsive-window 1" Visible="@ModalIsVisible" Modal="true" CloseOnOverlayClick="false" VisibleChanged="@WindowVisibleChangedHandler" MaxHeight="100vh">
+    <WindowTitle>@WindowTitle</WindowTitle>
+    <WindowContent>
+        <DynamicComponent Type="@System.Type.GetType($" Concursus.PWA.Pages.{EntityProperty.InformationPageUri}")" Parameters="@_detailPageParameters"/>
+    </WindowContent>
+    <WindowActions>
+        <WindowAction Name="MinRimize"></WindowAction>
+        <WindowAction Name="Maximize"></WindowAction>
+        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+    </WindowActions>
+</TelerikWindow>

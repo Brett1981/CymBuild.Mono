@@ -1,0 +1,34 @@
+﻿.combo-wrapper {
+    flex: 1 1 auto;
+    width: 1%;
+    min-width: 0;
+}
+
+    .combo-wrapper input {
+        border-radius: 0 !important;
+    }
+
+    .combo-wrapper .k-combobox {
+        border-bottom-left-radius: 0;
+        border-top-left-radius: 0;
+    }
+
+    .combo-wrapper .k-input-solid:focus-within {
+        box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb !important;
+    }
+
+.valid-feedback {
+    display: none;
+}
+
+.is-data-valid ~ .valid-feedback {
+    display: block;
+    min-height: 1.31rem;
+}
+
+.valid-null {
+    border-color: rgba(0, 0, 0, 0.08);
+}
+.k-input-inner:read-only {
+    background: #e9ecef;
+}

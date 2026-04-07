@@ -1,0 +1,34 @@
+﻿{
+  "profiles": {
+    "API - Dev (Kestrel)": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7202;http://localhost:5172",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    "API - Test (Kestrel)": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7203;http://localhost:5173",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Test",
+        "DOTNET_ENVIRONMENT": "Test"
+      }
+    },
+    "API - Live (Kestrel)": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "dotnetRunMessages": true,
+      "applicationUrl": "https://localhost:7204;http://localhost:5174",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "DOTNET_ENVIRONMENT": "Production"
+      }
+    }
+  }
+}

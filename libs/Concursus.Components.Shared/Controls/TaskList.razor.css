@@ -1,0 +1,58 @@
+﻿.task-list-panel {
+    position: fixed;
+    top: 4rem; /* adjust for your header */
+    left: 0;
+    width: 320px; /* total panel width */
+    transition: transform 0.4s ease;
+    z-index: 9999;
+    overflow: visible; /* so the tab can extend outside the box */
+}
+
+/* Slide the entire panel off-screen by 280px (leaving 40px for the tab).
+   Adjust as needed based on how wide your tab is. */
+.panel-closed {
+    transform: translateX(-320px);
+}
+
+.panel-open {
+    transform: translateX(0);
+}
+
+/* The content box with border, background, etc. */
+.panel-content {
+    position: relative;
+    width: 320px; /* match the panel width */
+    height: calc(100vh - 4rem);
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+    overflow: auto; /* scroll tasks if needed */
+    padding: 1rem;
+}
+
+/* The "folder tab" that extends outside the box.
+   It's absolutely positioned inside .panel-content,
+   so you can offset it outside the left boundary. */
+.tab-handle {
+    position: absolute;
+    top: 40%; /* halfway down the content box, adjust as needed */
+    left: 270px; /* how far it juts out from the box */
+    width: 120px; /* how wide the tab is */
+    height: 20px; /* how tall the tab is */
+    background-color: #6c757d;
+    color: #fff;
+    text-align: center;
+    line-height: 1.2;
+    border: 1px solid #666;
+    border-radius: 4px 4px 4px 4px;
+    cursor: pointer;
+    font-weight: 600;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.8rem;
+    transform: rotate(-90deg);
+    transform-origin: center;
+}

@@ -1,0 +1,64 @@
+﻿@page "/kafkatest"
+@inject IHttpClientFactory HttpClientFactory
+
+<h3>Stephen Magic Test</h3>
+
+<TelerikForm Model="@testModel" OnValidSubmit="@SendToKafka">
+    <FormValidation>
+        <DataAnnotationsValidator />
+    </FormValidation>
+    <FormItems>
+        <FormItem Field="SourceTransactionId" Label="Transaction ID" />
+        <FormItem Field="CustomerAccountNumber" Label="Customer No" />
+        <FormItem Field="CustomerAccountName" Label="Customer Name" />
+        <FormItem Field="ExternalReferenceId" Label="External Ref" />
+    </FormItems>
+    <FormButtons>
+        <TelerikButton ButtonType="@Telerik.Blazor.ButtonType.Submit">Send</TelerikButton>
+    </FormButtons>
+</TelerikForm>
+<KafkaTransactionViewer  />
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="mt-3 alert alert-info">@statusMessage</div>
+}
+
+@code {
+    private TransactionModel testModel = new()
+    {
+        TransactionType = "V2CreateCustomers",
+        SourceTransactionId = $"UI-{Guid.NewGuid():N}",
+        ExternalReferenceId = "TEST-UI-001",
+        CustomerAccountName = "Test UI Customer",
+        CustomerAccountNumber = "TESTUI001"
+    };
+
+    private string statusMessage = string.Empty;
+
+    private async Task SendToKafka()
+    {
+        try
+        {
+            var client = HttpClientFactory.CreateClient("SageIntegrationAPI"); // Must match your HttpClient setup
+            var response = await client.PostAsJsonAsync("api/kafka/publish", testModel);
+
+            statusMessage = response.IsSuccessStatusCode
+                ? "Message sent to Kafka"
+                : $"❌ Failed: {response.StatusCode}";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"❌ Exception: {ex.Message}";
+        }
+    }
+
+    public class TransactionModel
+    {
+        public string SourceTransactionId { get; set; } = string.Empty;
+        public string TransactionType { get; set; } = "V2CreateCustomers";
+        public string SageReference { get; set; } = string.Empty;
+        public string ExternalReferenceId { get; set; } = string.Empty;
+        public string CustomerAccountName { get; set; } = string.Empty;
+        public string CustomerAccountNumber { get; set; } = string.Empty;
+    }
+}

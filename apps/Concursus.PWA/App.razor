@@ -1,0 +1,102 @@
+﻿@using Concursus.API.Client.Models
+@using Blazored.Modal
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Pages
+
+@inject AppConfiguration AppConfig
+@inject DeviceInfoService DeviceInfoService
+
+@if (AppConfig.ShowBanner &&
+    (AppConfig.EnvironmentType != "LIVE" ||
+    (AppConfig.EnvironmentType == "LIVE" && AppConfig.IsLiveMessageActive)))
+{
+    <div style="padding-top: 15px;">
+        <div class="@GetWarningBannerClass()">
+            <div class="@GetWarningTextClass()">
+                <span>
+                    <div style="white-space: pre-wrap;">
+                        @GetWarningMessageText()
+                    </div>
+                </span>
+            </div>
+        </div>
+    </div>
+}
+<CascadingAuthenticationState>
+    <CascadingBlazoredModal>
+        <CascadingValue Value="AppConfig.EnvironmentType">
+    @inject UserService UserService
+
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin/>
+                    }
+                    else
+                    {
+                        <p role="alert">You are not authorized to access this resource.</p>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1"/>
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p role="alert">Sorry, there's nothing at this address.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+    </CascadingValue>
+    </CascadingBlazoredModal>
+</CascadingAuthenticationState>
+
+@code {
+    private string GetWarningBannerClass()
+    {
+        return AppConfig.EnvironmentType switch
+        {
+            "DEV" => $"dev-warning-banner",
+            "TEST" => $"test-warning-banner",
+            "LIVE" => AppConfig.IsLiveMessageActive == true ? $"live-warning-banner" : "",
+            _ => ""
+        };
+    }
+    private string GetWarningTextClass()
+    {
+        return AppConfig.EnvironmentType switch
+        {
+            "DEV" => $"dev-warning-text",
+            "TEST" => $"dev-warning-text",
+            "LIVE" => AppConfig.IsLiveMessageActive == true ? $"live-warning-text" : "",
+            _ => ""
+        };
+    }
+
+    private string GetWarningMessageText()
+    {
+        if (AppConfig.EnvironmentType == "LIVE" && AppConfig.IsLiveMessageActive)
+        {
+            return AppConfig.LiveMessageText; // Display dynamic live message text for "LIVE" when IsLiveMessageActive is true
+        }
+        else if (AppConfig.EnvironmentType == "QA")
+        {
+            return $"THIS IS THE QA VERSION OF THE SOFTWARE, PLEASE LOG ANY ISSUES FOUND";
+        }
+        else
+        {
+            return $"THIS IS A {AppConfig.EnvironmentType} VERSION OF THE SOFTWARE!";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!DeviceInfoService.IsInitialized)
+        {
+            await DeviceInfoService.InitializeAsync();
+        }
+    }
+}

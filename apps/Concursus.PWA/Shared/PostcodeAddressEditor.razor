@@ -1,0 +1,198 @@
+﻿@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Helpers
+@inject UserService UserService
+@inject Core.CoreClient CoreClient
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageIntegrationService
+
+@if (EntityProperties == null || EntityProperties.Count == 0)
+{
+    <div class="text-danger">Address fields not found in metadata.</div>
+}
+else
+{
+    <div class="postcode-lookup border rounded p-3 mb-3 shadow-sm bg-light">
+        <label for="postcode-input" class="form-label fw-bold">Postcode Lookup</label>
+
+        <div class="d-flex">
+            <input id="postcode-input"
+                   class="form-control me-2"
+                   @bind="postcode"
+                   @bind:event="oninput"
+                   placeholder="Enter postcode (e.g. SW1A 1AA)" />
+
+            <button class="btn btn-primary"
+                    @onclick="LookupAddressAsync"
+                    disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                }
+                else
+                {
+                    <span>Search</span>
+                }
+            </button>
+        </div>
+
+        @if (lookupResults.Count > 0)
+        {
+            <select class="form-select mt-2" @onchange="SelectAddressAsync">
+                <option value="">Select an address</option>
+                @for (var i = 0; i < lookupResults.Count; i++)
+                {
+                    var result = lookupResults[i];
+                    <option value="@i">@FormatAddress(result)</option>
+                }
+            </select>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="text-danger mt-2">@errorMessage</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<API.Core.EntityProperty> EntityProperties { get; set; } = new();
+
+    /// <summary>
+    /// Required so the component can create FormHelper and route through the API client correctly.
+    /// Pass the current record/entity type guid from the parent.
+    /// </summary>
+    [Parameter] public string EntityTypeGuid { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnValueChanged { get; set; }
+
+    private FormHelper? _formHelper;
+    private string postcode = string.Empty;
+    private readonly List<AddressResult> lookupResults = new();
+    private string errorMessage = string.Empty;
+    private bool isLoading;
+
+    protected override void OnParametersSet()
+    {
+        if (_formHelper == null)
+        {
+            _formHelper = new FormHelper(
+                CoreClient,
+                SageIntegrationService,
+                EntityTypeGuid,
+                UserService);
+        }
+    }
+
+    private async Task LookupAddressAsync()
+    {
+        errorMessage = string.Empty;
+        lookupResults.Clear();
+
+        if (string.IsNullOrWhiteSpace(postcode))
+        {
+            errorMessage = "Please enter a valid UK postcode.";
+            return;
+        }
+
+        if (_formHelper is null)
+        {
+            errorMessage = "Lookup service is not initialised.";
+            return;
+        }
+
+        isLoading = true;
+
+        try
+        {
+            var response = await _formHelper.AddressLookupSearchAsync(
+                postcode.Trim(),
+                "GBR",
+                false);
+
+            if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+            {
+                errorMessage = response.ErrorReturned;
+                return;
+            }
+
+            if (response.PostcodeAddresses.Count == 0)
+            {
+                errorMessage = "No addresses found.";
+                return;
+            }
+
+            foreach (var address in response.PostcodeAddresses)
+            {
+                lookupResults.Add(new AddressResult
+                {
+                    Line1 = address.Line1 ?? string.Empty,
+                    Line2 = address.Line2 ?? string.Empty,
+                    Town = address.Town ?? string.Empty,
+                    County = address.County ?? string.Empty,
+                    Postcode = address.Postcode ?? string.Empty,
+                    Country = string.IsNullOrWhiteSpace(address.Country)
+                        ? "United Kingdom"
+                        : address.Country
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SelectAddressAsync(ChangeEventArgs e)
+    {
+        if (e.Value is null || !int.TryParse(e.Value.ToString(), out var index))
+        {
+            return;
+        }
+
+        if (index < 0 || index >= lookupResults.Count)
+        {
+            return;
+        }
+
+        var selected = lookupResults[index];
+
+        EntityPropertyHelper.Update(EntityProperties, "AddressLine1", selected.Line1);
+        EntityPropertyHelper.Update(EntityProperties, "AddressLine2", selected.Line2);
+        EntityPropertyHelper.Update(EntityProperties, "Town", selected.Town);
+        EntityPropertyHelper.Update(EntityProperties, "County", selected.County);
+        EntityPropertyHelper.Update(EntityProperties, "Postcode", selected.Postcode);
+        EntityPropertyHelper.Update(EntityProperties, "Country", string.IsNullOrWhiteSpace(selected.Country)
+            ? "United Kingdom"
+            : selected.Country);
+
+        await OnValueChanged.InvokeAsync();
+    }
+
+    private static string FormatAddress(AddressResult result)
+    {
+        var parts = new[]
+        {
+            result.Line1,
+            result.Line2,
+            result.Town,
+            result.County,
+            result.Postcode
+        }
+        .Where(x => !string.IsNullOrWhiteSpace(x));
+
+        return string.Join(", ", parts);
+    }
+
+    public sealed class AddressResult
+    {
+        public string Line1 { get; set; } = string.Empty;
+        public string Line2 { get; set; } = string.Empty;
+        public string Town { get; set; } = string.Empty;
+        public string County { get; set; } = string.Empty;
+        public string Postcode { get; set; } = string.Empty;
+        public string Country { get; set; } = "United Kingdom";
+    }
+}

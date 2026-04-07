@@ -1,0 +1,217 @@
+﻿@using Concursus.API.Core
+@using Grpc.Core
+@using Microsoft.AspNetCore.Components
+
+@implements IAsyncDisposable
+@inject Core.CoreClient CoreClient
+
+<span class="@CssClass"
+      title="@Tooltip"
+      aria-label="@Tooltip"
+      role="img">
+    <span class="sage-status-icon-shell">
+        <img src="sage-icon.png"
+             alt=""
+             class="sage-status-image" />
+        @if (ShowDisabledStrike)
+        {
+            <span class="sage-status-strike"></span>
+        }
+        else if (ShowInaccessibleOverlay)
+        {
+            <span class="sage-status-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+            </span>
+        }
+    </span>
+</span>
+
+@code {
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(240);
+
+    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+
+    private CancellationTokenSource? _refreshCancellationTokenSource;
+    private PeriodicTimer? _periodicTimer;
+    private Task? _backgroundRefreshTask;
+
+    private SageUiState _state = SageUiState.Loading;
+    private string _detail = "Checking Sage status...";
+
+    private string CssClass => _state switch
+    {
+        SageUiState.Enabled => "sage-status-badge sage-status-enabled",
+        SageUiState.Disabled => "sage-status-badge sage-status-disabled",
+        SageUiState.Inaccessible => "sage-status-badge sage-status-inaccessible",
+        _ => "sage-status-badge sage-status-loading"
+    };
+
+    private string Tooltip => _state switch
+    {
+        SageUiState.Enabled => "Sage integration enabled and reachable.",
+        SageUiState.Disabled => "Sage integration is disabled by configuration.",
+        SageUiState.Inaccessible => $"Sage integration is inaccessible. {_detail}",
+        _ => "Checking Sage integration status..."
+    };
+
+    private bool ShowDisabledStrike => _state == SageUiState.Disabled;
+    private bool ShowInaccessibleOverlay => _state == SageUiState.Inaccessible;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _refreshCancellationTokenSource = new CancellationTokenSource();
+        _periodicTimer = new PeriodicTimer(RefreshInterval);
+
+        await RefreshAsync(_refreshCancellationTokenSource.Token);
+
+        _backgroundRefreshTask = StartRefreshLoopAsync(_refreshCancellationTokenSource.Token);
+    }
+
+    private async Task StartRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_periodicTimer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            while (await _periodicTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                await RefreshAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during component disposal.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Expected if the timer is disposed during shutdown.
+        }
+    }
+
+    private async Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        if (!await _refreshLock.WaitAsync(0, cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            SageUiState nextState;
+            string nextDetail;
+
+            try
+            {
+                var response = await CoreClient.SageHealthGetAsync(
+                    new SageHealthGetRequest(),
+                    cancellationToken: cancellationToken);
+
+                if (response is null)
+                {
+                    nextState = SageUiState.Inaccessible;
+                    nextDetail = "No response returned.";
+                }
+                else if (string.Equals(response.Status, "disabled", StringComparison.OrdinalIgnoreCase))
+                {
+                    nextState = SageUiState.Disabled;
+                    nextDetail = string.IsNullOrWhiteSpace(response.Detail)
+                        ? "Sage integration is disabled by configuration."
+                        : response.Detail;
+                }
+                else if (string.Equals(response.Status, "ok", StringComparison.OrdinalIgnoreCase) && response.IsHealthy)
+                {
+                    nextState = SageUiState.Enabled;
+                    nextDetail = string.IsNullOrWhiteSpace(response.Detail)
+                        ? "Healthy."
+                        : response.Detail;
+                }
+                else
+                {
+                    nextState = SageUiState.Inaccessible;
+                    nextDetail = !string.IsNullOrWhiteSpace(response.ErrorReturned)
+                        ? response.ErrorReturned
+                        : !string.IsNullOrWhiteSpace(response.Detail)
+                            ? response.Detail
+                            : "Health check failed.";
+                }
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (RpcException ex)
+            {
+                nextState = SageUiState.Inaccessible;
+                nextDetail = string.IsNullOrWhiteSpace(ex.Status.Detail)
+                    ? ex.Message
+                    : ex.Status.Detail;
+            }
+            catch (Exception ex)
+            {
+                nextState = SageUiState.Inaccessible;
+                nextDetail = ex.Message;
+            }
+
+            await InvokeAsync(() =>
+            {
+                _state = nextState;
+                _detail = nextDetail;
+                StateHasChanged();
+            });
+        }
+        finally
+        {
+            _refreshLock.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_refreshCancellationTokenSource is not null)
+        {
+            try
+            {
+                await _refreshCancellationTokenSource.CancelAsync();
+            }
+            catch
+            {
+                // Ignore cancellation disposal race issues.
+            }
+        }
+
+        if (_backgroundRefreshTask is not null)
+        {
+            try
+            {
+                await _backgroundRefreshTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during normal disposal.
+            }
+            catch (ObjectDisposedException)
+            {
+                // Expected during timer disposal.
+            }
+        }
+
+        _periodicTimer?.Dispose();
+        _refreshCancellationTokenSource?.Dispose();
+        _refreshLock.Dispose();
+    }
+
+    private enum SageUiState
+    {
+        Loading,
+        Enabled,
+        Disabled,
+        Inaccessible
+    }
+}

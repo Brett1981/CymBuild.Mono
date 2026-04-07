@@ -1,0 +1,20 @@
+﻿@code {
+    [Parameter]
+    public string Label { get; set; } = "Button";
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    [Parameter]
+    public string CssClass { get; set; } = "btn btn-primary";
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync(null);
+        }
+    }
+}
+
+<button class="@CssClass" @onclick="HandleClick">@Label</button>

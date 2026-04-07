@@ -1,0 +1,81 @@
+﻿@* @using  = Concursus.PWA.Shared.Scheduler.Classes.MenuItems *@
+@using Concursus.API.Client;
+@using Concursus.API.Client.Models;
+@using Concursus.PWA.Classes
+@using _AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
+
+
+
+<div class="SchedulerModal">
+    <TelerikWindow @ref="ModalWindow"
+    Class="responsive-window"
+    Visible="@ModalShowing"
+    Modal="true"
+    CloseOnOverlayClick="false"
+    MaxHeight="100vh">
+        <WindowTitle>"My Absences"</WindowTitle>
+        <WindowContent>
+            <DynamicComponent Type="@System.Type.GetType($"Concursus.PWA.Pages.ScheduleTeamAbsence")" Parameters="@_detailPageParameters" />
+        </WindowContent>
+        <WindowActions>
+            <WindowAction Name="Close" OnClick="@CloseModal"></WindowAction>
+        </WindowActions>
+    </TelerikWindow>
+</div>
+
+
+
+@code {
+    [Parameter] public int UserID { get; set; }
+    [Parameter] public int TeamID { get; set; }
+
+    [Parameter] public _AvailabilityEvent appointment { get; set; }
+    [Parameter] public EventCallback CloseModalCllback { get; set; }
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; }
+    [Parameter] public bool ModalShowing { get; set; } = false;
+    [Parameter] public IDictionary<string, object> _detailPageParameters { get; set; }
+
+
+    private string EntityTypeGuid { get; set; } = "8899e76e-31bd-492b-9739-eb100610e92d"; //Non-Availablity Events
+    private TelerikWindow? ModalWindow { get; set; }
+
+    private string Title { get; set; }
+    private string StartTime { get; set; }
+    private string EndTime { get; set; }
+    private DateTime dateTimeUTCStart { get; set; }
+    private DateTime dateTimeUTCEnd { get; set; }
+
+    public void ShowModal()
+    {
+        ModalShowing = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (_detailPageParameters != null && !_detailPageParameters.ContainsKey("CloseModal"))
+        {
+            _detailPageParameters.Add("CloseModal", EventCallback.Factory.Create(this, CloseModal));
+        }
+        base.OnParametersSet();
+    }
+
+    public async void CloseModal()
+    {
+        ModalShowing = false;
+        await CloseModalCllback.InvokeAsync();
+    }
+
+
+
+    protected override Task OnParametersSetAsync()
+    {
+        return base.OnParametersSetAsync();
+    }
+
+  
+}

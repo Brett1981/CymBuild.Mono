@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <!-- CSP: frame-ancestors must be set via HTTP response header, not meta -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+             script-src 'self' https://cdn.jsdelivr.net;
+             style-src  'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+             img-src    'self' data:;
+             font-src   'self' https://cdn.jsdelivr.net;
+             connect-src 'self';
+             base-uri 'none';
+             form-action 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sage 200 Business Dashboard</title>
+
+    <!-- Small inline favicon to avoid 404s -->
+    <link rel="icon"
+          href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%93%8A%3C/text%3E%3C/svg%3E">
+
+    <!-- Bootstrap & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+          crossorigin="anonymous" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+          rel="stylesheet" />
+
+    <!-- Chart.js (no SRI to avoid blocking due to mismatch) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            background: #f6f8fb;
+        }
+
+        .brand {
+            font-weight: 700;
+            letter-spacing: .2px;
+        }
+
+        .metric-card {
+            min-height: 150px;
+        }
+
+        .metric-value {
+            font-size: 2.25rem;
+            font-weight: 800;
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+        }
+
+        .toolbar {
+            gap: .5rem;
+        }
+        /* keep refresh & dev pill from overlapping */
+        .health-chip.badge {
+            font-weight: 600;
+        }
+
+        #staleBanner {
+            border-radius: 0;
+        }
+
+        .section-title {
+            font-weight: 800;
+            margin: 24px 0 12px;
+        }
+
+        .card {
+            border: 0;
+            box-shadow: 0 2px 10px rgba(16,24,40,.08);
+        }
+
+        .chart-wrap {
+            height: 280px;
+        }
+
+        .table thead th {
+            font-weight: 700;
+            color: #334155;
+        }
+
+        .table tbody td {
+            vertical-align: middle;
+        }
+
+        .nav-link {
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Top bar -->
+    <header class="topbar bg-dark text-white">
+        <div class="container-xxl py-2 d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+                <div class="brand d-flex align-items-center gap-2">
+                    <i class="bi bi-activity"></i>
+                    <span>Sage 200 Business Dashboard</span>
+                </div>
+
+                <ul class="nav ms-3">
+                    <li class="nav-item"><a class="nav-link text-white-50" href="#overview">Overview</a></li>
+                    <li class="nav-item"><a class="nav-link text-white-50" href="#customers">Customers</a></li>
+                    <li class="nav-item"><a class="nav-link text-white-50" href="#invoices">Invoices</a></li>
+                    <li class="nav-item"><a class="nav-link text-white-50" href="#apiusage">API Usage</a></li>
+                </ul>
+            </div>
+
+            <div class="toolbar d-flex align-items-center">
+                <span id="healthChip" class="badge bg-secondary health-chip">Health: unknown</span>
+                <button id="refreshBtn" class="btn btn-primary btn-sm">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh Data
+                </button>
+                <span id="devPill" class="badge text-bg-primary">DEV</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stale / cached banner will be injected here by JS -->
+
+    <main class="container-xxl py-4">
+        <section id="overview">
+            <h2 class="section-title">Business Overview</h2>
+            <div class="row g-3">
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card metric-card">
+                        <div class="card-body">
+                            <div class="text-muted small">Total Customers</div>
+                            <div id="totalCustomers" class="metric-value">-</div>
+                            <div class="text-muted"><span id="newCustomers24h">-</span> new in 24h</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card metric-card">
+                        <div class="card-body">
+                            <div class="text-muted small">Total Invoices</div>
+                            <div id="totalInvoices" class="metric-value">-</div>
+                            <div class="text-muted"><span id="pendingInvoices">-</span> pending</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card metric-card">
+                        <div class="card-body">
+                            <div class="text-muted small">Total Revenue</div>
+                            <div id="totalRevenue" class="metric-value">£0.00</div>
+                            <div class="text-muted">£<span id="revenue24h">0.00</span> in 24h</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-6 col-lg-3">
+                    <div class="card metric-card">
+                        <div class="card-body">
+                            <div class="text-muted small">API Requests (24h)</div>
+                            <div id="apiRequests24h" class="metric-value">-</div>
+                            <div class="text-muted">£<span id="avgInvoice">0.00</span> avg invoice value</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-12 col-lg-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">New Customers (Last 30 Days)</div>
+                            <div class="chart-wrap"><canvas id="newCustomersChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">Revenue (Last 30 Days)</div>
+                            <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="customers">
+            <h2 class="section-title">Customer Metrics</h2>
+            <div class="row g-3">
+                <div class="col-12 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between small text-muted">
+                                <span>Customer Growth</span><span>Last 24h / 7d / 30d</span>
+                            </div>
+                            <div class="display-5 fw-bold mt-2"><span id="growth24h">0</span></div>
+                            <div class="mt-2">7d: <strong id="growth7d">0</strong></div>
+                            <div>30d: <strong id="growth30d">0</strong></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">Daily New Customers</div>
+                            <div class="chart-wrap"><canvas id="dailyNewCustomersChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="invoices">
+            <h2 class="section-title">Invoice Metrics</h2>
+            <div class="row g-3">
+                <div class="col-12 col-lg-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">Invoice Status</div>
+                            <div class="d-flex align-items-center gap-3">
+                                <div><span class="badge text-bg-primary me-1">&nbsp;</span>Pending: <strong id="pendingCount">0</strong></div>
+                                <div><span class="badge text-bg-danger me-1">&nbsp;</span>Completed: <strong id="completedCount">0</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">Invoice Trends</div>
+                            <div class="chart-wrap"><canvas id="invoiceTrendsChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-3">
+                <div class="card-body">
+                    <div class="fw-bold mb-2">Daily Revenue</div>
+                    <div class="chart-wrap"><canvas id="dailyRevenueChart"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <section id="apiusage">
+            <h2 class="section-title">API Usage Metrics</h2>
+            <div class="row g-3">
+                <div class="col-12 col-lg-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="fw-bold mb-2">Hourly API Requests</div>
+                            <div class="chart-wrap"><canvas id="hourlyRequestsChart"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="fw-bold mb-3">Top API Keys</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead><tr><th>Client</th><th>Key ID</th><th class="text-end">Requests</th></tr></thead>
+                                    <tbody id="topApiKeys"><tr><td colspan="3" class="text-muted">No data</td></tr></tbody>
+                                </table>
+                            </div>
+
+                            <div class="fw-bold mb-3 mt-4">Top Endpoints</div>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead><tr><th>Method</th><th>Endpoint</th><th class="text-end">Requests</th></tr></thead>
+                                    <tbody id="topEndpoints"><tr><td colspan="3" class="text-muted">No data</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <p class="text-muted small mt-4">Last updated: <span id="lastUpdated">–</span></p>
+    </main>
+
+    <script src="dashboardScript.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+            crossorigin="anonymous"></script>
+</body>
+</html>

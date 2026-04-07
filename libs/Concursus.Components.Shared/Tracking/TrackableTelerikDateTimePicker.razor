@@ -1,0 +1,65 @@
+﻿@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@using System.Linq.Expressions
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<TelerikDateTimePicker Value="Value"
+                       ValueChanged="@(EventCallback.Factory.Create<DateTime?>(this, HandleValueChanged))"
+                       ValueExpression="@(ValueExpression ?? (() => Value))"
+                       Width="@Width"
+                       Min="@Min"
+                       Max="@Max"
+                       Format="@Format"
+                       Id="@Id"
+                       ReadOnly="@ReadOnly"
+                       ShowWeekNumbers="@ShowWeekNumbers"
+                       DebounceDelay="@DebounceDelay"
+                       Class="@Class"
+                       @attributes="AdditionalAttributes"
+                       OnBlur="@(() => LogInteraction(Value))">
+    <DateTimePickerSteps Minute="@MinuteStep" />
+</TelerikDateTimePicker>
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownDateTimeField";
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<DateTime?>>? ValueExpression { get; set; }
+
+    [Parameter] public EventCallback<DateTime?> OnChange { get; set; }
+
+    // Configurable parameters
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public DateTime Min { get; set; } = DateTime.Today.AddYears(-20);
+    [Parameter] public DateTime Max { get; set; } = DateTime.Today.AddYears(10);
+    [Parameter] public string? Format { get; set; } = "dd MMM yyyy HH:mm";
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public bool ReadOnly { get; set; } = false;
+    [Parameter] public bool AutoClose { get; set; } = true;
+    [Parameter] public bool ShowWeekNumbers { get; set; } = false;
+    [Parameter] public int DebounceDelay { get; set; } = 150;
+    [Parameter] public int MinuteStep { get; set; } = 15;
+
+    [Parameter] public string Class { get; set; } = "form-control";
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction(DateTime? value)
+    {
+        string log = $"DateTimePicker '{FieldName}' changed to '{value?.ToString("dd-MM-yyyy HH:mm") ?? "null"}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    private async Task HandleValueChanged(DateTime? newValue)
+    {
+        Value = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+
+        if (OnChange.HasDelegate)
+            await OnChange.InvokeAsync(newValue);
+    }
+}

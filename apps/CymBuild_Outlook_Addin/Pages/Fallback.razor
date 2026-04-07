@@ -1,0 +1,55 @@
+﻿@page "/fallback"
+@inject IJSRuntime JS
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <a class="navbar-brand" href="/">MS Identity Platform</a>
+    <button @onclick="SignInWithPopup" class="btn btn-secondary">Sign in using Popup</button>
+    <button @onclick="SignInWithRedirect" class="btn btn-secondary">Sign in using Redirect</button>
+</nav>
+
+<br>
+<h5 class="card-header text-center"></h5>
+<br>
+
+@if (isSignedIn)
+{
+    <div class="row" style="margin: auto">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title" id="WelcomeMessage">Welcome, @userName!</h5>
+                    <div id="profile-div"></div>
+                    <br>
+                    <button class="btn btn-primary" @onclick="SeeProfile">See Profile</button>
+                    <br>
+                    <button class="btn btn-primary" @onclick="ReadMail">Read Mails</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isSignedIn = false;
+    private string userName = "User";
+
+    private async Task SignInWithPopup()
+    {
+        await JS.InvokeVoidAsync("signIn", "loginPopup");
+    }
+
+    private async Task SignInWithRedirect()
+    {
+        await JS.InvokeVoidAsync("signIn", "loginRedirect");
+    }
+
+    private async Task SeeProfile()
+    {
+        await JS.InvokeVoidAsync("seeProfile");
+    }
+
+    private async Task ReadMail()
+    {
+        await JS.InvokeVoidAsync("readMail");
+    }
+}

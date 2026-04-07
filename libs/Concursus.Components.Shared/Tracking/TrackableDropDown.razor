@@ -1,0 +1,91 @@
+﻿@*
+    ────────────────────────────────────────────────────────────────
+    TrackableDropDown<T>
+    ────────────────────────────────────────────────────────────────
+    PURPOSE:
+    Wraps a <select> element with full two-way binding and tracking.
+
+    🔁 REPLACES:
+    - <InputSelect @bind-Value="model.Status" />
+    - Or custom dropdown markup.
+
+    ➜ Replace with:
+    <TrackableDropDown T="string"
+                       FieldName="Status"
+                       @bind-Value="model.Status"
+                       Items="StatusOptions"
+                       class="form-select" />
+
+    📒 PARAMETERS:
+    - T: Value type (string, int, Guid, etc)
+    - FieldName: Friendly log name
+    - Items: List of options (DropdownItem)
+    - @bind-Value: Bound model value
+    - class, AdditionalAttributes: Styling and attributes
+
+    🧠 LOGGING:
+    Logs on blur:
+    "Dropdown 'Status' selected: 'In Progress'"
+
+    🛠️ DEPENDENCIES:
+    - Requires `UserInteractionTrackerService` registered in DI
+    - DropdownItem model included inline
+
+    🚫 LIMITATIONS:
+    - Only supports single-selection dropdowns
+*@
+@using System.Linq.Expressions
+@using System.Globalization
+@using Concursus.Components.Shared.Services
+
+@typeparam T
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<select class="@CssClass"
+        @bind="Value"
+        @bind:event="onchange"
+        @onblur="LogInteraction"
+        @attributes="AdditionalAttributes">
+    <option value="">-- Select --</option>
+    @if (Items != null)
+    {
+        foreach (var item in Items)
+        {
+            <option value="@item.Value">@item.Text</option>
+        }
+    }
+</select>
+
+@code {
+    [Parameter] public string FieldName { get; set; } = "UnknownDropdown";
+    [Parameter] public List<DropdownItem>? Items { get; set; }
+    [Parameter] public T? Value { get; set; }
+    [Parameter] public EventCallback<T?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<T?>>? ValueExpression { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string PageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+
+    private void LogInteraction()
+    {
+        string log = $"Dropdown '{FieldName}' selected: '{Value}'";
+        InteractionTracker.Log(PageKey, log);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Basic validation safety
+        if (Items == null)
+        {
+            Items = new List<DropdownItem>();
+        }
+    }
+
+    public class DropdownItem
+    {
+        public string? Text { get; set; }
+        public string? Value { get; set; }
+    }
+}

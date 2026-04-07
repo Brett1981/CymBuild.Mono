@@ -1,0 +1,237 @@
+﻿/* Base styles */
+body {
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    color: #333;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    padding: 20px;
+}
+
+/* Tooltip styles */
+.blue-yellow .k-tooltip {
+    background-color: blue !important;
+    color: yellow !important;
+}
+
+    .blue-yellow .k-tooltip .k-callout {
+        color: blue !important; /* same as tooltip background */
+    }
+
+/* Tooltip target styles */
+.target {
+    position: absolute;
+    top: 25vh;
+    left: 25vw;
+    width: 15vw;
+    height: 10vh;
+    border: 1px solid;
+    padding: 1em;
+}
+
+/* Add the no-flicker class */
+.no-flicker {
+    pointer-events: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #0056b3;
+    margin-bottom: 10px;
+}
+
+p {
+    line-height: 1.6;
+}
+
+/* Tables */
+.table {
+    width: 100%;
+    margin-bottom: 1rem;
+    color: #212529;
+    border-collapse: collapse;
+}
+
+    .table th,
+    .table td {
+        padding: 0.75rem;
+        vertical-align: top;
+        border-top: 1px solid #dee2e6;
+        max-width: 80px !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+    }
+
+    .table thead th {
+        vertical-align: bottom;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .table tbody + tbody {
+        border-top: 2px solid #dee2e6;
+    }
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.shortened-name {
+    border-color: inherit;
+    border-style: solid;
+    border-width: 0;
+    max-width: 80px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+}
+
+@media (max-width: 768px) {
+    .shortened-name {
+        max-width: 100px; /* Shorter width on smaller screens */
+    }
+}
+
+.shortened-name:hover {
+    overflow: visible !important;
+    white-space: normal !important;
+}
+
+.icon-small {
+    font-size: 16px !important;
+}
+
+.icon-medium {
+    font-size: 24px !important;
+}
+
+.icon-large {
+    font-size: 32px !important;
+}
+
+.attachment-icon i {
+    font-size: 24px;
+    vertical-align: middle; /* Aligns icons with text or adjacent content */
+}
+
+/* Navigation & Tabs */
+.navbar {
+    background-color: #e3f2fd;
+    padding: 0.5rem 1rem;
+}
+
+.nav-link {
+    color: #007bff;
+    background-color: transparent;
+}
+
+    .nav-link:hover,
+    .nav-link:focus {
+        color: #0056b3;
+        text-decoration: none;
+    }
+
+    .nav-link.active {
+        color: #fff;
+        background-color: #007bff;
+    }
+
+/* Cards */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    margin-bottom: 20px;
+}
+
+.card-body {
+    padding: 1.25rem;
+}
+
+.card-title {
+    margin-bottom: 0.75rem;
+}
+
+/* Buttons */
+.btn-primary {
+    color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+    .btn-primary:hover {
+        color: #fff;
+        background-color: #0056b3;
+        border-color: #004085;
+    }
+
+.save-sharepoint {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+@media (max-width: 768px) {
+    .save-sharepoint {
+        position: static;
+        width: 100%;
+        bottom: 0;
+        right: 0;
+        margin: 10px 0;
+    }
+}
+
+/* Additional Styles for Button Container */
+.buttonContainer {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 1rem;
+}
+
+.collapse-buttons,
+.expand-buttons {
+    width: 100%;
+    text-align: center;
+    margin-top: 0.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: none;
+    background: none;
+}
+
+    .collapse-buttons i,
+    .expand-buttons i {
+        font-size: 1.5rem;
+    }
+
+.buttonContainer.collapsed .btn-text {
+    display: none;
+}
+
+.buttonContainer.collapsed .btn i {
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+.buttonContainer.expanded .btn-text {
+    display: inline;
+}
+
+.buttonContainer.expanded .btn i {
+    margin-right: 0.5rem;
+}
+
+/* Reduce button size by 20% */
+.buttonContainer .btn {
+    transform: scale(0.8);
+    transform-origin: left;
+}
+
+.no-header .k-grid-header {
+    display: none;
+}

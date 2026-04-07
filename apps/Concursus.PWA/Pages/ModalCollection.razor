@@ -1,0 +1,99 @@
+﻿@page "/ModalCollection"
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JS
+@inject ModalService modalService
+
+@inherits EditPageBase
+@attribute [Authorize]
+<div class="d-flex justify-content-around">
+
+    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup" style="width:790px">
+        <div class="card-body">
+            <h5 class="card-title">Filter by Name</h5>
+            <TelerikGrid Class="grid"
+                         Data=@ModalList
+                         OnUpdate="@UpdateHandler"
+                         OnDelete="@DeleteHandler"
+                         ConfirmDelete="true"
+                         Pageable="true"
+                         Groupable="true"
+                         Sortable="true"
+                         FilterMode="GridFilterMode.FilterMenu"
+                         Resizable="true"
+                         Reorderable="true"
+                         EditMode="GridEditMode.Popup"
+                         SelectionMode="GridSelectionMode.Multiple"
+                         OnStateInit="@((GridStateEventArgs<ModalModel> args) => OnStateInit(args))"
+                         PageSize="10"
+                         Navigable="true">
+                <GridColumns>
+                    <GridCheckboxColumn></GridCheckboxColumn>
+                    <GridColumn Field="@nameof(ModalModel.DataObjectGuid)" Title="Data Object Guid" />
+                    <GridColumn Field="@nameof(ModalModel.EntityTypeGuid)" Title="EntityType Guid" />
+                    <GridColumn Field="@nameof(ModalModel.Timestamp)" Title="Timestamp" />
+                    <GridCommandColumn Width="260px">
+                                        <GridCommandButton Command="Edit" Icon="@SvgIcon.Pencil" ThemeColor="@ThemeConstants.Button.ThemeColor.Primary">Edit</GridCommandButton>
+                        <GridCommandButton Command="Delete" Icon="@SvgIcon.Trash">Delete</GridCommandButton>
+                    </GridCommandColumn>
+                </GridColumns>
+            </TelerikGrid>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .k-listview-header {
+        padding: 20px 28px;
+        text-transform: uppercase;
+    }
+
+    .k-card {
+        width: 100%; /* Set the width to 100% or adjust it to your desired width */
+        max-width: 800px; /* Set the maximum width if needed */
+        margin: 0 auto; /* Center the card horizontally */
+        padding: 20px; /* Adjust padding as needed */
+        border-width: 0 0 1px 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+        .k-card .k-card-body,
+        .k-card .k-card-actions {
+            padding: 0 8px;
+        }
+
+        .k-card .k-card-image {
+            max-width: unset;
+        }
+
+    .k-card-horizontal > .k-card-image:last-child {
+        border-radius: 0;
+    }
+
+    .k-card .k-card-title {
+        padding: 0;
+        font-size: 1.285em;
+        font-weight: bold;
+        line-height: normal;
+    }
+
+    .k-card-subtitle {
+        font-size: 1em;
+    }
+
+    .card-date {
+        font-size: 0.85em;
+        color: #bababa;
+    }
+
+    .multi-select {
+        width: 100%;
+        max-width: 680px;
+        margin: 10px 0 0 0;
+    }
+</style>

@@ -1,0 +1,379 @@
+﻿@using Concursus.PWA.Classes
+@using System;
+@using System.Collections.Generic;
+@inject IHttpClientFactory HttpFactory
+@inject IConfiguration Config
+@inject HttpClient Http
+
+
+@if (!uiEnabled)
+{
+    <p><em>Postcode lookup is turned off in configuration.</em></p>
+}
+else
+{
+    <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+        <TabStripTab Title="Postcode lookup">
+            <HeaderTemplate>
+                <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Postcode
+            </HeaderTemplate>
+            <Content>
+                <h3>Postcode Lookup Test</h3>
+
+                <label>
+                    <input type="checkbox" @bind="enterManually" />
+                    Enter address manually
+                </label>
+
+                @* only show the lookup form when we’re not in “manual” mode *@
+                @if (!enterManually)
+                {
+                    <div class="mb-2">
+                        <input placeholder="Postcode" @bind="postcodeInput"
+                        class="k-textbox" style="width:200px" />
+                        <button class="k-button" @onclick="Search">Search</button>
+                    </div>
+                    @if (addresses != null)
+                    {
+                        <select @onchange="OnSelect" class="k-dropdown">
+                            <option value="-1">-- choose an address --</option>
+                            @for (int i = 0; i < addresses.Count; i++)
+                            {
+                                <option value="@i">@addresses[i].FormattedAddress</option>
+                            }
+                        </select>
+                    }
+                }
+                @* once in manual mode, show the full set of fields *@
+                else
+                {
+                    <div class="mt-4">
+                        <h4>Address Details</h4>
+                        <div>
+                            <label>UPRN (read-only):</label>
+                            <input readonly value="@selected?.Uprn" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Local Authority:</label>
+                            <input value="@selected?.LocalAuthority" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Address Line 1:</label>
+                            <input @bind="selected.Line1" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Address Line 2:</label>
+                            <input @bind="selected.Line2" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Town / City:</label>
+                            <input @bind="selected.Town" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>County:</label>
+                            <input @bind="selected.County" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Postcode:</label>
+                            <input @bind="selected.Postcode" class="k-textbox" />
+                        </div>
+                        <div>
+                            <label>Country:</label>
+                            <input @bind="selected.Country" class="k-textbox" />
+                        </div>
+
+                        <button class="k-button" @onclick="SearchByAddress">Search</button>
+                    </div>
+                }
+            </Content>
+        </TabStripTab>
+
+        @*
+            -----------------------------------------------------
+           |                    ADDRES SEARCH                    |
+            -----------------------------------------------------
+        *@
+        <TabStripTab Title="Address lookup">
+            <HeaderTemplate>
+                <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Address
+            </HeaderTemplate>
+            <Content>
+
+
+                <div id="outer-container" class="d-flex flex-row justify-content-between">
+                    <!-- Field(s) for searching for an address.-->
+                    <div id="search-fields" class="d-flex flex-column">
+                        <h5>Search for an address:</h5>
+                        <div id="search-inputs">
+                             <input  placeholder="Enter the address:" 
+                                @bind="AddressSearchInput"
+                                class="k-textbox" style="width:200px" />
+
+                            <TelerikDropDownList Data="@ISOCodes"
+                                             TextField="name"
+                                             ValueField="iso"
+                                             Width="150px"
+                                             @bind-Value="selectedISO" />
+                        </div>
+                       
+                        <button class="k-button" 
+                                @onclick="SearchByAddress">Search</button>
+                    </div>
+
+                    <div id="suggested-addresses" class="d-flex flex-column">
+                         <h5>Select a suggestion: </h5>
+                        <TelerikListBox @ref="@ListBoxRef"
+                                        Data="@ListBoxData"
+                                        TextField="@nameof(AddressSearchResult.Suggestion)"
+                                        SelectionMode="@ListBoxSelectionMode.Multiple"
+                                        @bind-SelectedItems="@ListBoxSelectedItems"
+                                        Width="180px"
+                                        Height="auto">
+                                        <ListBoxToolBarSettings>
+                                            <ListBoxToolBar Visible="false" />
+                                        </ListBoxToolBarSettings>
+                        </TelerikListBox>
+                        <button class="k-button"
+                                @onclick="ResolveSelectedAddress">
+                            Select Address
+                        </button>
+                    </div>
+
+                    <div id="resolved-address" class="d-flex flex-column">
+                        <h5>Selected Address:</h5>
+                        <div class="mt-4">
+                            <div>
+                                <label>UPRN (read-only):</label>
+                                <input readonly @bind="ResolvedAddress.Uprn"  class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Local Authority:</label>
+                                <input @bind="ResolvedAddress.AuthorityCode" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Address Line 1:</label>
+                                <input @bind="ResolvedAddress.Line1" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Address Line 2:</label>
+                                <input @bind="ResolvedAddress.Line2" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Town / City:</label>
+                                <input @bind="ResolvedAddress.Town" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>County:</label>
+                                <input @bind="ResolvedAddress.County" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Postcode:</label>
+                                <input @bind="ResolvedAddress.Postcode" class="k-textbox" />
+                            </div>
+                            <div>
+                                <label>Country:</label>
+                                <input @bind="ResolvedAddress.Country" class="k-textbox" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </Content>
+        </TabStripTab>
+    </TelerikTabStrip>
+
+
+
+
+
+
+
+}
+
+
+@code {
+    // UI state
+    bool uiEnabled;
+    bool enterManually;
+    string postcodeInput = "";
+    List<AddressResponse>? addresses;
+    AddressResponse? selected;
+    int selectedIndex = -1;
+
+
+    //ISO code dropdown:
+    List<CountryWithISO> ISOCodes = new();
+    private string selectedISO { get; set; } = "GBR";
+    List<AddressSearchResult> addressRecommendations = new();
+    AddressSearchResult SelectecRecommendation;
+    string AddressSearchInput = "";
+
+    //Variables for the box that displays suggestions:
+    private TelerikListBox<AddressSearchResult> ListBoxRef { get; set; } = null!;
+    private List<AddressSearchResult> ListBoxData { get; set; } = new List<AddressSearchResult>();
+    private IEnumerable<AddressSearchResult> ListBoxSelectedItems { get; set; } = new List<AddressSearchResult>();
+
+    //Resolved address:
+    AddressResponse ResolvedAddress = new();
+
+
+
+
+    public class AddressLookupInputs {
+
+        public string AddressLine1 { get; set; } = "";
+        public string AddressLine2 { get; set; } = "";
+        public string Town { get; set; } = "";
+        public string County { get; set; } = "";
+        public string Postcode { get; set; } = "";
+        public string Country { get; set; } = "";
+
+    }
+
+
+    //Class defintion for reading the country codes.
+    public class CountryWithISO
+    {
+        public string name { get; set; }
+        public string iso { get; set; }
+    }
+
+
+    //Class defintion for the suggestions returned by Ideal Postcode Lookup.
+    public class ListBoxModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+    }
+
+
+    protected override void OnInitialized()
+    {
+        uiEnabled = Config.GetValue<bool>("PostcodeLookupUI:Enabled");
+        AddressLookupInputs addressLookupInputs = new AddressLookupInputs();
+        LoadCountryISOCodes();
+    }
+
+
+    private async void LoadCountryISOCodes()
+    {
+        string jsonFileName = "PostCodeLookup_Assets/country_iso_codes.json";
+        ISOCodes = await Http.GetFromJsonAsync<List<CountryWithISO>>(jsonFileName);
+    }
+
+
+    async Task Search()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(postcodeInput))
+                return;
+            var client = HttpFactory.CreateClient("PostcodeLookupUI");
+            var resp = await client.PostAsJsonAsync("PostcodeLookup", new { postcode = postcodeInput, forceApi = true });
+            resp.EnsureSuccessStatusCode();
+            addresses = await resp.Content.ReadFromJsonAsync<List<AddressResponse>>();
+            selected = null;
+            selectedIndex = -1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+
+    }
+
+    /*
+     * Function for searching for an address.
+     * This only returns sugesstions, meaning a selected address will have to be resolved.
+     */
+    async Task SearchByAddress()
+    {
+        try
+        {
+            //var client   = HttpFactory.CreateClient("AddressLookupUI");
+            //var resp = await client.PostAsJsonAsync("GetAddress", new { address = AddressSearchInput, context = selectedISO, forceApi = true });
+
+            string BaseUrl = "http://localhost:5041/api/AddressLookup/";
+            string GetAddressEndpoint = "GetAddress";
+
+            var client = HttpFactory.CreateClient("AddressLookupUI");
+            var resp = await client.PostAsJsonAsync($"{BaseUrl}{GetAddressEndpoint}", new
+            {
+                address = AddressSearchInput,
+                context = selectedISO,
+                forceApi = true
+            });
+
+            resp.EnsureSuccessStatusCode();
+            addressRecommendations = await resp.Content.ReadFromJsonAsync<List<AddressSearchResult>>();
+
+            if(addressRecommendations?.Count > 0)
+            {
+                ListBoxData = addressRecommendations;
+                StateHasChanged();
+            }
+            else
+            {
+                addressRecommendations.Add(new AddressSearchResult()
+                {
+                    Id = "NA",
+                    Suggestion ="Could not find any address",
+                    Udprn = "NA",
+                    Urls = "NA"
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+
+    }
+
+    async Task ResolveSelectedAddress()
+    {
+        try
+        {
+            if (ListBoxSelectedItems.Count() < 0)
+                return;
+
+            string BaseUrl = "http://localhost:5041/api/AddressLookup/";
+            string GetAddressEndpoint = "ResolveAddress";
+
+            var client = HttpFactory.CreateClient("AddressLookupUI");
+
+            var ID = ListBoxSelectedItems.First().Id;
+
+
+            var resp = await client.PostAsJsonAsync($"{BaseUrl}{GetAddressEndpoint}", new
+            {
+                id = ID, 
+                context = selectedISO
+            });
+
+            resp.EnsureSuccessStatusCode();
+
+            ResolvedAddress = await resp.Content.ReadFromJsonAsync<AddressResponse>();
+            StateHasChanged();
+        }
+        catch(Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    void OnSelect(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var idx)
+            && addresses != null
+            && idx >= 0
+            && idx < addresses.Count)
+        {
+            selected = addresses[idx];
+            // once an address is picked we “lock” into manual‐mode so that the
+            // freeform fields are shown and the lookup UI hidden
+            enterManually = true;
+        }
+    }
+}

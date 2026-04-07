@@ -1,0 +1,129 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@attribute [Authorize]
+
+<style>
+    .bActionBtn {
+        padding: 0 !important;
+        margin-bottom: 0 !important;
+        margin-left: 5px !important;
+    }
+</style>
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+@if (IsBulkProcessing)
+{
+    <!-- Header for Bulk Selection Mode -->
+    <h5>Select Items for Bulk Editing</h5>
+}
+
+<div class="grid-container">
+    @if (Items != null && Items.Any())
+    {
+        <!-- Grid with Direct Binding to Items -->
+        <TelerikGrid TItem="ExpandoObject"
+                     Data="@Items"
+                     Pageable="true"
+                     Sortable="true"
+                     PageSize="50"
+                     Height="100%"
+                     Resizable="true"
+                     SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
+                     SelectionMode="@GridSelectionMode.Multiple"
+                     @ref="@GridRef">
+            <GridColumns>
+                <GridCheckboxColumn Width="30px" />
+
+                <!-- Dynamically Generate Columns for Each Property in Items -->
+                @if (Items != null && Items.Any())
+                {
+                    @foreach (var propertyName in ((IDictionary<string, object>)Items.First()).Keys)
+                    {
+                        var fieldType = ((IDictionary<string, object>)Items.First())[propertyName]?.GetType() ?? typeof(object);
+                        <GridColumn Field="@propertyName"
+                                    Title="@propertyName"
+                                    FieldType="fieldType"
+                                    Sortable="true"
+                                    Filterable="true"
+                                    Resizable="true">
+                            <Template Context="context">
+                                @(((IDictionary<string, object>)context)[propertyName])
+                            </Template>
+                        </GridColumn>
+                    }
+                }
+            </GridColumns>
+        </TelerikGrid>
+    }
+    else
+    {
+        <!-- Grid with OnRead Data Loading -->
+        <TelerikGrid TItem="ExpandoObject"
+                     OnRead="@ReadItems"
+                     Pageable="true"
+                     Sortable="true"
+                     PageSize="50"
+                     Height="100%"
+                     Resizable="true"
+                     SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
+                     @ref="@GridRef"
+                     FilterMode="@GridFilterMode.FilterMenu"
+                     SelectionMode="@GridSelectionMode.Multiple"
+                     OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                     OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+            <GridSettings>
+                <GridPagerSettings InputType="PagerInputType.Input"
+                                   PageSizes=null
+                                   ButtonCount="5"
+                                   Adaptive="true"
+                                   Position="PagerPosition.Bottom">
+                </GridPagerSettings>
+            </GridSettings>
+            <GridColumns>
+                <GridCheckboxColumn Width="30px" />
+                @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
+                {
+                    <GridColumn Field="@gvcd.Name"
+                                Title="@gvcd.Title"
+                                FieldType="typeof(string)"
+                                Visible="gvcd.IsHidden != true"
+                                Filterable="@gvcd.IsFiltered"
+                                Width="@gvcd.Width"
+                                Sortable="true"
+                                Resizable="true"
+                                DisplayFormat="@gvcd.DisplayFormat">
+                        <Template>
+                            @{
+                                <div class="custom-ellipsis">
+                                    @(GetColumnTemplate(gvcd.Name)(context))
+                                </div>
+
+                            }
+                        </Template>
+
+                    </GridColumn>
+                }
+            </GridColumns>
+        </TelerikGrid>
+    }
+</div>
+
+
+
+<style>
+    .custom-ellipsis {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+

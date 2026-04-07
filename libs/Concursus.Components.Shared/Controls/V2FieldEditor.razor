@@ -1,0 +1,307 @@
+﻿@using System
+@using System.Linq
+@using System.Collections.Generic
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+
+@if (FieldDefinition is null || DataObject is null)
+{
+    <span class="v2-field-editor v2-field-editor--empty">(no data)</span>
+}
+else if (_dataProperty is null)
+{
+    <span class="v2-field-editor v2-field-editor--empty">(no property)</span>
+}
+else
+{
+    <div class="v2-field-editor v2-field-editor--@FieldDefinition.ViewType.ToString().ToLowerInvariant()">
+        @switch (FieldDefinition.ViewType)
+        {
+            case FieldViewType.MultilineText:
+                <textarea class="form-control"
+                          rows="3"
+                          @bind="TextValue">
+                            </textarea>
+                break;
+
+            case FieldViewType.Number:
+                <InputNumber TValue="double?"
+                             class="form-control"
+                             @bind-Value="NumberValue" />
+                break;
+
+            case FieldViewType.Boolean:
+                <InputCheckbox class="form-check-input"
+                               @bind-Value="BoolValue" />
+                break;
+
+            case FieldViewType.Date:
+            case FieldViewType.DateTime:
+                <InputDate TValue="DateTime?"
+                           class="form-control"
+                           @bind-Value="DateValue" />
+                break;
+
+            case FieldViewType.Dropdown:
+                @if (DropdownConfig is not null)
+                {
+                    var options = DropdownConfig.Options ?? new List<DropdownOption>();
+
+                    if (options.Count == 0)
+                    {
+                        <!-- Dropdown shell with no options (still better than exposing GUID) -->
+                        <select class="form-select"
+                                @bind="TextValue">
+                            <option value="">-- no options available --</option>
+                        </select>
+                    }
+                    else
+                    {
+                        <select class="form-select"
+                                @bind="TextValue">
+                            @foreach (var option in options)
+                            {
+                                <option value="@option.Value">@option.Label</option>
+                            }
+                        </select>
+                    }
+                }
+                else
+                {
+                    <!-- Fallback: preserve existing behaviour (edit the raw value) -->
+                    <InputText class="form-control"
+                               @bind-Value="TextValue" />
+                }
+                break;
+
+            case FieldViewType.Text:
+            default:
+                <InputText class="form-control"
+                           @bind-Value="TextValue" />
+                break;
+        }
+
+        @if (_dataProperty.IsInvalid && !string.IsNullOrWhiteSpace(_dataProperty.ValidationMessage))
+        {
+            <div class="text-danger small">@_dataProperty.ValidationMessage</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public FieldViewDefinition? FieldDefinition { get; set; }
+    [Parameter] public DataObject? DataObject { get; set; }
+
+    private DataProperty? _dataProperty;
+
+    protected override void OnParametersSet()
+    {
+        if (FieldDefinition == null || DataObject == null)
+        {
+            _dataProperty = null;
+            return;
+        }
+
+        _dataProperty = DataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, FieldDefinition.Id, StringComparison.OrdinalIgnoreCase));
+
+        if (_dataProperty == null)
+        {
+            _dataProperty = new DataProperty
+            {
+                EntityPropertyGuid = FieldDefinition.Id,
+                IsEnabled = true,
+                IsHidden = false,
+                IsInvalid = false,
+                IsReadOnly = false,
+                IsRestricted = false,
+                ValidationMessage = string.Empty,
+                Value = new Any()
+            };
+
+            DataObject.DataProperties.Add(_dataProperty);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    //  TEXT (StringValue)
+    // ----------------------------------------------------------------------
+    private string TextValue
+    {
+        get
+        {
+            if (_dataProperty?.Value == null)
+                return string.Empty;
+
+            try
+            {
+                if (_dataProperty.Value.Is(StringValue.Descriptor))
+                {
+                    _dataProperty.Value.TryUnpack(out StringValue sv);
+                    return sv?.Value ?? string.Empty;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return string.Empty;
+        }
+        set
+        {
+            if (_dataProperty == null) return;
+
+            var sv = new StringValue { Value = value ?? string.Empty };
+            _dataProperty.Value = Any.Pack(sv);
+
+            _dataProperty.IsInvalid = false;
+            _dataProperty.ValidationMessage = string.Empty;
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    //  NUMBER (DoubleValue)
+    // ----------------------------------------------------------------------
+    private double? NumberValue
+    {
+        get
+        {
+            if (_dataProperty?.Value == null)
+                return null;
+
+            try
+            {
+                if (_dataProperty.Value.Is(DoubleValue.Descriptor))
+                {
+                    _dataProperty.Value.TryUnpack(out DoubleValue dv);
+                    return dv?.Value;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+        set
+        {
+            if (_dataProperty == null) return;
+
+            if (value.HasValue)
+            {
+                var dv = new DoubleValue { Value = value.Value };
+                _dataProperty.Value = Any.Pack(dv);
+            }
+            else
+            {
+                _dataProperty.Value = new Any();
+            }
+
+            _dataProperty.IsInvalid = false;
+            _dataProperty.ValidationMessage = string.Empty;
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    //  BOOLEAN (BoolValue)
+    // ----------------------------------------------------------------------
+    private bool BoolValue
+    {
+        get
+        {
+            if (_dataProperty?.Value == null)
+                return false;
+
+            try
+            {
+                _dataProperty.Value.TryUnpack(out BoolValue bv);
+                return bv?.Value ?? false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+        set
+        {
+            if (_dataProperty == null) return;
+
+            var bv = new BoolValue { Value = value };
+            _dataProperty.Value = Any.Pack(bv);
+
+            _dataProperty.IsInvalid = false;
+            _dataProperty.ValidationMessage = string.Empty;
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    //  DATE / DATETIME (Timestamp, stored as UTC)
+    // ----------------------------------------------------------------------
+    private DateTime? DateValue
+    {
+        get
+        {
+            if (_dataProperty?.Value == null)
+                return null;
+
+            try
+            {
+                if (_dataProperty.Value.Is(Timestamp.Descriptor))
+                {
+                    _dataProperty.Value.TryUnpack(out Timestamp ts);
+                    return ts.ToDateTime().ToLocalTime();
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return null;
+        }
+        set
+        {
+            if (_dataProperty == null) return;
+
+            if (value.HasValue)
+            {
+                var local = DateTime.SpecifyKind(value.Value, DateTimeKind.Local);
+                var utc = local.ToUniversalTime();
+                var ts = Timestamp.FromDateTime(utc);
+                _dataProperty.Value = Any.Pack(ts);
+            }
+            else
+            {
+                _dataProperty.Value = new Any();
+            }
+
+            _dataProperty.IsInvalid = false;
+            _dataProperty.ValidationMessage = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Tries to interpret FieldDefinition.ExtraConfig as a FieldDropdownConfig.
+    /// </summary>
+    private FieldDropdownConfig? GetDropdownConfig()
+    {
+        if (FieldDefinition?.ExtraConfig is FieldDropdownConfig cfg)
+        {
+            return cfg;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Convenience property to access the dropdown configuration.
+    /// </summary>
+    private FieldDropdownConfig? DropdownConfig => GetDropdownConfig();
+}

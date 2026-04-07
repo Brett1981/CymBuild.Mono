@@ -1,0 +1,79 @@
+﻿# .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+
+# Node / Web
+node_modules/
+dist/
+npm-debug.log*
+wwwroot/*.map
+*.gz
+*.br
+
+# Mobile/Native
+android/.gradle/
+android/app/build/
+ios/build/
+ios/Pods/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env/Secrets
+.env
+# == large files (ignore) ==
+/services/Sage200Microservice/Sage200Microservice.API/logs/*
+!/services/Sage200Microservice/Sage200Microservice.API/logs/.gitkeep
+/apps/Concursus.PWA/wwwroot/WhisperNet/*.bin
+/libs/CymBuild_Outlook Manifest/CymBuild_OutlookManifest/CymBuild_Outlook.zip
+/apps/Concursus.PWA/Properties/PublishProfiles/FolderProfile.pubxml
+/services/Concursus.API/Properties/PublishProfiles/FolderProfile.pubxml
+/.tmp.driveupload
+/services/Concursus.API/Protos/NUL
+/services/CymBuild_Outlook_API/logs
+/services/Concursus.API/Protos/NUL
+/Database/CymBuild_DB/CymBuild Dev to Scripts.dcomp
+/Database/CymBuild_DB/CymBuild Scripts to Upgrade Stage.scomp
+/Database/CymBuild_DB/CymBuild Scripts to Upgrade Staging.dcomp
+/.tmp.drivedownload
+*.zip
+/apps/Concursus.PWA/.config
+/apps/Concursus.PWA/wwwroot
+/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.json
+/libs/CymBuild_Outlook Manifest/pkgobj/Release
+/libs/CymBuild_Outlook Manifest/CymBuild_OutlookManifest/CymBuild_Outlook.xml
+/services/Concursus.API/appsettings-Sandbox.Development.json
+/services/Concursus.API/appsettings-Sandbox.json
+/services/Concursus.API/appsettings.json
+/services/Concursus.API/appsettings.Live.json
+/services/Concursus.API/appsettings.Production.json
+/services/Concursus.API/appsettings.Test.json
+/services/CymBuild_AIErrorServiceAPI/publish/publish/appsettings.json
+/services/CymBuild_AIErrorServiceAPI/publish/publish/publish/appsettings.json
+/services/CymBuild_Outlook_API/.config/dotnet-tools.json
+/services/CymBuild_Outlook_API/appsettings.json
+/services/CymBuild_Outlook_Service/appsettings.json
+/services/CymBuild_Outlook_Service/Properties/PublishProfiles/FolderProfile.pubxml
+/services/PostCodeLookup/.config/dotnet-tools.json
+/services/PostCodeLookup/appsettings.Development.json
+/services/PostCodeLookup/appsettings.json
+/services/Sage200Microservice/Sage200Microservice.API/appsettings.Development.json
+/services/Sage200Microservice/Sage200Microservice.API/appsettings.json
+/services/Sage200Microservice/Sage200Microservice.API/Configuration/ApiKeyClientResolveContributor.cs
+/apps/Concursus.PWA/wwwroot/appsettings.Development.json
+/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.Development.json
+/services/Concursus.API/appsettings.Development.json
+/services/CymBuild_AIErrorServiceAPI/publish/publish/publish/appsettings.Development.json
+/services/CymBuild_AIErrorServiceAPI/publish/appsettings.Development.json
+/services/CymBuild_AIErrorServiceAPI/publish/appsettings.json
+/services/CymBuild_Outlook_API/appsettings.Development.json
+/services/CymBuild_Outlook_Service/appsettings.Development.json
+/services/PostCodeLookup/certs/postcodelookup.pfx
+/apps/Concursus.PWA/.openai
+/services/CymBuild_AIErrorServiceAPI/appsettings.Development.json
+/services/CymBuild_AIErrorServiceAPI/appsettings.json

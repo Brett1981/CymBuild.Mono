@@ -1,0 +1,32 @@
+﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create function [SCore].[tvf_EntityPropertiesValidate]')
+GO
+
+CREATE FUNCTION [SCore].[tvf_EntityPropertiesValidate]
+	(
+		@Guid UNIQUEIDENTIFIER
+	)
+RETURNS @ValidationResult TABLE
+	(
+		ID INT IDENTITY(1, 1) NOT NULL,
+		TargetGuid UNIQUEIDENTIFIER NOT NULL DEFAULT ('00000000-0000-0000-0000-000000000000'),
+		TargetType CHAR(1) NOT NULL DEFAULT (''),
+		IsReadOnly BIT NOT NULL DEFAULT ((0)),
+		IsHidden BIT NOT NULL DEFAULT ((0)),
+		IsInvalid BIT NOT NULL DEFAULT ((0)),
+		[IsInformationOnly] [BIT] NOT NULL DEFAULT((0)),
+		Message NVARCHAR(2000) NOT NULL DEFAULT ('')
+	)
+AS
+BEGIN
+	DECLARE @JobTypeName NVARCHAR(250)
+
+	
+	
+
+	RETURN;
+END;
+
+GO

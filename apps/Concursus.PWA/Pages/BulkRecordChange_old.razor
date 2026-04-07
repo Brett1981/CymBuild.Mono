@@ -1,0 +1,353 @@
+﻿@page "/BulkRecord"
+@using Concursus.API.Client.Models
+@using Newtonsoft.Json
+@using System.Web
+@using System.Dynamic;
+@using Concursus.API.Core;
+@using Concursus.PWA.Classes;
+@using Concursus.Components.Shared.Classes;
+
+@using Google.Protobuf.Collections;
+@using Google.Protobuf.WellKnownTypes;
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+
+
+@inherits EditPageBase
+
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="@_EntityTypeGuid"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+        <MessageDisplay @ref="messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+        <div class="d-flex flex-row justify-content-end mb-3">
+            @if (ShowConfirmationPhase)
+            {
+                <button class="btn btn-danger" type="button" @onclick="CancelSave">
+                    Cancel
+                </button>
+            }
+            <button class="btn btn-success" type="button" @onclick="ShowEntityPropertiesForBulkProcessing">
+                @ButtonText
+            </button>
+        </div>
+
+        @if (ShowGrid)
+        {
+            //Add parameter to block the button for the dynamicbatchgrid.
+            <DynamicBatchGridView @ref="@DBG"
+                                  IsBulkProcessing="true"
+                                  ViewDefinition="@ViewDefinition"
+                                  ParentGuid="@ParentGuid"
+                                  GridCode="@GridCode"
+                                  FullGrid="true"
+                                  ParentDataObjectReference="@ParentDataObjectReference" />
+        }
+        //To show the entity properties.
+        else if (ShowEntityProperties)
+        {
+            <FlexPropertyGroup @ref="@FlexPropertyGroup"
+                IsBulkEdit="true"
+                dataObject="@dataObject"
+                entityProperties="@EntityProperties"
+                inputUpdated="@HandleInputUpdated" />
+        }
+        else if (ShowConfirmationPhase)
+        {
+
+            <DynamicBatchGridView @ref="@DBG"
+                IsBulkProcessing="true"
+                ViewDefinition="@ViewDefinition"
+                ParentGuid="@ParentGuid"
+                GridCode="@GridCode"
+                FullGrid="true"
+                ParentDataObjectReference="@ParentDataObjectReference" />
+        }
+
+    </FormBody>
+</EditPage>
+
+@code {
+
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public EntityPropertyGroup EntityPropertyGroup { get; set; }
+
+
+    [Parameter] public GridViewDefinition ViewDefinition { get; set; }
+    [Parameter] public string ParentGuid { get; set; }
+    [Parameter] public string GridCode { get; set; }
+    [Parameter] public string ButtonText { get; set; } = "";
+    [Parameter] public string _EntityTypeGuid { get; set; }
+
+
+
+
+    public DataObject dataObject { get; set; }
+    private DataObject updatedDataObject { get; set; } = new DataObject();
+    public FlexPropertyGroup FlexPropertyGroup { get; set; }
+    private IEnumerable<ExpandoObject> BatchSelection { get; set; }
+    private API.Client.FormHelper? _formHelper;
+    public DynamicBatchGridView DBG { get; set; }
+    private List<EntityProperty> EntityProperties { get; set; }
+    private EntityType EntityTypeProperties { get; set; }
+
+
+    //Here, we set the new values for the entity properties
+    private Dictionary<string, Any> ValuesToSet { get; set; } = new Dictionary<string, Any>();
+    private List<string> RecordsToChange {get; set; } = new List<string>(); 
+
+    //Error message variables.
+    protected string ErrorMessage { get; set; } = "";
+    protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
+    protected MessageDisplay? messageDisplay;
+    protected string PageMethod { get; set; } = "Not Set";
+
+    //Controls for display
+    public bool ShowGrid { get; set; } = true;
+    public bool ShowEntityProperties { get; set; } = false;
+    public bool ShowConfirmationPhase { get; set; } = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null && SerializedDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "JobDetail/OnParametersSetAsync()");
+            OnError(ex);
+        }
+
+    }
+
+
+    public async void ShowEntityPropertiesForBulkProcessing()
+    {
+
+
+
+        try
+        {
+
+            if (ShowGrid)
+            {
+                BatchSelection = DBG.GetSelectionForBatch();
+
+                if (!BatchSelection.Any())
+                {
+                    throw new Exception("You must select an item to proceed.");
+                }
+
+                //From the selection, extract the GUIDS.
+                foreach(var selection in BatchSelection)
+                {
+                    //Transform into IDictionary so that we can read the values.
+                    var expandoDict = selection as IDictionary<string, object>;
+
+                    if (expandoDict != null)
+                        foreach (var Guid in expandoDict)
+                        {
+                            if (Guid.Key == "Guid" && Guid.Value != "")
+                                RecordsToChange.Add(Guid.Value.ToString());
+                        }
+                }
+
+
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_EntityTypeGuid).ToString(), userService);
+
+
+                //Properties the user can change.
+                string TypeGuid = "5bb14d82-b4b4-492e-968a-57e3a8b78596";
+                string AssigneeGuid = "0e46fceb-ac8c-4800-9ddc-367d8ad9769c";
+                string StatusGuid = "4014840f-b27e-48b3-8ae4-e700fb4988ba";
+                List<string> fieldsToShow = new List<string> { TypeGuid, AssigneeGuid, StatusGuid };
+
+
+                //Check for properties with "AllowBulkChange" set to true ==> Only these will be displayed.
+                EntityTypeProperties = await _formHelper.GetEntityType();
+                EntityProperties = EntityTypeProperties.EntityProperties.Where(x => x.AllowBulkChange == true).ToList();
+
+                dataObject = await _formHelper.ReadDataObjectAsync(RecordGuid, ParentDataObjectReference);
+
+                //Controls for showing the correct information.
+                ShowGrid = false;
+                ShowEntityProperties = true;
+                ButtonText = "Next >>";
+
+                StateHasChanged();
+            }
+            else if (ShowEntityProperties)
+            {
+
+                if(!ValuesToSet.Any()) 
+                    throw new Exception("No property has been selected to change.");
+
+                //Ensure _formhelper has been initialised. 
+                if(_formHelper == null)
+                    _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_EntityTypeGuid).ToString(), userService);
+
+
+                updatedDataObject = await _formHelper?.ReadDataObjectAsync(RecordGuid, ParentDataObjectReference);
+
+                foreach (var NewValue in ValuesToSet)
+                {
+                    var entityGuid = NewValue.Key;
+
+                    var entity = updatedDataObject.DataProperties.FirstOrDefault(x => x.EntityPropertyGuid == entityGuid);
+
+                    if (entity != null)
+                    {
+                        entity.Value = NewValue.Value;
+                    }
+                }
+
+
+                _ = GridUpdated.InvokeAsync();
+
+
+                ShowEntityProperties = false;
+                ShowConfirmationPhase = true;
+                ButtonText = "Save";
+
+                StateHasChanged();
+
+            }
+            else if (ShowConfirmationPhase)
+            {
+                foreach(var selection in RecordsToChange)
+                {
+
+                    dataObject = await _formHelper.ReadDataObjectAsync(selection, ParentDataObjectReference);
+                    Console.WriteLine(dataObject);
+
+                    foreach(var NewValue in ValuesToSet)
+                    {
+                        var entityGuid = NewValue.Key;
+
+                        var entity = dataObject.DataProperties.FirstOrDefault(x => x.EntityPropertyGuid == entityGuid);
+
+                        if (entity != null)
+                        {
+                            entity.Value = NewValue.Value;
+                        }
+                    }
+
+                    await _formHelper.UpsertDataObject(dataObject, null, false);
+                }
+
+                _ = GridUpdated.InvokeAsync();
+            }
+
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "GridButtonMenu/ShowEntityPropertiesForBulkProcessing()");
+            OnError(ex);
+        }
+
+        StateHasChanged();
+    }
+
+
+    public void OnError(Exception error)
+    {
+        if (string.IsNullOrEmpty(error.Message)) return;
+
+        ErrorMessage = error.Message;
+        PageMethod = (error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+
+        if (error.Data.Contains("MessageType"))
+            MessageType = (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ?? MessageDisplay.ShowMessageType.Information);
+        else
+            MessageType = MessageDisplay.ShowMessageType.Error;
+        messageDisplay?.ShowError(true);
+        //customErrorBoundary.Recover();
+        StateHasChanged();
+    }
+
+
+    public void HandleInputUpdated(InputUpdatedArgs inputUpdatedArgs)
+    {
+
+        try
+        {
+            var EntitGuid = inputUpdatedArgs.EntityId.ToString();
+            var NewValue = inputUpdatedArgs.NewValue;
+            var TypeUrl = NewValue.TypeUrl;
+
+
+            bool overwriteKey = false; //Checking if a key has already been added.
+            dynamic valueToSave;
+
+
+            if (ValuesToSet.ContainsKey(EntitGuid))
+            {
+                overwriteKey = true;
+            }
+
+            if (TypeUrl == "type.googleapis.com/google.protobuf.Timestamp")
+            {
+                NewValue.TryUnpack(out Timestamp val);
+                
+            }
+            if (overwriteKey)
+                ValuesToSet[EntitGuid] = NewValue;
+            else
+                ValuesToSet.Add(EntitGuid.ToString(), NewValue);
+
+
+
+            FlexPropertyGroup.RebindFromPropertyChange(inputUpdatedArgs);
+
+            Console.WriteLine(ValuesToSet);
+
+        }
+        catch(Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "GridButtonMenu/ShowEntityPropertiesForBulkProcessing()");
+            OnError(ex);
+        }
+
+
+
+    }
+
+
+    private void CancelSave()
+    {
+        ShowConfirmationPhase = false;
+        ShowEntityProperties = true;
+
+        StateHasChanged();
+    }
+
+    
+}

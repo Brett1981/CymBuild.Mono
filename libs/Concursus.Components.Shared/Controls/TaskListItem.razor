@@ -1,0 +1,44 @@
+﻿@using Concursus.Components.Shared.Models
+
+<li class="task-item mb-2 p-2 d-flex align-items-center"
+    draggable="true"
+    @ondragstart="HandleDragStart"
+    @ondragover="(DragEventArgs e) => {}" @ondragover:preventDefault
+    @ondrop="HandleDrop"
+    style="cursor: move; background-color: #f8f9fa; border-radius: 4px; margin-bottom: 6px;">
+    <input type="checkbox" class="form-check-input me-2" checked="@Task.IsComplete" @onchange="HandleToggleTask" />
+    <span class="flex-grow-1" style="@GetTaskStyle()">
+        @Task.TaskTitle
+    </span>
+    <button class="btn btn-sm btn-outline-info ms-2" @onclick="HandleEditTask">Edit</button>
+</li>
+
+@code {
+    [Parameter] public TaskItem Task { get; set; } = new();
+    [Parameter] public EventCallback<TaskItem> OnDragStart { get; set; }
+    [Parameter] public EventCallback<TaskItem> OnDrop { get; set; }
+    [Parameter] public EventCallback<TaskItem> OnToggleTask { get; set; }
+    [Parameter] public EventCallback<TaskItem> OnEditTask { get; set; }
+
+    private void HandleDragStart(DragEventArgs e)
+    {
+        OnDragStart.InvokeAsync(Task);
+    }
+
+    private void HandleDrop(DragEventArgs e)
+    {
+        OnDrop.InvokeAsync(Task);
+    }
+
+    private void HandleToggleTask(ChangeEventArgs e)
+    {
+        OnToggleTask.InvokeAsync(Task);
+    }
+
+    private void HandleEditTask(MouseEventArgs e)
+    {
+        OnEditTask.InvokeAsync(Task);
+    }
+
+    private string GetTaskStyle() => Task.IsComplete ? "text-decoration: line-through; opacity: 0.7;" : "";
+}

@@ -1,0 +1,154 @@
+{
+  "runId": "f8dc1d46-7056-460b-b133-ce013933128f",
+  "environment": "QA",
+  "family": "grids",
+  "manifestPath": "metadata-manifests/v1/families/grids/grids.json",
+  "allowlistPath": "metadata-manifests/v1/policies/allowlist.grids.json",
+  "startedAtUtc": "2026-02-03T16:34:21.6772997Z",
+  "completedAtUtc": "2026-02-03T16:34:22.2605734Z",
+  "items": [
+    {
+      "severity": 1,
+      "type": 3,
+      "table": "SUserInterface.GridViewColumnDefinitions",
+      "recordGuid": "12353c6c-5fce-4e86-9209-3e268593b724",
+      "message": "DB column exists but is not represented in manifest columns[].",
+      "details": {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "internals": "columns"
+      }
+    },
+    {
+      "severity": 1,
+      "type": 3,
+      "table": "SUserInterface.GridViewColumnDefinitions",
+      "recordGuid": "55be0ca9-0878-466c-a018-2368c2e80dbd",
+      "message": "DB column exists but is not represented in manifest columns[].",
+      "details": {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "internals": "columns"
+      }
+    },
+    {
+      "severity": 1,
+      "type": 3,
+      "table": "SUserInterface.GridViewColumnDefinitions",
+      "recordGuid": "58b4827e-bcc5-46aa-a7da-730b60e0f11c",
+      "message": "DB column exists but is not represented in manifest columns[].",
+      "details": {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "internals": "columns"
+      }
+    },
+    {
+      "severity": 1,
+      "type": 3,
+      "table": "SUserInterface.GridViewColumnDefinitions",
+      "recordGuid": "60a92b25-cd56-4a89-be64-55aaa7303d02",
+      "message": "DB column exists but is not represented in manifest columns[].",
+      "details": {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "internals": "columns"
+      }
+    }
+  ],
+  "summary": {
+    "failCount": 0,
+    "warnCount": 4,
+    "infoCount": 0,
+    "byType": {
+      "UnexpectedUnmanagedRow": 4
+    }
+  },
+  "ciSummary": {
+    "environment": "QA",
+    "family": "grids",
+    "exitCode": 0,
+    "hasFailures": false,
+    "hasWarnings": true,
+    "hasInfo": false,
+    "failCount": 0,
+    "warnCount": 4,
+    "infoCount": 0,
+    "byType": {
+      "UnexpectedUnmanagedRow": 4
+    },
+    "byTable": {
+      "SUserInterface.GridViewColumnDefinitions": 4
+    },
+    "byInternalsKind": {
+      "columns": 4
+    }
+  },
+  "viewSummaries": [
+    {
+      "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+      "gridCode": "ENTITYHOBTS",
+      "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+      "viewCode": "ALLENTITYHOBTS",
+      "failCount": 0,
+      "warnCount": 4,
+      "infoCount": 0,
+      "bySeverity": {
+        "Warn": 4
+      },
+      "byType": {
+        "UnexpectedUnmanagedRow": 4
+      },
+      "byInternalsKind": {
+        "columns": 4
+      }
+    }
+  ],
+  "internalsCounts": {
+    "enabled": true,
+    "views": [
+      {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "columnCount": 4,
+        "actionCount": 0,
+        "widgetCount": 0
+      }
+    ]
+  },
+  "internalsValidation": {
+    "enabled": true,
+    "views": [
+      {
+        "gridGuid": "2a45f8d3-dd0f-4895-91c1-ffa49f9ad726",
+        "gridCode": "ENTITYHOBTS",
+        "viewGuid": "4a75253d-4a3a-4a2b-82e2-40491f5c89b9",
+        "viewCode": "ALLENTITYHOBTS",
+        "columnsManaged": true,
+        "actionsManaged": true,
+        "widgetsManaged": true,
+        "dbColumnCount": 4,
+        "dbActionCount": 0,
+        "dbWidgetCount": 0,
+        "manifestColumnCount": 0,
+        "manifestActionCount": 0,
+        "manifestWidgetCount": 0
+      }
+    ],
+    "summary": {
+      "failCount": 0,
+      "warnCount": 0,
+      "infoCount": 0
+    }
+  }
+}

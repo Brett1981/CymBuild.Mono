@@ -1,0 +1,69 @@
+﻿@page "/QuoteTemplateDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using System.Web
+@inherits EditPageBase
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="3eb02edf-5de9-4157-b102-a70fc41b2be7"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="@IsDetailWindowed"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@editPage.entityProperties"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                            IsMainRecordContext="@IsMainRecordContext"
+                            dataObject="@editPage.dataObject"
+                            RecordGuid="@RecordGuid"
+                            inputUpdated="@editPage.HandleInputUpdated"/>
+        <DynamicGrid GridCode="QUOTETEMPLATESECTIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter]
+    public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter]
+    public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("Message", "An error occurred while setting parameters on Quote Template Detail");
+            ex.Data.Add("PageMethod", "QuoteTemplateDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+}

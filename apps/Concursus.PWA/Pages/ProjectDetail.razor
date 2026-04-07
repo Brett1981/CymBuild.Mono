@@ -1,0 +1,99 @@
+﻿@page "/projectdetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+@using System.Web
+@inherits EditPageBase
+
+@attribute [Authorize]
+<EditPage @ref="@editPage"
+          EntityTypeGuid="67e61cfd-d454-4be1-9db9-532ba3de8475"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          EnableBrowserTabTitle="true"
+          BrowserTabTitlePropertyName="Number"
+          BrowserTabTitlePrefix="Project"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-file-earmark-ppt-fill" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+             <TabStripTab Title="Project">
+                <HeaderTemplate>
+                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Project Details
+                </HeaderTemplate>
+                <Content>
+                    <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                entityProperties="@editPage.entityProperties"
+                                entityPropertyGroups="@editPage.entityPropertyGroups"
+                                        IsMainRecordContext="@IsMainRecordContext"
+                                dataObject="@editPage.dataObject"
+                                RecordGuid="@RecordGuid"
+                                inputUpdated="@editPage.HandleInputUpdated" />
+
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Related Records">
+                <HeaderTemplate>
+                    <i class="bi bi-book me-2" style="font-size: 1.2rem;"></i> Related Records
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="PROJECTDETAILS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+
+             <TabStripTab Title="Project Directory">
+                <HeaderTemplate>
+                    <i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Directory
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="PROJECTDIRECTORY" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="PROJECTKEYDATES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+    </TelerikTabStrip>
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter]
+    public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter]
+    public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("Message", "An error occurred while setting parameters on Project Detail");
+            ex.Data.Add("PageMethod", "ProjectDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+}

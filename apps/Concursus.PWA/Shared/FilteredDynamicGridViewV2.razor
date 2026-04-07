@@ -1,0 +1,577 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Services
+@using Telerik.DataSource
+@using Telerik.DataSource.Extensions
+@using Concursus.Components.Shared.Services
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@using Telerik.Blazor.Components
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshservice
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+@* CBLD-540 *@
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+
+<MessageDisplay @ref="_messageDisplay"
+                ErrorMessage="@ErrorMessage"
+                PageMethod="@PageMethod"
+                MessageType="MessageType" />
+
+<ErrorBoundary>
+    <ChildContent>
+
+        @if (ViewDefinition is not null)
+        {
+            @* =============================================================
+                KPI + filters (NOT shown on closure queue)
+            ============================================================== *@
+            @if (IsClosureReviewQueueGrid)
+            {
+                <div class="auth-dashboard">
+                    <div class="kpi-summary">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Total Pending</div>
+                            <div class="kpi-value">@AuthorisationTotalPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Jobs</div>
+                            <div class="kpi-value">@AuthorisationJobsPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Quotes</div>
+                            <div class="kpi-value">@AuthorisationQuotesPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Enquiries</div>
+                            <div class="kpi-value">@AuthorisationEnquiriesPending</div>
+                        </div>
+                    </div>
+
+                    <div class="filter-control auth-toolbar">
+                        <div class="quick-filter-toolbar">
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex gap-2 flex-wrap align-items-center">
+                                    <TelerikButton Class="@AuthorisationAllCss"
+                                                   OnClick="@(() => SetAuthorisationTypeAsync(null))">
+                                        All (@AuthorisationTotalPending)
+                                    </TelerikButton>
+
+                                    <TelerikButton Class="@AuthorisationEnquiriesCss"
+                                                   OnClick="@(() => SetAuthorisationTypeAsync("Enquiries"))">
+                                        Enquiries (@AuthorisationEnquiriesPending)
+                                    </TelerikButton>
+
+                                    <TelerikButton Class="@AuthorisationQuotesCss"
+                                                   OnClick="@(() => SetAuthorisationTypeAsync("Quotes"))">
+                                        Quotes (@AuthorisationQuotesPending)
+                                    </TelerikButton>
+
+                                    <TelerikButton Class="@AuthorisationJobsCss"
+                                                   OnClick="@(() => SetAuthorisationTypeAsync("Jobs"))">
+                                        Jobs (@AuthorisationJobsPending)
+                                    </TelerikButton>
+
+                                    <div class="auth-toggle">
+                                        <span class="auth-toggle-label">My Items</span>
+
+                                        <TelerikSwitch Value="@AuthorisationMyItemsOnly"
+                                                       ValueChanged="@AuthorisationMyItemsChanged" />
+
+                                    </div>
+                                    @if (_authorisationIsUpdating)
+                                    {
+                                        <span class="auth-updating-pill" role="status" aria-live="polite">
+                                            <span class="auth-spinner" aria-hidden="true"></span>
+                                            Updating…
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            }
+            @if (!IsClosureReviewQueueGrid)
+            {
+                <!-- KPI Section -->
+                <div class="kpi-summary">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Total Invoicing Value</div>
+                        <div class="kpi-value">@TotalQuoteValue.ToString("C", CultureInfo.CreateSpecificCulture("en-GB"))</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Average Invoicing Value</div>
+                        <div class="kpi-value">@AverageQuoteValue.ToString("C", CultureInfo.CreateSpecificCulture("en-GB"))</div>
+                    </div>
+                </div>
+
+                <div class="kpi-summary">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Paid Invoices</div>
+                        <div class="kpi-value">@NmbrOfPaidInvoices</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Pending Invoices</div>
+                        <div class="kpi-value">@NmbrOfPendingInvoices</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Overdue Invoices</div>
+                        <div class="kpi-value">@NmbrOfOverdueInvoices</div>
+                    </div>
+                </div>
+
+                <div class="filter-control">
+                    <div class="status-explanation">
+                        <ul>
+                            @if (RedIndicator != "")
+                            {
+                                <li><span class="dot red"></span> @RedIndicator</li>
+                            }
+                            else if (OrangeIndicator != "")
+                            {
+                                <li><span class="dot yellow"></span> @OrangeIndicator</li>
+                            }
+                            else if (GreenIndicator != "")
+                            {
+                                <li><span class="dot green"></span> @GreenIndicator</li>
+                            }
+
+                       
+                            
+                        </ul>
+                    </div>
+
+                    <div class="quick-filter-toolbar">
+                        @if (CreatedOnColumn != "")
+                        {
+                            <div>
+                                <TelerikButton Class="@QuickFilter7DaysCSS"
+                                               OnClick="@(() => ShowRecordsFromXDay(-7))">
+                                    Last 7 Days
+                                </TelerikButton>
+
+                                <TelerikButton Class="@QuickFilter90DaysCSS"
+                                               OnClick="@(() => ShowRecordsFromXDay(-90))">
+                                    Last 90 Days
+                                </TelerikButton>
+
+                                <TelerikButton OnClick="@ToggleCustomRange">
+                                    Custom Range...
+                                </TelerikButton>
+
+                                <TelerikButton Class="@QuickFilterGroupByCSS"
+                                               OnClick="@(() => GroupByButton())">
+                                    Group by @GroupByColumTranslation
+                                </TelerikButton>
+                            </div>
+                        }
+                    </div>
+
+                    @if (showCustomRange)
+                    {
+                        <div class="custom-range-panel">
+                            <label for="StartDate" class="form-label">From:</label>
+                            <TelerikDatePicker Id="StartDate"
+                                               Format="dd/MM/yyyy"
+                                               @bind-Value="@customStartDate" />
+
+                            <label for="EndDate" class="form-label">To:</label>
+                            <TelerikDatePicker Id="EndDate"
+                                               Format="dd/MM/yyyy"
+                                               @bind-Value="@customEndDate" />
+
+                            <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
+                            <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* =============================================================
+               Grid wrapper
+               IMPORTANT: auth-queue-grid scopes the scroll/alignment fixes
+            ============================================================== *@
+            <div class="grid-container @(IsClosureReviewQueueGrid ? "auth-queue-grid" : "")">
+                <TelerikGrid TItem="ExpandoObject"
+                             OnRead="@ReadItems"
+                             Pageable="true"
+                             Groupable="false"
+                             Sortable="true"
+                             PageSize="50"
+                             Height="100%"
+                             Width="100%"
+                             Resizable="true"
+                             OnRowDoubleClick="@OnRowDoubleClickHandler"
+                             @ref="@GridRef"
+                             OnRowRender="@OnRowRenderHandler"
+                             FilterMode="@GridFilterMode.FilterMenu"
+                             SelectionMode="GridSelectionMode.Single"
+                             OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                             ScrollMode="@GridScrollMode.Scrollable"
+                             OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
+
+                    <GridSettings>
+                        <GridPagerSettings InputType="PagerInputType.Input"
+                                           PageSizes="null"
+                                           ButtonCount="5"
+                                           Position="PagerPosition.Bottom" />
+                    </GridSettings>
+
+                    <GridColumns>
+
+                        @* =============================================================
+                           Actions column: closure queue only
+                           NOTE: HeaderClass exists; Class does NOT. :contentReference[oaicite:1]{index=1}
+                        ============================================================== *@
+                        @if (IsClosureReviewQueueGrid)
+                        {
+                            <GridColumn Title="Actions"
+                                        Width="260px"
+                                        MinResizableWidth="260"
+                                        HeaderClass="actions-col"
+                                        Filterable="false"
+                                        Sortable="false"
+                                        Resizable="false">
+                                <Template>
+                                    @{
+                                        var row = (IDictionary<string, object>)context;
+
+                                        var recordGuid = TryGetGuidFromRow(row, "Guid");
+                                        var hasGuid = recordGuid != Guid.Empty;
+
+                                        var entityTypeName =
+                                        row.TryGetValue("EntityTypeName", out var et) ? et?.ToString() :
+                                        row.TryGetValue("Type", out var t) ? t?.ToString() :
+                                        "";
+
+                                        var isActionableEntity =
+                                        string.Equals(entityTypeName, "Jobs", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(entityTypeName, "Quotes", StringComparison.OrdinalIgnoreCase) ||
+                                        string.Equals(entityTypeName, "Enquiries", StringComparison.OrdinalIgnoreCase);
+
+                                        // enable approve/reject for Jobs/Quotes/Enquiries when CanActionForUser=1
+                                        var canApproveReject = hasGuid && isActionableEntity && TryGetBoolFromRow(row, "CanActionForUser");
+                                    }
+
+                                    <div class="d-flex gap-2 actions-cell">
+                                        <TelerikButton Size="sm"
+                                                       Enabled="@hasGuid"
+                                                       OnClick="@((MouseEventArgs e) => OpenClosureReviewModal(row))">
+                                            Review
+                                        </TelerikButton>
+
+                                        <TelerikButton Size="sm"
+                                                       ThemeColor="@ThemeConstants.Button.ThemeColor.Success"
+                                                       Enabled="@canApproveReject"
+                                                       OnClick="@((MouseEventArgs e) => OpenClosureApproveModal(row))">
+                                            Approve
+                                        </TelerikButton>
+
+                                        <TelerikButton Size="sm"
+                                                       ThemeColor="@ThemeConstants.Button.ThemeColor.Error"
+                                                       Enabled="@canApproveReject"
+                                                       OnClick="@((MouseEventArgs e) => OpenClosureRejectModal(row))">
+                                            Reject
+                                        </TelerikButton>
+                                    </div>
+                                </Template>
+                            </GridColumn>
+                        }
+
+                        @{
+                            int index = 0;
+                            bool isLocked = false;
+                            int numOfItems = ViewDefinition.Columns
+                            .Where(o => !o.IsHidden)
+                            .OrderBy(o => o.ColumnOrder)
+                            .Count();
+                        }
+
+                        @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns
+                                            .Where(o => !o.IsHidden)
+                                            .OrderBy(o => o.ColumnOrder))
+                        {
+                            @if (gvcd.Name == "ID")
+                            {
+                                <GridColumn Field="@gvcd.Name"
+                                            Title="@gvcd.Title"
+                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                            Visible="gvcd.IsHidden != true"
+                                            Filterable="@gvcd.IsFiltered"
+                                            Width="@gvcd.Width"
+                                            Sortable="true"
+                                            Resizable="true">
+                                    <Template>
+                                        @{
+                                            var overdue = "dot red";
+                                            var pending = "dot yellow";
+                                            var paid = "dot green";
+
+                                            var indicatorToAssign = "";
+
+                                            var item = (IDictionary<string, object>)context;
+
+                                            var paymentStatus = item.ContainsKey("InvoicePaymentStatus")
+                                            ? item["InvoicePaymentStatus"]?.ToString() ?? ""
+                                            : "";
+
+                                            if (paymentStatus != "")
+                                            {
+                                                if (paymentStatus == "Overdue") indicatorToAssign = overdue;
+                                                else if (paymentStatus == "Pending") indicatorToAssign = pending;
+                                                else if (paymentStatus == "Paid") indicatorToAssign = paid;
+                                            }
+                                        }
+
+                                        <div class="custom-ellipsis">
+                                        <li>
+                                            <span class="@indicatorToAssign"></span>
+                                            @item["ID"]
+                                        </li>
+                                </div>
+                                </Template>
+                                </GridColumn>
+                                }
+                                else if (gvcd.Name == "Date")
+                                {
+
+                                    //Status Indicator labels
+                                    var chaseOverdueLabel = "dot red";
+                                    var chaseDueThisWeekLabel = "dot yellow";
+                                    var noChaseDateNeededLabel = "dot green";
+                                    var labelToAssign = "";
+
+
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true">
+                                        <Template>
+                                            @{
+                                                var item = (IDictionary<string, object>)context;
+                                                //If the IsOverdue <> "", it means it needs to be chased.
+                                                var IsOverdue = item["IsOverdue"].ToString();
+
+
+
+
+                                                if (IsOverdue != "")
+                                                    labelToAssign = chaseOverdueLabel;
+                                                else
+                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
+                                                    labelToAssign = noChaseDateNeededLabel;
+
+
+
+                                            }
+                                            <div class="custom-ellipsis">
+                                                @if (IsOverdue != "")
+                                                {
+                                                <li><span class="@labelToAssign"></span> @item[gvcd.Name]</li>
+                                            }
+                                            else
+                                            {
+                                                @item[gvcd.Name]
+                                            }
+
+                                            </div>
+
+                                        </Template>
+                                    </GridColumn>
+                                }
+                                else
+                                {
+                                    <GridColumn Field="@gvcd.Name"
+                                                Title="@gvcd.Title"
+                                                FieldType="typeof(string)"
+                                                Visible="gvcd.IsHidden != true"
+                                                Filterable="@gvcd.IsFiltered"
+                                                Width="@gvcd.Width"
+                                                Sortable="true"
+                                                Resizable="true"
+                                                DisplayFormat="@gvcd.DisplayFormat">
+                                        <Template>
+                                            <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(gvcd.Name)(context))
+                                            </div>
+                                        </Template>
+                                    </GridColumn>
+                                }
+
+                if (!gvcd.IsHidden)
+                {
+                    index++;
+                }
+            }
+            </GridColumns>
+            </TelerikGrid>
+            </div>
+
+            <div class="back-to-top-button">
+                <button class="btn btn-secondary" @onclick="ScrollToTop">
+                    <i class="bi bi-arrow-up-circle"></i> Back To Top
+                </button>
+            </div>
+        }
+
+        @* =============================================================
+           Closure Review Modal (queue ONLY)
+        ============================================================== *@
+        @if (IsClosureReviewQueueGrid)
+        {
+            <TelerikWindow Visible="@_closureModalVisible"
+                           Modal="true"
+                           Draggable="true"
+                           Resizable="true"
+                           Class="closure-review-window"
+                           Width="auto">
+
+                <WindowContent>
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="m-0">@_closureModalTitle</h5>
+
+                            <TelerikButton Size="sm"
+                                           FillMode="@ThemeConstants.Button.FillMode.Flat"
+                                           OnClick="@((MouseEventArgs e) => CloseClosureModal())">
+                                <i class="bi bi-x-lg"></i>
+                            </TelerikButton>
+                        </div>
+
+                        <div class="mb-2">
+                            <div><strong>Type:</strong> @_closureEntityTypeName</div>
+                            <div><strong>#.:</strong> @_closureNumber</div>
+                            <div><strong>Status:</strong> @_closureStatus</div>
+                            <div><strong>Discipline:</strong> @_closureDiscipline</div>
+                            <div><strong>Last Updated:</strong> @_closureLastUpdated</div>
+
+                            <hr />
+
+                            <div><strong>Reference:</strong> @_closureDisplayRef</div>
+                            <div><strong>Client:</strong> @_closureClient</div>
+                            <div><strong>Agent:</strong> @_closureAgent</div>
+                            <div><strong>Address:</strong> @_closureAddress</div>
+
+                            @if (_closureEntityTypeName == "Jobs")
+                            {
+                                <hr />
+                                <div><strong>Description:</strong> @_closureJobDescription</div>
+                                <div><strong>Job Type:</strong> @_closureJobType</div>
+                            }
+                            else if (_closureEntityTypeName == "Quotes")
+                            {
+                                <hr />
+                                <div><strong>Agreed Fee:</strong> @_closureQuoteAgreedFee</div>
+                                <div><strong>Net:</strong> @_closureQuoteNet</div>
+                                <div><strong>Date Accepted:</strong> @_closureQuoteDateAccepted</div>
+                            }
+                            else if (_closureEntityTypeName == "Enquiries")
+                            {
+                                <hr />
+                                <div><strong>Total Fee:</strong> @_closureEnquiryTotalFee</div>
+                            }
+                        </div>
+
+                        <div class="mb-3">
+                            <TelerikButton Size="sm"
+                                           FillMode="@ThemeConstants.Button.FillMode.Outline"
+                                           OnClick="@((MouseEventArgs e) => OpenFullRecord())">
+                                Open Full Record
+                            </TelerikButton>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label"><strong>Comment</strong></label>
+                            <TelerikTextArea @bind-Value="_closureComment"
+                                             Rows="4"
+                                             Width="100%" />
+
+                            @if (!string.IsNullOrWhiteSpace(_closureValidationMessage))
+                            {
+                                <div class="text-danger mt-1">@_closureValidationMessage</div>
+                            }
+
+                            <div class="text-muted mt-1" style="font-size:0.9rem;">
+                                Reject: comment required. Approve: optional (defaults to “Closure Approved by {USER}”).
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <TelerikButton OnClick="@((MouseEventArgs e) => CloseClosureModal())">
+                                Cancel
+                            </TelerikButton>
+
+                            <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Success"
+                                           Enabled="@(!_closureBusy)"
+                                           OnClick="@((MouseEventArgs e) => SubmitClosureApprove())">
+                                Approve Closure
+                            </TelerikButton>
+
+                            <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Error"
+                                           Enabled="@(!_closureBusy)"
+                                           OnClick="@((MouseEventArgs e) => SubmitClosureReject())">
+                                Reject Closure
+                            </TelerikButton>
+                        </div>
+                    </div>
+                </WindowContent>
+            </TelerikWindow>
+        }
+
+        @if (ViewDefinition?.IsDetailWindowed == true)
+        {
+            <TelerikWindow @ref="ModalWindow"
+                           Class="responsive-window"
+                           Visible="@WindowIsVisible"
+                           Modal="true"
+                           CloseOnOverlayClick="false"
+                           VisibleChanged="@WindowVisibleChangedHandler"
+                           MaxHeight="100vh">
+                <WindowTitle>@WindowTitle</WindowTitle>
+                <WindowContent>
+                    <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{_detailPageTypeName}")"
+                                      Parameters="@_detailPageParameters" />
+                </WindowContent>
+                <WindowActions>
+                    <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+                </WindowActions>
+            </TelerikWindow>
+        }
+    </ChildContent>
+
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>
+
+<script>
+    document.addEventListener("keypress", function (e) {
+        const filterButton = document.querySelector(".k-button-solid-primary");
+        const enterPressed = (e.key === "Enter");
+
+        if (enterPressed && filterButton) {
+            filterButton.click();
+        }
+    });
+</script>
+
+

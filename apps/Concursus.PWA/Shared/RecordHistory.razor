@@ -1,0 +1,39 @@
+﻿@using Concursus.API.Client.Models
+@using Newtonsoft.Json
+@using System.Web
+@attribute [Authorize]
+
+<DynamicGrid GridCode="RECORDHISTORY" ParentGuid="@RecordGuid" ParentDataObjectReference="ParentDataObjectReference" />
+
+@code {
+
+    [Parameter] public string RecordGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public DataObjectReference? ParentDataObjectReference { get; set; }
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public EventCallback CloseWindow { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the RecordHistory component.");
+            ex.Data.Add("PageMethod", "RecordHistory/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+}

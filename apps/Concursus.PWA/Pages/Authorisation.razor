@@ -1,0 +1,35 @@
+﻿@page "/authorisation/{DrawerGuid?}"
+@attribute [Authorize]
+
+@using Concursus.PWA.Shared
+
+<h4>
+    <i class="bi bi-shield-lock-fill me-2" style="font-size: 1.2rem;"></i>
+    Authorisation
+</h4>
+
+<DynamicGrid GridCode="AUTHOREVIEW"
+             DrawerGuid="@DrawerGuid"
+             FullGrid="true"
+             IsLoading="@isLoading" />
+
+@code
+{
+    [Parameter] public string? DrawerGuid { get; set; } = Guid.Empty.ToString();
+
+    private bool isLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        isLoading = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            isLoading = false;
+        }
+    }
+}

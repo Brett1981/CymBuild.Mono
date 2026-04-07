@@ -1,0 +1,3 @@
+﻿CREATE USER [ESGL\Richard.Brindley]
+  WITHOUT LOGIN
+GO

@@ -1,0 +1,85 @@
+﻿.v2drawer-container {
+    position: relative;
+}
+
+    .v2drawer-container.full-grid {
+        width: 100%;
+    }
+
+.v2-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+}
+
+.v2-title {
+    font-weight: 600;
+    flex: 1;
+}
+
+/* Drawer panel */
+.v2drawer-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 280px;
+    max-width: 80%;
+    background: #ffffff;
+    border-right: 1px solid rgba(0,0,0,0.08);
+    box-shadow: 0 0.25rem 1rem rgba(0,0,0,0.15);
+    transform: translateX(-105%);
+    transition: transform 180ms ease-in-out;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+}
+
+    .v2drawer-panel.open {
+        transform: translateX(0);
+    }
+
+.v2drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+
+.v2drawer-body {
+    padding: 0.5rem;
+    overflow: auto;
+}
+
+.v2drawer-item {
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+    .v2drawer-item:hover {
+        background: rgba(0,0,0,0.05);
+    }
+
+    .v2drawer-item.selected {
+        background: rgba(13,110,253,0.10);
+        border: 1px solid rgba(13,110,253,0.18);
+    }
+
+/* Overlay */
+.v2drawer-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.25);
+    z-index: 40;
+}

@@ -1,0 +1,172 @@
+﻿@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+
+@inject Core.CoreClient coreClient
+@inject RefreshService refreshService
+@inject HttpClient Http
+@inject DeviceInfoService DeviceInfoService
+@inject Helpers.SessionStorageAccessor SessionStorageAccessor // CBLD-12
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+@attribute [Authorize]
+
+<ErrorBoundary>
+    <ChildContent>
+
+        @if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && selectedItem?.ViewDefinition?.ShowOnMobile == true))
+        {
+            <div class="v2drawer-container @(FullGrid ? "full-grid" : "")">
+                <div class="card shadow-sm">
+
+                    <!-- Toolbar -->
+                    <div class="v2-toolbar">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="ToggleDrawer">
+                            <i class="bi bi-list"></i>
+                        </button>
+
+                        <span class="v2-title">
+                            @GridName
+                            @if (!string.IsNullOrWhiteSpace(selectedItem?.Text))
+                            {
+                                <span class="text-muted small ms-2">(@selectedItem.Text)</span>
+                            }
+                        </span>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="card-body">
+
+                        @if (IsLoading)
+                        {
+                            <div class="d-flex align-items-center gap-2 py-2">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <span class="small text-muted">Loading grid…</span>
+                            </div>
+                        }
+                        else
+                        {
+                            @if ((ParentRowStatus == -1 || ParentRowStatus > 0))
+                            {
+                                <!-- Existing grid-host behaviour preserved (we’ll replace these with V2DynamicGridView later) -->
+                                @if (selectedItem?.ViewDefinition?.GridViewTypeId == 7)
+                                {
+                                    <FilteredDynamicGridViewV2 @ref="@Dgv"
+                                                               @key="@($"Tree-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                               OnActionCompleted="HandleActionCompleted"
+                                                               Disabled="@Disabled"
+                                                               DoubleClickDisabled="@DoubleClickDisabled"
+                                                               ViewDefinition="@selectedItem?.ViewDefinition"
+                                                               GridCode="@GridCode"
+                                                               ParentDataObjectReference="@ParentDataObjectReference"
+                                                               FullGrid="@FullGrid" />
+                                }
+                                else if (GridCode == "FILTEREDQUOTES")
+                                {
+                                    <FilteredDynamicGridView @ref="@Dgv"
+                                                             OnActionCompleted="HandleActionCompleted"
+                                                             Disabled="@Disabled"
+                                                             DoubleClickDisabled="@DoubleClickDisabled"
+                                                             ViewDefinition="@selectedItem?.ViewDefinition"
+                                                             GridCode="@GridCode"
+                                                             ParentDataObjectReference="@ParentDataObjectReference"
+                                                             FullGrid="@FullGrid" />
+                                }
+                                else if (selectedItem?.ViewDefinition?.GridViewTypeId == 1 && GridCode != "MYPROJECTS")
+                                {
+                                    <V2DynamicGridView @ref="@Dgv"
+                                                       FullGrid="@FullGrid"
+                                                       OnActionCompleted="HandleActionCompleted"
+                                                       Disabled="@Disabled"
+                                                       DoubleClickDisabled="@DoubleClickDisabled"
+                                                       ViewDefinition="@selectedItem?.ViewDefinition"
+                                                       GridCode="@GridCode"
+                                                       ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                       ParentDataObjectReference="@ParentDataObjectReference"
+                                                       ParentRowStatus="@ParentRowStatus"
+                                                       @bind-ParentGuid="@ParentGuid"
+                                                       ResyncDataObject="@ResyncDataObject" />
+                                }
+                                else if (selectedItem?.ViewDefinition?.GridViewTypeId == 5)
+                                {
+                                    <DynamicTreeListGridView @ref="@Dgv"
+                                                             @key="@($"Tree-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                             OnActionCompleted="HandleActionCompleted"
+                                                             ViewDefinition="@selectedItem?.ViewDefinition"
+                                                             GridCode="@GridCode"
+                                                             ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                             ParentDataObjectReference="@ParentDataObjectReference"
+                                                             ParentGuid="@ParentGuid"
+                                                             FullGrid="@FullGrid" />
+                                }
+                                else
+                                {
+                                    <DynamicBatchGridView @ref="@Dgv"
+                                                          OnActionCompleted="HandleActionCompleted"
+                                                          ViewDefinition="@selectedItem?.ViewDefinition"
+                                                          GridCode="@GridCode"
+                                                          ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                          ParentDataObjectReference="@ParentDataObjectReference"
+                                                          ParentGuid="@ParentGuid"
+                                                          FullGrid="@FullGrid" />
+                                }
+                            }
+                            else
+                            {
+                                <div class="alert alert-info" role="alert">
+                                    <strong>Save First!</strong> You must save the record before you can access this area.
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <!-- Drawer panel (Bootstrap Offcanvas) -->
+                <div class="v2drawer-panel @(IsDrawerOpen ? "open" : "")">
+                    <div class="v2drawer-header">
+                        <div class="fw-semibold">Views</div>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="ToggleDrawer">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="v2drawer-body">
+                        @if (Data.Count == 0)
+                        {
+                            <div class="text-muted small">No views available.</div>
+                        }
+                        else
+                        {
+                            @foreach (var item in Data)
+                            {
+                                var isSelected = selectedItem?.ViewDefinition?.Code == item.ViewDefinition?.Code;
+
+                                <button type="button"
+                                        class="v2drawer-item @(isSelected ? "selected" : "")"
+                                        @onclick="() => SelectedItemChangedHandler(item)">
+                                    <i class="@(item.Icon ?? "bi bi-grid-3x3-gap") me-2"></i>
+                                    <span>@item.Text</span>
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <!-- simple overlay -->
+                @if (IsDrawerOpen)
+                {
+                    <div class="v2drawer-overlay" @onclick="ToggleDrawer"></div>
+                }
+            </div>
+        }
+
+    </ChildContent>
+
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

@@ -1,0 +1,60 @@
+Entity Framework Core – Database & Migrations Cheat Sheet
+
+1. Configure your connection string
+   • In appsettings.json:
+     "ConnectionStrings": {
+       "PostcodeLookupDb": "Your_SQL_Server_Connection_String"
+     }
+
+2. Open a terminal / PowerShell in your project folder
+   • cd path/to/PostCodeLookup
+
+3. Scaffold the initial database
+   • dotnet ef migrations add InitialCreate
+   • dotnet ef database update
+
+4. Modify your entities/DTOs
+   • Add new properties (e.g. Latitude, Longitude, LocalAuthority)
+
+5. Create a new migration for your changes
+   • dotnet ef migrations add AddLatLongAndAuthority
+   • (Or use a descriptive name)
+
+6. Apply the new migration
+   • dotnet ef database update
+
+7. (Optional) Roll back a migration
+   • dotnet ef database update LastGoodMigrationName
+   • Or remove the latest migration: dotnet ef migrations remove
+
+8. Verify schema
+   • Use SSMS / Azure Data Studio to confirm new columns are in AddressCaches
+
+9. Commit & share
+   • Check in the Migrations folder and updated appsettings.json
+
+
+Publish & Run
+
+dotnet publish -c Release -o ./publish
+cd ./publish
+
+# Run under Kestrel:
+dotnet PostCodeLookup.dll
+
+Possible:
+dotnet dev-certs https --trust
+
+
+Install as a Windows Service (optional)
+
+From an elevated PowerShell or CMD:
+
+Run the installer script to register the service
+InstallService.bat
+
+Start the service
+Start-Service PostCodeLookup
+
+Check its status
+Get-Service PostCodeLookup

@@ -1,0 +1,65 @@
+﻿@page "/debug-interactions"
+@using Telerik.Blazor.Components
+@using Concursus.Components.Shared.Services
+@inject NavigationManager NavManager
+@inject UserInteractionTrackerService InteractionTracker
+
+<h3 class="mb-3">🔍 User Interaction Debug Viewer</h3>
+
+<TelerikCard Class="mb-3">
+    <CardHeader>
+        <div class="d-flex justify-content-between align-items-center">
+            <span><strong>📄 Page Filter:</strong></span>
+            <TelerikDropDownList @bind-Value="SelectedPageKey"
+                                 Data="@AllPageKeys"
+                                 ValueField="Value"
+                                 TextField="Text"
+                                 FilterPlaceholder="Select page or view all"
+                                 Width="300px" />
+            <TelerikButton OnClick="@ClearLogs" Class="btn-sm btn-danger" Icon="@FontIcon.Trash">Clear All Logs</TelerikButton>
+        </div>
+    </CardHeader>
+</TelerikCard>
+
+@if (FilteredLogs.Any())
+{
+    <TelerikGrid Data="@FilteredLogs"
+                 Pageable="true"
+                 PageSize="10"
+                 Height="400px"
+                 Class="border">
+        <GridColumns>
+            <GridColumn Title="Timestamp" Field="@nameof(LogEntry.Timestamp)" Width="180px" />
+            <GridColumn Title="Message" Field="@nameof(LogEntry.Message)" />
+        </GridColumns>
+    </TelerikGrid>
+}
+else
+{
+    <p class="text-muted">No interaction logs recorded for the selected page.</p>
+}
+
+@code {
+    private string CurrentPageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
+    private string? SelectedPageKey { get; set; } = null;
+
+    private List<string> PageKeys => InteractionTracker.GetAllPageKeys().ToList();
+
+    private List<LogEntry> FilteredLogs =>
+        (SelectedPageKey == null || SelectedPageKey == "ALL")
+            ? InteractionTracker.GetAllLogs()
+            : InteractionTracker.GetLogsForPage(SelectedPageKey).ToList();
+
+    private List<DropdownItem> AllPageKeys =>
+        new List<DropdownItem> { new("ALL", "🌐 All Pages") }
+        .Concat(PageKeys.Select(k => new DropdownItem(k, k == CurrentPageKey ? $"{k} (current)" : k)))
+        .ToList();
+
+    private void ClearLogs()
+    {
+        InteractionTracker.ClearAll();
+        StateHasChanged();
+    }
+
+    public record DropdownItem(string Value, string Text);
+}

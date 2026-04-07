@@ -1,0 +1,16 @@
+﻿@page "/settings"
+@using Google.Protobuf.WellKnownTypes
+@attribute [Authorize]
+
+<h4><i class="bi bi-gear me-2" style="font-size: 1.2rem;"></i> Settings</h4>
+
+<DynamicGrid GridCode="SETTINGS" FullGrid="true" TransientVirtualProperties="@TransientVirtualProperties" />
+
+@code {
+
+    [Parameter]
+    public string RecordGuid { get; set; } = "";
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+}

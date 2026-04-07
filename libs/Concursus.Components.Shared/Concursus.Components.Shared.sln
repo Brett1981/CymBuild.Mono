@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.9.34728.123
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Concursus.Components.Shared", "Concursus.Components.Shared.csproj", "{AD91080E-3D47-47F8-A4AF-C0841F7568CF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Concursus.API.Client", "..\CymBuild_API_Client\Concursus.API.Client.csproj", "{AC33284F-22EE-45C2-8793-AECA7D8D4316}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AD91080E-3D47-47F8-A4AF-C0841F7568CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD91080E-3D47-47F8-A4AF-C0841F7568CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD91080E-3D47-47F8-A4AF-C0841F7568CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD91080E-3D47-47F8-A4AF-C0841F7568CF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AC33284F-22EE-45C2-8793-AECA7D8D4316}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC33284F-22EE-45C2-8793-AECA7D8D4316}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC33284F-22EE-45C2-8793-AECA7D8D4316}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC33284F-22EE-45C2-8793-AECA7D8D4316}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8920BFF9-1A88-4F4D-BDD8-C04EECFF653E}
+	EndGlobalSection
+EndGlobal

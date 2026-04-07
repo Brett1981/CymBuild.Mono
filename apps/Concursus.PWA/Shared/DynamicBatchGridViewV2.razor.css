@@ -1,0 +1,209 @@
+.dynamic-batch-grid-v2-shell {
+    gap: 1rem;
+}
+
+.dynamic-batch-grid-v2-header-body {
+    padding: 1rem 1.25rem;
+}
+
+.dynamic-batch-grid-v2-header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.dynamic-batch-grid-v2-header-right {
+    margin-left: auto;
+}
+
+.dynamic-batch-grid-v2-primary-btn {
+    min-width: 170px;
+}
+
+.dynamic-batch-grid-v2-summary-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.dynamic-batch-grid-v2-summary-green {
+    background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+    border-color: #bbf7d0;
+}
+
+.dynamic-batch-grid-v2-summary-amber {
+    background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
+    border-color: #fde68a;
+}
+
+.dynamic-batch-grid-v2-summary-red {
+    background: linear-gradient(180deg, #ffffff 0%, #fef2f2 100%);
+    border-color: #fecaca;
+}
+
+.dynamic-batch-grid-v2-summary-blue {
+    background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+    border-color: #bfdbfe;
+}
+
+.dynamic-batch-grid-v2-search {
+    width: 360px;
+    max-width: 100%;
+}
+
+.dynamic-batch-grid-v2-grid-wrapper {
+    overflow-x: auto;
+}
+
+.dynamic-batch-grid-v2-grid-table {
+    margin-bottom: 0;
+    min-width: 1300px;
+}
+
+.dynamic-batch-grid-v2-grid-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    font-size: 0.88rem;
+    color: #334155;
+}
+
+.dynamic-batch-grid-v2-header-cell {
+    cursor: pointer;
+    user-select: none;
+}
+
+.dynamic-batch-grid-v2-sort-indicator {
+    color: #2563eb;
+    font-size: 0.85rem;
+}
+
+.dynamic-batch-grid-v2-cell {
+    max-width: 280px;
+    font-size: 0.92rem;
+    color: #111827;
+}
+
+.dynamic-batch-grid-v2-checkbox-col {
+    width: 42px;
+    text-align: center;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 128px;
+    border-radius: 999px;
+    padding: 0.28rem 0.7rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+}
+
+.status-green {
+    background: #ecfdf5;
+    color: #047857;
+    border-color: #a7f3d0;
+}
+
+.status-red {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.status-amber {
+    background: #fffbeb;
+    color: #b45309;
+    border-color: #fde68a;
+}
+
+.status-blue {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
+.status-slate {
+    background: #f8fafc;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.row-accent-green td:first-child,
+.row-accent-red td:first-child,
+.row-accent-amber td:first-child,
+.row-accent-blue td:first-child {
+    border-left: 4px solid transparent;
+}
+
+.row-accent-green td:first-child {
+    border-left-color: #10b981;
+}
+
+.row-accent-red td:first-child {
+    border-left-color: #ef4444;
+}
+
+.row-accent-amber td:first-child {
+    border-left-color: #f59e0b;
+}
+
+.row-accent-blue td:first-child {
+    border-left-color: #3b82f6;
+}
+
+.dynamic-batch-grid-v2-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid #e5e7eb;
+    flex-wrap: wrap;
+}
+
+.dynamic-batch-grid-v2-footer-left {
+    color: #64748b;
+    font-size: 0.92rem;
+}
+
+.dynamic-batch-grid-v2-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.dynamic-batch-grid-v2-page-pill {
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.dynamic-batch-grid-v2-empty-state i {
+    font-size: 1.4rem;
+}
+
+@media (max-width: 1400px) {
+    .dynamic-batch-grid-v2-summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 992px) {
+    .dynamic-batch-grid-v2-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dynamic-batch-grid-v2-search {
+        width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    .dynamic-batch-grid-v2-summary-grid {
+        grid-template-columns: 1fr;
+    }
+}

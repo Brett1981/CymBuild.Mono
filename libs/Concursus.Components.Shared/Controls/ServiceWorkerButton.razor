@@ -1,0 +1,222 @@
+﻿@using Concursus.Components.Shared.Services
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject IToastService NotificationService
+
+@implements IAsyncDisposable
+
+<div class="nav-item px-3 serviceworkerbtn">
+    <div class="serviceworker-actions">
+        <button type="button"
+                class="@PrimaryButtonCss"
+                title="@PrimaryButtonTitle"
+                disabled="@_busy"
+                @onclick="HandlePrimaryActionAsync">
+            @if (_busy)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            }
+            else
+            {
+                <i class="@PrimaryIconCss me-2"></i>
+            }
+
+            <span>@PrimaryButtonText</span>
+
+            @if (_updateAvailable)
+            {
+                <span class="update-dot" aria-hidden="true"></span>
+            }
+        </button>
+
+        <button type="button"
+                class="serviceworker-repair-btn"
+                title="Repair / refresh the app"
+                disabled="@_busy"
+                @onclick="RepairAppAsync">
+            <i class="bi bi-tools"></i>
+        </button>
+    </div>
+</div>
+
+@code
+{
+    private DotNetObjectReference<ServiceWorkerButton>? _dotNetRef;
+    private bool _busy;
+    private bool _isSupported = true;
+    private bool _isRegistered;
+    private bool _isInstalling;
+    private bool _isRefreshing;
+    private bool _updateAvailable;
+    private bool _toastShownForCurrentUpdate;
+    private string? _currentVersion;
+    private string? _waitingVersion;
+
+    private string PrimaryButtonText
+    => _isRefreshing ? "Updating..."
+    : _busy ? "Working..."
+    : _updateAvailable ? "Update Ready"
+    : _isInstalling ? "Checking..."
+    : "Up to Date";
+
+    private string PrimaryIconCss
+        => _updateAvailable ? "bi bi-cloud-download-fill"
+        : _isRefreshing ? "bi bi-arrow-repeat"
+        : "bi bi-arrow-clockwise";
+
+    private string PrimaryButtonCss
+        => _updateAvailable ? "serviceworker-primary-btn update-available"
+        : "serviceworker-primary-btn";
+
+    private string PrimaryButtonTitle
+        => _updateAvailable
+            ? "A new CymBuild version is ready. Click to update."
+            : "Check for a newer CymBuild version.";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("serviceWorkerInterop.subscribeForUpdates", _dotNetRef);
+
+            var state = await JSRuntime.InvokeAsync<ServiceWorkerClientState>("serviceWorkerInterop.getState");
+            await ApplyStateAsync(state, showToast: false);
+        }
+        catch (JSException)
+        {
+            _isSupported = false;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnServiceWorkerStatusChanged(ServiceWorkerClientState state)
+    {
+        await ApplyStateAsync(state, showToast: true);
+    }
+
+    private async Task ApplyStateAsync(ServiceWorkerClientState? state, bool showToast)
+    {
+        if (state is null)
+        {
+            return;
+        }
+
+        var wasUpdateAvailable = _updateAvailable;
+
+        _isSupported = state.IsSupported;
+        _isRegistered = state.IsRegistered;
+        _isInstalling = state.IsInstalling;
+        _isRefreshing = state.IsRefreshing;
+        _updateAvailable = state.IsUpdateAvailable;
+        _currentVersion = state.CurrentVersion;
+        _waitingVersion = state.WaitingVersion;
+
+        if (!_updateAvailable)
+        {
+            _toastShownForCurrentUpdate = false;
+        }
+
+        if (showToast && _updateAvailable && !wasUpdateAvailable && !_toastShownForCurrentUpdate)
+        {
+            var versionText = string.IsNullOrWhiteSpace(_waitingVersion)
+                ? "A new CymBuild version is available."
+                : $"A new CymBuild version ({_waitingVersion}) is available.";
+
+            NotificationService.ShowWarning($"{versionText} Click 'Update App' in the menu to refresh.");
+            _toastShownForCurrentUpdate = true;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandlePrimaryActionAsync()
+    {
+        if (!_isSupported)
+        {
+            NotificationService.ShowError("This browser does not support service workers.");
+            return;
+        }
+
+        try
+        {
+            _busy = true;
+            StateHasChanged();
+
+            if (_updateAvailable)
+            {
+                NotificationService.ShowInfo("Applying CymBuild update...");
+                await JSRuntime.InvokeVoidAsync("serviceWorkerInterop.applyUpdate");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("serviceWorkerInterop.checkForUpdate");
+                NotificationService.ShowInfo("Checking for updates...");
+            }
+        }
+        catch (JSException ex)
+        {
+            NotificationService.ShowError($"Service worker action failed: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RepairAppAsync()
+    {
+        try
+        {
+            _busy = true;
+            StateHasChanged();
+
+            NotificationService.ShowWarning("Repairing and refreshing CymBuild...");
+            await JSRuntime.InvokeVoidAsync("serviceWorkerInterop.repairApp");
+        }
+        catch (JSException ex)
+        {
+            NotificationService.ShowError($"Repair failed: {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_dotNetRef is not null)
+            {
+                await JSRuntime.InvokeVoidAsync("serviceWorkerInterop.unsubscribeForUpdates", _dotNetRef);
+                _dotNetRef.Dispose();
+            }
+        }
+        catch
+        {
+            _dotNetRef?.Dispose();
+        }
+    }
+
+    public sealed class ServiceWorkerClientState
+    {
+        public bool IsSupported { get; set; }
+        public bool IsRegistered { get; set; }
+        public bool IsInstalling { get; set; }
+        public bool IsRefreshing { get; set; }
+        public bool IsUpdateAvailable { get; set; }
+        public string? CurrentVersion { get; set; }
+        public string? WaitingVersion { get; set; }
+    }
+}

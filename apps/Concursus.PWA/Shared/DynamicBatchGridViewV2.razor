@@ -1,0 +1,252 @@
+@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Helpers
+
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject IToastService Toast
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserService userService
+
+@attribute [Authorize]
+
+<MessageDisplay @ref="_messageDisplay"
+                ErrorMessage="@ErrorMessage"
+                PageMethod="@PageMethod"
+                MessageType="MessageType" />
+
+<ErrorBoundary>
+    <ChildContent>
+        @if (ViewDefinition is not null)
+        {
+            <div class="cb-v2-shell dynamic-batch-grid-v2-shell">
+
+                <div class="cb-v2-card dynamic-batch-grid-v2-header-card">
+                    <div class="cb-v2-card-body cb-v2-panel-header dynamic-batch-grid-v2-header-body">
+                        <div class="dynamic-batch-grid-v2-header-left">
+                            <div class="cb-v2-icon-wrap">
+                                <i class="bi bi-table"></i>
+                            </div>
+                            <div>
+                                <h4 class="cb-v2-title mb-1">@ViewDefinition.Name</h4>
+                                <div class="cb-v2-subtitle">
+                                    Support monitor for Sage posting activity, retry management, and latest submission outcomes.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cb-v2-actions dynamic-batch-grid-v2-header-right">
+                            @if (IsSageSubmissionMonitorView)
+                            {
+                                <button class="btn btn-primary dynamic-batch-grid-v2-primary-btn"
+                                        @onclick="RequeueSelectedSageSubmissionsAsync"
+                                        disabled="@(!CanRequeueSelectedSageSubmissions)">
+                                    <i class="bi bi-arrow-repeat me-2"></i>
+                                    @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
+                                </button>
+                            }
+
+                            @if (ViewDefinition.AllowNew && !IsBulkProcessing)
+                            {
+                                <button class="btn btn-success" @onclick="AddNew">
+                                    <i class="bi bi-plus-circle-fill me-2"></i>
+                                    New
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cb-v2-summary-grid dynamic-batch-grid-v2-summary-grid">
+                    <button type="button"
+                            class="cb-v2-summary-card @(string.IsNullOrWhiteSpace(ActiveStatusFilter) ? "active" : "")"
+                            @onclick="ClearStatusFilterAsync">
+                        <div class="cb-v2-summary-title">Total</div>
+                        <div class="cb-v2-summary-value">@TotalCount</div>
+                        <div class="cb-v2-summary-subtitle">All records</div>
+                    </button>
+
+                    <button type="button"
+                            class="cb-v2-summary-card dynamic-batch-grid-v2-summary-green @(IsStatusCardActive("Succeeded") ? "active" : "")"
+                            @onclick='() => ApplyStatusFilterAsync("Succeeded")'>
+                        <div class="cb-v2-summary-title">Succeeded</div>
+                        <div class="cb-v2-summary-value">@SucceededCount</div>
+                        <div class="cb-v2-summary-subtitle">Completed successfully</div>
+                    </button>
+
+                    <button type="button"
+                            class="cb-v2-summary-card dynamic-batch-grid-v2-summary-amber @(IsStatusCardActive("FailedRetryable") ? "active" : "")"
+                            @onclick='() => ApplyStatusFilterAsync("FailedRetryable")'>
+                        <div class="cb-v2-summary-title">Failed Retryable</div>
+                        <div class="cb-v2-summary-value">@FailedRetryableCount</div>
+                        <div class="cb-v2-summary-subtitle">Can be requeued</div>
+                    </button>
+
+                    <button type="button"
+                            class="cb-v2-summary-card dynamic-batch-grid-v2-summary-red @(IsStatusCardActive("FailedNonRetryable") ? "active" : "")"
+                            @onclick='() => ApplyStatusFilterAsync("FailedNonRetryable")'>
+                        <div class="cb-v2-summary-title">Failed Non-Retryable</div>
+                        <div class="cb-v2-summary-value">@FailedNonRetryableCount</div>
+                        <div class="cb-v2-summary-subtitle">Needs data/config fix</div>
+                    </button>
+
+                    <button type="button"
+                            class="cb-v2-summary-card dynamic-batch-grid-v2-summary-blue @(IsStatusCardActive("InProgress") ? "active" : "")"
+                            @onclick='() => ApplyStatusFilterAsync("InProgress")'>
+                        <div class="cb-v2-summary-title">In Progress</div>
+                        <div class="cb-v2-summary-value">@InProgressCount</div>
+                        <div class="cb-v2-summary-subtitle">Currently processing</div>
+                    </button>
+                </div>
+
+                <div class="cb-v2-card">
+                    <div class="cb-v2-toolbar dynamic-batch-grid-v2-toolbar">
+                        <div class="cb-v2-toolbar-left dynamic-batch-grid-v2-toolbar-left">
+                            <input class="cb-v2-input dynamic-batch-grid-v2-search"
+                                   placeholder="Search transactions, statuses, responses, errors..."
+                                   @bind="SearchText"
+                                   @bind:event="oninput" />
+                            <button class="cb-v2-btn-secondary" @onclick="ApplySearchAsync">Search</button>
+                            <button class="cb-v2-btn-secondary" @onclick="ClearSearchAsync">Clear</button>
+                        </div>
+
+                        <div class="cb-v2-toolbar-right dynamic-batch-grid-v2-toolbar-right">
+                            @if (!string.IsNullOrWhiteSpace(ActiveStatusFilter))
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filter</span>
+                                    <span class="cb-v2-pill-value">@ActiveStatusFilter</span>
+                                </div>
+                            }
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@TotalRows</span>
+                            </div>
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Selected</span>
+                                <span class="cb-v2-pill-value">@SelectedRowGuids.Count</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (IsLoading)
+                {
+                    <div class="alert alert-info mt-3">Loading data...</div>
+                }
+                else
+                {
+                    <div class="cb-v2-card dynamic-batch-grid-v2-grid-card">
+                        <div class="cb-v2-table-wrap dynamic-batch-grid-v2-grid-wrapper">
+                            <table class="cb-v2-table dynamic-batch-grid-v2-grid-table">
+                                <thead>
+                                    <tr>
+                                        <th class="dynamic-batch-grid-v2-checkbox-col">
+                                            <input type="checkbox"
+                                                   checked="@IsCurrentPageFullySelected"
+                                                   @onchange="ToggleSelectAllCurrentPage" />
+                                        </th>
+                                        <th>Status</th>
+
+                                        @foreach (var column in VisibleColumns)
+                                        {
+                                            <th class="dynamic-batch-grid-v2-header-cell"
+                                                @onclick="() => ToggleSortAsync(column.Name)">
+                                                <span>@column.Title</span>
+
+                                                @if (string.Equals(CurrentSortColumn, column.Name, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <span class="ms-1 dynamic-batch-grid-v2-sort-indicator">
+                                                        @(IsSortDescending ? "▼" : "▲")
+                                                    </span>
+                                                }
+                                            </th>
+                                        }
+                                    </tr>
+                                </thead>
+
+                                <tbody>
+                                    @if (Rows.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="@(VisibleColumns.Count + 2)">
+                                                <div class="cb-v2-empty-state dynamic-batch-grid-v2-empty-state">
+                                                    <i class="bi bi-inbox"></i>
+                                                    <div>No records found.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var row in Rows)
+                                        {
+                                            var rowDict = (IDictionary<string, object>)row;
+                                            var rowGuid = GetRowGuid(rowDict);
+                                            var isSelected = rowGuid != Guid.Empty && SelectedRowGuids.Contains(rowGuid);
+
+                                            <tr class="@(isSelected ? "cb-v2-table-row-selected" : "") @GetRowAccentClass(rowDict)"
+                                                @ondblclick="() => OnRowDoubleClickAsync(row)">
+                                                <td class="dynamic-batch-grid-v2-checkbox-col">
+                                                    <input type="checkbox"
+                                                           checked="@isSelected"
+                                                           @onchange="args => ToggleRowSelection(rowDict, args.Value)" />
+                                                </td>
+
+                                                <td>
+                                                    <span class="@GetStatusBadgeClass(rowDict)">
+                                                        @GetStatusText(rowDict)
+                                                    </span>
+                                                </td>
+
+                                                @foreach (var column in VisibleColumns)
+                                                {
+                                                    <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell">
+                                                        @RenderCellValue(rowDict, column.Name)
+                                                    </td>
+                                                }
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="dynamic-batch-grid-v2-footer">
+                            <div class="dynamic-batch-grid-v2-footer-left">
+                                Showing @PageStartRow to @PageEndRow of @TotalRows
+                            </div>
+
+                            <div class="dynamic-batch-grid-v2-footer-right">
+                                <button class="cb-v2-btn-secondary"
+                                        @onclick="PreviousPageAsync"
+                                        disabled="@(CurrentPage <= 1)">
+                                    Previous
+                                </button>
+
+                                <span class="dynamic-batch-grid-v2-page-pill">Page @CurrentPage of @TotalPages</span>
+
+                                <button class="cb-v2-btn-secondary"
+                                        @onclick="NextPageAsync"
+                                        disabled="@(CurrentPage >= TotalPages)">
+                                    Next
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </ChildContent>
+
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

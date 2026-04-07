@@ -1,0 +1,365 @@
+﻿@page "/ScheduleTeamAbsence"
+
+@using Newtonsoft.Json
+@using System.Web
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Helpers
+@using Concursus.API.Client;
+@using Concursus.API.Client.Models
+
+@using Google.Protobuf;
+@using Google.Protobuf.WellKnownTypes;
+
+@using _AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
+
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inherits EditPageBase
+@attribute [Authorize]
+
+
+
+
+@*
+    Modal file used to display existing or add new holidays.
+*@
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="@EntityTypeGuid"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@appointment.Guid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-person-fill-lock" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+
+
+        <h5 class="mb-2">
+            <span class="badge rounded-pill bg-info text-dark">Setting appointment for: <b>@appointment.TeamMemberNameAsString</b>  </span>
+        </h5>
+
+            <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                entityProperties="@editPage.entityProperties"
+                                entityPropertyGroups="@editPage.entityPropertyGroups"
+                                IsMainRecordContext="@IsMainRecordContext"
+                                dataObject="@editPage.dataObject"
+                                RecordGuid="@appointment.Guid"
+                                inputUpdated="@editPage.HandleInputUpdated" />
+
+
+    </FormBody>
+    <FormButtons>
+
+        <button class="btn btn-danger" id="cancelbtn" @onclick="CloseWindow">Cancel</button>
+
+        @if(appointment.CssClass != "scheduled-work")
+        {
+            <button class="btn btn-success" id="confirmbtn" @onclick="ConfirmChanges">Confirm</button>
+        }
+
+    </FormButtons>
+</EditPage>
+
+
+<style>
+    #taskMenubtn{
+    display: none;
+    }
+
+    #Savebtn{
+    display: none;
+    }
+
+    #SaveAndExitbtn{
+    display: none;
+    }
+
+</style>
+
+
+
+@code {
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public EventCallback CloseModal { get; set; }
+    [Parameter] public EventCallback reloadScheduler { get; set; }
+
+    //Team + Member ID.
+    [Parameter] public int UserID { get; set; } = -1; //Set to -1 -> means no UserID was passed in.
+    [Parameter] public int TeamID { get; set; } = -1; //Same for this.
+
+
+    //Object passed from the Scheduler on double click.
+    [Parameter] public _AvailabilityEvent appointment { get; set; }
+    [Parameter] public DynamicGrid gridRef { get; set; }
+
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+
+    private string EntityTypeGuid { get; set; } = "8899e76e-31bd-492b-9739-eb100610e92d";
+    private FormHelper formHelper { get; set; }
+    private List<API.Core.EntityProperty> filteredEntityProperties = new();
+
+
+    private static string StartTimeEntityPropGuid = "f7f70fe8-ccb0-470b-b22c-564bbeb8feff";
+    private static string EndTimeEntityPropGuid = "15aa2b43-a942-4405-a0ce-64f375aa3565";
+    private static string NonActivityTypePropGuid = "9dab1bbf-3324-4e71-9b65-43c65541750d";
+    private List<string> EntityPropertiesToFilter = new List<string> { StartTimeEntityPropGuid, EndTimeEntityPropGuid, NonActivityTypePropGuid };
+
+    private EntityType NonScheduledEntity = new();
+
+
+
+
+    private DateTime StartTime { get; set; }
+    private DateTime EndTime { get; set; }
+    private string StartTimeAsString { get; set; }
+    private string EndTimeAsString { get; set; }
+    private bool TimeSet { get; set; } = false;
+
+
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+
+        if (!firstRender && !TimeSet && appointment.Guid == Guid.Empty.ToString())
+        {
+            try
+            {
+                formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                //Get the entity as object.
+                NonScheduledEntity = await formHelper.GetEntityType();
+                var parentDataObjectReference = new DataObjectReference(appointment.Guid, EntityTypeGuid);
+
+                var dataObject = await formHelper.ReadDataObjectAsync(appointment.Guid, parentDataObjectReference);
+
+                //Assign the created variables above to the entity properties.
+                if (dataObject != null)
+                {
+
+
+
+                    if (appointment.Start.Hour == 0)
+                    {
+                        appointment.Start = new DateTime(
+                            appointment.Start.Year,
+                            appointment.Start.Month,
+                            appointment.Start.Day,
+                            7, 30, 0,
+                           DateTimeKind.Utc // preserves UTC/Local kind
+                        );
+
+                        appointment.End = new DateTime(
+                            appointment.Start.Year,
+                            appointment.Start.Month,
+                            appointment.Start.Day,
+                            12, 0, 0,
+                            DateTimeKind.Utc
+                        );
+                    }
+                    else if (appointment.Start.Hour == 12)
+                    {
+                        appointment.Start = new DateTime(
+                            appointment.Start.Year,
+                            appointment.Start.Month,
+                            appointment.Start.Day,
+                            12, 0, 0,
+                            DateTimeKind.Utc
+                        );
+
+                        appointment.End = new DateTime(
+                            appointment.Start.Year,
+                            appointment.Start.Month,
+                            appointment.Start.Day,
+                            16, 0, 0,
+                            DateTimeKind.Utc
+                        );
+                    }
+
+
+
+
+                    //Assign these to dataproperties.
+                    StartTime = appointment.Start;
+                    EndTime = appointment.End;
+
+                    //Create datetime for UI (british summer handling)
+                    StartTimeAsString = UiFormattingHelper.FormatDateForUI(appointment.Start, false);
+                    EndTimeAsString = UiFormattingHelper.FormatDateForUI(appointment.End, false);
+
+
+                    foreach (var prop in dataObject.DataProperties)
+                    {
+                        if (prop.EntityPropertyGuid.ToString() == StartTimeEntityPropGuid)
+                        {
+                            Timestamp _startTimeWrap = Timestamp.FromDateTime(DateTime.SpecifyKind(StartTime, DateTimeKind.Utc));
+                            Any _startTimePacked = Any.Pack(_startTimeWrap);
+                            prop.Value = _startTimePacked;
+                        }
+                        else if (prop.EntityPropertyGuid.ToString() == EndTimeEntityPropGuid)
+                        {
+                            Timestamp _endTimeWrap = Timestamp.FromDateTime(DateTime.SpecifyKind(EndTime, DateTimeKind.Utc));
+                            Any _endTimePacked = Any.Pack(_endTimeWrap);
+                            prop.Value = _endTimePacked;
+                        }
+                    }
+
+                    if (editPage.dataObject != null)
+                    {
+                        editPage.dataObject = dataObject;
+                        TimeSet = true;
+                    }
+
+
+                    StateHasChanged();
+                }
+
+            }
+            catch(Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+            }
+
+        }
+
+    }
+
+
+
+
+
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting the parameters for the Job Detail page.");
+            ex.Data.Add("PageMethod", "JobDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+
+
+
+
+
+
+    private async Task ConfirmChanges()
+    {
+
+        //Ensure main values are present
+        if (TeamID == -1 || UserID == -1)
+            throw new Exception($"Missing important value, can't upsert! -> UserID:{UserID}, TeamID:{TeamID}");
+
+        if (appointment == null)
+            throw new Exception($"Parameter for appointment object is null.");
+
+
+
+        var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+
+        StateHasChanged();
+
+        try
+        {
+            var dataObject = editPage.dataObject;
+            var entityProperties = dataObject.DataProperties;
+
+            var teamID = "b138a1b2-4a0e-4aa4-8767-9c0c7ad5bf3e";
+            var memberID = "3f36e529-2e57-46a8-b36e-cf7512ecc683";
+
+            //Update two fields programmatically: MemberIdentityId + TeamGroupId.
+            foreach(var prop in entityProperties){
+                if(prop.EntityPropertyGuid == teamID )
+                {
+                    Int32Value teamIDWrap = new Int32Value { Value = TeamID };
+                    Any teamIDVal = Any.Pack(teamIDWrap);
+
+                    prop.Value = teamIDVal;
+                }
+                else if(prop.EntityPropertyGuid == memberID)
+                {
+                    //Add the user ID
+                    Int32Value memberIDWrap = new Int32Value { Value = UserID };
+                    Any memberIDVal = Any.Pack(memberIDWrap);
+
+                    prop.Value = memberIDVal;
+                }
+            }
+
+
+            var resp = await formHelper.UpsertDataObject(dataObject, null, false);
+
+            if (!string.IsNullOrEmpty(resp.Item1))
+                throw new Exception(resp.Item1);
+
+            ShowSuccessMessage();
+            gridRef.RefreshGrid();
+            await reloadScheduler.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowErrorMessage(ex);
+        }
+
+    }
+
+    private void ShowSuccessMessage(){
+        var ex = new Exception("Record Saved Successfully.")
+            {
+                Data = {
+                        { "PageMethod", "NonActivityEvent" ?? "New Record" },
+                        { "AdditionalInfo", "Record Saved Successfully." },
+                        { "MessageType", MessageDisplay.ShowMessageType.Success } }
+            };
+
+        editPage.OnError(ex);
+    }
+
+
+    private void ShowErrorMessage(Exception exception)
+    {
+        var ex = new Exception(exception.Message)
+            {
+                Data = {
+                        { "PageMethod", "NonActivityEvent" ?? "New Record" },
+                        { "AdditionalInfo", "Record could not be saved!" },
+                        { "MessageType", MessageDisplay.ShowMessageType.Error } }
+            };
+
+        editPage.OnError(ex);
+    }
+
+
+
+    private async void CloseWindow(){
+        await CloseModal.InvokeAsync();
+    }
+}

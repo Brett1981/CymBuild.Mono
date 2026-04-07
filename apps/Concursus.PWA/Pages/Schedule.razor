@@ -1,0 +1,273 @@
+﻿@page "/schedule"
+@attribute [Authorize]
+@using Concursus.API.Client
+@using Concursus.PWA.Helpers
+@using Google.Protobuf.WellKnownTypes
+@inject Core.CoreClient CoreClient
+
+<h4>Schedule</h4>
+
+<div class="d-flex justify-content-around">
+    <TelerikMultiSelect Data="@_users"
+                        @bind-Value="@SelectedUserIds"
+                        ValueField="@nameof(API.Core.User.Guid)"
+                        TextField="@nameof(API.Core.User.FullName)"
+                        OnChange="@LoadDataAsync"
+                        Placeholder="Select Users"
+                        Id="u-multiselect" Width="100%">
+    </TelerikMultiSelect>
+    <TelerikMultiSelect Data="@_organisationalUnits"
+                        @bind-Value="@_selectedOrganisationalUnitsIds"
+                        ValueField="@nameof(OrganisationalUnit.Guid)"
+                        TextField="@nameof(OrganisationalUnit.Name)"
+                        OnChange="@LoadDataAsync"
+                        Placeholder="Select Org. Units"
+                        Id="ou-multiselect" Width="100%"
+                        Enabled="false">
+    </TelerikMultiSelect>
+</div>
+<TelerikScheduler
+    Data="@_scheduleItems"
+    @bind-Date="@StartDate"
+    Height="90vh"
+    @bind-View="@CurrView"
+    OnUpdate="@UpdateAppointmentAsync"
+    OnCreate="@AddAppointmentAsync"
+    OnDelete="@DeleteAppointmentAsync"
+    AllowCreate="true"
+    AllowDelete="true"
+    AllowUpdate="true"
+    ConfirmDelete="true"
+    IdField="@(nameof(ScheduleViewItem.Id))"
+    StartField="@(nameof(ScheduleViewItem.Start))"
+    EndField="@(nameof(ScheduleViewItem.End))"
+    TitleField="@(nameof(ScheduleViewItem.Title))"
+    DescriptionField="@(nameof(ScheduleViewItem.Description))"
+    IsAllDayField="@(nameof(ScheduleViewItem.IsAllDay))"
+    RecurrenceRuleField="@(nameof(ScheduleViewItem.RecurrenceRule))"
+    RecurrenceExceptionsField="@(nameof(ScheduleViewItem.RecurrenceExceptions))"
+    RecurrenceIdField="@(nameof(ScheduleViewItem.RecurrenceId))">
+    <SchedulerResources>
+        <SchedulerResource
+            Field="StatusId"
+            Title="Status"
+            TextField="Name"
+            ColorField="Color"
+            ValueField="Id"
+            Data="@_scheduleItemStatus"/>
+        <SchedulerResource
+            Field="TypeId"
+            Title="Type"
+            TextField="Name"
+            ColorField="Color"
+            ValueField="Id"
+            Data="@_scheduleItemTypes"/>
+    </SchedulerResources>
+    <SchedulerViews>
+        <SchedulerDayView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd">
+            <DateHeaderTemplate>
+                <div>
+                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
+                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
+                    </NavLink>
+                    @context.ToString("ddd, dd")
+                </div>
+            </DateHeaderTemplate>
+        </SchedulerDayView>
+        <SchedulerWeekView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd">
+            <DateHeaderTemplate>
+                <div>
+                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
+                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
+                    </NavLink>
+                    @context.ToString("ddd, dd")
+                </div>
+            </DateHeaderTemplate>
+        </SchedulerWeekView>
+        <SchedulerMultiDayView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd" NumberOfDays="10">
+            <DateHeaderTemplate>
+                <div>
+                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
+                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
+                    </NavLink>
+                    @context.ToString("ddd, dd")
+                </div>
+            </DateHeaderTemplate>
+        </SchedulerMultiDayView>
+        <SchedulerMonthView></SchedulerMonthView>
+    </SchedulerViews>
+</TelerikScheduler>
+
+@code {
+    readonly List<ScheduleViewItem> _scheduleItems = new();
+    List<ScheduleItemType> _scheduleItemTypes = new();
+    List<ScheduleItemStatus> _scheduleItemStatus = new();
+    List<OrganisationalUnit> _organisationalUnits = new();
+    List<int> _selectedOrganisationalUnitsIds = new();
+    List<Concursus.API.Core.User> _users = new();
+    private List<string>? SelectedUserIds { get; set; }
+
+    public DateTime StartDate { get; set; } = UiFormattingHelper.NormalizeToLocal(DateTime.UtcNow);
+
+    public SchedulerView CurrView { get; set; } = SchedulerView.Week;
+
+    //the time portions are important
+    public DateTime DayStart { get; set; } = new(2000, 1, 1, 8, 0, 0);
+    public DateTime DayEnd { get; set; } = new(2000, 1, 1, 20, 0, 0);
+    public DateTime WorkDayStart { get; set; } = new(2000, 1, 1, 9, 0, 0);
+    public DateTime WorkDayEnd { get; set; } = new(2000, 1, 1, 17, 0, 0);
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var organisationalUnitsGetResponse = await CoreClient.OrganisationalUnitsGetAsync(new OrganisationalUnitsGetRequest());
+            _organisationalUnits = organisationalUnitsGetResponse.OrganisationalUnits.ToList();
+
+            var usersGetResponse = await CoreClient.UsersGetAsync(new UsersGetRequest());
+            if (!string.IsNullOrEmpty(usersGetResponse.ErrorReturned))
+            { throw new Exception(usersGetResponse.ErrorReturned); }
+            _users = usersGetResponse.Users.OrderBy(user => user.FullName).ToList();
+
+            await LoadDataAsync();
+
+            await base.OnInitializedAsync();
+
+            return;
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the Schedule page");
+            ex.Data.Add("PageMethod", "Schedule/OnInitializedAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            var scheduleItemStatusGetResponse = await CoreClient.ScheduleItemStatusGetAsync(new ScheduleItemStatusGetRequest());
+            _scheduleItemStatus = scheduleItemStatusGetResponse.ScheduleItemStatus.ToList();
+            if (!string.IsNullOrEmpty(scheduleItemStatusGetResponse.ErrorReturned))
+            {
+                throw new Exception(scheduleItemStatusGetResponse.ErrorReturned);
+            }
+            var scheduleItemTypesGetResponse = await CoreClient.ScheduleItemTypesGetAsync(new ScheduleItemTypesGetRequest());
+            _scheduleItemTypes = scheduleItemTypesGetResponse.ScheduleItemTypes.ToList();
+            if(!string.IsNullOrEmpty(scheduleItemTypesGetResponse.ErrorReturned))
+            {
+                throw new Exception(scheduleItemTypesGetResponse.ErrorReturned);
+            }
+            _scheduleItems.Clear();
+
+            ScheduleItemsGetResponse scheduleItemsGetResponse = new ScheduleItemsGetResponse();
+            List<string>? selectedUserGuids = new();
+            if (SelectedUserIds != null && SelectedUserIds.Any())
+            {
+                try
+                {
+                    foreach (var userId in SelectedUserIds)
+                    {
+                        var user = _users.FirstOrDefault(x => x.Guid == userId);
+
+                        if (user != null)
+                        {
+                            selectedUserGuids.Add(user.UserId.ToString());
+                        }
+                    }
+                    scheduleItemsGetResponse = await CoreClient.ScheduleItemsGetAsync(new ScheduleItemsGetRequest { CurrentUserOnly = false });
+                    if (!string.IsNullOrEmpty(scheduleItemsGetResponse.ErrorReturned))
+                    { throw new Exception(scheduleItemsGetResponse.ErrorReturned); }
+                }
+                catch (Exception ex)
+                {
+                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+                    ex.Data.Add("AdditionalInfo", "An error occurred while loading the Schedule Items for the selected users");
+                    ex.Data.Add("PageMethod", "Schedule/LoadDataAsync()");
+                    _ = OnError.InvokeAsync(ex);
+                }
+
+            }
+            else
+            {
+                scheduleItemsGetResponse = await CoreClient.ScheduleItemsGetAsync(new ScheduleItemsGetRequest { CurrentUserOnly = true });
+            }
+
+            foreach (var scheduleItem in scheduleItemsGetResponse.ScheduleItems)
+            {
+                // Check if the UserId is present in the selected user ids
+                if (selectedUserGuids != null && selectedUserGuids.Contains(scheduleItem.UserId.ToString()))
+                {
+                    _scheduleItems.Add(new ScheduleViewItem(scheduleItem));
+                }
+                // If no users are selected, add all items (Should be current user only)
+                else if (selectedUserGuids == null || !selectedUserGuids.Any())
+                {
+                    _scheduleItems.Add(new ScheduleViewItem(scheduleItem));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while loading the Schedule Items");
+            ex.Data.Add("PageMethod", "Schedule/OnInitializedAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+    }
+
+    private Task UpdateAppointmentAsync(SchedulerUpdateEventArgs args)
+    {
+        try
+        {
+            var scheduleViewItem = (ScheduleViewItem)args.Item;
+            // ReSharper disable once ComplexConditionExpression
+            var scheduleItem = new ScheduleItem()
+            {
+                Description = scheduleViewItem.Description,
+                End = UiFormattingHelper.ToTimestamp(scheduleViewItem.End),
+                Id = scheduleViewItem.Id,
+                IsAllDay = scheduleViewItem.IsAllDay,
+                RecurrenceExceptions = scheduleViewItem.RecurrenceExceptions,
+                RecurrenceId = scheduleViewItem.RecurrenceId ?? -1,
+                RecurrenceRule = scheduleViewItem.RecurrenceRule,
+                Start = UiFormattingHelper.ToTimestamp(scheduleViewItem.Start),
+                StatusId = scheduleViewItem.StatusId ?? -1,
+                Title = scheduleViewItem.Title,
+                TypeId = scheduleViewItem.TypeId ?? -1,
+                JobNumber = scheduleViewItem.JobNumber
+            };
+            // var scheduleItemsUpsertResponse = await coreClient.ScheduleItemsUpsertAsync(new ScheduleItemsUpsertRequest(){scheduleItem});
+            _ = LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating the Schedule Item");
+            ex.Data.Add("PageMethod", "Schedule/LoadDataAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task AddAppointmentAsync(SchedulerCreateEventArgs args)
+    {
+        _ = LoadDataAsync();
+
+        return Task.CompletedTask;
+    }
+
+    private Task DeleteAppointmentAsync(SchedulerDeleteEventArgs args)
+    {
+        _ = LoadDataAsync();
+
+        return Task.CompletedTask;
+    }
+
+}

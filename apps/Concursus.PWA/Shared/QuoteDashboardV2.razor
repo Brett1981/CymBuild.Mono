@@ -1,0 +1,1293 @@
+@page "/quote-dashboard-v2"
+@using System.Globalization
+@using System.Text
+@using System.Web
+@using Concursus.API.Client.Models
+@using Newtonsoft.Json
+@implements IDisposable
+@inject IJSRuntime JsRuntime
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject UserService UserService
+
+<div class="quote-dashboard-v2 cb-v2-page">
+    <div id="quote-dashboard-export">
+    <section class="dashboard-hero">
+        <div>
+            <div class="dashboard-eyebrow">Commercial Insights</div>
+            <h2>Quote Dashboard</h2>
+            <p class="dashboard-subtitle">
+                Track quoting performance, monitor status movement, and understand value distribution across the selected period.
+            </p>
+        </div>
+
+        <div class="dashboard-hero-summary">
+            <div class="hero-summary-pill">
+                <span>Grouping</span>
+                <strong>@Grouping</strong>
+            </div>
+            <div class="hero-summary-pill">
+                <span>Date Range</span>
+                <strong>@StartDate.ToString("dd MMM yyyy") - @EndDate.ToString("dd MMM yyyy")</strong>
+            </div>
+            <div class="hero-summary-pill">
+                <span>Value Threshold</span>
+                <strong>@FormatThresholdLabel(ValueFilter)</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="filters-panel cb-v2-panel">
+        <div class="filters-header-row cb-v2-panel-header">
+            <div>
+                <h3>Filters</h3>
+                <p>Adjust the date range, grouping, and quote value threshold.</p>
+            </div>
+
+            <div class="filters-actions cb-v2-actions">
+                <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToCsv">Export CSV</button>
+                <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToPdf">Export PDF</button>
+            </div>
+        </div>
+
+        <div class="filters-grid">
+            <div class="filter-field">
+                <label for="time-grouping">Time frame</label>
+                <select id="time-grouping" class="dashboard-input cb-v2-select" value="@Grouping" @onchange="OnGroupingChanged">
+                    @foreach (TimeGrouping g in Enum.GetValues(typeof(TimeGrouping)))
+                    {
+                        <option value="@g">@g</option>
+                    }
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="start-date">Start date</label>
+                <input id="start-date" class="dashboard-input cb-v2-input" type="date" value="@StartDate.ToString("yyyy-MM-dd")" @onchange="OnStartDateChanged" />
+            </div>
+
+            <div class="filter-field">
+                <label for="end-date">End date</label>
+                <input id="end-date" class="dashboard-input cb-v2-input" type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
+            </div>
+
+            <div class="filter-field filter-field-wide">
+                <label for="value-filter">Value threshold</label>
+                <div class="range-row">
+                    <input id="value-filter"
+                           class="range-input"
+                           type="range"
+                           min="0"
+                           max="100000"
+                           step="1000"
+                           value="@GetSliderValue()"
+                           @oninput="OnValueFilterChanged" />
+                    <div class="range-value cb-v2-strong">@FormatThresholdLabel(ValueFilter)</div>
+                </div>
+                <div class="preset-buttons">
+                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 25000 ? "active" : null)" @onclick="() => SetValueFilter(25000)">£25K</button>
+                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 50000 ? "active" : null)" @onclick="() => SetValueFilter(50000)">£50K</button>
+                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 75000 ? "active" : null)" @onclick="() => SetValueFilter(75000)">£75K</button>
+                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 100000 ? "active" : null)" @onclick="() => SetValueFilter(100000)">£100K</button>
+                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == BeyondThresholdValue ? "active" : null)" @onclick="() => SetValueFilter(BeyondThresholdValue)">Beyond £100K</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="chip-section">
+            <div class="chip-group-header">
+                <label>Job types</label>
+                <div class="chip-actions cb-v2-actions">
+                    <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllJobTypes">All</button>
+                    <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearJobTypes">Clear</button>
+                </div>
+            </div>
+
+            @if (GroupedJobTypes.Count == 0)
+            {
+                <div class="empty-state compact cb-v2-empty-state">
+                    <strong>No job types available.</strong>
+                </div>
+            }
+            else
+            {
+                @foreach (var orgUnitGroup in GroupedJobTypes)
+                {
+                    <div class="job-type-group-block">
+                        <div class="job-type-group-header">
+                            <div>
+                                <strong>@orgUnitGroup.Key</strong>
+                                <span>@orgUnitGroup.Value.Count job type(s)</span>
+                            </div>
+                            <div class="chip-actions cb-v2-actions">
+                                <button type="button" class="link-button cb-v2-btn-link" @onclick="() => SelectJobTypeGroup(orgUnitGroup.Key)">All in group</button>
+                                <button type="button" class="link-button cb-v2-btn-link" @onclick="() => ClearJobTypeGroup(orgUnitGroup.Key)">Clear group</button>
+                            </div>
+                        </div>
+                        <div class="chip-list">
+                            @foreach (var jobType in orgUnitGroup.Value)
+                            {
+                                <button type="button"
+                                        class="chip-button cb-v2-btn-chip @(SelectedJobType.Contains(jobType) ? "selected" : null)"
+                                        @onclick="() => ToggleJobType(jobType)">
+                                    @jobType
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="chip-section">
+            <div class="chip-group-header">
+                <label>Status</label>
+                <div class="chip-actions cb-v2-actions">
+                    <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllStatuses">All</button>
+                    <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearStatuses">Clear</button>
+                </div>
+            </div>
+            <div class="chip-list">
+                @foreach (var status in JobStatuses)
+                {
+                    <button type="button"
+                            class="chip-button cb-v2-btn-chip @(SelectedJobStatus.Contains(status) ? "selected" : null)"
+                            @onclick="() => ToggleStatus(status)">
+                        @status
+                    </button>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="kpi-grid">
+        <article class="kpi-card cb-v2-card primary">
+            <span class="kpi-label">Total Quote Value</span>
+            <strong class="kpi-value">@FormatCurrency(TotalQuoteValue)</strong>
+            <span class="kpi-meta">Across @VisibleQuoteCount quote(s) in the selected view</span>
+        </article>
+
+        <article class="kpi-card cb-v2-card">
+            <span class="kpi-label">Average Quote Value</span>
+            <strong class="kpi-value">@FormatCurrency(AverageQuoteValue)</strong>
+            <span class="kpi-meta">Based on currently filtered records</span>
+        </article>
+
+        <article class="kpi-card cb-v2-card accent-green">
+            <span class="kpi-label">Quotes Above Threshold</span>
+            <strong class="kpi-value">@QuotesAboveThresholdCount</strong>
+            <span class="kpi-meta">@PercentageAboveThreshold% of visible quotes</span>
+        </article>
+
+        <article class="kpi-card cb-v2-card accent-blue">
+            <span class="kpi-label">Sent</span>
+            <strong class="kpi-value">@QuotesSent</strong>
+            <span class="kpi-meta">Current filtered status count</span>
+        </article>
+
+        <article class="kpi-card cb-v2-card accent-green-soft">
+            <span class="kpi-label">Accepted</span>
+            <strong class="kpi-value">@QuotesAccepted</strong>
+            <span class="kpi-meta">Accepted quote count</span>
+        </article>
+
+        <article class="kpi-card cb-v2-card accent-red">
+            <span class="kpi-label">Rejected</span>
+            <strong class="kpi-value">@QuotesRejected</strong>
+            <span class="kpi-meta">Rejected quote count</span>
+        </article>
+    </section>
+
+    <section class="dashboard-main-grid">
+        <article class="panel panel-large cb-v2-panel">
+            <div class="panel-header cb-v2-panel-header">
+                <div>
+                    <h3>Status Trend</h3>
+                    <p>Quote count by @Grouping.ToString().ToLowerInvariant() period, stacked by status.</p>
+                </div>
+            </div>
+
+            @if (TimelineGroups.Count == 0)
+            {
+                <div class="empty-state cb-v2-empty-state">
+                    <strong>No chart data available</strong>
+                    <span>Try widening the date range or changing the selected filters.</span>
+                </div>
+            }
+            else
+            {
+                <div class="chart-surface">
+                    <div class="chart-grid-lines">
+                        @foreach (var line in ChartGridLines)
+                        {
+                            <div class="chart-grid-line" style="bottom:@line.Position%;">
+                                <span>@line.Label</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="chart-columns">
+                        @foreach (var group in TimelineGroups)
+                        {
+                            <button type="button"
+                                    class="chart-column-wrapper @(SelectedTimelineLabel == group.Label ? "active" : null)"
+                                    title="@BuildColumnTooltip(group)"
+                                    @onclick="() => ToggleTimelineSelection(group.Label)">
+                                <div class="chart-column">
+                                    @foreach (var segment in group.Segments)
+                                    {
+                                        <div class="chart-segment"
+                                             style="height:@segment.HeightPercent%; background:@segment.Color;"
+                                             title="@segment.Status: @segment.Count">
+                                        </div>
+                                    }
+                                </div>
+                                <div class="chart-column-label">@group.Label</div>
+                                <div class="chart-column-total">@group.Total</div>
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="chart-legend">
+                    @foreach (var item in StatusLegend)
+                    {
+                        <div class="legend-item">
+                            <span class="legend-dot" style="background:@item.Color;"></span>
+                            <span>@item.Label</span>
+                        </div>
+                    }
+                </div>
+            }
+        </article>
+
+        <div class="side-panels">
+            <article class="panel cb-v2-panel">
+                <div class="panel-header cb-v2-panel-header">
+                    <div>
+                        <h3>Status Breakdown</h3>
+                        <p>Current filtered status mix.</p>
+                    </div>
+                </div>
+
+                @if (StatusBreakdown.Count == 0)
+                {
+                    <div class="empty-state compact cb-v2-empty-state">
+                        <strong>No status data available.</strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="status-breakdown-scroll">
+                    <div class="breakdown-list">
+                        @foreach (var item in StatusBreakdown)
+                        {
+                            <div class="breakdown-row">
+                                <div class="breakdown-row-top">
+                                    <div class="breakdown-label-wrap">
+                                        <span class="legend-dot" style="background:@item.Color;"></span>
+                                        <span class="breakdown-label">@item.Label</span>
+                                    </div>
+                                    <span class="breakdown-value">@item.Count (@item.Percentage%)</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill" style="width:@item.Percentage%; background:@item.Color;"></div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    </div>
+                }
+            </article>
+
+            <article class="panel quote-type-panel cb-v2-panel">
+                <div class="panel-header cb-v2-panel-header">
+                    <div>
+                        <h3>Quote Type Breakdown</h3>
+                        <p>Most active quote types within the selection.</p>
+                    </div>
+                </div>
+
+                @if (QuoteTypeBreakdown.Count == 0)
+                {
+                    <div class="empty-state compact cb-v2-empty-state">
+                        <strong>No quote type data available.</strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="quote-type-list quote-type-scroll">
+                        @foreach (var item in QuoteTypeBreakdown)
+                        {
+                            <div class="quote-type-row">
+                                <div>
+                                    <strong>@item.Label</strong>
+                                    <span>@item.Count quote(s)</span>
+                                </div>
+                                <div class="quote-type-pill">@item.Percentage%</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </article>
+        </div>
+    </section>
+
+    <section class="panel panel-table cb-v2-panel">
+        <div class="panel-header panel-header-stack-on-mobile cb-v2-panel-header">
+            <div>
+                <h3>Filtered Quote Records</h3>
+                <p>Underlying records used to calculate the visible dashboard metrics.</p>
+            </div>
+            <div class="filters-actions cb-v2-actions">
+                @if (!string.IsNullOrWhiteSpace(SelectedTimelineLabel))
+                {
+                    <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ClearTimelineSelection">Clear period selection</button>
+                }
+                @if (FilteredChartData.Count > 0)
+                {
+                    <div class="page-size-picker">
+                        <label for="page-size">Rows</label>
+                        <select id="page-size" class="dashboard-input page-size-select cb-v2-select" value="@PageSize" @onchange="OnPageSizeChanged">
+                            @foreach (var option in PageSizeOptions)
+                            {
+                                <option value="@option">@option</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (FilteredChartData.Count == 0)
+        {
+            <div class="empty-state compact cb-v2-empty-state">
+                <strong>No records match the current filters.</strong>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrap cb-v2-table-wrap">
+                <table class="dashboard-table cb-v2-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Period</th>
+                            <th>Status</th>
+                            <th>Quote Type</th>
+                            <th>Client</th>
+                            <th>Value Range</th>
+                            <th>Count</th>
+                            <th>Estimated Total</th>
+                            <th>Quotes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in PagedFilteredRows)
+                        {
+                            <tr>
+                                <td>@row.Date.ToString("dd MMM yyyy")</td>
+                                <td>@row.Label</td>
+                                <td>
+                                    <span class="status-badge" style="background:@GetStatusColor(row.Status);">@row.Status</span>
+                                </td>
+                                <td>@row.QuoteType</td>
+                                <td>@row.Client</td>
+                                <td>@GetValueRangeLabel(row)</td>
+                                <td>@row.Value</td>
+                                <td>@FormatCurrency((decimal)row.QuoteValue)</td>
+                                <td>
+                                    <div class="quote-links">
+                                        @foreach (var quote in row.Quotes.OrderBy(q => q.QuoteNumber))
+                                        {
+                                            <a class="quote-link" href="@BuildQuoteDetailUrl(quote.Guid)" target="_blank">@quote.QuoteNumber</a>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-bar">
+                <div class="pagination-summary cb-v2-muted">
+                    Showing @PageStartRecord - @PageEndRecord of @FilteredChartData.Count grouped row(s)
+                </div>
+                <div class="pagination-actions cb-v2-actions">
+                    <button type="button" class="secondary-button pagination-button" disabled="@(CurrentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                    @foreach (var pageNumber in VisiblePageNumbers)
+                    {
+                        <button type="button"
+                                class="secondary-button pagination-button @(pageNumber == CurrentPage ? "active" : null)"
+                                @onclick="() => GoToPage(pageNumber)">
+                            @pageNumber
+                        </button>
+                    }
+                    <button type="button" class="secondary-button pagination-button" disabled="@(CurrentPage >= TotalPages)" @onclick="NextPage">Next</button>
+                </div>
+            </div>
+        }
+    </section>
+    </div>
+</div>
+
+@code {
+
+    private readonly CultureInfo GbpCulture = CultureInfo.CreateSpecificCulture("en-GB");
+    private readonly Dictionary<string, string> StatusColorMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Sent"] = "#3b82f6",
+        ["Accepted"] = "#22c55e",
+        ["Rejected"] = "#ef4444",
+        ["Complete"] = "#f59e0b",
+        ["Completed"] = "#f59e0b",
+        ["Ready to Send"] = "#8b5cf6",
+        ["Quoting"] = "#06b6d4",
+        ["1st Chase"] = "#14b8a6",
+        ["2nd Chase"] = "#0ea5e9",
+        ["Dead"] = "#6b7280",
+        ["Expired"] = "#f97316",
+        ["Part Complete"] = "#84cc16",
+        ["Other"] = "#94a3b8"
+    };
+    private readonly string[] Palette = ["#3b82f6", "#22c55e", "#ef4444", "#f59e0b", "#8b5cf6", "#06b6d4", "#14b8a6", "#0ea5e9", "#84cc16", "#ec4899", "#6366f1", "#f97316"];
+    private readonly int[] PageSizeOptions = [20, 50, 100];
+    private const int BeyondThresholdValue = 100001;
+    private Timer? filterDebounceTimer;
+
+    private List<LegendItem> StatusLegend { get; set; } = new();
+    private List<QuoteChartData> ChartData { get; set; } = new();
+    private List<QuoteChartData> VisibleSourceData { get; set; } = new();
+    private List<FilteredQuoteChartData> FilteredChartData { get; set; } = new();
+    private List<TimelineGroup> TimelineGroups { get; set; } = new();
+    private List<BreakdownItem> StatusBreakdown { get; set; } = new();
+    private List<BreakdownItem> QuoteTypeBreakdown { get; set; } = new();
+    private List<ChartGridLine> ChartGridLines { get; set; } = new();
+    private Dictionary<string, List<string>> GroupedJobTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<string> JobTypes { get; set; } = new();
+    private List<string> SelectedJobType { get; set; } = new();
+    private List<string> JobStatuses { get; set; } = new();
+    private List<string> SelectedJobStatus { get; set; } = new();
+
+    private decimal TotalQuoteValue { get; set; }
+    private decimal AverageQuoteValue { get; set; }
+    private int QuotesAboveThresholdCount { get; set; }
+    private int PercentageAboveThreshold { get; set; }
+    private int QuotesSent { get; set; }
+    private int QuotesAccepted { get; set; }
+    private int QuotesRejected { get; set; }
+    private int VisibleQuoteCount { get; set; }
+
+    private int ValueFilter = 50000;
+    private int PageSize { get; set; } = 20;
+    private int CurrentPage { get; set; } = 1;
+    private string? SelectedTimelineLabel { get; set; }
+
+    public enum TimeGrouping { Daily, Weekly, Monthly }
+
+    private TimeGrouping grouping = TimeGrouping.Weekly;
+    private DateTime startDate = DateTime.Today.AddDays(-30);
+    private DateTime endDate = DateTime.Today;
+
+    private HashSet<string> UserOrgUnits = new();
+
+    private IEnumerable<FilteredQuoteChartData> PagedFilteredRows => FilteredChartData
+        .OrderByDescending(x => x.Date)
+        .ThenBy(x => x.Status)
+        .ThenBy(x => x.QuoteType)
+        .Skip((CurrentPage - 1) * PageSize)
+        .Take(PageSize);
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredChartData.Count / (double)PageSize));
+    private int PageStartRecord => FilteredChartData.Count == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
+    private int PageEndRecord => Math.Min(CurrentPage * PageSize, FilteredChartData.Count);
+    private IEnumerable<int> VisiblePageNumbers
+    {
+        get
+        {
+            var start = Math.Max(1, CurrentPage - 2);
+            var end = Math.Min(TotalPages, start + 4);
+            start = Math.Max(1, end - 4);
+            return Enumerable.Range(start, end - start + 1);
+        }
+    }
+
+    private TimeGrouping Grouping
+    {
+        get => grouping;
+        set
+        {
+            if (grouping == value)
+            {
+                return;
+            }
+
+            grouping = value;
+            SelectedTimelineLabel = null;
+            RebindChart();
+        }
+    }
+
+    private DateTime StartDate
+    {
+        get => startDate;
+        set
+        {
+            startDate = value.Date;
+            SelectedTimelineLabel = null;
+            RebindChart();
+        }
+    }
+
+    private DateTime EndDate
+    {
+        get => endDate;
+        set
+        {
+            endDate = value.Date;
+            SelectedTimelineLabel = null;
+            RebindChart();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        //Check which UserGroups the user is in to determine which JobTypes to show on the dashboard
+        if (UserService.UserGroups == null || !UserService.UserGroups.Any())
+        {
+            Console.WriteLine("QuoteDashboardV2: User is not in any groups, no data will be shown on the dashboard.");
+        }
+        else
+        {
+            foreach (var orgUnit in UserService.UserGroups)
+            {
+                UserOrgUnits.Add(orgUnit.GroupName);
+            }
+        }
+
+        await GetQuoteData();
+
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JsRuntime.InvokeVoidAsync("setTimeout", "window.dispatchEvent(new Event('resize'))", 150);
+        }
+    }
+
+    private async Task GetQuoteData()
+    {
+        try
+        {
+            ChartData.Clear();
+
+            var records = await coreClient.GetQuoteDashboardDataAsync(new GetQuoteDashboardDataReq());
+            if (!records.Res.Any())
+            {
+                RebindChart();
+                return;
+            }
+
+            foreach (var rec in records.Res)
+            {
+                if (string.IsNullOrWhiteSpace(rec.QuoteType))
+                {
+                    continue;
+                }
+
+                var quoteDate = rec.Date.ToDateTime();
+                var normalisedStatus = NormaliseStatus(rec.Status);
+
+                ChartData.Add(new QuoteChartData
+                {
+                    QuoteID = rec.QuoteID,
+                    QuoteNumber = rec.QuoteNumber ?? string.Empty,
+                    Guid = rec.Guid ?? string.Empty,
+                    Label = GetTimeGroupLabel(quoteDate),
+                    Date = quoteDate,
+                    Client = rec.Client ?? string.Empty,
+                    QuoteType = rec.QuoteType ?? string.Empty,
+                    Status = normalisedStatus,
+                    QuoteValue = rec.QuoteValue,
+                    Min = GetMin(rec.QuoteValue),
+                    Max = GetMax(rec.QuoteValue)
+                });
+            }
+
+            JobTypes = ChartData
+                .Select(x => x.QuoteType)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Where(x => UserOrgUnits.Count == 0 || UserOrgUnits.Contains(GetOrgUnitGroupName(x)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+
+            GroupedJobTypes = JobTypes
+                .GroupBy(GetOrgUnitGroupName, StringComparer.OrdinalIgnoreCase)
+                .Where(g => UserOrgUnits.Count == 0 || UserOrgUnits.Contains(g.Key))
+                .OrderBy(g => g.Key)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(x => x).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            JobStatuses = ChartData
+                .Select(x => x.Status)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+
+            if (SelectedJobType.Count == 0)
+            {
+                SelectedJobType = JobTypes.ToList();
+            }
+
+            if (SelectedJobStatus.Count == 0)
+            {
+                SelectedJobStatus = JobStatuses.ToList();
+            }
+
+            RebindChart();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"QuoteDashboardV2 GetQuoteData failed: {ex}");
+            RebindChart();
+        }
+    }
+
+    private bool IsOrgUnitVisible(string orgUnit)
+    {
+        return UserOrgUnits == null
+            || UserOrgUnits.Count == 0
+            || UserOrgUnits.Contains(orgUnit);
+    }
+
+    private void RebindChart()
+    {
+        if (EndDate < StartDate)
+        {
+            endDate = startDate;
+        }
+
+        FilterChart();
+        BuildDashboardState();
+        EnsureValidPage();
+        StateHasChanged();
+    }
+
+    private void FilterChart()
+    {
+        VisibleSourceData = ChartData
+            .Where(d => d.Date.Date >= StartDate.Date && d.Date.Date <= EndDate.Date)
+            .Where(d => SelectedJobType.Count == 0 || SelectedJobType.Contains(d.QuoteType))
+            .Where(d => SelectedJobStatus.Count == 0 || SelectedJobStatus.Contains(d.Status))
+            .OrderBy(d => d.Date)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(SelectedTimelineLabel))
+        {
+            VisibleSourceData = VisibleSourceData
+                .Where(x => string.Equals(GetTimeGroupLabel(x.Date), SelectedTimelineLabel, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        FilteredChartData = VisibleSourceData
+            .GroupBy(r => new
+            {
+                Date = r.Date.Date,
+                Status = r.Status,
+                r.QuoteType,
+                r.Client,
+                Label = GetTimeGroupLabel(r.Date),
+                r.Min,
+                r.Max
+            })
+            .Select(g => new FilteredQuoteChartData
+            {
+                QuoteID = g.First().QuoteID,
+                Label = g.Key.Label,
+                Value = g.Count(),
+                Min = g.Key.Min,
+                Max = g.Key.Max,
+                Date = g.Key.Date,
+                Status = g.Key.Status,
+                Client = g.Key.Client,
+                QuoteType = g.Key.QuoteType,
+                QuoteValue = g.Sum(x => x.QuoteValue),
+                Quotes = g.Select(x => new QuoteInfo(x.QuoteNumber, x.Guid)).Distinct().ToList()
+            })
+            .OrderBy(x => x.Date)
+            .ThenBy(x => x.Status)
+            .ThenBy(x => x.QuoteType)
+            .ToList();
+    }
+
+    private void BuildDashboardState()
+    {
+        VisibleQuoteCount = VisibleSourceData.Count;
+        TotalQuoteValue = (decimal)VisibleSourceData.Sum(x => x.QuoteValue);
+        AverageQuoteValue = VisibleSourceData.Count > 0
+            ? TotalQuoteValue / VisibleSourceData.Count
+            : 0;
+
+        QuotesAboveThresholdCount = VisibleSourceData.Count(x => x.QuoteValue > GetThresholdComparisonValue());
+        PercentageAboveThreshold = VisibleSourceData.Count > 0
+            ? (int)Math.Round((decimal)QuotesAboveThresholdCount / VisibleSourceData.Count * 100, MidpointRounding.AwayFromZero)
+            : 0;
+
+        QuotesSent = VisibleSourceData.Count(x => IsStatus(x.Status, "Sent"));
+        QuotesAccepted = VisibleSourceData.Count(x => IsStatus(x.Status, "Accepted"));
+        QuotesRejected = VisibleSourceData.Count(x => IsStatus(x.Status, "Rejected"));
+
+        BuildStatusLegend();
+        BuildTimelineGroups();
+        BuildStatusBreakdown();
+        BuildQuoteTypeBreakdown();
+        BuildGridLines();
+    }
+
+    private void BuildStatusLegend()
+    {
+        var selectedStatuses = SelectedJobStatus.Count == 0
+            ? JobStatuses
+            : SelectedJobStatus;
+
+        var visibleStatuses = VisibleSourceData
+            .Select(x => x.Status)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var statusesToShow = selectedStatuses
+            .Concat(visibleStatuses)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x == "Other" ? "zzz" : x)
+            .ToList();
+
+        if (!statusesToShow.Contains("Other", StringComparer.OrdinalIgnoreCase))
+        {
+            statusesToShow.Add("Other");
+        }
+
+        StatusLegend = statusesToShow
+            .Select(status => new LegendItem(status, GetStatusColor(status)))
+            .ToList();
+    }
+
+    private void BuildTimelineGroups()
+    {
+        var grouped = VisibleSourceData
+            .GroupBy(x => GetTimeGroupLabel(x.Date))
+            .Select(g => new
+            {
+                Label = g.Key,
+                StatusCounts = StatusLegend.ToDictionary(
+                    s => s.Label,
+                    s => g.Count(x => IsStatus(x.Status, s.Label)),
+                    StringComparer.OrdinalIgnoreCase)
+            })
+            .ToList();
+
+        var maxTotal = grouped.Any() ? grouped.Max(x => x.StatusCounts.Values.Sum()) : 0;
+        var safeMax = maxTotal <= 0 ? 1 : maxTotal;
+
+        TimelineGroups = grouped
+            .Select(g => new TimelineGroup
+            {
+                Label = g.Label,
+                Total = g.StatusCounts.Values.Sum(),
+                Segments = StatusLegend
+                    .Select(status => new ChartSegment(
+                        g.StatusCounts.TryGetValue(status.Label, out var count) ? count : 0,
+                        status.Label,
+                        status.Color,
+                        (decimal)(g.StatusCounts.TryGetValue(status.Label, out var segmentCount) ? segmentCount : 0) / safeMax * 100m))
+                    .Where(x => x.Count > 0)
+                    .ToList()
+            })
+            .ToList();
+    }
+
+    private void BuildStatusBreakdown()
+    {
+        var total = VisibleSourceData.Count;
+
+        StatusBreakdown = StatusLegend
+            .Select(status =>
+            {
+                var count = VisibleSourceData.Count(x => IsStatus(x.Status, status.Label));
+                return CreateBreakdownItem(status.Label, count, total, status.Color);
+            })
+            .Where(x => x.Count > 0 || string.Equals(x.Label, "Other", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private void BuildQuoteTypeBreakdown()
+    {
+        var total = VisibleSourceData.Count;
+
+        QuoteTypeBreakdown = VisibleSourceData
+            .GroupBy(x => x.QuoteType)
+            .Select(g => new BreakdownItem(
+                g.Key,
+                g.Count(),
+                total > 0
+                    ? (int)Math.Round((decimal)g.Count() / total * 100m, MidpointRounding.AwayFromZero)
+                    : 0,
+                string.Empty))
+            .OrderByDescending(x => x.Count)
+            .ThenBy(x => x.Label)
+            .ToList();
+    }
+
+    private void BuildGridLines()
+    {
+        ChartGridLines = new List<ChartGridLine>();
+        var max = TimelineGroups.Any() ? TimelineGroups.Max(x => x.Total) : 0;
+        if (max <= 0)
+        {
+            return;
+        }
+
+        const int numberOfLines = 4;
+        for (var i = 0; i <= numberOfLines; i++)
+        {
+            var position = numberOfLines == 0 ? 0 : i * (100m / numberOfLines);
+            var value = (int)Math.Round(i * (max / (decimal)numberOfLines), MidpointRounding.AwayFromZero);
+            ChartGridLines.Add(new ChartGridLine(value.ToString(GbpCulture), position));
+        }
+    }
+
+    private void ToggleJobType(string jobType)
+    {
+        if (SelectedJobType.Contains(jobType))
+        {
+            SelectedJobType.Remove(jobType);
+        }
+        else
+        {
+            SelectedJobType.Add(jobType);
+        }
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ToggleStatus(string status)
+    {
+        if (SelectedJobStatus.Contains(status))
+        {
+            SelectedJobStatus.Remove(status);
+        }
+        else
+        {
+            SelectedJobStatus.Add(status);
+        }
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SelectAllJobTypes()
+    {
+        SelectedJobType = JobTypes.ToList();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearJobTypes()
+    {
+        SelectedJobType = new List<string>();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SelectJobTypeGroup(string groupName)
+    {
+        if (!GroupedJobTypes.TryGetValue(groupName, out var values))
+        {
+            return;
+        }
+
+        SelectedJobType = SelectedJobType
+            .Union(values, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearJobTypeGroup(string groupName)
+    {
+        if (!GroupedJobTypes.TryGetValue(groupName, out var values))
+        {
+            return;
+        }
+
+        SelectedJobType = SelectedJobType
+            .Except(values, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList();
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SelectAllStatuses()
+    {
+        SelectedJobStatus = JobStatuses.ToList();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearStatuses()
+    {
+        SelectedJobStatus = new List<string>();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ToggleTimelineSelection(string label)
+    {
+        SelectedTimelineLabel = string.Equals(SelectedTimelineLabel, label, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : label;
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearTimelineSelection()
+    {
+        SelectedTimelineLabel = null;
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SetValueFilter(int threshold)
+    {
+        ValueFilter = threshold;
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void OnGroupingChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<TimeGrouping>(e.Value?.ToString(), out var result))
+        {
+            Grouping = result;
+        }
+    }
+
+    private void OnStartDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var result))
+        {
+            StartDate = result;
+            DebounceFilter();
+        }
+    }
+
+    private void OnEndDateChanged(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var result))
+        {
+            EndDate = result;
+            DebounceFilter();
+        }
+    }
+
+    private void OnValueFilterChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value))
+        {
+            ValueFilter = value;
+            ResetToFirstPage();
+            RebindChart();
+        }
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value) && value > 0)
+        {
+            PageSize = value;
+            CurrentPage = 1;
+            StateHasChanged();
+        }
+    }
+
+    private void PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            CurrentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            CurrentPage++;
+        }
+    }
+
+    private void GoToPage(int pageNumber)
+    {
+        if (pageNumber >= 1 && pageNumber <= TotalPages)
+        {
+            CurrentPage = pageNumber;
+        }
+    }
+
+    private void ResetToFirstPage() => CurrentPage = 1;
+
+    private void EnsureValidPage()
+    {
+        if (CurrentPage > TotalPages)
+        {
+            CurrentPage = TotalPages;
+        }
+
+        if (CurrentPage < 1)
+        {
+            CurrentPage = 1;
+        }
+    }
+
+    private void DebounceFilter()
+    {
+        filterDebounceTimer?.Dispose();
+        filterDebounceTimer = new Timer(_ =>
+        {
+            _ = InvokeAsync(RebindChart);
+        }, null, 200, Timeout.Infinite);
+    }
+
+    private string GetTimeGroupLabel(DateTime date)
+    {
+        return Grouping switch
+        {
+            TimeGrouping.Daily => date.ToString("dd MMM", GbpCulture),
+            TimeGrouping.Weekly => $"Week {CultureInfo.CurrentCulture.Calendar.GetWeekOfYear(date, CalendarWeekRule.FirstDay, DayOfWeek.Monday)}",
+            TimeGrouping.Monthly => date.ToString("MMM yyyy", GbpCulture),
+            _ => date.ToString("dd MMM", GbpCulture)
+        };
+    }
+
+    private static int GetMax(double quoteValue)
+    {
+        if (quoteValue <= 25000)
+            return 25000;
+        if (quoteValue <= 50000)
+            return 50000;
+        if (quoteValue <= 75000)
+            return 75000;
+        if (quoteValue <= 100000)
+            return 100000;
+
+        return int.MaxValue;
+    }
+
+    private static int GetMin(double quoteValue)
+    {
+        if (quoteValue <= 25000)
+            return 0;
+        if (quoteValue <= 50000)
+            return 25001;
+        if (quoteValue <= 75000)
+            return 50001;
+        if (quoteValue <= 100000)
+            return 75001;
+
+        return 100001;
+    }
+
+    private string GetValueRangeLabel(FilteredQuoteChartData row)
+    {
+        if (row.Max == int.MaxValue)
+        {
+            return "£100,001+";
+        }
+
+        var minLabel = row.Min <= 0 ? "£0" : row.Min.ToString("C0", GbpCulture);
+        var maxLabel = row.Max.ToString("C0", GbpCulture);
+        return $"{minLabel} - {maxLabel}";
+    }
+
+    private string BuildQuoteDetailUrl(string quoteGuid)
+    {
+        var dataObjectReference = new DataObjectReference(quoteGuid, "1c4794c1-f956-4c32-b886-5500ac778a56");
+        var serializedReference = HttpUtility.UrlEncode(JsonConvert.SerializeObject(dataObjectReference));
+        var returnUrl = HttpUtility.UrlEncode(NavManager.Uri);
+        return $"{NavManager.BaseUri}QuoteDetail/{quoteGuid}/{serializedReference}/{returnUrl}";
+    }
+
+    private BreakdownItem CreateBreakdownItem(string label, int count, int total, string color)
+    {
+        var percentage = total > 0
+            ? (int)Math.Round((decimal)count / total * 100m, MidpointRounding.AwayFromZero)
+            : 0;
+
+        return new BreakdownItem(label, count, percentage, color);
+    }
+
+    private string BuildColumnTooltip(TimelineGroup group)
+    {
+        var statusText = group.Segments.Count == 0
+            ? "No data"
+            : string.Join(", ", group.Segments.Select(x => $"{x.Status}: {x.Count}"));
+
+        return $"{group.Label} - {group.Total} quote(s). {statusText}";
+    }
+
+    private static string NormaliseStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return "Other";
+        }
+
+        return status.Trim();
+    }
+
+    private static bool IsStatus(string? status, string expected)
+        => string.Equals(NormaliseStatus(status), expected, StringComparison.OrdinalIgnoreCase);
+
+    private string GetStatusColor(string? status)
+    {
+        var normalisedStatus = NormaliseStatus(status);
+        if (StatusColorMap.TryGetValue(normalisedStatus, out var knownColor))
+        {
+            return knownColor;
+        }
+
+        var index = Math.Abs(StringComparer.OrdinalIgnoreCase.GetHashCode(normalisedStatus)) % Palette.Length;
+        var derivedColor = Palette[index];
+        StatusColorMap[normalisedStatus] = derivedColor;
+        return derivedColor;
+    }
+
+    private string GetOrgUnitGroupName(string? quoteType)
+    {
+        if (string.IsNullOrWhiteSpace(quoteType))
+        {
+            return "Other";
+        }
+
+        var trimmed = quoteType.Trim();
+        var dashIndex = trimmed.IndexOf(" - ", StringComparison.Ordinal);
+        if (dashIndex > 0)
+        {
+            return trimmed[..dashIndex].Trim();
+        }
+
+        var firstSpace = trimmed.IndexOf(' ');
+        if (firstSpace > 0)
+        {
+            return trimmed[..firstSpace].Trim();
+        }
+
+        return trimmed;
+    }
+
+    private int GetThresholdComparisonValue() => ValueFilter >= BeyondThresholdValue ? 100000 : ValueFilter;
+    private int GetSliderValue() => ValueFilter >= BeyondThresholdValue ? 100000 : ValueFilter;
+
+    private string FormatCurrency(decimal value) => value.ToString("C0", GbpCulture);
+
+    private string FormatThresholdLabel(int value)
+        => value >= BeyondThresholdValue ? "Beyond £100K" : value.ToString("C0", GbpCulture);
+
+    private async Task ExportToCsv()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("Date,Period,Status,QuoteType,Client,ValueRange,Count,EstimatedTotal,Quotes");
+
+        foreach (var item in FilteredChartData.OrderByDescending(x => x.Date))
+        {
+            var quotes = string.Join(" | ", item.Quotes.OrderBy(q => q.QuoteNumber).Select(q => q.QuoteNumber));
+            csv.AppendLine($"{item.Date:yyyy-MM-dd},{EscapeCsv(item.Label)},{EscapeCsv(item.Status)},{EscapeCsv(item.QuoteType)},{EscapeCsv(item.Client)},{EscapeCsv(GetValueRangeLabel(item))},{item.Value},{item.QuoteValue},{EscapeCsv(quotes)}");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        await JsRuntime.InvokeVoidAsync("BlazorDownloadFile", "quote_dashboard_v2.csv", "text/csv", base64);
+    }
+
+    private async Task ExportToPdf()
+    {
+        await JsRuntime.InvokeVoidAsync(
+            "exportToPdf",
+            "quote-dashboard-export",
+            $"quote_dashboard_{DateTime.Now:yyyyMMdd}.pdf");
+    }
+
+    private static string EscapeCsv(string? value)
+    {
+        var safe = value ?? string.Empty;
+        if (safe.Contains(',') || safe.Contains('"') || safe.Contains('\n'))
+        {
+            safe = $"\"{safe.Replace("\"", "\"\"")}\"";
+        }
+        return safe;
+    }
+
+    public void Dispose()
+    {
+        filterDebounceTimer?.Dispose();
+    }
+
+    private sealed class QuoteChartData
+    {
+        public int QuoteID { get; set; }
+        public string QuoteNumber { get; set; } = string.Empty;
+        public string Guid { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public int Value { get; set; }
+        public int Min { get; set; }
+        public int Max { get; set; }
+        public DateTime Date { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string Client { get; set; } = string.Empty;
+        public string QuoteType { get; set; } = string.Empty;
+        public double QuoteValue { get; set; }
+    }
+
+    public record QuoteInfo(string QuoteNumber, string Guid);
+
+    private sealed class FilteredQuoteChartData
+    {
+        public int QuoteID { get; set; }
+        public List<QuoteInfo> Quotes { get; set; } = new();
+        public string Label { get; set; } = string.Empty;
+        public int Value { get; set; }
+        public int Min { get; set; }
+        public int Max { get; set; }
+        public DateTime Date { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string Client { get; set; } = string.Empty;
+        public string QuoteType { get; set; } = string.Empty;
+        public double QuoteValue { get; set; }
+    }
+
+    private sealed record ChartGridLine(string Label, decimal Position);
+    private sealed record ChartSegment(int Count, string Status, string Color, decimal HeightPercent);
+    private sealed class TimelineGroup
+    {
+        public string Label { get; set; } = string.Empty;
+        public int Total { get; set; }
+        public List<ChartSegment> Segments { get; set; } = new();
+    }
+    private sealed record BreakdownItem(string Label, int Count, int Percentage, string Color);
+    private sealed record LegendItem(string Label, string Color);
+}

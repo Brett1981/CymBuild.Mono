@@ -1,0 +1,201 @@
+﻿@page "/EnquiryDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Controls.Documents
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.Extensions.Options
+@using Newtonsoft.Json
+@using System.Web
+@inherits EditPageBase
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject IOptions<ClientConfiguration> Config
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="3b4f2df9-b6cf-4a49-9eed-2206473867a1"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="IsDetailWindowed"
+          EnableBrowserTabTitle="true"
+          BrowserTabTitlePropertyName="Number"
+          BrowserTabTitlePrefix="Enquiry"
+          TransientVirtualProperties="@TransientVirtualProperties">
+    <FormTitle>
+        <i class="bi bi-search me-2" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+    <FormBody>
+
+         <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+          <TabStripTab Title="Enquiry Details">
+                <HeaderTemplate>
+                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Enquiry Details
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+
+                   <FlexPropertyGroups
+
+                            @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@editPage.entityProperties"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                                        IsMainRecordContext="@IsMainRecordContext"
+                            dataObject="@editPage.dataObject"
+                            RecordGuid="@RecordGuid"
+                            inputUpdated="@editPage.HandleInputUpdated"
+                            editPageRef="@editPage"/>
+
+                    <DynamicGrid GridCode="ENQUIRYSERVICES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Project Details">
+                <HeaderTemplate>
+                    <i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Project Details
+                </HeaderTemplate>
+                <Content>
+                    <div class="card shadow-sm">
+                        <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                            <i class="bi bi-info-circle" style=" margin-right: 9px !important; color: #ffffff">  </i>Information
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">Project Details are shared across all records linked to this project. Changes you make here will be visible on any Enquiry, Quote or Job for this project, even if they belong to a different Business Unit.</p>
+
+                        </div>
+                    </div>
+                    <DynamicGrid GridCode="ENQUIRYPROJECTDIRECTORY  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ENQUIRYKEYDATES  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            <TabStripTab Title="Schedule of Info">
+                <HeaderTemplate>
+                    <i class="bi bi-calendar-range me-2" style="font-size: 1.2rem;"></i> Schedule of Info
+                </HeaderTemplate>
+                <Content>
+                    <DynamicGrid GridCode="SCHEDULEOFCLIENTINFO" FullGrid="true" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </Content>
+            </TabStripTab>
+            @if (ShowDocumentsTab)
+            {
+                <TabStripTab Title="Documents">
+                    <HeaderTemplate>
+                        <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                    </HeaderTemplate>
+
+                    <Content>
+                        <ErrorBoundary @ref="_docsBoundary">
+                            <ChildContent>
+                                @if (_formHelper is null
+                                    || editPage is null
+                                    || editPage.dataObject is null
+                                    || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
+                                    || editPage.dataObject.Guid == Guid.Empty.ToString())
+                                {
+                                    <div class="alert alert-info mb-0">
+                                        Documents are loading...
+                                    </div>
+                                }
+                                else
+                                {
+                                    <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                                             DataObject="editPage.dataObject"
+                                                             EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
+                                                             EntityTypeId="83"
+                                                             EntityProperties="editPage.entityProperties"
+                                                             EmailRecordNumberPropertyName="Number"
+                                                             EmailRecordDescriptionPropertyName="DescriptionOfWorks"
+                                                             EmailRecordLocationPropertyName="FormattedAddressComma" />
+                                }
+                            </ChildContent>
+
+                            <ErrorContent Context="ex">
+                                <div class="alert alert-danger">
+                                    <strong>Documents tab crashed.</strong><br />
+                                    @ex.Message
+
+                                    <div class="mt-2">
+                                        <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                    </div>
+                                </div>
+                            </ErrorContent>
+                        </ErrorBoundary>
+                    </Content>
+                </TabStripTab>
+            }
+         </TelerikTabStrip>
+
+
+    </FormBody>
+</EditPage>
+
+@code {
+
+    [Parameter]
+    public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter]
+    public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter]
+    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private API.Client.FormHelper? _formHelper;
+    private ErrorBoundary? _docsBoundary;
+
+    private bool ShowDocumentsTab =>
+        Config.Value.Environment.ShowDocumentsTab;
+
+    private void RecoverDocumentsTab()
+    {
+        _docsBoundary?.Recover();
+        StateHasChanged();
+    }
+
+    private void EnsureFormHelper()
+    {
+        if (_formHelper != null) return;
+
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            sageIntegrationService,
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(),
+            userService);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference =
+                    JsonConvert.DeserializeObject<DataObjectReference>(
+                        HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+
+            // Ensure FormHelper exists early so Documents tab can work immediately
+            EnsureFormHelper();
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the Enquiry Detail page.");
+            ex.Data.Add("PageMethod", "EnquiryDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+}

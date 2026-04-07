@@ -1,0 +1,1 @@
+C:\nuget.exe push bin\Release\Concursus.EF.8.0.0.69.nupkg ShoreNuG$t2021! -Source https://bre.socotec.co.uk:9609/nuget

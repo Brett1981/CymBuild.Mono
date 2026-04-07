@@ -1,0 +1,58 @@
+﻿@page "/transactions"
+@inject HttpClient Http
+
+<h3>📋 Transaction Records</h3>
+
+@if (records == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <TelerikGrid Data="@records"
+                 Pageable="true"
+                 Sortable="true"
+                 FilterMode="Telerik.Blazor.GridFilterMode.FilterRow"
+                 Height="600px"
+                 RowHeight="40"
+                 Reorderable="true"
+                 Resizable="true"
+                 Groupable="true">
+        <GridColumns>
+            <GridColumn Field="Id" Title="ID" Width="80px" />
+            <GridColumn Field="SourceTransactionId" Title="Source Tx ID" />
+            <GridColumn Field="SageReference" Title="Sage Ref" />
+            <GridColumn Field="Status" Title="Status" />
+            <GridColumn Field="TransactionType" Title="Type" />
+            <GridColumn Field="ExternalReferenceId" Title="External Ref" />
+            <GridColumn Field="CreatedUtc" Title="Created" Format="{0:yyyy-MM-dd HH:mm}" />
+            <GridColumn Field="UpdatedUtc" Title="Updated" Format="{0:yyyy-MM-dd HH:mm}" />
+            <GridCommandColumn>
+                <GridCommandButton Command="View">🔍</GridCommandButton>
+            </GridCommandColumn>
+        </GridColumns>
+    </TelerikGrid>
+}
+@code {
+    private List<TransactionRecord> records;
+
+    protected override async Task OnInitializedAsync()
+    {
+        records = await Http.GetFromJsonAsync<List<TransactionRecord>>("http://localhost:5001/api/transactions");
+    }
+
+    public class TransactionRecord
+    {
+        public int Id { get; set; }
+        public string SourceTransactionId { get; set; } = string.Empty;
+        public string TransactionType { get; set; } = string.Empty;
+        public string ExternalReferenceId { get; set; } = string.Empty;
+        public string OriginalJson { get; set; } = string.Empty;
+        public string SageRequestXml { get; set; } = string.Empty;
+        public string SageResponseXml { get; set; } = string.Empty;
+        public string SageReference { get; set; } = string.Empty;
+        public string Status { get; set; } = "Pending";
+        public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+        public DateTime? UpdatedUtc { get; set; }
+    }
+}
