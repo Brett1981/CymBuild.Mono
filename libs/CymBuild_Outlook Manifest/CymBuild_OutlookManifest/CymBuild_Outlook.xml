@@ -1,0 +1,258 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--Created:1746ae4d-7b7e-4b28-b025-3e07e1920ce6-->
+<OfficeApp
+          xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+          xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides"
+          xsi:type="MailApp">
+
+  <!-- LIVE -->
+  <Id>dd8e47fe-1fbe-435c-912f-5f1ab2a0ab89</Id>
+  <Version>26.1.0.42</Version>
+  <ProviderName>Socotec</ProviderName>
+  <DefaultLocale>en-GB</DefaultLocale>
+  <DisplayName DefaultValue="CymBuild Outlook" />
+  <Description DefaultValue="CymBuild Outlook Addin bringing CymBuild and Office together" />
+  <IconUrl DefaultValue="https://bre.socotec.co.uk:9603/Images/SOCLOGO64x64.png" />
+  <HighResolutionIconUrl DefaultValue="https://bre.socotec.co.uk:9603/Images/SOCLOGO128x128.png" />
+
+  <SupportUrl DefaultValue="https://environmentalscientifics.sharepoint.com/Pages/default.aspx" />
+
+  <AppDomains>
+    <AppDomain>https://bre.socotec.co.uk</AppDomain>
+    <AppDomain>https://inspection.shoreengineering.co.uk</AppDomain>
+    <AppDomain>https://environmentalscientifics.sharepoint.com</AppDomain>
+    <AppDomain>https://socotec.co.uk</AppDomain>
+    <AppDomain>https://login.microsoftonline.com</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Mailbox" />
+  </Hosts>
+
+  <Requirements>
+    <Sets DefaultMinVersion="1.3">
+      <Set Name="Mailbox" />
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+      <TabletSettings>
+        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+        <RequestedHeight>250</RequestedHeight>
+      </TabletSettings>
+      <PhoneSettings>
+        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+      </PhoneSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteMailbox</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read" />
+    <Rule xsi:type="ItemIs" ItemType="Appointment" FormType="Read" />
+  </Rule>
+
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <VersionOverrides
+      xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1"
+      xsi:type="VersionOverridesV1_1">
+
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.12">
+          <bt:Set Name="Mailbox" />
+        </bt:Sets>
+      </Requirements>
+
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <SupportsSharedFolders>true</SupportsSharedFolders>
+            <FunctionFile resid="functionFile" />
+
+            <!-- Event-based Activation for New Messages -->
+            <!--<ExtensionPoint xsi:type="LaunchEvent">
+              <LaunchEvents>
+                <LaunchEvent Type="OnNewMessageCompose" FunctionName="handleNewMessageCompose" />
+                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock" />
+              </LaunchEvents>
+              <SourceLocation resid="launchEvents" />
+            </ExtensionPoint>-->
+
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgReadGroup">
+                  <Label resid="groupLabel" />
+
+                  <Control xsi:type="Button" id="msgReadOpenPaneButton">
+                    <Label resid="paneReadButtonLabel" />
+                    <Supertip>
+                      <Title resid="paneReadSuperTipTitle" />
+                      <Description resid="paneReadSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="messageReadTaskPaneUrl" />
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+
+                  <Control xsi:type="Button" id="quickActionReadButton">
+                    <Label resid="quickActionLabel" />
+                    <Supertip>
+                      <Title resid="quickActionTitle" />
+                      <Description resid="quickActionDesc" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ExecuteFunction">
+                      <FunctionName>handleQuickAction</FunctionName>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+
+            <ExtensionPoint xsi:type="AppointmentAttendeeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="appointmentAttendeeGroup">
+                  <Label resid="groupLabel" />
+                  <Control xsi:type="Button" id="appointmentAttendeeOpenPaneButton">
+                    <Label resid="paneReadButtonLabel" />
+                    <Supertip>
+                      <Title resid="paneReadSuperTipTitle" />
+                      <Description resid="paneReadSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="messageReadTaskPaneUrl" />
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="msgComposeGroup">
+                  <Label resid="groupLabel" />
+                  <Control xsi:type="Button" id="msgComposeOpenPaneButton">
+                    <Label resid="paneComposeButtonLabel" />
+                    <Supertip>
+                      <Title resid="paneComposeSuperTipTitle" />
+                      <Description resid="paneComposeSuperTipDescription" />
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16" />
+                      <bt:Image size="32" resid="icon32" />
+                      <bt:Image size="80" resid="icon80" />
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="messageComposeTaskPaneUrl" />
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+
+          <MobileFormFactor>
+            <FunctionFile resid="functionFile" />
+            <ExtensionPoint xsi:type="MobileMessageReadCommandSurface">
+              <Group id="mobileMsgRead">
+                <Label resid="groupLabel" />
+                <Control xsi:type="MobileButton" id="TaskPaneBtn">
+                  <Label resid="paneReadButtonLabel" />
+                  <Icon xsi:type="bt:MobileIconList">
+                    <bt:Image size="25" scale="1" resid="icon16" />
+                    <bt:Image size="25" scale="2" resid="icon16" />
+                    <bt:Image size="25" scale="3" resid="icon16" />
+                    <bt:Image size="32" scale="1" resid="icon32" />
+                    <bt:Image size="32" scale="2" resid="icon32" />
+                    <bt:Image size="32" scale="3" resid="icon32" />
+                    <bt:Image size="48" scale="1" resid="icon80" />
+                    <bt:Image size="48" scale="2" resid="icon80" />
+                    <bt:Image size="48" scale="3" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="messageReadTaskPaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </ExtensionPoint>
+          </MobileFormFactor>
+        </Host>
+      </Hosts>
+
+      <Resources>
+        <bt:Images>
+          <bt:Image id="icon16" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button16x16.png" />
+          <bt:Image id="icon32" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button32x32.png" />
+          <bt:Image id="icon80" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button80x80.png" />
+        </bt:Images>
+
+        <bt:Urls>
+          <bt:Url id="functionFile" DefaultValue="https://bre.socotec.co.uk:9603/Functions/FunctionFile.html" />
+          <bt:Url id="launchEvents" DefaultValue="https://bre.socotec.co.uk:9603/js/LaunchEvent.js" />
+          <bt:Url id="messageReadTaskPaneUrl" DefaultValue="https://bre.socotec.co.uk:9603" />
+          <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://bre.socotec.co.uk:9603?context=compose" />
+        </bt:Urls>
+
+        <bt:ShortStrings>
+          <bt:String id="groupLabel" DefaultValue="CymBuild Outlook Group" />
+          <bt:String id="customTabLabel" DefaultValue="CymBuild Outlook Tab" />
+          <bt:String id="paneReadButtonLabel" DefaultValue="Run CymBuild Outlook" />
+          <bt:String id="paneReadSuperTipTitle" DefaultValue="Get all properties" />
+          <bt:String id="paneComposeButtonLabel" DefaultValue="File Email" />
+          <bt:String id="paneComposeSuperTipTitle" DefaultValue="File this email." />
+          <bt:String id="quickActionLabel" DefaultValue="Quick Action" />
+          <bt:String id="quickActionTitle" DefaultValue="Perform Quick Action" />
+        </bt:ShortStrings>
+
+        <bt:LongStrings>
+          <bt:String id="paneReadSuperTipDescription" DefaultValue="Opens a Task Pane for CymBuild Outlook using Blazor Web Assembly in a web add-in." />
+          <bt:String id="paneComposeSuperTipDescription" DefaultValue="Opens CymBuild Outlook to file this email." />
+          <bt:String id="quickActionDesc" DefaultValue="Executes a quick action without opening the task pane" />
+        </bt:LongStrings>
+      </Resources>
+
+      <WebApplicationInfo>
+        <Id>e551c05f-19f7-435c-9842-c039ab8a4e0c</Id>
+        <Resource>api://bre.socotec.co.uk:9603/e551c05f-19f7-435c-9842-c039ab8a4e0c</Resource>
+        <Scopes>
+          <Scope>profile</Scope>
+          <Scope>user.read</Scope>
+          <Scope>openid</Scope>
+          <Scope>Mail.ReadWrite</Scope>
+          <Scope>Mail.Send</Scope>
+          <Scope>Calendars.ReadWrite</Scope>
+          <Scope>Mail.ReadWrite.Shared</Scope>
+          <Scope>e551c05f-19f7-435c-9842-c039ab8a4e0c/access_as_user</Scope>
+        </Scopes>
+      </WebApplicationInfo>
+
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

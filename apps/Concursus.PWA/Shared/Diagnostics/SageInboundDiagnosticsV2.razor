@@ -1,0 +1,382 @@
+﻿@page "/SageInboundDiagnosticsV2"
+@using System.Globalization
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Common.Shared.Models.Finance
+@using static Concursus.API.Client.FormHelper
+@inject Core.CoreClient CoreClient
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageClient
+@inject UserService UserService
+
+<div class="container-fluid py-3">
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
+            <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+                <div>
+                    <div class="text-uppercase small text-muted fw-semibold">Finance Admin</div>
+                    <h2 class="mb-1">Sage Inbound Diagnostics</h2>
+                    <p class="text-muted mb-0">
+                        Monitor inbound payment/allocation sync status, inspect latest attempt outcome, and safely requeue records without SQL access.
+                    </p>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-outline-secondary rounded-pill"
+                            @onclick="ResetFiltersAsync"
+                            disabled="@_isBusy">
+                        Reset filters
+                    </button>
+
+                    <button class="btn btn-primary rounded-pill"
+                            @onclick="LoadAsync"
+                            disabled="@_isBusy">
+                        @if (_isBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        }
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Status</label>
+                    <select class="form-select"
+                            @bind="_filters.StatusCode"
+                            disabled="@_isBusy">
+                        <option value="">All</option>
+                        <option value="Pending">Pending</option>
+                        <option value="RetryPending">RetryPending</option>
+                        <option value="Failed">Failed</option>
+                        <option value="Succeeded">Succeeded</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Account reference</label>
+                    <input class="form-control"
+                           @bind="_filters.SageAccountReference"
+                           @bind:event="oninput"
+                           disabled="@_isBusy" />
+                </div>
+
+                <div class="col-12 col-md-3">
+                    <label class="form-label">Document no</label>
+                    <input class="form-control"
+                           @bind="_filters.SageDocumentNo"
+                           @bind:event="oninput"
+                           disabled="@_isBusy" />
+                </div>
+
+                <div class="col-12 col-md-3 d-flex align-items-end">
+                    <div class="form-check mb-2">
+                        <input id="retryableOnly"
+                               class="form-check-input"
+                               type="checkbox"
+                               @bind="_retryableOnlyChecked"
+                               disabled="@_isBusy" />
+                        <label class="form-check-label" for="retryableOnly">Retryable failures only</label>
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <div class="alert @(_isError ? "alert-danger" : "alert-success") rounded-4">
+                    @_message
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="table align-middle table-hover">
+                    <thead>
+                        <tr>
+                            <th>Invoice / Transaction</th>
+                            <th>Account / Doc</th>
+                            <th>Status</th>
+                            <th>Last success</th>
+                            <th>Last failure</th>
+                            <th>Retryable</th>
+                            <th>Error</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_rows.Count == 0 && !_isBusy)
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-5">
+                                    No inbound sync records match the current filters.
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var row in _rows)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-semibold">@DisplayText(row.InvoiceReference)</div>
+                                        <div class="small text-muted">
+                                            @DisplayText(row.TransactionReference) · @DisplayText(row.JobReference)
+                                        </div>
+                                    </td>
+
+                                    <td>
+                                        <div class="fw-semibold">@DisplayText(row.SageAccountReference)</div>
+                                        <div class="small text-muted">@DisplayText(row.SageDocumentNo)</div>
+                                    </td>
+
+                                    <td>
+                                        <span class="badge @GetStatusBadgeClass(row)">@DisplayText(row.StatusCode)</span>
+                                        @if (row.IsInProgress)
+                                        {
+                                            <div class="small text-muted mt-1">
+                                                Claimed @FormatUtc(row.InProgressClaimedOnUtc)
+                                            </div>
+                                        }
+                                    </td>
+
+                                    <td>@FormatUtc(row.LastSucceededOnUtc)</td>
+
+                                    <td>
+                                        <div>@FormatUtc(row.LastFailedOnUtc)</div>
+                                        <div class="small text-muted">
+                                            Attempt: @FormatUtc(row.LastAttemptedOnUtc)
+                                        </div>
+                                    </td>
+
+                                    <td>@DisplayText(row.RetryableDisplay)</td>
+
+                                    <td style="max-width: 360px;">
+                                        <div class="text-truncate" title="@row.EffectiveErrorMessage">
+                                            @DisplayText(row.EffectiveErrorMessage)
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(row.LastAttemptResponseStatus))
+                                        {
+                                            <div class="small text-muted">@row.LastAttemptResponseStatus</div>
+                                        }
+                                    </td>
+
+                                    <td class="text-end">
+                                        <div class="d-flex flex-wrap justify-content-end gap-2">
+                                            <button class="btn btn-sm btn-outline-primary rounded-pill"
+                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || !row.CanRequeue || _isBusy)"
+                                                    @onclick="() => RequeueAsync(row, false)">
+                                                Requeue
+                                            </button>
+
+                                            <button class="btn btn-sm btn-primary rounded-pill"
+                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || !row.CanForceRequeue || _isBusy)"
+                                                    @onclick="() => RequeueAsync(row, true)">
+                                                Force Requeue
+                                            </button>
+
+                                            <button class="btn btn-sm btn-outline-secondary rounded-pill"
+                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || _isBusy)"
+                                                    @onclick="() => RunSyncNowAsync(row)">
+                                                Run Sync Now
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly List<SageInboundDiagnosticsRowModel> _rows = new();
+
+    private readonly SageInboundDiagnosticsGetRequestModel _filters = new()
+    {
+        StatusCode = string.Empty,
+        SageAccountReference = string.Empty,
+        SageDocumentNo = string.Empty,
+        OnlyRetryableFailures = null,
+        InvoiceRequestId = null,
+        TransactionId = null,
+        JobId = null
+    };
+
+    private FormHelper? _formHelper;
+    private bool _retryableOnlyChecked;
+    private bool _isBusy;
+    private bool _isError;
+    private string _message = string.Empty;
+    private Guid? _rowActionGuid;
+
+    protected override async Task OnInitializedAsync()
+    {
+        EnsureFormHelper();
+        await LoadAsync();
+    }
+
+    private void EnsureFormHelper()
+    {
+        _formHelper ??= new FormHelper(
+            CoreClient,
+            SageClient,
+            Guid.Empty.ToString(),
+            UserService);
+    }
+
+    private async Task LoadAsync()
+    {
+        EnsureFormHelper();
+
+        _isBusy = true;
+        _message = string.Empty;
+        _isError = false;
+
+        try
+        {
+            _filters.StatusCode ??= string.Empty;
+            _filters.SageAccountReference ??= string.Empty;
+            _filters.SageDocumentNo ??= string.Empty;
+            _filters.OnlyRetryableFailures = _retryableOnlyChecked ? true : null;
+
+            var rows = await _formHelper!.SageInboundDiagnosticsGetAsync(_filters);
+
+            _rows.Clear();
+
+            if (rows is not null && rows.Count > 0)
+            {
+                _rows.AddRange(rows);
+            }
+        }
+        catch (Exception ex)
+        {
+            _rows.Clear();
+            _isError = true;
+            _message = $"Failed to load Sage inbound diagnostics: {ex.Message}";
+        }
+        finally
+        {
+            _isBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResetFiltersAsync()
+    {
+        _filters.StatusCode = string.Empty;
+        _filters.SageAccountReference = string.Empty;
+        _filters.SageDocumentNo = string.Empty;
+        _filters.OnlyRetryableFailures = null;
+        _filters.InvoiceRequestId = null;
+        _filters.TransactionId = null;
+        _filters.JobId = null;
+
+        _retryableOnlyChecked = false;
+
+        await LoadAsync();
+    }
+
+    private async Task RequeueAsync(SageInboundDiagnosticsRowModel row, bool force)
+    {
+        if (row is null || row.CymBuildDocumentGuid == Guid.Empty)
+        {
+            _isError = true;
+            _message = "The selected row does not contain a valid document guid.";
+            return;
+        }
+
+        EnsureFormHelper();
+
+        _rowActionGuid = row.CymBuildDocumentGuid;
+        _message = string.Empty;
+        _isError = false;
+
+        try
+        {
+            await _formHelper!.SageInboundPaymentSyncEnqueueAsync(row.CymBuildDocumentGuid, force);
+
+            _message = force
+                ? $"Force requeue submitted for {DisplayText(row.InvoiceReference)}."
+                : $"Requeue submitted for {DisplayText(row.InvoiceReference)}.";
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Requeue failed for {DisplayText(row.InvoiceReference)}: {ex.Message}";
+        }
+        finally
+        {
+            _rowActionGuid = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunSyncNowAsync(SageInboundDiagnosticsRowModel row)
+    {
+        if (row is null || row.CymBuildDocumentGuid == Guid.Empty)
+        {
+            _isError = true;
+            _message = "The selected row does not contain a valid document guid.";
+            return;
+        }
+
+        EnsureFormHelper();
+
+        _rowActionGuid = row.CymBuildDocumentGuid;
+        _message = string.Empty;
+        _isError = false;
+
+        try
+        {
+            await _formHelper!.SageInboundPaymentSyncAsync(row.CymBuildDocumentGuid);
+
+            _message = $"Sync run requested for {DisplayText(row.InvoiceReference)}.";
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Run Sync Now failed for {DisplayText(row.InvoiceReference)}: {ex.Message}";
+        }
+        finally
+        {
+            _rowActionGuid = null;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatUtc(DateTime? value)
+    {
+        return value.HasValue
+            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)
+            : "-";
+    }
+
+    private static string DisplayText(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
+    }
+
+    private static string GetStatusBadgeClass(SageInboundDiagnosticsRowModel row)
+    {
+        if (row is null)
+        {
+            return "bg-light text-dark";
+        }
+
+        return row.StatusCode switch
+        {
+            "Succeeded" => "bg-success-subtle text-success-emphasis",
+            "Failed" => "bg-danger-subtle text-danger-emphasis",
+            "RetryPending" => "bg-warning-subtle text-warning-emphasis",
+            "Pending" => "bg-info-subtle text-info-emphasis",
+            _ when row.IsInProgress => "bg-secondary-subtle text-secondary-emphasis",
+            _ => "bg-light text-dark"
+        };
+    }
+}

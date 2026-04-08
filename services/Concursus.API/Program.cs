@@ -15,6 +15,7 @@ using Concursus.Common.Shared.Kafka.Core.Publisher;
 using Concursus.Common.Shared.Models.Finance;
 using Concursus.Common.Shared.Notifications.AuthAndBidNotification;
 using Concursus.Common.Shared.Services.Finance;
+using Concursus.EF;
 using Concursus.EF.Finance;
 using Concursus.EF.Monitoring;
 using Concursus_EF;
@@ -130,7 +131,12 @@ try
         .Bind(builder.Configuration.GetSection("Integrations:SageApi:SubmissionWorker"))
         .ValidateDataAnnotations()
         .ValidateOnStart();
+    builder.Services.AddOptions<SageInboundPaymentSyncWorkerOptions>()
+        .Bind(builder.Configuration.GetSection("Integrations:SageApi:Workers:SageInboundPaymentSync"))
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
+    builder.Services.AddHostedService<SageInboundPaymentSyncWorker>();
     // -------------------------------------------------------------------------
     // Phase 5 wrapper gateway
     // -------------------------------------------------------------------------
@@ -163,6 +169,13 @@ try
 
     builder.Services.AddScoped<ITransactionSageSubmissionAdminRepository, TransactionSageSubmissionAdminRepository>();
     builder.Services.AddScoped<ITransactionSageSubmissionAdminService, TransactionSageSubmissionAdminService>();
+
+    builder.Services.AddScoped<ISageInboundPaymentReadRepository, SageInboundPaymentReadRepository>();
+    builder.Services.AddScoped<ISageInboundPaymentIdempotencyRepository, SageInboundPaymentIdempotencyRepository>();
+    builder.Services.AddScoped<ISageInboundPaymentPersistenceRepository, SageInboundPaymentPersistenceRepository>();
+    builder.Services.AddScoped<ISageInboundPaymentWorklistRepository, SageInboundPaymentWorklistRepository>();
+    builder.Services.AddScoped<ISageInboundPaymentSyncService, SageInboundPaymentSyncService>();
+    builder.Services.AddScoped<ISageInboundDiagnosticsRepository, SageInboundDiagnosticsRepository>();
 
     builder.Logging.ClearProviders();
     builder.Host.UseNLog();

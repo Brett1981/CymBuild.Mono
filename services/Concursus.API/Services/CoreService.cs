@@ -9,7 +9,9 @@ using Concursus.API.Services.Monitoring;
 using Concursus.Common.Shared;
 using Concursus.Common.Shared.Classes;
 using Concursus.Common.Shared.Data;
+using Concursus.Common.Shared.Models.Finance;
 using Concursus.Common.Shared.Monitoring;
+using Concursus.EF.Finance;
 using Concursus_EF;
 using DocumentFormat.OpenXml.ExtendedProperties;
 
@@ -39,6 +41,8 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly ISageApiClient _sageApiClient;
     private readonly ITransactionSageSubmissionAdminService _transactionSageSubmissionAdminService;
     private readonly IDelegatedGraphClientFactory _delegatedGraphClientFactory;
+    private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
+    private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
     #endregion Private Fields
 
     #region Public Constructors
@@ -52,7 +56,9 @@ public partial class CoreService : Core.Core.CoreBase
         ILookupService lookupService,
         ISageApiClient sageApiClient,
         ITransactionSageSubmissionAdminService transactionSageSubmissionAdminService,
-        IDelegatedGraphClientFactory delegatedGraphClientFactory)
+        IDelegatedGraphClientFactory delegatedGraphClientFactory,
+        ISageInboundPaymentSyncService sageInboundPaymentSyncService,
+        ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository)
     {
         _config = config;
         _serviceBase = new ServiceBase(config, httpContextAccessor, new Logging(logger, config));
@@ -63,6 +69,8 @@ public partial class CoreService : Core.Core.CoreBase
         _serviceBase.logger.LogTrace("Core Service Initialised");
         _transactionSageSubmissionAdminService = transactionSageSubmissionAdminService ?? throw new ArgumentNullException(nameof(transactionSageSubmissionAdminService));
         _delegatedGraphClientFactory = delegatedGraphClientFactory ?? throw new ArgumentNullException(nameof(delegatedGraphClientFactory));
+        _sageInboundPaymentSyncService = sageInboundPaymentSyncService ?? throw new ArgumentNullException(nameof(sageInboundPaymentSyncService));
+        _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository;
     }
 
     #endregion Public Constructors

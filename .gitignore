@@ -42,38 +42,55 @@ Thumbs.db
 /Database/CymBuild_DB/CymBuild Scripts to Upgrade Staging.dcomp
 /.tmp.drivedownload
 *.zip
-/apps/Concursus.PWA/.config
-/apps/Concursus.PWA/wwwroot
-/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.json
+*.openai
 /libs/CymBuild_Outlook Manifest/pkgobj/Release
-/libs/CymBuild_Outlook Manifest/CymBuild_OutlookManifest/CymBuild_Outlook.xml
+/services/CymBuild_AIErrorServiceAPI/publish
+/services/PostCodeLookup/certs
+/apps/Concursus.PWA/wwwroot/appsettings.Development.json
+/apps/Concursus.PWA/wwwroot/appsettings.json
+/apps/Concursus.PWA/wwwroot/appsettings.Live.json
+/apps/Concursus.PWA/wwwroot/appsettings.Test.json
+/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.Development.json
+/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.json
+/services/CymBuild_AIErrorServiceAPI/appsettings.json
+/services/CymBuild_Outlook_API/appsettings.Development.json
+/services/CymBuild_Outlook_API/appsettings.json
+
+# appsettings containing local/secrets
+apps/Concursus.PWA/wwwroot/appsettings*.json
+apps/CymBuild_Outlook_Addin/wwwroot/appsettings*.json
+services/CymBuild_Outlook_API/appsettings*.json
+services/CymBuild_AIErrorServiceAPI/appsettings*.json
+
+# generated publish output
+services/CymBuild_AIErrorServiceAPI/publish/
+
+# local secret files
+**/.openai
+*.pfx
+
+# appsettings containing local/secrets
+apps/Concursus.PWA/wwwroot/appsettings*.json
+apps/CymBuild_Outlook_Addin/wwwroot/appsettings*.json
+services/CymBuild_Outlook_API/appsettings*.json
+services/CymBuild_AIErrorServiceAPI/appsettings*.json
+
+# generated publish output
+services/CymBuild_AIErrorServiceAPI/publish/
+
+# local secret files
+**/.openai
+*.pfx
 /services/Concursus.API/appsettings-Sandbox.Development.json
 /services/Concursus.API/appsettings-Sandbox.json
+/services/Concursus.API/appsettings.Development.json
 /services/Concursus.API/appsettings.json
 /services/Concursus.API/appsettings.Live.json
 /services/Concursus.API/appsettings.Production.json
 /services/Concursus.API/appsettings.Test.json
-/services/CymBuild_AIErrorServiceAPI/publish/publish/appsettings.json
-/services/CymBuild_AIErrorServiceAPI/publish/publish/publish/appsettings.json
-/services/CymBuild_Outlook_API/.config/dotnet-tools.json
-/services/CymBuild_Outlook_API/appsettings.json
+/services/CymBuild_Outlook_Service/appsettings.Development.json
 /services/CymBuild_Outlook_Service/appsettings.json
-/services/CymBuild_Outlook_Service/Properties/PublishProfiles/FolderProfile.pubxml
-/services/PostCodeLookup/.config/dotnet-tools.json
 /services/PostCodeLookup/appsettings.Development.json
 /services/PostCodeLookup/appsettings.json
 /services/Sage200Microservice/Sage200Microservice.API/appsettings.Development.json
 /services/Sage200Microservice/Sage200Microservice.API/appsettings.json
-/services/Sage200Microservice/Sage200Microservice.API/Configuration/ApiKeyClientResolveContributor.cs
-/apps/Concursus.PWA/wwwroot/appsettings.Development.json
-/apps/CymBuild_Outlook_Addin/wwwroot/appsettings.Development.json
-/services/Concursus.API/appsettings.Development.json
-/services/CymBuild_AIErrorServiceAPI/publish/publish/publish/appsettings.Development.json
-/services/CymBuild_AIErrorServiceAPI/publish/appsettings.Development.json
-/services/CymBuild_AIErrorServiceAPI/publish/appsettings.json
-/services/CymBuild_Outlook_API/appsettings.Development.json
-/services/CymBuild_Outlook_Service/appsettings.Development.json
-/services/PostCodeLookup/certs/postcodelookup.pfx
-/apps/Concursus.PWA/.openai
-/services/CymBuild_AIErrorServiceAPI/appsettings.Development.json
-/services/CymBuild_AIErrorServiceAPI/appsettings.json

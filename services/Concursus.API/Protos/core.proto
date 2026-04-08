@@ -118,6 +118,9 @@ service Core {
   rpc TransactionSageSubmissionRequeue (TransactionSageSubmissionRequeueRequest) returns (TransactionSageSubmissionRequeueReply);
   rpc DocumentsCreateEmailDraft(DocumentsCreateEmailDraftRequest)
       returns (DocumentsCreateEmailDraftResponse);
+  rpc SageInboundPaymentSync (SageInboundPaymentSyncRequestMessage) returns (SageInboundPaymentSyncReply);
+  rpc SageInboundPaymentSyncEnqueue (SageInboundPaymentSyncEnqueueRequestMessage) returns (SageInboundPaymentSyncEnqueueReply);
+  rpc SageInboundDiagnosticsGet (SageInboundDiagnosticsGetRequest) returns (SageInboundDiagnosticsGetReply);
 }
 
 enum JobClosureDecisionType  {
@@ -131,6 +134,97 @@ enum InvoiceProcessingMode {
   INVOICE_PROCESSING_MODE_AUTOMATED = 0;
   INVOICE_PROCESSING_MODE_MANUAL = 1;
   INVOICE_PROCESSING_MODE_PAUSED = 2;
+}
+
+message SageInboundDiagnosticsGetRequest {
+  string statusCode = 1;
+  string sageAccountReference = 2;
+  string sageDocumentNo = 3;
+  bool includeOnlyRetryableFailures = 4;
+  bool includeOnlyRetryableFailuresSpecified = 5;
+  int32 invoiceRequestId = 6;
+  bool invoiceRequestIdSpecified = 7;
+  int64 transactionId = 8;
+  bool transactionIdSpecified = 9;
+  int32 jobId = 10;
+  bool jobIdSpecified = 11;
+}
+
+message SageInboundDiagnosticsRow {
+  int64 id = 1;
+  string guid = 2;
+  int32 cymBuildEntityTypeId = 3;
+  string cymBuildDocumentGuid = 4;
+  int64 cymBuildDocumentId = 5;
+  int32 invoiceRequestId = 6;
+  int64 transactionId = 7;
+  int32 jobId = 8;
+  string sageDataset = 9;
+  string sageAccountReference = 10;
+  string sageDocumentNo = 11;
+  string lastOperationName = 12;
+  string statusCode = 13;
+  bool isInProgress = 14;
+  google.protobuf.Timestamp inProgressClaimedOnUtc = 15;
+  google.protobuf.Timestamp lastSucceededOnUtc = 16;
+  google.protobuf.Timestamp lastFailedOnUtc = 17;
+  string lastError = 18;
+  bool lastErrorIsRetryable = 19;
+  bool lastErrorIsRetryableSpecified = 20;
+  google.protobuf.Timestamp lastSourceWatermarkUtc = 21;
+  google.protobuf.Timestamp updatedDateTimeUtc = 22;
+  google.protobuf.Timestamp lastAttemptedOnUtc = 23;
+  google.protobuf.Timestamp lastCompletedOnUtc = 24;
+  bool lastAttemptIsSuccess = 25;
+  bool lastAttemptIsSuccessSpecified = 26;
+  string lastAttemptErrorMessage = 27;
+  bool lastAttemptIsRetryableFailure = 28;
+  bool lastAttemptIsRetryableFailureSpecified = 29;
+  string lastAttemptResponseStatus = 30;
+  string lastAttemptResponseDetail = 31;
+  bool canRequeue = 32;
+  bool canForceRequeue = 33;
+}
+
+message SageInboundDiagnosticsGetReply {
+  repeated SageInboundDiagnosticsRow rows = 1;
+}
+
+message SageInboundPaymentSyncEnqueueRequestMessage {
+  string cym_build_document_guid = 1;
+  bool force_requeue = 2;
+}
+
+message SageInboundPaymentSyncEnqueueReply {
+  string cym_build_document_guid = 1;
+  bool is_success = 2;
+  string message = 3;
+}
+
+message SageInboundPaymentSyncRequestMessage {
+  string cym_build_document_guid = 1;
+  bool force = 2;
+}
+
+message SageInboundPaymentSyncResultItemMessage {
+  int64 external_transaction_id = 1;
+  int64 matched_transaction_id = 2;
+  int32 matched_invoice_request_id = 3;
+  int32 matched_job_id = 4;
+  string match_rule = 5;
+}
+
+message SageInboundPaymentSyncReply {
+  string cym_build_document_guid = 1;
+  bool is_success = 2;
+  bool is_retryable_failure = 3;
+  string message = 4;
+  int32 external_transaction_count = 5;
+  int32 external_allocation_count = 6;
+  int32 reconciled_invoice_count = 7;
+  int32 reconciled_allocation_count = 8;
+  int32 updated_invoice_request_count = 9;
+  repeated SageInboundPaymentSyncResultItemMessage items = 10;
 }
 
 message DocumentsEmailAttachmentRef {

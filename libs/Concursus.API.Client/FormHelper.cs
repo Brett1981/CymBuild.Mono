@@ -3,7 +3,9 @@ using Concursus.API.Client.Models;
 using Concursus.API.Client.Models.Finance;
 using Concursus.API.Client.Models.Monitoring;
 using Concursus.API.Core;
+using Concursus.Common.Shared.Models.Finance;
 using Concursus.Common.Shared.Monitoring;
+
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.AspNetCore.Components;
@@ -106,6 +108,69 @@ public partial class FormHelper
 
         return result;
     }
+
+    public async Task<List<SageInboundDiagnosticsRowModel>> SageInboundDiagnosticsGetAsync(SageInboundDiagnosticsGetRequestModel request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var grpcRequest = new SageInboundDiagnosticsGetRequest
+        {
+            StatusCode = request.StatusCode ?? string.Empty,
+            SageAccountReference = request.SageAccountReference ?? string.Empty,
+            SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            IncludeOnlyRetryableFailures = request.OnlyRetryableFailures ?? false,
+            IncludeOnlyRetryableFailuresSpecified = request.OnlyRetryableFailures.HasValue,
+            InvoiceRequestId = request.InvoiceRequestId ?? 0,
+            InvoiceRequestIdSpecified = request.InvoiceRequestId.HasValue,
+            TransactionId = request.TransactionId ?? 0,
+            TransactionIdSpecified = request.TransactionId.HasValue,
+            JobId = request.JobId ?? 0,
+            JobIdSpecified = request.JobId.HasValue
+        };
+
+        var reply = await _coreClient.SageInboundDiagnosticsGetAsync(grpcRequest);
+        var result = new List<SageInboundDiagnosticsRowModel>(reply.Rows.Count);
+
+        foreach (var row in reply.Rows)
+        {
+            result.Add(new SageInboundDiagnosticsRowModel
+            {
+                Id = row.Id,
+                Guid = Guid.TryParse(row.Guid, out var rowGuid) ? rowGuid : Guid.Empty,
+                CymBuildEntityTypeId = row.CymBuildEntityTypeId,
+                CymBuildDocumentGuid = Guid.TryParse(row.CymBuildDocumentGuid, out var documentGuid) ? documentGuid : Guid.Empty,
+                CymBuildDocumentId = row.CymBuildDocumentId,
+                InvoiceRequestId = row.InvoiceRequestId,
+                TransactionId = row.TransactionId,
+                JobId = row.JobId,
+                SageDataset = row.SageDataset,
+                SageAccountReference = row.SageAccountReference,
+                SageDocumentNo = row.SageDocumentNo,
+                LastOperationName = row.LastOperationName,
+                StatusCode = row.StatusCode,
+                IsInProgress = row.IsInProgress,
+                InProgressClaimedOnUtc = FromTimestamp(row.InProgressClaimedOnUtc),
+                LastSucceededOnUtc = FromTimestamp(row.LastSucceededOnUtc),
+                LastFailedOnUtc = FromTimestamp(row.LastFailedOnUtc),
+                LastError = row.LastError,
+                LastErrorIsRetryable = row.LastErrorIsRetryableSpecified ? row.LastErrorIsRetryable : null,
+                LastSourceWatermarkUtc = FromTimestamp(row.LastSourceWatermarkUtc),
+                UpdatedDateTimeUtc = FromTimestamp(row.UpdatedDateTimeUtc) ?? DateTime.UtcNow,
+                LastAttemptedOnUtc = FromTimestamp(row.LastAttemptedOnUtc),
+                LastCompletedOnUtc = FromTimestamp(row.LastCompletedOnUtc),
+                LastAttemptIsSuccess = row.LastAttemptIsSuccessSpecified ? row.LastAttemptIsSuccess : null,
+                LastAttemptErrorMessage = row.LastAttemptErrorMessage,
+                LastAttemptIsRetryableFailure = row.LastAttemptIsRetryableFailureSpecified ? row.LastAttemptIsRetryableFailure : null,
+                LastAttemptResponseStatus = row.LastAttemptResponseStatus,
+                LastAttemptResponseDetail = row.LastAttemptResponseDetail,
+                CanRequeue = row.CanRequeue,
+                CanForceRequeue = row.CanForceRequeue
+            });
+        }
+
+        return result;
+    }
+
     public async Task<DocumentsCreateEmailDraftResponse> DocumentsCreateEmailDraftAsync(
     string subject,
     string body,
@@ -1458,7 +1523,7 @@ public partial class FormHelper
             cancellationToken: ct);
     }
 
-    public async Task<SageCreateSalesOrderResponse> SageCreateSalesOrderAsync(
+    public async Task<Core.SageCreateSalesOrderResponse> SageCreateSalesOrderAsync(
         string dataset,
         string accountReference,
         string? customerOrderNo,
@@ -1472,7 +1537,7 @@ public partial class FormHelper
         IEnumerable<SageCreateSalesOrderLine>? lines,
         CancellationToken ct = default)
     {
-        var request = new SageCreateSalesOrderRequest
+        var request = new Core.SageCreateSalesOrderRequest
         {
             Dataset = dataset ?? "group",
             AccountReference = accountReference ?? string.Empty,
@@ -1535,6 +1600,83 @@ public partial class FormHelper
             throw new Exception(response.ErrorReturned);
 
         return response.Transactions;
+    }
+
+    public async Task<SageInboundPaymentSyncEnqueueClientResult> SageInboundPaymentSyncEnqueueAsync(
+    Guid cymBuildDocumentGuid,
+    bool forceRequeue = false,
+    CancellationToken ct = default)
+    {
+        if (cymBuildDocumentGuid == Guid.Empty)
+            throw new ArgumentException("A valid CymBuild document guid is required.", nameof(cymBuildDocumentGuid));
+
+        var reply = await _coreClient.SageInboundPaymentSyncEnqueueAsync(
+            new SageInboundPaymentSyncEnqueueRequestMessage
+            {
+                CymBuildDocumentGuid = cymBuildDocumentGuid.ToString(),
+                ForceRequeue = forceRequeue
+            },
+            cancellationToken: ct);
+
+        return new SageInboundPaymentSyncEnqueueClientResult
+        {
+            CymBuildDocumentGuid = Guid.TryParse(reply.CymBuildDocumentGuid, out var parsedGuid)
+                ? parsedGuid
+                : Guid.Empty,
+            IsSuccess = reply.IsSuccess,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+
+    public async Task<SageInboundPaymentSyncClientResult> SageInboundPaymentSyncAsync(
+    Guid cymBuildDocumentGuid,
+    bool force = false,
+    CancellationToken ct = default)
+    {
+        if (cymBuildDocumentGuid == Guid.Empty)
+            throw new ArgumentException("A valid CymBuild document guid is required.", nameof(cymBuildDocumentGuid));
+
+        var reply = await _coreClient.SageInboundPaymentSyncAsync(
+            new SageInboundPaymentSyncRequestMessage
+            {
+                CymBuildDocumentGuid = cymBuildDocumentGuid.ToString(),
+                Force = force
+            },
+            cancellationToken: ct);
+
+        var result = new SageInboundPaymentSyncClientResult
+        {
+            CymBuildDocumentGuid = Guid.TryParse(reply.CymBuildDocumentGuid, out var parsedGuid)
+                ? parsedGuid
+                : Guid.Empty,
+            IsSuccess = reply.IsSuccess,
+            IsRetryableFailure = reply.IsRetryableFailure,
+            Message = reply.Message ?? string.Empty,
+            ExternalTransactionCount = reply.ExternalTransactionCount,
+            ExternalAllocationCount = reply.ExternalAllocationCount,
+            ReconciledInvoiceCount = reply.ReconciledInvoiceCount,
+            ReconciledAllocationCount = reply.ReconciledAllocationCount,
+            UpdatedInvoiceRequestCount = reply.UpdatedInvoiceRequestCount
+        };
+
+        foreach (var item in reply.Items)
+        {
+            result.Items.Add(new SageInboundPaymentSyncClientResultItem
+            {
+                ExternalTransactionId = item.ExternalTransactionId,
+                MatchedTransactionId = item.MatchedTransactionId,
+                MatchedInvoiceRequestId = item.MatchedInvoiceRequestId,
+                MatchedJobId = item.MatchedJobId,
+                MatchRule = item.MatchRule ?? string.Empty
+            });
+        }
+
+        return result;
+    }
+    private static DateTime? FromTimestamp(Timestamp? timestamp)
+    {
+        return timestamp == null ? null : timestamp.ToDateTime();
     }
     #endregion Public Methods
 

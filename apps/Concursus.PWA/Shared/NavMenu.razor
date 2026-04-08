@@ -48,7 +48,7 @@
                     {
                         @Config.Value.Environment.Type
                     }
-                   
+
                 </span>
             }
         </a>
@@ -164,8 +164,13 @@ else
             </div>
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="quote-dashboard" @onclick="@(() => OnNavItemClick(""))">
-                    <i class="bi bi-info me-2" style="font-size: 1.2rem;"></i> Quote Dashboard (Old)
+                    <i class="bi bi-bar-chart me-2" style="font-size: 1.2rem;"></i> Quote Dashboard (Old)
                     </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="SageInboundDiagnosticsV2" @onclick="@(() => OnNavItemClick(""))">
+                    <i class="bi bi-info me-2" style="font-size: 1.2rem;"></i> Sage Diagnostics
+                </NavLink>
             </div>
 
 

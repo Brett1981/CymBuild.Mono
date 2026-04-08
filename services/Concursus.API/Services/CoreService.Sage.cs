@@ -2,6 +2,7 @@
 using Concursus.API.Sage.SOAP.Client;
 using Concursus.API.Sage.SOAP.Interface;
 using Concursus.API.Sage.SOAP.Models;
+using Concursus.Common.Shared.Models.Finance;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -18,6 +19,162 @@ public partial class CoreService
         WriteIndented = true
     };
 
+    public override async Task<SageInboundPaymentSyncReply> SageInboundPaymentSync(
+    SageInboundPaymentSyncRequestMessage request,
+    ServerCallContext context)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.CymBuildDocumentGuid))
+        {
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, "A CymBuild document guid must be supplied."));
+        }
+
+        if (!Guid.TryParse(request.CymBuildDocumentGuid, out var cymBuildDocumentGuid))
+        {
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, $"Invalid CymBuild document guid: {request.CymBuildDocumentGuid}"));
+        }
+
+        var result = await _sageInboundPaymentSyncService.SyncAsync(
+            cymBuildDocumentGuid,
+            request.Force,
+            context.CancellationToken);
+
+        var reply = new SageInboundPaymentSyncReply
+        {
+            CymBuildDocumentGuid = result.CymBuildDocumentGuid.ToString(),
+            IsSuccess = result.IsSuccess,
+            IsRetryableFailure = result.IsRetryableFailure,
+            Message = result.Message ?? string.Empty,
+            ExternalTransactionCount = result.ExternalTransactionCount,
+            ExternalAllocationCount = result.ExternalAllocationCount,
+            ReconciledInvoiceCount = result.ReconciledInvoiceCount,
+            ReconciledAllocationCount = result.ReconciledAllocationCount,
+            UpdatedInvoiceRequestCount = result.UpdatedInvoiceRequestCount
+        };
+
+        foreach (var item in result.Items)
+        {
+            reply.Items.Add(new SageInboundPaymentSyncResultItemMessage
+            {
+                ExternalTransactionId = item.ExternalTransactionId,
+                MatchedTransactionId = item.MatchedTransactionId,
+                MatchedInvoiceRequestId = item.MatchedInvoiceRequestId,
+                MatchedJobId = item.MatchedJobId,
+                MatchRule = item.MatchRule ?? string.Empty
+            });
+        }
+
+        return reply;
+    }
+
+    public override async Task<SageInboundPaymentSyncEnqueueReply> SageInboundPaymentSyncEnqueue(
+    SageInboundPaymentSyncEnqueueRequestMessage request,
+    ServerCallContext context)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.CymBuildDocumentGuid))
+        {
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, "A CymBuild document guid must be supplied."));
+        }
+
+        if (!Guid.TryParse(request.CymBuildDocumentGuid, out var cymBuildDocumentGuid))
+        {
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, $"Invalid CymBuild document guid: {request.CymBuildDocumentGuid}"));
+        }
+
+        var result = await _sageInboundPaymentSyncService.EnqueueAsync(
+            cymBuildDocumentGuid,
+            request.ForceRequeue,
+            context.CancellationToken);
+
+        return new SageInboundPaymentSyncEnqueueReply
+        {
+            CymBuildDocumentGuid = result.CymBuildDocumentGuid.ToString(),
+            IsSuccess = result.IsSuccess,
+            Message = result.Message ?? string.Empty
+        };
+    }
+
+    public override async Task<SageInboundDiagnosticsGetReply> SageInboundDiagnosticsGet(
+            SageInboundDiagnosticsGetRequest request,
+            ServerCallContext context)
+    {
+        if (request == null)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Request cannot be null."));
+        }
+
+        var model = new SageInboundDiagnosticsGetRequestModel
+        {
+            StatusCode = request.StatusCode ?? string.Empty,
+            SageAccountReference = request.SageAccountReference ?? string.Empty,
+            SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            OnlyRetryableFailures = request.IncludeOnlyRetryableFailuresSpecified ? request.IncludeOnlyRetryableFailures : null,
+            InvoiceRequestId = request.InvoiceRequestIdSpecified ? request.InvoiceRequestId : null,
+            TransactionId = request.TransactionIdSpecified ? request.TransactionId : null,
+            JobId = request.JobIdSpecified ? request.JobId : null
+        };
+
+        try
+        {
+            var rows = await _sageInboundDiagnosticsRepository
+                .GetAsync(_serviceBase._entityFramework, model, context.CancellationToken)
+                .ConfigureAwait(false);
+
+            var reply = new SageInboundDiagnosticsGetReply();
+            foreach (var row in rows)
+            {
+                reply.Rows.Add(new SageInboundDiagnosticsRow
+                {
+                    Id = row.Id,
+                    Guid = row.Guid.ToString(),
+                    CymBuildEntityTypeId = row.CymBuildEntityTypeId,
+                    CymBuildDocumentGuid = row.CymBuildDocumentGuid.ToString(),
+                    CymBuildDocumentId = row.CymBuildDocumentId,
+                    InvoiceRequestId = row.InvoiceRequestId,
+                    TransactionId = row.TransactionId,
+                    JobId = row.JobId,
+                    SageDataset = row.SageDataset ?? string.Empty,
+                    SageAccountReference = row.SageAccountReference ?? string.Empty,
+                    SageDocumentNo = row.SageDocumentNo ?? string.Empty,
+                    LastOperationName = row.LastOperationName ?? string.Empty,
+                    StatusCode = row.StatusCode ?? string.Empty,
+                    IsInProgress = row.IsInProgress,
+                    InProgressClaimedOnUtc = ToTimestamp(row.InProgressClaimedOnUtc),
+                    LastSucceededOnUtc = ToTimestamp(row.LastSucceededOnUtc),
+                    LastFailedOnUtc = ToTimestamp(row.LastFailedOnUtc),
+                    LastError = row.LastError ?? string.Empty,
+                    LastErrorIsRetryable = row.LastErrorIsRetryable ?? false,
+                    LastErrorIsRetryableSpecified = row.LastErrorIsRetryable.HasValue,
+                    LastSourceWatermarkUtc = ToTimestamp(row.LastSourceWatermarkUtc),
+                    UpdatedDateTimeUtc = ToTimestamp(row.UpdatedDateTimeUtc),
+                    LastAttemptedOnUtc = ToTimestamp(row.LastAttemptedOnUtc),
+                    LastCompletedOnUtc = ToTimestamp(row.LastCompletedOnUtc),
+                    LastAttemptIsSuccess = row.LastAttemptIsSuccess ?? false,
+                    LastAttemptIsSuccessSpecified = row.LastAttemptIsSuccess.HasValue,
+                    LastAttemptErrorMessage = row.LastAttemptErrorMessage ?? string.Empty,
+                    LastAttemptIsRetryableFailure = row.LastAttemptIsRetryableFailure ?? false,
+                    LastAttemptIsRetryableFailureSpecified = row.LastAttemptIsRetryableFailure.HasValue,
+                    LastAttemptResponseStatus = row.LastAttemptResponseStatus ?? string.Empty,
+                    LastAttemptResponseDetail = row.LastAttemptResponseDetail ?? string.Empty,
+                    CanRequeue = row.CanRequeue,
+                    CanForceRequeue = row.CanForceRequeue
+                });
+            }
+
+            return reply;
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"SageInboundDiagnosticsGet failed. {ex.Message}"));
+        }
+    }
     public override async Task<SageHealthGetResponse> SageHealthGet(
     SageHealthGetRequest request,
     ServerCallContext context)
@@ -109,7 +266,7 @@ public partial class CoreService
 
         foreach (var item in result.Items)
         {
-            reply.Items.Add(new TransactionSageSubmissionRequeueResultItem
+            reply.Items.Add(new Core.TransactionSageSubmissionRequeueResultItem
             {
                 TransactionId = item.TransactionId,
                 TransactionGuid = item.TransactionGuid.ToString(),
@@ -412,7 +569,12 @@ public partial class CoreService
             setter(parsed);
         }
     }
-
+    private static Timestamp? ToTimestamp(DateTime? value)
+    {
+        return value.HasValue
+            ? Timestamp.FromDateTime(DateTime.SpecifyKind(value.Value, DateTimeKind.Utc))
+            : null;
+    }
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value;
 }
