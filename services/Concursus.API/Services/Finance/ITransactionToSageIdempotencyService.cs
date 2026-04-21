@@ -1,13 +1,10 @@
-﻿using Concursus.Common.Shared.Models.Finance;
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Concursus.Common.Shared.Models.Finance;
 
 namespace Concursus.API.Services.Finance
 {
-    /// <summary>
-    /// Application service enforcing idempotent Sage submission for approved transactions.
-    /// </summary>
     public interface ITransactionToSageIdempotencyService
     {
         Task<TransactionToSageIdempotencyStatus> GetStatusAsync(
@@ -27,6 +24,7 @@ namespace Concursus.API.Services.Finance
             Guid transitionGuid,
             string sageOrderId,
             string sageOrderNumber,
+            string sageDataSet,
             string responseStatus,
             string responseDetail,
             string requestPayloadJson,

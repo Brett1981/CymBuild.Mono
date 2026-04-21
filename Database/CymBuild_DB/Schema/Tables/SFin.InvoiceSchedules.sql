@@ -12,74 +12,50 @@ CREATE TABLE [SFin].[InvoiceSchedules] (
   [ExpectedDate] [date] NULL,
   [QuoteId] [int] NOT NULL CONSTRAINT [DF_InvoiceSchedules_QuoteId] DEFAULT (-1),
   [RibaConfigurationId] [int] NOT NULL CONSTRAINT [DF_InvoiceSchedules_RibaConfigurationId] DEFAULT (-1),
-  [ActivityMilestoneConfigurationId] [int] NOT NULL CONSTRAINT [DF_InvoiceSchedules_ActivityMilestoneConfigurationId] DEFAULT (-1)
+  [ActivityMilestoneConfigurationId] [int] NOT NULL CONSTRAINT [DF_InvoiceSchedules_ActivityMilestoneConfigurationId] DEFAULT (-1),
+  [ScheduleReenabled] [bit] NOT NULL CONSTRAINT [DF_InvoiceSchedules_ScheduleReenabled] DEFAULT (0),
+  CONSTRAINT [PK_InvoiceSchedules] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 90)
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
-PRINT (N'Create primary key [PK_InvoiceSchedules] on table [SFin].[InvoiceSchedules]')
-GO
-ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
-  ADD CONSTRAINT [PK_InvoiceSchedules] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 90)
-GO
-
-PRINT (N'Create foreign key [FK_InvoiceSchedules_ActivityMilestoneConfigurationId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_ActivityMilestoneConfigurationId] FOREIGN KEY ([ActivityMilestoneConfigurationId]) REFERENCES [SFin].[InvoiceScheduleActivityMilestoneConfiguration] ([ID])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceSchedules_ActivityMilestoneConfigurationId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules]
   NOCHECK CONSTRAINT [FK_InvoiceSchedules_ActivityMilestoneConfigurationId]
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceSchedules_DataObjects] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceSchedules_DataObjects] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules]
   NOCHECK CONSTRAINT [FK_InvoiceSchedules_DataObjects]
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceSchedules_QuoteId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_QuoteId] FOREIGN KEY ([QuoteId]) REFERENCES [SSop].[Quotes] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceSchedules_RibaConfigurationId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_RibaConfigurationId] FOREIGN KEY ([RibaConfigurationId]) REFERENCES [SFin].[InvoiceScheduleRibaConfiguration] ([ID])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceSchedules_RibaConfigurationId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules]
   NOCHECK CONSTRAINT [FK_InvoiceSchedules_RibaConfigurationId]
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceSchedules_RowStatus] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceSchedules_TriggerId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceSchedules_TriggerId] FOREIGN KEY ([TriggerId]) REFERENCES [SFin].[InvoiceScheduleTrigger] ([ID])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceSchedules_TriggerId] on table [SFin].[InvoiceSchedules]')
-GO
 ALTER TABLE [SFin].[InvoiceSchedules]
   NOCHECK CONSTRAINT [FK_InvoiceSchedules_TriggerId]
 GO

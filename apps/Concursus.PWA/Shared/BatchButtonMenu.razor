@@ -1,18 +1,18 @@
-﻿@using Concursus.API.Client;
+﻿@attribute [Authorize]
+
+@using Concursus.API.Client
 @using Concursus.API.Client.Models
+@using Concursus.PWA.Shared
+
 @inject NavigationManager NavManager
 @inject Core.CoreClient coreClient
-@inject IJSRuntime JSRuntime;
+@inject IJSRuntime JSRuntime
 @inject UserService userService
 @inject ModalService modalService
 @inject AppConfiguration appConfiguration
-
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 
-
-
 <style>
-
     .TActionBtn {
         margin: 0 !important;
         padding: 0 !important;
@@ -20,8 +20,16 @@
         color: #ffffff !important;
     }
 
-    span.k-menu-link-text:first-child, .k-menu-expand-arrow {
+    span.k-menu-link-text:first-child,
+    .k-menu-expand-arrow {
         color: white !important;
+    }
+
+    .invoice-preview-host {
+        height: 100%;
+        overflow: auto;
+        background: #eef1f4;
+        padding: 12px;
     }
 </style>
 
@@ -29,32 +37,215 @@
              IconField="@(nameof(API.Client.MenuItem.Icon))"
              DisabledField="@(nameof(API.Client.MenuItem.IsReadOnly))"
              OnClick="@((GridActionMenuItem item) => OnClickHandler(item))"
-             Class="TActionBtn"/>
+             Class="TActionBtn" />
 
-
- @attribute [Authorize]
-<TelerikWindow @ref="ModalWindow" Class="responsive-window" Visible="@ModalWindowIsVisible"  Modal="true" CloseOnOverlayClick="false" MaxHeight="100vh">
+@* Existing general-purpose modal *@
+<TelerikWindow @ref="ModalWindow"
+               Class="responsive-window"
+               Visible="@ModalWindowIsVisible"
+               Modal="true"
+               CloseOnOverlayClick="false"
+               MaxHeight="100vh">
     <WindowTitle>@WindowTitle</WindowTitle>
+
     <WindowContent>
         <h4>
             <i class="@HeaderCssIcon" style="font-size: 1.2rem;"></i> @HeaderText
         </h4>
-        @if (!string.IsNullOrEmpty(@GridCodeSelection))
+
+        @if (!string.IsNullOrEmpty(GridCodeSelection))
         {
             <DynamicGrid GridCode="@GridCodeSelection" ParentGuid="@GetParentGuid()" />
         }
-        @if (!string.IsNullOrEmpty(@LoadPageUrl))
+
+        @if (!string.IsNullOrEmpty(LoadPageUrl))
         {
-            <DynamicComponent Type="@Type.GetType(@LoadPageUrl)" Parameters="@DetailPageParameters"/>
+            <DynamicComponent Type="@Type.GetType(LoadPageUrl)" Parameters="@DetailPageParameters" />
         }
-        @if (GridRef.Code == "AUTHASSIGN")
+
+        @if (GridRef?.Code == "AUTHASSIGN")
         {
-            <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.QuoteSelfAssignDetail")" Parameters="@DetailPageParameters"  />
+            <DynamicComponent Type="@Type.GetType("Concursus.PWA.Pages.QuoteSelfAssignDetail")"
+                              Parameters="@DetailPageParameters" />
         }
     </WindowContent>
+
     <WindowActions>
-        <WindowAction Name="MinRimize"></WindowAction>
-        <WindowAction Name="Maximize"></WindowAction>
-        <WindowAction Name="Close" OnClick="@CloseWindowCross"></WindowAction>
+        <WindowAction Name="Minimize" />
+        <WindowAction Name="Maximize" />
+        <WindowAction Name="Close" OnClick="@CloseWindowCross" />
     </WindowActions>
 </TelerikWindow>
+
+@* New invoice preview modal *@
+@if (_showInvoicePreviewModal && _currentInvoicePreviewModel is not null)
+{
+    <TelerikWindow Visible="@_showInvoicePreviewModal"
+                   VisibleChanged="@OnInvoicePreviewVisibleChanged"
+                   Class="responsive-window invoice-preview-window"
+                   Modal="true"
+                   CloseOnOverlayClick="false"
+                   Width="92vw"
+                   Height="92vh"
+                   MinWidth="960px"
+                   MinHeight="700px"
+                   MaxWidth="98vw"
+                   MaxHeight="98vh">
+        <WindowTitle>
+            Invoice Preview
+            @if (_invoicePreviewModels.Count > 1)
+            {
+                <span class="invoice-preview-counter">
+                    (@(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count)
+                </span>
+            }
+        </WindowTitle>
+
+        <WindowContent>
+            <div class="invoice-preview-shell">
+                <div class="invoice-preview-toolbar">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            @onclick="ShowPreviousInvoicePreview"
+                            disabled="@(_currentInvoicePreviewIndex <= 0)">
+                        ‹ Previous
+                    </button>
+
+                    <div class="invoice-preview-toolbar__status">
+                        Invoice @(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count
+                    </div>
+
+                    <div class="invoice-preview-toolbar__actions">
+                        <button type="button"
+                                class="btn btn-sm btn-danger"
+                                @onclick="ExportCurrentInvoiceToPdfAsync"
+                                disabled="@_isBusy">
+                            PDF
+                        </button>
+
+                        @if (_invoicePreviewModels.Count > 1)
+                        {
+                            <button type="button"
+                                    class="btn btn-sm btn-danger"
+                                    @onclick="ExportAllInvoicesToPdfAsync"
+                                    disabled="@_isBusy">
+                                PDF (All)
+                            </button>
+                        }
+                    </div>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            @onclick="ShowNextInvoicePreview"
+                            disabled="@(_currentInvoicePreviewIndex >= _invoicePreviewModels.Count - 1)">
+                        Next ›
+                    </button>
+                </div>
+
+                <div class="invoice-preview-host">
+                    <div id="invoice-preview-current-export">
+                        <InvoicePrintTemplate Model="@_currentInvoicePreviewModel" />
+                    </div>
+
+                    @if (_invoicePreviewModels.Count > 1)
+                    {
+                        <div class="invoice-preview-all-export">
+                            @for (var i = 0; i < _invoicePreviewModels.Count; i++)
+                            {
+                                <div id="@GetInvoiceExportElementId(i)" class="invoice-preview-export-item">
+                                    <InvoicePrintTemplate Model="@_invoicePreviewModels[i]" />
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </WindowContent>
+
+        <WindowActions>
+            <WindowAction Name="Minimize" />
+            <WindowAction Name="Maximize" />
+            <WindowAction Name="Close" OnClick="@CloseInvoicePreviewWindow" />
+        </WindowActions>
+    </TelerikWindow>
+}
+<style>
+    .TActionBtn {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: inherit !important;
+        color: #ffffff !important;
+    }
+
+    span.k-menu-link-text:first-child,
+    .k-menu-expand-arrow {
+        color: white !important;
+    }
+
+    .invoice-preview-window {
+        max-width: 98vw;
+        max-height: 98vh;
+    }
+
+        .invoice-preview-window .k-window-content {
+            padding: 0;
+            overflow: hidden;
+        }
+
+    .invoice-preview-shell {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #eef1f4;
+    }
+
+    .invoice-preview-toolbar {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #d9dde3;
+        background: #ffffff;
+        flex: 0 0 auto;
+    }
+
+    .invoice-preview-toolbar__status {
+        text-align: center;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .invoice-preview-toolbar__actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .invoice-preview-counter {
+        font-weight: 500;
+        margin-left: 6px;
+    }
+
+    .invoice-preview-host {
+        flex: 1 1 auto;
+        overflow: auto;
+        background: #eef1f4;
+        padding: 12px;
+    }
+
+    .invoice-preview-all-export {
+        position: absolute;
+        left: -200vw;
+        top: 0;
+        width: 210mm;
+        pointer-events: none;
+        opacity: 0;
+    }
+
+    .invoice-preview-export-item {
+        width: 210mm;
+        background: #ffffff;
+    }
+</style>

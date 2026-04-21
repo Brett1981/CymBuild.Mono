@@ -71,6 +71,7 @@
                                                     {
                                                         <TabStripTab Title="Transactions (Batched)">
                                                             <DynamicBatchGridView @ref="@Dgv"
+                                                                                  @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                                   OnActionCompleted="HandleActionCompleted"
                                                                                   ViewDefinition="@BatchedTransactionsGvd"
                                                                                   GridCode="BATCHEDTRANSACTIONS"
@@ -82,7 +83,9 @@
                                                     }
 
                                                     <TabStripTab Title="Transactions">
-                                                        <FilteredDynamicGridView @ref="@Dgv"
+                                                        <FilteredDynamicGridView 
+                                                                        @ref="@Dgv"
+                                                                        @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                          OnActionCompleted="HandleActionCompleted"
                                                                          Disabled="@Disabled"
                                                                          DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"

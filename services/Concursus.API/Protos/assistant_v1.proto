@@ -1,0 +1,990 @@
+syntax = "proto3";
+
+package assistant.v1;
+
+option csharp_namespace = "Concursus.API.Assistant.V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+/*
+    CymBuild AI Assistant - gRPC Contract Set
+    -----------------------------------------
+    Purpose:
+    Production-ready proto design for the SAi assistant domain.
+
+    Design notes:
+    - Uses explicit request/reply messages consistent with typical CymBuild service usage.
+    - Avoids guessing repo-specific base contracts not present in the uploaded files.
+    - Supports the SQL / metadata foundation already defined for SAi.
+    - Keeps room for streaming chat responses and admin analytics.
+
+    Service groups:
+    - AssistantConversationService
+    - AssistantChatService
+    - AssistantKnowledgeService
+    - AssistantWorkflowService
+    - AssistantBookmarkService
+    - AssistantUploadService
+    - AssistantAdminService
+    - AssistantAnalyticsService
+*/
+
+/* =========================================================================================
+   Shared enums
+========================================================================================= */
+
+enum AssistantMode {
+  ASSISTANT_MODE_UNSPECIFIED = 0;
+  ASSISTANT_MODE_BEGINNER = 1;
+  ASSISTANT_MODE_EXPERT = 2;
+}
+
+enum AssistantAnswerType {
+  ASSISTANT_ANSWER_TYPE_UNSPECIFIED = 0;
+  ASSISTANT_ANSWER_TYPE_TRUSTED_KNOWLEDGE = 1;
+  ASSISTANT_ANSWER_TYPE_ADMIN_WORKFLOW_GUIDE = 2;
+  ASSISTANT_ANSWER_TYPE_GENERATED_SUGGESTION = 3;
+}
+
+enum AssistantMessageRole {
+  ASSISTANT_MESSAGE_ROLE_UNSPECIFIED = 0;
+  ASSISTANT_MESSAGE_ROLE_USER = 1;
+  ASSISTANT_MESSAGE_ROLE_ASSISTANT = 2;
+  ASSISTANT_MESSAGE_ROLE_SYSTEM = 3;
+}
+
+enum AssistantFeedbackType {
+  ASSISTANT_FEEDBACK_TYPE_UNSPECIFIED = 0;
+  ASSISTANT_FEEDBACK_TYPE_HELPFUL = 1;
+  ASSISTANT_FEEDBACK_TYPE_UNHELPFUL = 2;
+}
+
+enum AssistantVisibility {
+  ASSISTANT_VISIBILITY_UNSPECIFIED = 0;
+  ASSISTANT_VISIBILITY_PRIVATE = 1;
+  ASSISTANT_VISIBILITY_ADMIN_FEATURED = 2;
+  ASSISTANT_VISIBILITY_SHARED = 3;
+}
+
+enum AssistantUploadPurpose {
+  ASSISTANT_UPLOAD_PURPOSE_UNSPECIFIED = 0;
+  ASSISTANT_UPLOAD_PURPOSE_SCREENSHOT = 1;
+  ASSISTANT_UPLOAD_PURPOSE_KNOWLEDGE = 2;
+  ASSISTANT_UPLOAD_PURPOSE_ATTACHMENT = 3;
+}
+
+enum AssistantProcessingStatus {
+  ASSISTANT_PROCESSING_STATUS_UNSPECIFIED = 0;
+  ASSISTANT_PROCESSING_STATUS_PENDING_UPLOAD = 1;
+  ASSISTANT_PROCESSING_STATUS_UPLOADED = 2;
+  ASSISTANT_PROCESSING_STATUS_QUEUED_FOR_EXTRACTION = 3;
+  ASSISTANT_PROCESSING_STATUS_EXTRACTED = 4;
+  ASSISTANT_PROCESSING_STATUS_EXTRACTION_FAILED = 5;
+  ASSISTANT_PROCESSING_STATUS_PUBLISHED = 6;
+}
+
+enum AssistantWorkflowRunStatus {
+  ASSISTANT_WORKFLOW_RUN_STATUS_UNSPECIFIED = 0;
+  ASSISTANT_WORKFLOW_RUN_STATUS_STARTED = 1;
+  ASSISTANT_WORKFLOW_RUN_STATUS_IN_PROGRESS = 2;
+  ASSISTANT_WORKFLOW_RUN_STATUS_COMPLETED = 3;
+  ASSISTANT_WORKFLOW_RUN_STATUS_CANCELLED = 4;
+}
+
+enum AssistantContentGapStatus {
+  ASSISTANT_CONTENT_GAP_STATUS_UNSPECIFIED = 0;
+  ASSISTANT_CONTENT_GAP_STATUS_NEW = 1;
+  ASSISTANT_CONTENT_GAP_STATUS_REVIEWING = 2;
+  ASSISTANT_CONTENT_GAP_STATUS_ASSIGNED = 3;
+  ASSISTANT_CONTENT_GAP_STATUS_ADDRESSED = 4;
+  ASSISTANT_CONTENT_GAP_STATUS_CLOSED = 5;
+}
+
+enum AssistantEventType {
+  ASSISTANT_EVENT_TYPE_UNSPECIFIED = 0;
+  ASSISTANT_EVENT_TYPE_QUESTION_ASKED = 1;
+  ASSISTANT_EVENT_TYPE_CONVERSATION_CREATED = 2;
+  ASSISTANT_EVENT_TYPE_BOOKMARK_CREATED = 3;
+  ASSISTANT_EVENT_TYPE_PLAYBOOK_SAVED = 4;
+  ASSISTANT_EVENT_TYPE_WORKFLOW_STARTED = 5;
+  ASSISTANT_EVENT_TYPE_WORKFLOW_COMPLETED = 6;
+  ASSISTANT_EVENT_TYPE_SCREENSHOT_ANALYSED = 7;
+  ASSISTANT_EVENT_TYPE_FEEDBACK_SUBMITTED = 8;
+  ASSISTANT_EVENT_TYPE_KNOWLEDGE_SEARCH = 9;
+  ASSISTANT_EVENT_TYPE_SOURCE_OPENED = 10;
+}
+
+/* =========================================================================================
+   Shared models
+========================================================================================= */
+
+message AssistantSource {
+  string title = 1;
+  string type_code = 2;
+  string url = 3;
+  string knowledge_item_guid = 4;
+  int32 version_number = 5;
+  string excerpt = 6;
+  bool is_authoritative = 7;
+  google.protobuf.Timestamp last_updated_utc = 8;
+}
+
+message AssistantFollowUpSuggestion {
+  string text = 1;
+  string prompt = 2;
+}
+
+message AssistantMessageModel {
+  string guid = 1;
+  string conversation_guid = 2;
+  int32 user_id = 3;
+  AssistantMessageRole role = 4;
+  AssistantAnswerType answer_type = 5;
+  string content_markdown = 6;
+  string content_plain_text = 7;
+  double confidence_score = 8;
+  google.protobuf.Timestamp created_utc = 9;
+  repeated AssistantSource sources = 10;
+  repeated AssistantFollowUpSuggestion follow_ups = 11;
+  google.protobuf.StringValue model_code = 12;
+  google.protobuf.StringValue parent_message_guid = 13;
+}
+
+message AssistantConversationModel {
+  string guid = 1;
+  int32 user_id = 2;
+  string title = 3;
+  AssistantMode mode = 4;
+  google.protobuf.StringValue language_code = 5;
+  google.protobuf.Timestamp last_activity_utc = 6;
+  bool is_pinned = 7;
+  bool is_archived = 8;
+  google.protobuf.StringValue started_from_workflow_template_guid = 9;
+  google.protobuf.StringValue last_message_guid = 10;
+  google.protobuf.StringValue last_message_preview = 11;
+}
+
+message AssistantBookmarkModel {
+  string guid = 1;
+  int32 user_id = 2;
+  string conversation_guid = 3;
+  string message_guid = 4;
+  string title = 5;
+  google.protobuf.StringValue notes = 6;
+  google.protobuf.StringValue tags_json = 7;
+  google.protobuf.Timestamp created_utc = 8;
+}
+
+message AssistantKnowledgeCategoryModel {
+  string guid = 1;
+  string name = 2;
+  string code = 3;
+  google.protobuf.StringValue description = 4;
+  int32 display_order = 5;
+  bool is_visible = 6;
+}
+
+message AssistantKnowledgeItemModel {
+  string guid = 1;
+  string title = 2;
+  string slug = 3;
+  google.protobuf.StringValue knowledge_category_guid = 4;
+  google.protobuf.StringValue category_name = 5;
+  string content_type_code = 6;
+  string source_type_code = 7;
+  string storage_url = 8;
+  google.protobuf.StringValue preview_url = 9;
+  google.protobuf.StringValue summary = 10;
+  bool is_authoritative = 11;
+  bool is_published = 12;
+  google.protobuf.Timestamp published_utc = 13;
+  google.protobuf.Timestamp created_utc = 14;
+  google.protobuf.Timestamp updated_utc = 15;
+  int32 current_version_number = 16;
+  google.protobuf.StringValue extracted_text = 17;
+}
+
+message AssistantKnowledgeVersionModel {
+  string guid = 1;
+  string knowledge_item_guid = 2;
+  int32 version_number = 3;
+  string storage_url = 4;
+  google.protobuf.StringValue extracted_text = 5;
+  string extraction_status_code = 6;
+  google.protobuf.StringValue metadata_json = 7;
+  google.protobuf.StringValue file_hash = 8;
+  bool is_current = 9;
+  int32 created_by_user_id = 10;
+  google.protobuf.Timestamp created_utc = 11;
+}
+
+message AssistantWorkflowTemplateModel {
+  string guid = 1;
+  string code = 2;
+  string title = 3;
+  google.protobuf.StringValue summary = 4;
+  google.protobuf.StringValue audience_code = 5;
+  string template_prompt = 6;
+  google.protobuf.StringValue clarification_schema_json = 7;
+  string output_format_code = 8;
+  bool is_published = 9;
+  bool is_featured = 10;
+  int32 created_by_user_id = 11;
+  google.protobuf.Timestamp created_utc = 12;
+  google.protobuf.Timestamp updated_utc = 13;
+}
+
+message AssistantWorkflowRunModel {
+  string guid = 1;
+  int32 user_id = 2;
+  string workflow_template_guid = 3;
+  google.protobuf.StringValue conversation_guid = 4;
+  AssistantWorkflowRunStatus status = 5;
+  google.protobuf.StringValue input_json = 6;
+  google.protobuf.StringValue output_json = 7;
+  google.protobuf.Timestamp started_utc = 8;
+  google.protobuf.Timestamp completed_utc = 9;
+}
+
+message AssistantUploadModel {
+  string guid = 1;
+  int32 user_id = 2;
+  google.protobuf.StringValue conversation_guid = 3;
+  google.protobuf.StringValue knowledge_item_guid = 4;
+  string storage_url = 5;
+  string file_name = 6;
+  string content_type = 7;
+  int64 file_size_bytes = 8;
+  AssistantUploadPurpose upload_purpose = 9;
+  AssistantProcessingStatus processing_status = 10;
+  google.protobuf.StringValue vision_summary = 11;
+  google.protobuf.Timestamp created_utc = 12;
+}
+
+message AssistantFeedbackModel {
+  string guid = 1;
+  int32 user_id = 2;
+  string conversation_guid = 3;
+  string message_guid = 4;
+  AssistantFeedbackType feedback_type = 5;
+  google.protobuf.StringValue comment = 6;
+  google.protobuf.Timestamp created_utc = 7;
+}
+
+message AssistantContentGapModel {
+  string guid = 1;
+  string title = 2;
+  google.protobuf.StringValue description = 3;
+  google.protobuf.StringValue topic_cluster = 4;
+  int32 occurrence_count = 5;
+  google.protobuf.Timestamp last_seen_utc = 6;
+  AssistantContentGapStatus status = 7;
+  google.protobuf.StringValue suggested_knowledge_item_guid = 8;
+  google.protobuf.StringValue suggested_knowledge_item_title = 9;
+}
+
+message AssistantDashboardSummaryModel {
+  int32 total_conversations = 1;
+  int32 total_messages = 2;
+  int32 published_knowledge_items = 3;
+  int32 published_workflow_templates = 4;
+  int32 unhelpful_feedback_count = 5;
+  int32 open_content_gap_count = 6;
+}
+
+message AssistantTopicMetric {
+  string label = 1;
+  int32 count = 2;
+}
+
+message AssistantSourceUsageMetric {
+  string source_title = 1;
+  string source_type_code = 2;
+  int32 usage_count = 3;
+}
+
+/* =========================================================================================
+   Conversation service
+========================================================================================= */
+
+service AssistantConversationService {
+  rpc CreateConversation (CreateAssistantConversationRequest) returns (CreateAssistantConversationReply);
+  rpc GetConversation (GetAssistantConversationRequest) returns (GetAssistantConversationReply);
+  rpc ListConversationsForUser (ListAssistantConversationsForUserRequest) returns (ListAssistantConversationsForUserReply);
+  rpc RenameConversation (RenameAssistantConversationRequest) returns (RenameAssistantConversationReply);
+  rpc ArchiveConversation (ArchiveAssistantConversationRequest) returns (ArchiveAssistantConversationReply);
+  rpc DeleteConversation (DeleteAssistantConversationRequest) returns (DeleteAssistantConversationReply);
+  rpc GetConversationMessages (GetAssistantConversationMessagesRequest) returns (GetAssistantConversationMessagesReply);
+}
+
+message CreateAssistantConversationRequest {
+  int32 user_id = 1;
+  string title = 2;
+  AssistantMode mode = 3;
+  google.protobuf.StringValue language_code = 4;
+  google.protobuf.StringValue started_from_workflow_template_guid = 5;
+}
+
+message CreateAssistantConversationReply {
+  AssistantConversationModel conversation = 1;
+}
+
+message GetAssistantConversationRequest {
+  string conversation_guid = 1;
+}
+
+message GetAssistantConversationReply {
+  AssistantConversationModel conversation = 1;
+}
+
+message ListAssistantConversationsForUserRequest {
+  int32 user_id = 1;
+  bool include_archived = 2;
+}
+
+message ListAssistantConversationsForUserReply {
+  repeated AssistantConversationModel conversations = 1;
+}
+
+message RenameAssistantConversationRequest {
+  string conversation_guid = 1;
+  string title = 2;
+}
+
+message RenameAssistantConversationReply {
+  AssistantConversationModel conversation = 1;
+}
+
+message ArchiveAssistantConversationRequest {
+  string conversation_guid = 1;
+  bool is_archived = 2;
+}
+
+message ArchiveAssistantConversationReply {
+  AssistantConversationModel conversation = 1;
+}
+
+message DeleteAssistantConversationRequest {
+  string conversation_guid = 1;
+}
+
+message DeleteAssistantConversationReply {
+  bool success = 1;
+}
+
+message GetAssistantConversationMessagesRequest {
+  string conversation_guid = 1;
+}
+
+message GetAssistantConversationMessagesReply {
+  repeated AssistantMessageModel messages = 1;
+}
+
+/* =========================================================================================
+   Chat service
+========================================================================================= */
+
+service AssistantChatService {
+  rpc SendMessage (SendAssistantMessageRequest) returns (stream SendAssistantMessageReply);
+  rpc RegenerateAnswer (RegenerateAssistantAnswerRequest) returns (stream SendAssistantMessageReply);
+  rpc ConvertAnswerToChecklist (ConvertAssistantAnswerToChecklistRequest) returns (ConvertAssistantAnswerToChecklistReply);
+  rpc SaveAnswerAsPlaybook (SaveAssistantAnswerAsPlaybookRequest) returns (SaveAssistantAnswerAsPlaybookReply);
+}
+
+message SendAssistantMessageRequest {
+  string conversation_guid = 1;
+  int32 user_id = 2;
+  string user_message = 3;
+  AssistantMode mode = 4;
+  google.protobuf.StringValue workflow_template_guid = 5;
+  repeated string attached_upload_guids = 6;
+  google.protobuf.StringValue language_code = 7;
+}
+
+message SendAssistantMessageReply {
+  oneof payload {
+    AssistantMessageChunk chunk = 1;
+    AssistantMessageCompleted completed = 2;
+  }
+}
+
+message AssistantMessageChunk {
+  string assistant_message_guid = 1;
+  string content_delta = 2;
+}
+
+message AssistantMessageCompleted {
+  AssistantMessageModel message = 1;
+}
+
+message RegenerateAssistantAnswerRequest {
+  string conversation_guid = 1;
+  string parent_message_guid = 2;
+  AssistantMode mode = 3;
+}
+
+message ConvertAssistantAnswerToChecklistRequest {
+  string message_guid = 1;
+}
+
+message ConvertAssistantAnswerToChecklistReply {
+  string checklist_markdown = 1;
+}
+
+message SaveAssistantAnswerAsPlaybookRequest {
+  string message_guid = 1;
+  string title = 2;
+  AssistantVisibility visibility = 3;
+}
+
+message SaveAssistantAnswerAsPlaybookReply {
+  string playbook_guid = 1;
+}
+
+/* =========================================================================================
+   Knowledge service
+========================================================================================= */
+
+service AssistantKnowledgeService {
+  rpc SearchKnowledge (SearchAssistantKnowledgeRequest) returns (SearchAssistantKnowledgeReply);
+  rpc GetKnowledgeItem (GetAssistantKnowledgeItemRequest) returns (GetAssistantKnowledgeItemReply);
+  rpc GetKnowledgeCategories (GetAssistantKnowledgeCategoriesRequest) returns (GetAssistantKnowledgeCategoriesReply);
+  rpc GetFeaturedKnowledge (GetAssistantFeaturedKnowledgeRequest) returns (GetAssistantFeaturedKnowledgeReply);
+  rpc GetRelatedKnowledge (GetAssistantRelatedKnowledgeRequest) returns (GetAssistantRelatedKnowledgeReply);
+
+  rpc CreateKnowledgeItem (CreateAssistantKnowledgeItemRequest) returns (CreateAssistantKnowledgeItemReply);
+  rpc UpdateKnowledgeItem (UpdateAssistantKnowledgeItemRequest) returns (UpdateAssistantKnowledgeItemReply);
+  rpc PublishKnowledgeItem (PublishAssistantKnowledgeItemRequest) returns (PublishAssistantKnowledgeItemReply);
+  rpc ReplaceKnowledgeItemVersion (ReplaceAssistantKnowledgeItemVersionRequest) returns (ReplaceAssistantKnowledgeItemVersionReply);
+  rpc ListKnowledgeVersions (ListAssistantKnowledgeVersionsRequest) returns (ListAssistantKnowledgeVersionsReply);
+}
+
+message SearchAssistantKnowledgeRequest {
+  string search_text = 1;
+  google.protobuf.StringValue category_guid = 2;
+  bool published_only = 3;
+  bool authoritative_first = 4;
+}
+
+message SearchAssistantKnowledgeReply {
+  repeated AssistantKnowledgeItemModel items = 1;
+}
+
+message GetAssistantKnowledgeItemRequest {
+  string knowledge_item_guid = 1;
+}
+
+message GetAssistantKnowledgeItemReply {
+  AssistantKnowledgeItemModel item = 1;
+}
+
+message GetAssistantKnowledgeCategoriesRequest {}
+
+message GetAssistantKnowledgeCategoriesReply {
+  repeated AssistantKnowledgeCategoryModel categories = 1;
+}
+
+message GetAssistantFeaturedKnowledgeRequest {
+  int32 take = 1;
+}
+
+message GetAssistantFeaturedKnowledgeReply {
+  repeated AssistantKnowledgeItemModel items = 1;
+}
+
+message GetAssistantRelatedKnowledgeRequest {
+  string knowledge_item_guid = 1;
+  int32 take = 2;
+}
+
+message GetAssistantRelatedKnowledgeReply {
+  repeated AssistantKnowledgeItemModel items = 1;
+}
+
+message CreateAssistantKnowledgeItemRequest {
+  string title = 1;
+  string slug = 2;
+  google.protobuf.StringValue knowledge_category_guid = 3;
+  string content_type_code = 4;
+  string source_type_code = 5;
+  string storage_url = 6;
+  google.protobuf.StringValue preview_url = 7;
+  google.protobuf.StringValue summary = 8;
+  bool is_authoritative = 9;
+  bool is_published = 10;
+  int32 created_by_user_id = 11;
+}
+
+message CreateAssistantKnowledgeItemReply {
+  AssistantKnowledgeItemModel item = 1;
+}
+
+message UpdateAssistantKnowledgeItemRequest {
+  string knowledge_item_guid = 1;
+  string title = 2;
+  string slug = 3;
+  google.protobuf.StringValue knowledge_category_guid = 4;
+  string content_type_code = 5;
+  string source_type_code = 6;
+  string storage_url = 7;
+  google.protobuf.StringValue preview_url = 8;
+  google.protobuf.StringValue summary = 9;
+  bool is_authoritative = 10;
+  bool is_published = 11;
+  int32 updated_by_user_id = 12;
+}
+
+message UpdateAssistantKnowledgeItemReply {
+  AssistantKnowledgeItemModel item = 1;
+}
+
+message PublishAssistantKnowledgeItemRequest {
+  string knowledge_item_guid = 1;
+  bool is_published = 2;
+  int32 updated_by_user_id = 3;
+}
+
+message PublishAssistantKnowledgeItemReply {
+  AssistantKnowledgeItemModel item = 1;
+}
+
+message ReplaceAssistantKnowledgeItemVersionRequest {
+  string knowledge_item_guid = 1;
+  string storage_url = 2;
+  google.protobuf.StringValue extracted_text = 3;
+  string extraction_status_code = 4;
+  google.protobuf.StringValue metadata_json = 5;
+  google.protobuf.StringValue file_hash = 6;
+  int32 created_by_user_id = 7;
+}
+
+message ReplaceAssistantKnowledgeItemVersionReply {
+  AssistantKnowledgeVersionModel version = 1;
+}
+
+message ListAssistantKnowledgeVersionsRequest {
+  string knowledge_item_guid = 1;
+}
+
+message ListAssistantKnowledgeVersionsReply {
+  repeated AssistantKnowledgeVersionModel versions = 1;
+}
+
+/* =========================================================================================
+   Workflow service
+========================================================================================= */
+
+service AssistantWorkflowService {
+  rpc ListWorkflowTemplates (ListAssistantWorkflowTemplatesRequest) returns (ListAssistantWorkflowTemplatesReply);
+  rpc GetWorkflowTemplate (GetAssistantWorkflowTemplateRequest) returns (GetAssistantWorkflowTemplateReply);
+  rpc StartWorkflowRun (StartAssistantWorkflowRunRequest) returns (StartAssistantWorkflowRunReply);
+  rpc AdvanceWorkflowRun (AdvanceAssistantWorkflowRunRequest) returns (AdvanceAssistantWorkflowRunReply);
+  rpc CompleteWorkflowRun (CompleteAssistantWorkflowRunRequest) returns (CompleteAssistantWorkflowRunReply);
+  rpc ListPlaybooks (ListAssistantPlaybooksRequest) returns (ListAssistantPlaybooksReply);
+  rpc GetPlaybook (GetAssistantPlaybookRequest) returns (GetAssistantPlaybookReply);
+
+  rpc CreateWorkflowTemplate (CreateAssistantWorkflowTemplateRequest) returns (CreateAssistantWorkflowTemplateReply);
+  rpc UpdateWorkflowTemplate (UpdateAssistantWorkflowTemplateRequest) returns (UpdateAssistantWorkflowTemplateReply);
+  rpc PublishWorkflowTemplate (PublishAssistantWorkflowTemplateRequest) returns (PublishAssistantWorkflowTemplateReply);
+  rpc FeatureWorkflowTemplate (FeatureAssistantWorkflowTemplateRequest) returns (FeatureAssistantWorkflowTemplateReply);
+}
+
+message AssistantPlaybookStepModel {
+  string guid = 1;
+  string playbook_guid = 2;
+  int32 step_order = 3;
+  string title = 4;
+  string instruction_markdown = 5;
+  bool is_optional = 6;
+  google.protobuf.StringValue expected_outcome = 7;
+}
+
+message AssistantPlaybookModel {
+  string guid = 1;
+  google.protobuf.Int32Value user_id = 2;
+  string title = 3;
+  google.protobuf.StringValue summary = 4;
+  string playbook_type_code = 5;
+  AssistantVisibility visibility = 6;
+  google.protobuf.StringValue source_conversation_guid = 7;
+  google.protobuf.StringValue source_workflow_run_guid = 8;
+  int32 created_by_user_id = 9;
+  google.protobuf.Timestamp created_utc = 10;
+  google.protobuf.Timestamp updated_utc = 11;
+  bool is_featured = 12;
+  repeated AssistantPlaybookStepModel steps = 13;
+}
+
+message ListAssistantWorkflowTemplatesRequest {
+  bool published_only = 1;
+  bool featured_only = 2;
+  google.protobuf.StringValue audience_code = 3;
+}
+
+message ListAssistantWorkflowTemplatesReply {
+  repeated AssistantWorkflowTemplateModel templates = 1;
+}
+
+message GetAssistantWorkflowTemplateRequest {
+  string workflow_template_guid = 1;
+}
+
+message GetAssistantWorkflowTemplateReply {
+  AssistantWorkflowTemplateModel template = 1;
+}
+
+message StartAssistantWorkflowRunRequest {
+  int32 user_id = 1;
+  string workflow_template_guid = 2;
+  google.protobuf.StringValue conversation_guid = 3;
+  google.protobuf.StringValue input_json = 4;
+}
+
+message StartAssistantWorkflowRunReply {
+  AssistantWorkflowRunModel run = 1;
+}
+
+message AdvanceAssistantWorkflowRunRequest {
+  string workflow_run_guid = 1;
+  google.protobuf.StringValue output_json = 2;
+}
+
+message AdvanceAssistantWorkflowRunReply {
+  AssistantWorkflowRunModel run = 1;
+}
+
+message CompleteAssistantWorkflowRunRequest {
+  string workflow_run_guid = 1;
+  google.protobuf.StringValue output_json = 2;
+}
+
+message CompleteAssistantWorkflowRunReply {
+  AssistantWorkflowRunModel run = 1;
+}
+
+message ListAssistantPlaybooksRequest {
+  int32 user_id = 1;
+  bool include_featured = 2;
+}
+
+message ListAssistantPlaybooksReply {
+  repeated AssistantPlaybookModel playbooks = 1;
+}
+
+message GetAssistantPlaybookRequest {
+  string playbook_guid = 1;
+}
+
+message GetAssistantPlaybookReply {
+  AssistantPlaybookModel playbook = 1;
+}
+
+message CreateAssistantWorkflowTemplateRequest {
+  string code = 1;
+  string title = 2;
+  google.protobuf.StringValue summary = 3;
+  google.protobuf.StringValue audience_code = 4;
+  string template_prompt = 5;
+  google.protobuf.StringValue clarification_schema_json = 6;
+  string output_format_code = 7;
+  bool is_published = 8;
+  bool is_featured = 9;
+  int32 created_by_user_id = 10;
+}
+
+message CreateAssistantWorkflowTemplateReply {
+  AssistantWorkflowTemplateModel template = 1;
+}
+
+message UpdateAssistantWorkflowTemplateRequest {
+  string workflow_template_guid = 1;
+  string code = 2;
+  string title = 3;
+  google.protobuf.StringValue summary = 4;
+  google.protobuf.StringValue audience_code = 5;
+  string template_prompt = 6;
+  google.protobuf.StringValue clarification_schema_json = 7;
+  string output_format_code = 8;
+  bool is_published = 9;
+  bool is_featured = 10;
+}
+
+message UpdateAssistantWorkflowTemplateReply {
+  AssistantWorkflowTemplateModel template = 1;
+}
+
+message PublishAssistantWorkflowTemplateRequest {
+  string workflow_template_guid = 1;
+  bool is_published = 2;
+}
+
+message PublishAssistantWorkflowTemplateReply {
+  AssistantWorkflowTemplateModel template = 1;
+}
+
+message FeatureAssistantWorkflowTemplateRequest {
+  string workflow_template_guid = 1;
+  bool is_featured = 2;
+}
+
+message FeatureAssistantWorkflowTemplateReply {
+  AssistantWorkflowTemplateModel template = 1;
+}
+
+/* =========================================================================================
+   Bookmark service
+========================================================================================= */
+
+service AssistantBookmarkService {
+  rpc CreateBookmark (CreateAssistantBookmarkRequest) returns (CreateAssistantBookmarkReply);
+  rpc ListBookmarks (ListAssistantBookmarksRequest) returns (ListAssistantBookmarksReply);
+  rpc DeleteBookmark (DeleteAssistantBookmarkRequest) returns (DeleteAssistantBookmarkReply);
+  rpc UpdateBookmark (UpdateAssistantBookmarkRequest) returns (UpdateAssistantBookmarkReply);
+}
+
+message CreateAssistantBookmarkRequest {
+  int32 user_id = 1;
+  string conversation_guid = 2;
+  string message_guid = 3;
+  string title = 4;
+  google.protobuf.StringValue notes = 5;
+  google.protobuf.StringValue tags_json = 6;
+}
+
+message CreateAssistantBookmarkReply {
+  AssistantBookmarkModel bookmark = 1;
+}
+
+message ListAssistantBookmarksRequest {
+  int32 user_id = 1;
+}
+
+message ListAssistantBookmarksReply {
+  repeated AssistantBookmarkModel bookmarks = 1;
+}
+
+message DeleteAssistantBookmarkRequest {
+  string bookmark_guid = 1;
+}
+
+message DeleteAssistantBookmarkReply {
+  bool success = 1;
+}
+
+message UpdateAssistantBookmarkRequest {
+  string bookmark_guid = 1;
+  string title = 2;
+  google.protobuf.StringValue notes = 3;
+  google.protobuf.StringValue tags_json = 4;
+}
+
+message UpdateAssistantBookmarkReply {
+  AssistantBookmarkModel bookmark = 1;
+}
+
+/* =========================================================================================
+   Upload service
+========================================================================================= */
+
+service AssistantUploadService {
+  rpc CreateUploadSession (CreateAssistantUploadSessionRequest) returns (CreateAssistantUploadSessionReply);
+  rpc CompleteUpload (CompleteAssistantUploadRequest) returns (CompleteAssistantUploadReply);
+  rpc ListUserUploads (ListAssistantUserUploadsRequest) returns (ListAssistantUserUploadsReply);
+  rpc AnalyzeScreenshot (AnalyzeAssistantScreenshotRequest) returns (AnalyzeAssistantScreenshotReply);
+  rpc AttachUploadToConversation (AttachAssistantUploadToConversationRequest) returns (AttachAssistantUploadToConversationReply);
+}
+
+message CreateAssistantUploadSessionRequest {
+  int32 user_id = 1;
+  AssistantUploadPurpose upload_purpose = 2;
+  string file_name = 3;
+  string content_type = 4;
+  int64 file_size_bytes = 5;
+}
+
+message CreateAssistantUploadSessionReply {
+  string upload_guid = 1;
+  string upload_url = 2;
+  map<string, string> upload_headers = 3;
+}
+
+message CompleteAssistantUploadRequest {
+  string upload_guid = 1;
+  google.protobuf.StringValue conversation_guid = 2;
+  google.protobuf.StringValue knowledge_item_guid = 3;
+  string storage_url = 4;
+  string file_name = 5;
+  string content_type = 6;
+  int64 file_size_bytes = 7;
+  AssistantUploadPurpose upload_purpose = 8;
+  AssistantProcessingStatus processing_status = 9;
+}
+
+message CompleteAssistantUploadReply {
+  AssistantUploadModel upload = 1;
+}
+
+message ListAssistantUserUploadsRequest {
+  int32 user_id = 1;
+}
+
+message ListAssistantUserUploadsReply {
+  repeated AssistantUploadModel uploads = 1;
+}
+
+message AnalyzeAssistantScreenshotRequest {
+  string upload_guid = 1;
+  google.protobuf.StringValue conversation_guid = 2;
+  AssistantMode mode = 3;
+}
+
+message AnalyzeAssistantScreenshotReply {
+  string upload_guid = 1;
+  string detected_screen_summary = 2;
+  repeated string notable_sections = 3;
+  repeated string likely_next_actions = 4;
+  repeated string possible_mistakes = 5;
+  double confidence_score = 6;
+}
+
+message AttachAssistantUploadToConversationRequest {
+  string upload_guid = 1;
+  string conversation_guid = 2;
+}
+
+message AttachAssistantUploadToConversationReply {
+  AssistantUploadModel upload = 1;
+}
+
+/* =========================================================================================
+   Admin service
+========================================================================================= */
+
+service AssistantAdminService {
+  rpc GetAdminDashboardSummary (GetAssistantAdminDashboardSummaryRequest) returns (GetAssistantAdminDashboardSummaryReply);
+  rpc ListFeedback (ListAssistantFeedbackRequest) returns (ListAssistantFeedbackReply);
+  rpc ListFailedAnswers (ListAssistantFailedAnswersRequest) returns (ListAssistantFailedAnswersReply);
+  rpc ListContentGaps (ListAssistantContentGapsRequest) returns (ListAssistantContentGapsReply);
+  rpc AssignContentGap (AssignAssistantContentGapRequest) returns (AssignAssistantContentGapReply);
+  rpc ResolveContentGap (ResolveAssistantContentGapRequest) returns (ResolveAssistantContentGapReply);
+}
+
+message GetAssistantAdminDashboardSummaryRequest {}
+
+message GetAssistantAdminDashboardSummaryReply {
+  AssistantDashboardSummaryModel summary = 1;
+}
+
+message ListAssistantFeedbackRequest {
+  bool include_helpful = 1;
+  bool include_unhelpful = 2;
+}
+
+message ListAssistantFeedbackReply {
+  repeated AssistantFeedbackModel feedback = 1;
+}
+
+message AssistantFailedAnswerModel {
+  string conversation_guid = 1;
+  string message_guid = 2;
+  string conversation_title = 3;
+  string message_preview = 4;
+  double confidence_score = 5;
+  google.protobuf.Timestamp created_utc = 6;
+}
+
+message ListAssistantFailedAnswersRequest {
+  double max_confidence_score = 1;
+  int32 take = 2;
+}
+
+message ListAssistantFailedAnswersReply {
+  repeated AssistantFailedAnswerModel failed_answers = 1;
+}
+
+message ListAssistantContentGapsRequest {
+  AssistantContentGapStatus status = 1;
+}
+
+message ListAssistantContentGapsReply {
+  repeated AssistantContentGapModel gaps = 1;
+}
+
+message AssignAssistantContentGapRequest {
+  string content_gap_guid = 1;
+  google.protobuf.StringValue suggested_knowledge_item_guid = 2;
+  AssistantContentGapStatus status = 3;
+}
+
+message AssignAssistantContentGapReply {
+  AssistantContentGapModel gap = 1;
+}
+
+message ResolveAssistantContentGapRequest {
+  string content_gap_guid = 1;
+  AssistantContentGapStatus status = 2;
+}
+
+message ResolveAssistantContentGapReply {
+  AssistantContentGapModel gap = 1;
+}
+
+/* =========================================================================================
+   Analytics service
+========================================================================================= */
+
+service AssistantAnalyticsService {
+  rpc GetTopQuestions (GetAssistantTopQuestionsRequest) returns (GetAssistantTopQuestionsReply);
+  rpc GetTopicTrends (GetAssistantTopicTrendsRequest) returns (GetAssistantTopicTrendsReply);
+  rpc GetFailedAnswerSummary (GetAssistantFailedAnswerSummaryRequest) returns (GetAssistantFailedAnswerSummaryReply);
+  rpc GetSourceUsageSummary (GetAssistantSourceUsageSummaryRequest) returns (GetAssistantSourceUsageSummaryReply);
+  rpc GetWorkflowUsageSummary (GetAssistantWorkflowUsageSummaryRequest) returns (GetAssistantWorkflowUsageSummaryReply);
+}
+
+message GetAssistantTopQuestionsRequest {
+  int32 take = 1;
+}
+
+message GetAssistantTopQuestionsReply {
+  repeated AssistantTopicMetric topics = 1;
+}
+
+message GetAssistantTopicTrendsRequest {
+  int32 days = 1;
+}
+
+message GetAssistantTopicTrendsReply {
+  repeated AssistantTopicMetric topics = 1;
+}
+
+message GetAssistantFailedAnswerSummaryRequest {
+  int32 days = 1;
+}
+
+message GetAssistantFailedAnswerSummaryReply {
+  int32 failed_answer_count = 1;
+  int32 unhelpful_feedback_count = 2;
+}
+
+message GetAssistantSourceUsageSummaryRequest {
+  int32 take = 1;
+}
+
+message GetAssistantSourceUsageSummaryReply {
+  repeated AssistantSourceUsageMetric sources = 1;
+}
+
+message AssistantWorkflowUsageMetric {
+  string workflow_template_guid = 1;
+  string title = 2;
+  int32 usage_count = 3;
+}
+
+message GetAssistantWorkflowUsageSummaryRequest {
+  int32 take = 1;
+}
+
+message GetAssistantWorkflowUsageSummaryReply {
+  repeated AssistantWorkflowUsageMetric workflows = 1;
+}

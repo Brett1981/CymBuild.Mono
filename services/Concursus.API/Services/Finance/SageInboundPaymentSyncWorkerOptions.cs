@@ -15,6 +15,6 @@ namespace Concursus.API.Services.Finance
         public int BatchSize { get; set; } = 20;
 
         [Range(1, 1440)]
-        public int ClaimStaleAfterMinutes { get; set; } = 30;
+        public int ClaimStaleAfterMinutes { get; set; } = 15;
     }
 }

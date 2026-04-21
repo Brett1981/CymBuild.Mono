@@ -76,6 +76,8 @@
                     sessionStorage.removeItem("autoBootRepairAttempted");
                     sessionStorage.removeItem("bootWatchdogTriggered");
                     sessionStorage.removeItem("reloadAttempted");
+                    sessionStorage.removeItem("authLoginWatchdogTriggered");
+                    sessionStorage.removeItem("startupScriptRepairAttempted");
                 } catch (e) {
                     console.warn("[EmergencyRepair] sessionStorage cleanup failed.", e);
                 }
@@ -234,18 +236,83 @@
             return `${jsFile}${separator}v=${encodeURIComponent(version)}`;
         }
 
+        function getErrorMessage(error) {
+            if (!error) {
+                return "";
+            }
+
+            if (typeof error === "string") {
+                return error;
+            }
+
+            if (error.message) {
+                return error.message;
+            }
+
+            try {
+                return JSON.stringify(error);
+            } catch {
+                return String(error);
+            }
+        }
+
+        function isTransientBootFailure(error) {
+            const message = getErrorMessage(error).toLowerCase();
+
+            return (
+                message.includes("mono_download_assets") ||
+                message.includes("failed 404") ||
+                message.includes("404") ||
+                message.includes("download") ||
+                message.includes("failed to fetch") ||
+                message.includes("networkerror") ||
+                message.includes("load resource") ||
+                message.includes("failed to start platform") ||
+                message.includes("integrity") ||
+                message.includes("digest") ||
+                message.includes("_framework") ||
+                message.includes(".wasm") ||
+                message.includes(".js") ||
+                message.includes("failed to load script") ||
+                message.includes("net::err_http2_protocol_error") ||
+                message.includes("protocol_error") ||
+                message.includes("typeerror") ||
+                message.includes("script error")
+            );
+        }
+
+        function isTransientScriptLoadFailure(error) {
+            const message = getErrorMessage(error).toLowerCase();
+
+            return (
+                message.includes("failed to load script") ||
+                message.includes("failed to fetch") ||
+                message.includes("net::err_http2_protocol_error") ||
+                message.includes("protocol_error") ||
+                message.includes("typeerror") ||
+                message.includes("networkerror") ||
+                message.includes("load resource") ||
+                message.includes(".js")
+            );
+        }
+
         function loadScriptSequentially(jsFile) {
             return new Promise((resolve, reject) => {
                 const existing = document.querySelector(`script[data-cymbuild-src="${jsFile}"]`);
+
                 if (existing) {
                     if (existing.dataset.loaded === "true") {
                         resolve();
                         return;
                     }
 
-                    existing.addEventListener("load", () => resolve(), { once: true });
-                    existing.addEventListener("error", () => reject(new Error(`Failed to load script: ${jsFile}`)), { once: true });
-                    return;
+                    if (existing.dataset.failed === "true") {
+                        existing.remove();
+                    } else {
+                        existing.addEventListener("load", () => resolve(), { once: true });
+                        existing.addEventListener("error", () => reject(new Error(`Failed to load script: ${jsFile}`)), { once: true });
+                        return;
+                    }
                 }
 
                 const script = document.createElement("script");
@@ -260,11 +327,35 @@
                 };
 
                 script.onerror = () => {
+                    script.dataset.failed = "true";
                     reject(new Error(`Failed to load script: ${jsFile}`));
                 };
 
                 document.head.appendChild(script);
             });
+        }
+
+        async function loadScriptWithRetry(jsFile, maxAttempts = 3, delayMs = 2500) {
+            let lastError = null;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    console.info(`[Boot] Loading startup script ${jsFile}. Attempt ${attempt} of ${maxAttempts}...`);
+                    await loadScriptSequentially(jsFile);
+                    return;
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`[Boot] Startup script load failed for ${jsFile} on attempt ${attempt}.`, error);
+
+                    if (!isTransientScriptLoadFailure(error) || attempt === maxAttempts) {
+                        break;
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+            }
+
+            throw lastError;
         }
 
         async function loadStartupScripts() {
@@ -287,7 +378,7 @@
             ];
 
             for (const script of scripts) {
-                await loadScriptSequentially(script);
+                await loadScriptWithRetry(script, 3, 2500);
             }
 
             if (!window.indexedDbInterop || typeof window.indexedDbInterop.getAll !== "function") {
@@ -331,43 +422,18 @@
             }
         }
 
-        function getErrorMessage(error) {
-            if (!error) {
-                return "";
-            }
-
-            if (typeof error === "string") {
-                return error;
-            }
-
-            if (error.message) {
-                return error.message;
-            }
-
+        function isAuthenticationLoginStateStuck() {
             try {
-                return JSON.stringify(error);
+                const path = (window.location.pathname || "").toLowerCase();
+                const bodyText = (document.body?.innerText || "").toLowerCase();
+
+                return (
+                    path.includes("/authentication/login") &&
+                    bodyText.includes("checking login state")
+                );
             } catch {
-                return String(error);
+                return false;
             }
-        }
-
-        function isTransientBootFailure(error) {
-            const message = getErrorMessage(error).toLowerCase();
-
-            return (
-                message.includes("mono_download_assets") ||
-                message.includes("failed 404") ||
-                message.includes("404") ||
-                message.includes("download") ||
-                message.includes("failed to fetch") ||
-                message.includes("networkerror") ||
-                message.includes("load resource") ||
-                message.includes("failed to start platform") ||
-                message.includes("integrity") ||
-                message.includes("digest") ||
-                message.includes("_framework") ||
-                message.includes(".wasm")
-            );
         }
 
         async function startBlazorWithRetry(maxAttempts = 6, delayMs = 5000) {
@@ -733,6 +799,20 @@
                     window.cymBuildEmergencyRepair();
                 }
             }, 45000);
+
+            setTimeout(() => {
+                const alreadyTriggered = getSessionFlag("authLoginWatchdogTriggered") === "true";
+                if (alreadyTriggered) {
+                    return;
+                }
+
+                if (isAuthenticationLoginStateStuck()) {
+                    console.warn("[AuthWatchdog] Login state page appears stuck. Starting one-time automatic emergency repair.");
+                    setSessionFlag("authLoginWatchdogTriggered", "true");
+                    setRepairButtonState(false, "Repairing login state...");
+                    window.cymBuildEmergencyRepair();
+                }
+            }, 90000);
         });
 
         window.addEventListener("load", function () {
@@ -744,6 +824,7 @@
 
                 if (!errorUiVisible) {
                     removeSessionFlag("autoBootRepairAttempted");
+                    removeSessionFlag("startupScriptRepairAttempted");
                 }
             }, 5000);
         });
@@ -764,18 +845,18 @@
             const element = document.getElementById(elementId);
             if (!element) return;
 
-            const selectorsToExpand = [
-                ".quote-type-scroll",
-                ".status-breakdown-scroll",
-                ".table-wrap",
-                ".chart-surface"
-            ];
-
             const modifiedElements = [];
 
             try {
-                selectorsToExpand.forEach(selector => {
-                    element.querySelectorAll(selector).forEach(el => {
+                element.querySelectorAll("*").forEach(el => {
+                    const style = window.getComputedStyle(el);
+
+                    if (style.overflow === "auto" ||
+                        style.overflow === "scroll" ||
+                        style.overflowY === "auto" ||
+                        style.overflowY === "scroll" ||
+                        style.overflowX === "auto" ||
+                        style.overflowX === "scroll") {
                         modifiedElements.push({
                             el,
                             overflow: el.style.overflow,
@@ -790,7 +871,7 @@
                         el.style.overflowY = "visible";
                         el.style.maxHeight = "none";
                         el.style.height = "auto";
-                    });
+                    }
                 });
 
                 await new Promise(resolve => setTimeout(resolve, 150));
@@ -806,7 +887,7 @@
                 const imgData = canvas.toDataURL("image/png");
 
                 const pdf = new jsPDF({
-                    orientation: "landscape",
+                    orientation: "portrait",
                     unit: "mm",
                     format: "a4"
                 });

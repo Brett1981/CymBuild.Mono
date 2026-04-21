@@ -261,6 +261,7 @@ namespace Concursus.API.Services.Finance
                         transaction.TransitionGuid,
                         sageOrderId: responseDto.OrderId,
                         sageOrderNumber: responseDto.OrderId,
+                        sageDataSet: requestDto.Dataset.ToString(),
                         responseStatus: responseDto.Status,
                         responseDetail: responseDto.Detail,
                         requestPayloadJson: requestPayloadJson,

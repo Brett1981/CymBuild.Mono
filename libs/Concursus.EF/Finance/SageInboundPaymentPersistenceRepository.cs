@@ -19,9 +19,11 @@ namespace Concursus.EF.Finance
         }
 
         public async Task<long> UpsertExternalTransactionAsync(
-            SageExternalTransactionUpsertRequest request,
-            CancellationToken cancellationToken = default)
+    SageExternalTransactionUpsertRequest request,
+    CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(request);
+
             await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -40,7 +42,12 @@ namespace Concursus.EF.Finance
             command.Parameters.AddWithValue("@NetAmount", request.NetAmount);
             command.Parameters.AddWithValue("@TaxAmount", request.TaxAmount);
             command.Parameters.AddWithValue("@GrossAmount", request.GrossAmount);
+            command.Parameters.AddWithValue("@AllocatedValue", request.AllocatedValue);
             command.Parameters.AddWithValue("@OutstandingAmount", request.OutstandingAmount);
+            command.Parameters.AddWithValue("@DocumentDiscountedValue", request.DocumentDiscountedValue);
+            command.Parameters.AddWithValue("@IsPaid", request.IsPaid);
+            command.Parameters.AddWithValue("@IsFullyPaid", request.IsFullyPaid);
+            command.Parameters.AddWithValue("@PaymentStateCode", request.PaymentStateCode ?? string.Empty);
             command.Parameters.AddWithValue("@MatchedTransactionID", request.MatchedTransactionId);
             command.Parameters.AddWithValue("@MatchedInvoiceRequestID", request.MatchedInvoiceRequestId);
             command.Parameters.AddWithValue("@MatchedJobID", request.MatchedJobId);
@@ -52,7 +59,6 @@ namespace Concursus.EF.Finance
                 Direction = ParameterDirection.InputOutput,
                 Value = DBNull.Value
             };
-
             command.Parameters.Add(guidParameter);
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -71,6 +77,8 @@ namespace Concursus.EF.Finance
             SageExternalAllocationUpsertRequest request,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(request);
+
             await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
@@ -93,7 +101,6 @@ namespace Concursus.EF.Finance
                 Direction = ParameterDirection.InputOutput,
                 Value = DBNull.Value
             };
-
             command.Parameters.Add(guidParameter);
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -192,40 +199,98 @@ namespace Concursus.EF.Finance
             };
 
             command.Parameters.AddWithValue("@InvoiceRequestID", invoiceRequestId);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task<SageAggregatePaymentStateResult> ApplyAggregatePaymentStateAsync(
+            long externalTransactionId,
+            CancellationToken cancellationToken = default)
+        {
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[SageInbound_ApplyAggregatePaymentState]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.AddWithValue("@ExternalTransactionID", externalTransactionId);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return new SageAggregatePaymentStateResult
+                {
+                    ExternalTransactionId = externalTransactionId
+                };
+            }
+
+            return new SageAggregatePaymentStateResult
+            {
+                ExternalTransactionId = reader.GetInt64(reader.GetOrdinal("ExternalTransactionID")),
+                PaymentStateCode = reader.GetString(reader.GetOrdinal("PaymentStateCode")),
+                GrossAmount = reader.GetDecimal(reader.GetOrdinal("GrossAmount")),
+                AllocatedValue = reader.GetDecimal(reader.GetOrdinal("AllocatedValue")),
+                OutstandingAmount = reader.GetDecimal(reader.GetOrdinal("OutstandingAmount")),
+                DocumentDiscountedValue = reader.GetDecimal(reader.GetOrdinal("DocumentDiscountedValue")),
+                IsPaid = reader.GetBoolean(reader.GetOrdinal("IsPaid")),
+                IsFullyPaid = reader.GetBoolean(reader.GetOrdinal("IsFullyPaid"))
+            };
+        }
+
+        public async Task UpdateInboundStatusFromExternalTransactionAsync(
+            Guid cymBuildDocumentGuid,
+            long externalTransactionId,
+            DateTime? nextPollDueOnUtc,
+            CancellationToken cancellationToken = default)
+        {
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[SageInboundDocumentStatus_UpdateFromExternalTransaction]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.AddWithValue("@CymBuildDocumentGuid", cymBuildDocumentGuid);
+            command.Parameters.AddWithValue("@ExternalTransactionID", externalTransactionId);
+            command.Parameters.AddWithValue("@NextPollDueOnUtc", (object?)nextPollDueOnUtc ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private static async Task<long> ResolveExternalTransactionIdAsync(
             SqlConnection connection,
-            string dataset,
-            string accountReference,
-            int transactionTypeCode,
-            string documentNo,
-            string transactionReference,
+            string sageDataset,
+            string sageAccountReference,
+            int sageTransactionTypeCode,
+            string sageDocumentNo,
+            string sageTransactionReference,
             CancellationToken cancellationToken)
         {
             const string sql = @"
-SELECT TOP (1) ID
-FROM SFin.SageExternalTransactions
-WHERE SageDataset = @SageDataset
-  AND SageAccountReference = @SageAccountReference
-  AND SageTransactionTypeCode = @SageTransactionTypeCode
-  AND SageDocumentNo = @SageDocumentNo
-  AND SageTransactionReference = @SageTransactionReference
-  AND RowStatus NOT IN (0,254)
-ORDER BY ID;";
+SELECT TOP (1)
+    ext.ID
+FROM SFin.SageExternalTransactions AS ext
+WHERE ext.RowStatus NOT IN (0,254)
+  AND ext.SageDataset = @SageDataset
+  AND ext.SageAccountReference = @SageAccountReference
+  AND ext.SageTransactionTypeCode = @SageTransactionTypeCode
+  AND ext.SageDocumentNo = @SageDocumentNo
+  AND ext.SageTransactionReference = @SageTransactionReference
+ORDER BY ext.ID DESC;";
 
             await using var command = new SqlCommand(sql, connection)
             {
                 CommandType = CommandType.Text
             };
 
-            command.Parameters.AddWithValue("@SageDataset", dataset ?? string.Empty);
-            command.Parameters.AddWithValue("@SageAccountReference", accountReference ?? string.Empty);
-            command.Parameters.AddWithValue("@SageTransactionTypeCode", transactionTypeCode);
-            command.Parameters.AddWithValue("@SageDocumentNo", documentNo ?? string.Empty);
-            command.Parameters.AddWithValue("@SageTransactionReference", transactionReference ?? string.Empty);
+            command.Parameters.AddWithValue("@SageDataset", sageDataset ?? string.Empty);
+            command.Parameters.AddWithValue("@SageAccountReference", sageAccountReference ?? string.Empty);
+            command.Parameters.AddWithValue("@SageTransactionTypeCode", sageTransactionTypeCode);
+            command.Parameters.AddWithValue("@SageDocumentNo", sageDocumentNo ?? string.Empty);
+            command.Parameters.AddWithValue("@SageTransactionReference", sageTransactionReference ?? string.Empty);
 
             var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return result is long id ? id : Convert.ToInt64(result);
@@ -237,19 +302,20 @@ ORDER BY ID;";
             long targetExternalTransactionId,
             decimal allocatedAmount,
             DateTime? allocationDate,
-            string sourceHash,
+            string? sourceHash,
             CancellationToken cancellationToken)
         {
             const string sql = @"
-SELECT TOP (1) ID
-FROM SFin.SageExternalAllocations
-WHERE SourceExternalTransactionID = @SourceExternalTransactionID
-  AND TargetExternalTransactionID = @TargetExternalTransactionID
-  AND AllocatedAmount = @AllocatedAmount
-  AND ISNULL(AllocationDate, '19000101') = ISNULL(@AllocationDate, '19000101')
-  AND SourceHash = @SourceHash
-  AND RowStatus NOT IN (0,254)
-ORDER BY ID;";
+SELECT TOP (1)
+    ext.ID
+FROM SFin.SageExternalAllocations AS ext
+WHERE ext.RowStatus NOT IN (0,254)
+  AND ext.SourceExternalTransactionID = @SourceExternalTransactionID
+  AND ext.TargetExternalTransactionID = @TargetExternalTransactionID
+  AND ext.AllocatedAmount = @AllocatedAmount
+  AND ISNULL(ext.AllocationDate, CONVERT(date, '19000101')) = ISNULL(@AllocationDate, CONVERT(date, '19000101'))
+  AND ext.SourceHash = @SourceHash
+ORDER BY ext.ID DESC;";
 
             await using var command = new SqlCommand(sql, connection)
             {

@@ -1,7 +1,5 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-
-
 CREATE PROCEDURE [SFin].[InvoiceSchedulesUpsert]
 (
     @Guid								UNIQUEIDENTIFIER,
@@ -19,7 +17,8 @@ CREATE PROCEDURE [SFin].[InvoiceSchedulesUpsert]
 	--Monthly Config. params			 
 	@OnMilestoneCompletion				BIT,
 	@OnActivityCompletion				BIT,
-	@OnActivityAndMilestonCompletion	BIT
+	@OnActivityAndMilestonCompletion	BIT,
+	@ScheduleReenabled					BIT
 )
 AS 
 BEGIN 
@@ -155,7 +154,8 @@ BEGIN
 					Amount,
 					QuoteId,
 					RibaConfigurationId,
-					ActivityMilestoneConfigurationId
+					ActivityMilestoneConfigurationId,
+					ScheduleReenabled
 				)
 		VALUES
 				(
@@ -168,7 +168,8 @@ BEGIN
 					 @Amount,
 					 @QuoteId,
 					 @RibaConfigId,
-					 @ActivityMilestoneConfigId
+					 @ActivityMilestoneConfigId,
+					 @ScheduleReenabled
 				 )
     END
     ELSE
@@ -203,7 +204,8 @@ BEGIN
 				ExpectedDate = @ExpectedDate,
 				DescriptionOfWork = @DescriptionOfWork,
 				Amount = @Amount,
-				QuoteId = @QuoteId
+				QuoteId = @QuoteId,
+				ScheduleReenabled = @ScheduleReenabled
         WHERE   ([Guid] = @Guid)
 
 

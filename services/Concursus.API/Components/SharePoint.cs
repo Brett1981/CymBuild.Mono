@@ -342,7 +342,7 @@ public class SharePoint : MSGraphBase, IDisposable
             if (parentDrive != null)
             {
                 //Perform MailMerge
-                var wordDocumentService = new WordDocumentService(_graphServiceClient);
+                var wordDocumentService = new WordDocumentService(_graphServiceClient, _config);
                 var response = await wordDocumentService.DownloadAndModifyDocumentWithMergeDocument(efCore, RecordGuid, siteId, parentDrive.Id, filenameTemplate,
                     sharePointUrl, documentId, mergeData, _config, mergeDocument, outputType, userId, isIncludedDocument, serviceBase, RecordTypeGuid);
 
@@ -857,16 +857,16 @@ public class SharePoint : MSGraphBase, IDisposable
     private SharepointDirectory BuildJobSharepointDirectory(string? organisationalUnitGuid)
     {
         var defaultFolderStruct = new List<string>
-    {
-        "Admin",
-        "Certs",
-        "Design Information",
-        "Design Risk",
-        "Emails",
-        "Finance",
-        "Photos",
-        "Reports"
-    };
+        {
+            "Admin",
+            "Certs",
+            "Design Information",
+            "Design Risk",
+            "Emails",
+            "Finance",
+            "Photos",
+            "Reports"
+        };
 
         var subFoldersToCreate = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
@@ -884,7 +884,60 @@ public class SharePoint : MSGraphBase, IDisposable
             switch (OrganisationalUnitHelper.GetById(organisationalUnitGuid.ToUpperInvariant()))
             {
                 case OrganisationalUnitEnum.CDM:
-                    subFoldersToCreate["Reports"] = new List<string> { "CPP", "PCI", "OMHS" };
+
+                    defaultFolderStruct.Add("Minutes");
+
+                    subFoldersToCreate["Admin"] = new List<string>
+                    {
+                        "CDM Support",
+                        "Appointments & Contracts",
+                        "Handover Checklist",
+                        "Client & Designer duties",
+                        "CDM Strategy",
+                        "Project Directory"
+                    };
+
+                    subFoldersToCreate["Design Information"] = new List<string>
+                    {
+                        "Architectural",
+                        "Structural",
+                        "MEP",
+                        "Fire Safety",
+                        "CDP",
+                        "Other"
+                    };
+
+                    subFoldersToCreate["Design Risk"] = new List<string>
+                    {
+                        "DRRs",
+                        "Risk Meetings or Workshops"
+                    };
+
+                    subFoldersToCreate["Finance"] = new List<string>
+                    {
+                        "Invoices",
+                        "POs",
+                        "Correspondence"
+                    };
+                   
+                    subFoldersToCreate["Photos"] = new List<string>
+                    {
+                        "Initial Visit",
+                        "Inspections",
+                        "Client Photos"
+                    };
+
+                    subFoldersToCreate["Reports"] = new List<string>
+                    {
+                        "F10 Notification",
+                        "PCI",
+                        "CPP",
+                        "H&S File",
+                        "Inspections",
+                        "O&M Manual"
+                    };
+
+
                     return new SharepointDirectory
                     {
                         FolderNames = defaultFolderStruct,

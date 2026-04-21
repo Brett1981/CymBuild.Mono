@@ -96,10 +96,8 @@ namespace CymBuild_Outlook_API.Controllers
 
         private string GetFiledRecordPropertyValue()
         {
-            var tokenRequestConfig = _configuration.GetSection("FiledRecords");
-            var values = tokenRequestConfig.GetValue<string[]>("PropertyValue");
-            var v = values?.FirstOrDefault();
-            return string.IsNullOrWhiteSpace(v) ? string.Empty : v;
+            var value = _configuration.GetValue<string>("FiledRecords:PropertyValue");
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value;
         }
 
         private async Task<Dictionary<string, object>> GetUserSettingsFromGraphAsync()
@@ -142,12 +140,12 @@ namespace CymBuild_Outlook_API.Controllers
                 throw new InvalidOperationException("FiledRecords:PropertyValue is not configured.");
 
             var json = JsonConvert.SerializeObject(settings);
-
+            _loggingHelper.LogInfo("Saving user settings to Graph extension property {ExtensionProperty}", key);
             await graphClient.Me.PatchAsync(new Microsoft.Graph.Models.User
             {
                 AdditionalData = new Dictionary<string, object>
                 {
-                    { key, json }
+                    [key] = json
                 }
             });
         }

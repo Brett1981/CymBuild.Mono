@@ -71,7 +71,6 @@ namespace Concursus.EF.Finance
             header.Lines = await LoadLinesAsync(
                 connection,
                 header.TransactionId,
-                header.JobId,
                 cancellationToken);
 
             return header;
@@ -242,11 +241,10 @@ WHERE  tbt.Guid = @TransitionGuid
         }
 
         /// <summary>
-        /// Loads line/detail rows for the approved transaction.
-        ///
         /// Finance mapping rule applied here:
         /// - NominalCode remains config-driven in appsettings (default 31010)
-        /// - VatCode remains config-driven in appsettings (default 22)
+        /// - VatCode now comes from SFin.TransactionDetails.VatCodeID -> SFin.VatCodes.SageVatNo
+        /// - Quantity now comes from SFin.TransactionDetails.Qty
         /// - CostCentreCode and DepartmentCode come from the Job OrganisationalUnit
         ///   via SCore.OrganisationalUnits.CostCentreCode
         /// - Expected format is PART1-PART2, e.g. BBS-CDM
@@ -256,61 +254,67 @@ WHERE  tbt.Guid = @TransitionGuid
         private static async Task<List<ApprovedTransactionForSageLineReadModel>> LoadLinesAsync(
             SqlConnection connection,
             long transactionId,
-            int? jobId,
             CancellationToken cancellationToken)
         {
             const string sql = """
-SELECT td.ID                               AS LineId,
-       td.Guid                             AS LineGuid,
-       td.RowStatus                        AS RowStatus,
-       CAST(td.ID AS nvarchar(50))         AS LineReference,
-       td.[Description]                    AS [Description],
-       CAST(N'' AS nvarchar(100))          AS ProductCode,
-       CAST(1 AS decimal(18, 2))           AS Quantity,
-       td.Net                              AS UnitPrice,
-       td.Net                              AS NetAmount,
-       td.Vat                              AS VatAmount,
-       td.Gross                            AS GrossAmount,
-       CAST(N'' AS nvarchar(20))           AS VatCode,
-       CAST(N'' AS nvarchar(50))           AS NominalCode,
-       CAST(
-            CASE
-                WHEN ou.CostCentreCode IS NULL OR ou.CostCentreCode = N'' THEN N''
-                WHEN CHARINDEX(N'-', ou.CostCentreCode) > 0
-                    THEN LEFT(ou.CostCentreCode, CHARINDEX(N'-', ou.CostCentreCode) - 1)
-                ELSE ou.CostCentreCode
-            END
-            AS nvarchar(50)
-       )                                   AS CostCentreCode,
-       CAST(
-            CASE
-                WHEN ou.CostCentreCode IS NULL OR ou.CostCentreCode = N'' THEN N''
-                WHEN CHARINDEX(N'-', ou.CostCentreCode) > 0
-                    THEN SUBSTRING(
-                            ou.CostCentreCode,
-                            CHARINDEX(N'-', ou.CostCentreCode) + 1,
-                            LEN(ou.CostCentreCode))
-                ELSE N''
-            END
-            AS nvarchar(50)
-       )                                   AS DepartmentCode,
-       CAST(NULL AS bigint)                AS InvoiceRequestItemId,
-       CAST(NULL AS bigint)                AS ActivityId,
-       CAST(NULL AS bigint)                AS MilestoneId,
-       CAST(N'' AS nvarchar(100))          AS JobPaymentStageName,
-       CAST(N'' AS nvarchar(50))           AS LineType,
-       CAST(NULL AS datetime2(7))          AS ServiceDateUtc
-FROM   SFin.TransactionDetails AS td
-LEFT JOIN SJob.Jobs AS j
-       ON j.ID = @JobId
-      AND j.RowStatus NOT IN (0, 254)
-LEFT JOIN SCore.OrganisationalUnits AS ou
-       ON ou.ID = j.OrganisationalUnitID
-      AND ou.RowStatus NOT IN (0, 254)
-WHERE  td.TransactionID = @TransactionId
-  AND  td.RowStatus NOT IN (0, 254)
-ORDER BY td.ID ASC;
-""";
+                    SELECT
+                           td.ID                                        AS LineId,
+                           td.Guid                                      AS LineGuid,
+                           td.RowStatus                                 AS RowStatus,
+                           CAST(td.ID AS nvarchar(50))                  AS LineReference,
+                           td.[Description]                             AS [Description],
+                           CAST(N'' AS nvarchar(100))                   AS ProductCode,
+                           CAST(ISNULL(td.Qty, 1) AS decimal(18, 2))    AS Quantity,
+                           td.Net                                       AS UnitPrice,
+                           td.Net                                       AS NetAmount,
+                           td.Vat                                       AS VatAmount,
+                           td.Gross                                     AS GrossAmount,
+                           CAST(ISNULL(vc.SageVatNo, N'') AS nvarchar(20)) AS VatCode,
+                           CAST(N'' AS nvarchar(50))                    AS NominalCode,
+                           CAST(
+                                CASE
+                                    WHEN ou.CostCentreCode IS NULL OR ou.CostCentreCode = N'' THEN N''
+                                    WHEN CHARINDEX(N'-', ou.CostCentreCode) > 0
+                                        THEN LEFT(ou.CostCentreCode, CHARINDEX(N'-', ou.CostCentreCode) - 1)
+                                    ELSE ou.CostCentreCode
+                                END
+                                AS nvarchar(50)
+                           )                                            AS CostCentreCode,
+                           CAST(
+                                CASE
+                                    WHEN ou.CostCentreCode IS NULL OR ou.CostCentreCode = N'' THEN N''
+                                    WHEN CHARINDEX(N'-', ou.CostCentreCode) > 0
+                                        THEN SUBSTRING(
+                                                ou.CostCentreCode,
+                                                CHARINDEX(N'-', ou.CostCentreCode) + 1,
+                                                LEN(ou.CostCentreCode))
+                                    ELSE N''
+                                END
+                                AS nvarchar(50)
+                           )                                            AS DepartmentCode,
+                           CAST(NULL AS bigint)                         AS InvoiceRequestItemId,
+                           CAST(NULL AS bigint)                         AS ActivityId,
+                           CAST(NULL AS bigint)                         AS MilestoneId,
+                           CAST(N'' AS nvarchar(100))                   AS JobPaymentStageName,
+                           CAST(N'' AS nvarchar(50))                    AS LineType,
+                           CAST(NULL AS datetime2(7))                   AS ServiceDateUtc
+                    FROM   SFin.TransactionDetails AS td
+                    INNER JOIN SFin.Transactions AS t
+                           ON t.ID = td.TransactionID
+                          AND t.RowStatus NOT IN (0, 254)
+                    LEFT JOIN SFin.VatCodes AS vc
+                           ON vc.ID = td.VatCodeID
+                          AND vc.RowStatus NOT IN (0, 254)
+                    LEFT JOIN SJob.Jobs AS j
+                           ON j.ID = t.JobID
+                          AND j.RowStatus NOT IN (0, 254)
+                    LEFT JOIN SCore.OrganisationalUnits AS ou
+                           ON ou.ID = j.OrganisationalUnitID
+                          AND ou.RowStatus NOT IN (0, 254)
+                    WHERE  td.TransactionID = @TransactionId
+                      AND  td.RowStatus NOT IN (0, 254)
+                    ORDER BY td.ID ASC;
+                    """;
 
             var results = new List<ApprovedTransactionForSageLineReadModel>();
 
@@ -319,10 +323,6 @@ ORDER BY td.ID ASC;
             command.Parameters.Add(new SqlParameter("@TransactionId", SqlDbType.BigInt)
             {
                 Value = transactionId
-            });
-            command.Parameters.Add(new SqlParameter("@JobId", SqlDbType.Int)
-            {
-                Value = (object?)jobId ?? DBNull.Value
             });
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);

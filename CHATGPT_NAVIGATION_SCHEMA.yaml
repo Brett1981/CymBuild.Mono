@@ -1,0 +1,181 @@
+schema_version: 1.0
+purpose: >
+  Companion navigation map for AI-assisted code analysis in the CymBuild monorepo.
+  Focused on the four primary projects: PWA, API, API_CLIENT, and EF.
+  Optimized so ChatGPT can quickly locate likely files by intent.
+repository:
+  root: .
+  solution_hint:
+    - CymBuild.Monorepo.sln
+
+projects:
+  - key: PWA
+    path: apps/Concursus.PWA
+    stack: Blazor WebAssembly (Razor Components)
+    entry_points:
+      - Program.cs
+      - App.razor
+    high_value_dirs:
+      - path: Pages
+        role: Route-level UI pages (.razor)
+        lookup_hints:
+          - "Start here when user mentions a screen/page name"
+          - "Search for @page directives"
+      - path: Shared
+        role: Reusable UI components and shared layout/widgets
+      - path: Services
+        role: Front-end service abstractions and API integration helpers
+      - path: Helpers
+        role: Browser/client utility helpers (storage, formatting, indexeddb)
+      - path: Classes
+        role: Front-end models and helper classes
+      - path: wwwroot
+        role: Static assets (css/js/images/vendor)
+        note: Large folder; avoid broad scans unless investigating static resources
+    common_tasks:
+      - intent: "Find page implementation"
+        start_with:
+          - "Pages/<Name>.razor"
+          - "Pages/<Name>.razor.cs"
+          - "Pages/<Name>.razor.css"
+      - intent: "Find shared UI component"
+        start_with:
+          - "Shared/**/*.razor"
+      - intent: "Find client-side app bootstrap or DI"
+        start_with:
+          - Program.cs
+          - App.razor
+
+  - key: API
+    path: services/Concursus.API
+    stack: ASP.NET Core Web API + gRPC/proto integrations
+    entry_points:
+      - Program.cs
+    high_value_dirs:
+      - path: Controllers
+        role: HTTP endpoints (routing layer)
+      - path: Services
+        role: Domain/business logic and integration orchestration
+      - path: EntityFramework
+        role: EF-facing data models/repositories grouped by domain area
+      - path: Interfaces
+        role: Service contracts
+      - path: Protos
+        role: gRPC/protobuf contracts
+      - path: Sage
+        role: Sage API/SOAP integrations
+      - path: Infrastructure
+        role: Infrastructure-level concerns (e.g., SQL session context)
+      - path: Classes
+        role: Utility/service helper classes
+    common_tasks:
+      - intent: "Trace API endpoint to implementation"
+        start_with:
+          - "Controllers/*.cs"
+          - "Services/*.cs"
+      - intent: "Find scheduled/background processing"
+        start_with:
+          - "Services/**/**Worker*.cs"
+          - "Services/Outbox/*.cs"
+      - intent: "Find request/response contracts"
+        start_with:
+          - "Types/*.cs"
+          - "Models/*.cs"
+          - "Protos/*.proto"
+
+  - key: API_CLIENT
+    path: libs/Concursus.API.Client
+    stack: Shared .NET client library consumed by front-end/other services
+    entry_points:
+      - Concursus.API.Client.csproj
+    high_value_dirs:
+      - path: Services
+        role: Client-facing wrappers/services for API access
+      - path: Models
+        role: Client DTOs and service state models
+      - path: Classes
+        role: Client helper implementations
+    common_tasks:
+      - intent: "Find typed response/request model used by UI"
+        start_with:
+          - "Models/**/*.cs"
+      - intent: "Find wrapper around API or translation/file services"
+        start_with:
+          - "Services/*.cs"
+
+  - key: EF
+    path: libs/Concursus.EF
+    stack: EF/domain data-access and query/repository layer
+    entry_points:
+      - Concursus.EF.csproj
+      - Core.cs
+      - QueryBuilder.cs
+    high_value_dirs:
+      - path: Types
+        role: Data/entity-like domain transfer types and query payload models
+      - path: Finance
+        role: Finance-related repositories and data access
+      - path: Services
+        role: EF-backed synchronization services
+      - path: Monitoring
+        role: Monitoring repositories
+      - path: MetadataManifests
+        role: Metadata validation/manifests tooling
+      - path: Helpers
+        role: EF/domain helper utilities
+      - path: Interfaces
+        role: Data/service contracts
+    common_tasks:
+      - intent: "Find query construction logic"
+        start_with:
+          - QueryBuilder.cs
+          - QueryBuilderTiming.cs
+      - intent: "Find repository for a domain"
+        start_with:
+          - "*Repository.cs"
+          - "Finance/*Repository.cs"
+      - intent: "Find shared domain types used across API/PWA"
+        start_with:
+          - "Types/*.cs"
+
+cross_project_navigation:
+  typical_flow:
+    - "PWA page/user action begins in apps/Concursus.PWA/Pages or Shared"
+    - "Client call/DTO mapping appears in libs/Concursus.API.Client"
+    - "Endpoint and orchestration continue in services/Concursus.API/Controllers + Services"
+    - "Persistence/query work is implemented in libs/Concursus.EF"
+  handoff_markers:
+    - "Method names ending with Service/Repository patterns"
+    - "DTO names shared between API_CLIENT Models and EF Types"
+    - "Controller action names mirrored by client service methods"
+
+locate_by_intent_index:
+  routing_or_endpoint:
+    - services/Concursus.API/Controllers
+    - apps/Concursus.PWA/Pages
+  business_logic:
+    - services/Concursus.API/Services
+    - libs/Concursus.EF/*Repository.cs
+  data_contracts:
+    - libs/Concursus.API.Client/Models
+    - libs/Concursus.EF/Types
+    - services/Concursus.API/Types
+    - services/Concursus.API/Models
+  storage_or_db_query:
+    - libs/Concursus.EF
+    - services/Concursus.API/EntityFramework
+  ui_components:
+    - apps/Concursus.PWA/Shared
+    - apps/Concursus.PWA/Pages
+
+recommended_search_patterns:
+  - "rg --files apps/Concursus.PWA | rg 'Pages|Shared|Services'"
+  - "rg --files services/Concursus.API | rg 'Controllers|Services|EntityFramework|Protos'"
+  - "rg --files libs/Concursus.API.Client | rg 'Models|Services|Classes'"
+  - "rg --files libs/Concursus.EF | rg 'Types|Repository|Finance|QueryBuilder'"
+  - "rg 'class |interface |record ' <project_path>"
+
+notes:
+  - "Prefer targeted directory scans over repository-wide searches for speed and relevance."
+  - "In PWA, many route pages have optional .razor.cs and .razor.css companions."
+  - "Treat this file as a companion index; it does not replace source-of-truth code."

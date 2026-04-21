@@ -1,3 +1,4 @@
+using Azure.Identity;
 using Concursus.API.Classes;
 using Concursus.API.Interfaces;
 using Concursus.API.Models;
@@ -22,6 +23,7 @@ using Concursus_EF;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
+using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using NLog;
 using NLog.Web;
@@ -37,10 +39,31 @@ try
     builder.Host.UseWindowsService();
 
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"))
-        .EnableTokenAcquisitionToCallDownstreamApi()
-        .AddMicrosoftGraph(builder.Configuration.GetSection("MicrosoftGraph"))
-        .AddInMemoryTokenCaches();
+     .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"))
+     .EnableTokenAcquisitionToCallDownstreamApi()
+     .AddInMemoryTokenCaches();
+
+    builder.Services.AddSingleton<GraphServiceClient>(sp =>
+    {
+        var configuration = sp.GetRequiredService<IConfiguration>();
+        var azureAdSection = configuration.GetSection("AzureAd");
+
+        var tenantId = azureAdSection.GetValue<string>("TenantId");
+        var clientId = azureAdSection.GetValue<string>("ClientId");
+        var clientSecret = azureAdSection.GetValue<string>("ClientSecret");
+
+        if (string.IsNullOrWhiteSpace(tenantId))
+            throw new InvalidOperationException("AzureAd:TenantId is missing.");
+
+        if (string.IsNullOrWhiteSpace(clientId))
+            throw new InvalidOperationException("AzureAd:ClientId is missing.");
+
+        if (string.IsNullOrWhiteSpace(clientSecret))
+            throw new InvalidOperationException("AzureAd:ClientSecret is missing.");
+
+        var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+        return new GraphServiceClient(credential);
+    });
 
     builder.Services.AddScoped<IDelegatedGraphClientFactory, DelegatedGraphClientFactory>();
 
@@ -169,14 +192,15 @@ try
 
     builder.Services.AddScoped<ITransactionSageSubmissionAdminRepository, TransactionSageSubmissionAdminRepository>();
     builder.Services.AddScoped<ITransactionSageSubmissionAdminService, TransactionSageSubmissionAdminService>();
-
+    builder.Services.AddScoped<WordDocumentService>();
     builder.Services.AddScoped<ISageInboundPaymentReadRepository, SageInboundPaymentReadRepository>();
     builder.Services.AddScoped<ISageInboundPaymentIdempotencyRepository, SageInboundPaymentIdempotencyRepository>();
     builder.Services.AddScoped<ISageInboundPaymentPersistenceRepository, SageInboundPaymentPersistenceRepository>();
     builder.Services.AddScoped<ISageInboundPaymentWorklistRepository, SageInboundPaymentWorklistRepository>();
     builder.Services.AddScoped<ISageInboundPaymentSyncService, SageInboundPaymentSyncService>();
     builder.Services.AddScoped<ISageInboundDiagnosticsRepository, SageInboundDiagnosticsRepository>();
-
+    builder.Services.AddScoped<ITransactionInvoicePreviewRepository, TransactionInvoicePreviewRepository>();
+    builder.Services.AddScoped<ITransactionInvoicePreviewService, TransactionInvoicePreviewService>();
     builder.Logging.ClearProviders();
     builder.Host.UseNLog();
 

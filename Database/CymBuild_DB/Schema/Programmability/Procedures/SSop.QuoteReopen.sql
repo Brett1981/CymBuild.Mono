@@ -60,7 +60,25 @@ AS
 		WHERE (DataObjectGuid = @Guid)
 		ORDER BY dot.ID DESC;
 
-		EXEC SCore.DataObjectTransitionUpsert @DataObjectTransitionGuid, @PreviousStatusGuid, @ReopenedStatus, N'System Imported', @UserGuid, '00000000-0000-0000-0000-000000000000', @Guid, 1
+		DECLARE @CompleteStatusGuid UNIQUEIDENTIFIER = '6042639D-EF8A-4B6F-9182-A69A7119C117';
+		DECLARE @DeclinedStatusGuid UNIQUEIDENTIFIER = 'B9BA4510-6358-4C0A-BBA1-5FEB33C54F84';
+		
+
+
+		IF(@PreviousStatusGuid NOT IN (@CompleteStatusGuid, @DeclinedStatusGuid ))
+		BEGIN 
+			;THROW 60000, N'Last applied status must be "Completed" or "Declined"', 1
+		END
+
+		EXEC SCore.DataObjectTransitionUpsert 
+				@DataObjectTransitionGuid, 
+				@PreviousStatusGuid, 
+				@ReopenedStatus, 
+				N'System Imported', 
+				@UserGuid, 
+				'00000000-0000-0000-0000-000000000000', 
+				@Guid, 
+				1
 
 
 	END

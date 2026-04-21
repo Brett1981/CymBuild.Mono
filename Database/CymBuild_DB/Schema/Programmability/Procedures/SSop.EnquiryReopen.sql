@@ -41,6 +41,7 @@ AS
 		DECLARE @Comment NVARCHAR(200) = N'The job has been reopened.';
 		DECLARE @UserGuid UNIQUEIDENTIFIER;
 		DECLARE @IsImported BIT = 0;
+		DECLARE @LastAppliedStatusGuid UNIQUEIDENTIFIER;
 
 
 		--Get the user GUID
@@ -50,8 +51,11 @@ AS
 
 
 		--Get the current status applied to the record.
-		SELECT @PreviousStatusGuid = Guid
+		SELECT 
+			@PreviousStatusGuid = dob.Guid,
+			@LastAppliedStatusGuid =  wfs.Guid
 		FROM SCore.DataObjectTransition AS dob
+		JOIN SCore.WorkflowStatus AS wfs ON (wfs.Id = dob.StatusID)
 		WHERE
 				(dob.DataObjectGuid = @Guid)
 			AND (dob.RowStatus NOT IN (0,254))
@@ -65,6 +69,16 @@ AS
 							AND (dob1.ID > dob.ID)
 					)
 				);
+
+		DECLARE @CompleteStatusGuid UNIQUEIDENTIFIER = '6042639D-EF8A-4B6F-9182-A69A7119C117';
+		DECLARE @DeclinedStatusGuid UNIQUEIDENTIFIER = '708C00E6-F45F-4CB2-8E91-A80B8B8E802E';
+		DECLARE @EngineeringDeclinedStatusGuid UNIQUEIDENTIFIER = '60B8D960-8F6C-495D-B2E7-F19EBD5506EE';
+
+
+		IF(@LastAppliedStatusGuid NOT IN (@CompleteStatusGuid, @DeclinedStatusGuid, @EngineeringDeclinedStatusGuid ))
+		BEGIN 
+			;THROW 60000, N'Last applied status must be "Completed" or "Declined"', 1
+		END
 				
 
 		--Add reopened status.

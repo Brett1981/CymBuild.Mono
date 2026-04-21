@@ -31,6 +31,7 @@ public partial class DynamicGrid
     [Parameter] public bool DoubleClickDisabled { get; set; } = false;
 
     [Parameter] public bool Disabled { get; set; } = false;
+    [Parameter] public EventCallback<bool> DisabledChanged { get; set; }
 
     [Parameter] public EventCallback ResyncDataObject { get; set; }
 

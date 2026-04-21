@@ -6,7 +6,7 @@ CREATE FUNCTION [SFin].[tvf_JobInvoiceSchedules]
 	@ParentGuid UNIQUEIDENTIFIER
   )
 RETURNS TABLE
-      --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN
     SELECT
@@ -36,7 +36,7 @@ AS
 						SELECT
 								1
 						FROM
-								SCore.ObjectSecurityForUser_CanRead(invs.Guid, 1479) oscr
+								SCore.ObjectSecurityForUser_CanRead(invs.Guid, @UserId) oscr
 					)
 				)
 GO

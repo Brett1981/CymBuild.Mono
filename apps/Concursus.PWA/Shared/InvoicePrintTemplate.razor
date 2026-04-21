@@ -1,0 +1,495 @@
+﻿@using System.Globalization
+@using System.Text
+@inherits ComponentBase
+
+<div class="invoice-print-root" id="invoice-print-root">
+    @foreach (var invoicePage in _pages)
+    {
+        <section class="invoice-page">
+            <div class="invoice-page__inner">
+                <header class="invoice-header">
+                    <div class="invoice-header__left">
+                        <h1>Invoice (Preview)</h1>
+                        <div class="company-block">
+                            <div>SOCOTEC Asbestos Limited</div>
+                            <div>SOCOTEC House, Bretby Business Park, Ashby Road, Burton upon Trent, DE15 0YZ</div>
+                            <div>T: 01283 554400&nbsp;&nbsp;&nbsp;E: salesledger@socotec.com</div>
+                        </div>
+                    </div>
+
+                    <div class="invoice-header__right">
+                        @if (!string.IsNullOrWhiteSpace(Model.LogoUrl))
+                        {
+                            <img class="invoice-logo" src="@Model.LogoUrl" alt="SOCOTEC" />
+                        }
+                    </div>
+                </header>
+
+                <section class="invoice-summary-top">
+                    <div class="invoice-summary-top__left">
+                        <div class="meta-row">
+                            <span class="meta-label">CUSTOMER REF:</span>
+                            <span class="meta-value">@Model.CustomerReference</span>
+                        </div>
+
+                        <div class="meta-block-title">INVOICE TO:</div>
+                        <div class="address-block preserve-lines">@Model.InvoiceToBlock</div>
+                    </div>
+
+                    <div class="invoice-summary-top__right">
+                        <div class="meta-row">
+                            <span class="meta-label">TAX POINT:</span>
+                            <span class="meta-value">@FormatDate(Model.TaxPointDate)</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">PAYMENT TERMS</span>
+                            <span class="meta-value">@Model.PaymentTerms</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Cost Centre:</span>
+                            <span class="meta-value">@Model.CostCentre</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Department:</span>
+                            <span class="meta-value">@Model.Department</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="invoice-detail-block">
+                    <table class="invoice-detail-table @(invoicePage.IsLastPage ? "invoice-detail-table--last" : "invoice-detail-table--standard")">
+                        <colgroup>
+                            <col class="col-description" />
+                            <col class="col-qty" />
+                            <col class="col-unit-price" />
+                            <col class="col-amount-ex" />
+                            <col class="col-code" />
+                            <col class="col-vat-amount" />
+                        </colgroup>
+
+                        <tbody>
+                            <tr class="meta-top-row">
+                                <td class="meta-left-cell">
+                                    <div class="meta-pair">
+                                        <span class="meta-pair__label">INVOICE NUMBER:</span>
+                                        <span class="meta-pair__value">@Model.InvoiceNumber</span>
+                                    </div>
+                                </td>
+                                <td colspan="5" class="meta-right-cell">
+                                    <div class="vat-registration-line">VAT Registration Number GB 864 1248 23</div>
+                                </td>
+                            </tr>
+
+                            <tr class="meta-second-row">
+                                <td class="meta-left-cell">
+                                    <div class="meta-pair">
+                                        <span class="meta-pair__label">PURCHASE ORDER NUMBER:</span>
+                                        <span class="meta-pair__value">@Model.PurchaseOrderNumber</span>
+                                    </div>
+                                </td>
+                                <td colspan="5" class="meta-right-cell meta-right-cell--blank"></td>
+                            </tr>
+
+                            <tr class="detail-column-header-row">
+                                <td class="detail-description-header">Description</td>
+                                <td class="detail-header-cell center">QTY</td>
+                                <td class="detail-header-cell center">UNIT<br />PRICE</td>
+                                <td class="detail-header-cell center">AMOUNT<br />EXC. VAT</td>
+                                <td class="detail-header-cell center detail-header-cell--vertical">
+                                    <span class="detail-header-cell--stacked">
+                                        <span>C</span>
+                                        <span>O</span>
+                                        <span>D</span>
+                                        <span>E</span>
+                                    </span>
+                                </td>
+                                <td class="detail-header-cell center">VAT<br />AMOUNT</td>
+                            </tr>
+
+                            @foreach (var line in invoicePage.Rows)
+                            {
+                                <tr class="detail-data-row">
+                                    <td class="detail-description-cell preserve-lines">@line.Description</td>
+                                    <td class="detail-qty-cell">@line.Quantity.ToString("0.##", CultureInfo.InvariantCulture)</td>
+                                    <td class="detail-unit-price-cell">@FormatMoney(line.UnitPrice)</td>
+                                    <td class="detail-amount-ex-cell">@FormatMoney(line.AmountExVat)</td>
+                                    <td class="detail-code-cell">@line.VatCode</td>
+                                    <td class="detail-vat-amount-cell">@FormatMoney(line.VatAmount)</td>
+                                </tr>
+                            }
+
+                            @for (var i = 0; i < invoicePage.RemainingUnits; i++)
+                            {
+                                <tr class="detail-data-row blank-row">
+                                    <td>&nbsp;</td>
+                                    <td>&nbsp;</td>
+                                    <td>&nbsp;</td>
+                                    <td>&nbsp;</td>
+                                    <td>&nbsp;</td>
+                                    <td>&nbsp;</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="invoice-bottom @(invoicePage.IsLastPage ? string.Empty : "invoice-bottom--continuation")">
+                    <div class="invoice-bottom__left">
+                        @if (invoicePage.IsLastPage)
+                        {
+                            <div class="legal-text preserve-lines">
+                                We understand and will exercise our statutory right to claim interest
+                                and compensation for debt recovery costs under the Late Payment
+                                Legislation if we are not paid according to agreed credit terms.
+                            </div>
+
+                            <div class="registered-office preserve-lines">
+                                SOCOTEC Asbestos Limited. Registered Number (4951688). Registered Office:
+                                SOCOTEC House, Bretby Business Park, Ashby Road, Burton upon Trent, DE15 0YZ
+                            </div>
+                        }
+                    </div>
+
+                    <div class="invoice-bottom__right">
+                        @if (invoicePage.IsLastPage)
+                        {
+                            <div class="totals-row">
+                                <span>TOTAL AMOUNT EXCLUDING VAT £</span>
+                                <strong>@FormatMoney(Model.TotalAmountExcludingVat)</strong>
+                            </div>
+                            <div class="totals-row">
+                                <span>TOTAL VAT £</span>
+                                <strong>@FormatMoney(Model.TotalVat)</strong>
+                            </div>
+                            <div class="totals-row totals-row--due">
+                                <span>TOTAL AMOUNT DUE £</span>
+                                <strong>@FormatMoney(Model.TotalAmountDue)</strong>
+                            </div>
+                            <div class="query-note">Any query must be notified to us within 21 days of invoice date</div>
+                        }
+                    </div>
+                </section>
+
+                <footer class="invoice-footer">
+                    <div class="invoice-footer__top-line"></div>
+                    <div class="invoice-footer__columns">
+                        <div class="invoice-footer__col preserve-lines">
+                            Cheques should be crossed and made payable to
+                            SOCOTEC Asbestos Limited. Quoting the following:
+                            CUSTOMER REFERENCE:
+
+                            INVOICE No.
+                        </div>
+
+                        <div class="invoice-footer__col preserve-lines">
+                            Please detach this slip and
+                            forward with your remittance to:
+                        </div>
+
+                        <div class="invoice-footer__amount-due">
+                            AMOUNT DUE: £
+                        </div>
+                    </div>
+
+                    <div class="invoice-footer__bottom">
+                        <div class="invoice-footer__brand">socotec.co.uk</div>
+                        <div class="invoice-footer__page-number">@invoicePage.DisplayPageNumber</div>
+                    </div>
+                </footer>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public InvoicePrintModel Model { get; set; } = new();
+
+    // These are now "height units", not literal row counts.
+    [Parameter] public int FirstPageCapacityUnits { get; set; } = 26;
+    [Parameter] public int ContinuationPageCapacityUnits { get; set; } = 26;
+    [Parameter] public int LastPageCapacityUnits { get; set; } = 18;
+
+    // Approximate wrap calibration for the description column.
+    [Parameter] public int DescriptionCharactersPerLine { get; set; } = 58;
+
+    private List<InvoicePageModel> _pages = new();
+
+    protected override void OnParametersSet()
+    {
+        Model ??= new InvoicePrintModel();
+        _pages = BuildPages(
+            Model,
+            FirstPageCapacityUnits,
+            ContinuationPageCapacityUnits,
+            LastPageCapacityUnits,
+            DescriptionCharactersPerLine);
+    }
+
+    private static List<InvoicePageModel> BuildPages(
+    InvoicePrintModel model,
+    int firstPageCapacityUnits,
+    int continuationPageCapacityUnits,
+    int lastPageCapacityUnits,
+    int descriptionCharactersPerLine)
+    {
+        if (firstPageCapacityUnits <= 0)
+            throw new ArgumentOutOfRangeException(nameof(firstPageCapacityUnits));
+
+        if (continuationPageCapacityUnits <= 0)
+            throw new ArgumentOutOfRangeException(nameof(continuationPageCapacityUnits));
+
+        if (lastPageCapacityUnits <= 0)
+            throw new ArgumentOutOfRangeException(nameof(lastPageCapacityUnits));
+
+        if (descriptionCharactersPerLine <= 0)
+            throw new ArgumentOutOfRangeException(nameof(descriptionCharactersPerLine));
+
+        var sourceRows = (model.Lines ?? new List<InvoicePrintLineModel>())
+            .Select(line => new InvoicePrintLineRenderModel
+            {
+                Description = line.Description ?? string.Empty,
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                AmountExVat = line.AmountExVat,
+                VatCode = line.VatCode ?? string.Empty,
+                VatAmount = line.VatAmount,
+                HeightUnits = EstimateRowHeightUnits(line.Description, descriptionCharactersPerLine)
+            })
+            .ToList();
+
+        var pages = new List<InvoicePageModel>();
+
+        if (sourceRows.Count == 0)
+        {
+            pages.Add(new InvoicePageModel
+            {
+                Rows = new List<InvoicePrintLineRenderModel>(),
+                CapacityUnits = lastPageCapacityUnits,
+                ConsumedUnits = 0,
+                RemainingUnits = lastPageCapacityUnits,
+                PageNumber = 1,
+                TotalPages = 1,
+                IsLastPage = true,
+                DisplayPageNumber = "1 of 1"
+            });
+
+            return pages;
+        }
+
+        var index = 0;
+        var pageNumber = 1;
+
+        while (index < sourceRows.Count)
+        {
+            var pageCapacity = pageNumber == 1 ? firstPageCapacityUnits : continuationPageCapacityUnits;
+            var pageRows = new List<InvoicePrintLineRenderModel>();
+            var consumedUnits = 0;
+
+            while (index < sourceRows.Count)
+            {
+                var candidate = sourceRows[index];
+                var candidateUnits = Math.Max(1, candidate.HeightUnits);
+
+                if (pageRows.Count > 0 && consumedUnits + candidateUnits > pageCapacity)
+                {
+                    break;
+                }
+
+                pageRows.Add(candidate);
+                consumedUnits += candidateUnits;
+                index++;
+
+                if (consumedUnits >= pageCapacity)
+                {
+                    break;
+                }
+            }
+
+            pages.Add(new InvoicePageModel
+            {
+                Rows = pageRows,
+                CapacityUnits = pageCapacity,
+                ConsumedUnits = consumedUnits,
+                RemainingUnits = Math.Max(0, pageCapacity - consumedUnits),
+                PageNumber = pageNumber
+            });
+
+            pageNumber++;
+        }
+
+        RebalanceLastPageCapacity(pages, continuationPageCapacityUnits, lastPageCapacityUnits);
+
+        var totalPages = pages.Count;
+
+        for (var i = 0; i < pages.Count; i++)
+        {
+            pages[i].PageNumber = i + 1;
+            pages[i].TotalPages = totalPages;
+            pages[i].IsLastPage = i == pages.Count - 1;
+            pages[i].DisplayPageNumber = $"{pages[i].PageNumber} of {totalPages}";
+        }
+
+        return pages;
+    }
+
+    private static void RebalanceLastPageCapacity(
+    List<InvoicePageModel> pages,
+    int continuationPageCapacityUnits,
+    int lastPageCapacityUnits)
+    {
+        if (pages.Count == 0)
+        {
+            return;
+        }
+
+        // Ensure the final page uses the tighter last-page capacity.
+        pages[^1].CapacityUnits = lastPageCapacityUnits;
+        RecalculatePage(pages[^1]);
+
+        while (pages[^1].ConsumedUnits > lastPageCapacityUnits)
+        {
+            var currentLastPage = pages[^1];
+
+            if (currentLastPage.Rows.Count <= 1)
+            {
+                // One oversized line must still be allowed to live on the last page.
+                break;
+            }
+
+            var movedRows = new List<InvoicePrintLineRenderModel>();
+            var movedUnits = 0;
+
+            while (currentLastPage.Rows.Count > 1 && currentLastPage.ConsumedUnits - movedUnits > lastPageCapacityUnits)
+            {
+                var rowToMove = currentLastPage.Rows[0];
+                movedRows.Add(rowToMove);
+                movedUnits += Math.Max(1, rowToMove.HeightUnits);
+                currentLastPage.Rows.RemoveAt(0);
+            }
+
+            RecalculatePage(currentLastPage);
+
+            var insertIndex = pages.Count - 1;
+
+            pages.Insert(insertIndex, new InvoicePageModel
+            {
+                Rows = movedRows,
+                CapacityUnits = continuationPageCapacityUnits
+            });
+
+            RecalculatePage(pages[insertIndex]);
+        }
+
+        // Re-apply capacities cleanly after rebalancing.
+        for (var i = 0; i < pages.Count; i++)
+        {
+            if (i == 0)
+            {
+                // leave first page capacity as already set
+            }
+            else if (i == pages.Count - 1)
+            {
+                pages[i].CapacityUnits = lastPageCapacityUnits;
+            }
+            else
+            {
+                pages[i].CapacityUnits = continuationPageCapacityUnits;
+            }
+
+            RecalculatePage(pages[i]);
+        }
+    }
+
+    private static void RecalculatePage(InvoicePageModel page)
+    {
+        page.ConsumedUnits = page.Rows.Sum(r => Math.Max(1, r.HeightUnits));
+        page.RemainingUnits = Math.Max(0, page.CapacityUnits - page.ConsumedUnits);
+    }
+
+    private static int EstimateRowHeightUnits(string? description, int descriptionCharactersPerLine)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return 1;
+        }
+
+        var normalized = description
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+
+        var segments = normalized.Split('\n');
+        var visualLineCount = 0;
+
+        foreach (var segment in segments)
+        {
+            var text = segment?.TrimEnd() ?? string.Empty;
+
+            if (text.Length == 0)
+            {
+                visualLineCount += 1;
+                continue;
+            }
+
+            visualLineCount += (int)Math.Ceiling(text.Length / (double)descriptionCharactersPerLine);
+        }
+
+        return Math.Max(1, visualLineCount);
+    }
+
+    private static string FormatDate(DateTime? value)
+        => value.HasValue ? value.Value.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture) : string.Empty;
+
+    private static string FormatMoney(decimal? value)
+        => value.HasValue ? value.Value.ToString("0.00", CultureInfo.InvariantCulture) : string.Empty;
+
+    public sealed class InvoicePrintModel
+    {
+        public string LogoUrl { get; set; } = string.Empty;
+        public string CustomerReference { get; set; } = string.Empty;
+        public string InvoiceToBlock { get; set; } = string.Empty;
+        public DateTime? TaxPointDate { get; set; }
+        public string PaymentTerms { get; set; } = string.Empty;
+        public string CostCentre { get; set; } = string.Empty;
+        public string Department { get; set; } = string.Empty;
+        public string InvoiceNumber { get; set; } = string.Empty;
+        public string PurchaseOrderNumber { get; set; } = string.Empty;
+        public string SalesOrderNumber { get; set; } = string.Empty;
+        public decimal? TotalAmountExcludingVat { get; set; }
+        public decimal? TotalVat { get; set; }
+        public decimal? TotalAmountDue { get; set; }
+        public List<InvoicePrintLineModel> Lines { get; set; } = new();
+    }
+
+    public sealed class InvoicePrintLineModel
+    {
+        public string Description { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal AmountExVat { get; set; }
+        public string VatCode { get; set; } = "1";
+        public decimal VatAmount { get; set; }
+    }
+
+    private sealed class InvoicePrintLineRenderModel
+    {
+        public string Description { get; set; } = string.Empty;
+        public decimal Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal AmountExVat { get; set; }
+        public string VatCode { get; set; } = "1";
+        public decimal VatAmount { get; set; }
+        public int HeightUnits { get; set; } = 1;
+    }
+
+    private sealed class InvoicePageModel
+    {
+        public List<InvoicePrintLineRenderModel> Rows { get; set; } = new();
+        public int CapacityUnits { get; set; }
+        public int ConsumedUnits { get; set; }
+        public int RemainingUnits { get; set; }
+        public int PageNumber { get; set; }
+        public int TotalPages { get; set; }
+        public bool IsLastPage { get; set; }
+        public string DisplayPageNumber { get; set; } = string.Empty;
+    }
+}

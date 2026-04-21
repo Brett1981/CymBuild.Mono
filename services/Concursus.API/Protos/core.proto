@@ -121,6 +121,11 @@ service Core {
   rpc SageInboundPaymentSync (SageInboundPaymentSyncRequestMessage) returns (SageInboundPaymentSyncReply);
   rpc SageInboundPaymentSyncEnqueue (SageInboundPaymentSyncEnqueueRequestMessage) returns (SageInboundPaymentSyncEnqueueReply);
   rpc SageInboundDiagnosticsGet (SageInboundDiagnosticsGetRequest) returns (SageInboundDiagnosticsGetReply);
+
+  rpc TransactionInvoicePreviewGenerate (TransactionInvoicePreviewGenerateRequestMessage) returns (TransactionInvoicePreviewGenerateReplyMessage);
+rpc TransactionInvoicePreviewGetCurrent (TransactionInvoicePreviewGetCurrentRequestMessage) returns (TransactionInvoicePreviewInfoMessage);
+rpc TransactionInvoicePreviewPostingGuardGet (TransactionInvoicePreviewPostingGuardRequestMessage) returns (TransactionInvoicePreviewPostingGuardReplyMessage);
+rpc TransactionInvoicePrintModelGet (TransactionInvoicePrintModelGetRequestMessage) returns (TransactionInvoicePrintModelReplyMessage);
 }
 
 enum JobClosureDecisionType  {
@@ -134,6 +139,99 @@ enum InvoiceProcessingMode {
   INVOICE_PROCESSING_MODE_AUTOMATED = 0;
   INVOICE_PROCESSING_MODE_MANUAL = 1;
   INVOICE_PROCESSING_MODE_PAUSED = 2;
+}
+
+enum TransactionInvoiceRenderModeMessage {
+  TRANSACTION_INVOICE_RENDER_MODE_PREVIEW = 0;
+  TRANSACTION_INVOICE_RENDER_MODE_FINAL = 1;
+}
+
+message TransactionInvoicePrintModelGetRequestMessage {
+  string transactionGuid = 1;
+  TransactionInvoiceRenderModeMessage renderMode = 2;
+}
+
+message TransactionInvoicePrintLineMessage {
+  string description = 1;
+  double quantity = 2;
+  double unitPrice = 3;
+  double amountExVat = 4;
+  string vatCode = 5;
+  double vatAmount = 6;
+}
+
+message TransactionInvoicePrintModelReplyMessage {
+  string transactionGuid = 1;
+  TransactionInvoiceRenderModeMessage renderMode = 2;
+  string customerReference = 3;
+  string invoiceToBlock = 4;
+  google.protobuf.Timestamp taxPointDate = 5;
+  bool taxPointDateSpecified = 6;
+  string paymentTerms = 7;
+  string costCentre = 8;
+  string department = 9;
+  string invoiceNumber = 10;
+  string salesOrderNumber = 11;
+  string purchaseOrderNumber = 12;
+  double totalAmountExcludingVat = 13;
+  double totalVat = 14;
+  double totalAmountDue = 15;
+  repeated TransactionInvoicePrintLineMessage lines = 16;
+}
+
+message TransactionInvoicePreviewGenerateRequestMessage {
+  string transactionGuid = 1;
+  bool forceRegenerate = 2;
+}
+
+message TransactionInvoicePreviewGenerateReplyMessage {
+  string transactionGuid = 1;
+  bool isSuccess = 2;
+  string message = 3;
+  string reservedInvoiceNumber = 4;
+  string sharePointDriveId = 5;
+  string sharePointItemId = 6;
+  string sharePointWebUrl = 7;
+  string filename = 8;
+  string mimeType = 9;
+  google.protobuf.Timestamp generatedDateTimeUtc = 10;
+  bool generatedDateTimeUtcSpecified = 11;
+  bool isCurrent = 12;
+}
+
+message TransactionInvoicePreviewGetCurrentRequestMessage {
+  string transactionGuid = 1;
+}
+
+message TransactionInvoicePreviewInfoMessage {
+  int64 id = 1;
+  string guid = 2;
+  string transactionGuid = 3;
+  string reservedInvoiceNumber = 4;
+  string sharePointDriveId = 5;
+  string sharePointItemId = 6;
+  string sharePointWebUrl = 7;
+  string filename = 8;
+  string mimeType = 9;
+  string fileHash = 10;
+  google.protobuf.Timestamp generatedDateTimeUtc = 11;
+  bool generatedDateTimeUtcSpecified = 12;
+  bool isCurrent = 13;
+  bool isPostedToSage = 14;
+}
+
+message TransactionInvoicePreviewPostingGuardRequestMessage {
+  string transactionGuid = 1;
+}
+
+message TransactionInvoicePreviewPostingGuardReplyMessage {
+  string transactionGuid = 1;
+  bool hasPreview = 2;
+  bool hasReservedInvoiceNumber = 3;
+  bool previewMatchesCurrentTransaction = 4;
+  bool canPostToSage = 5;
+  string reservedInvoiceNumber = 6;
+  string blockingReason = 7;
 }
 
 message SageInboundDiagnosticsGetRequest {
@@ -184,6 +282,21 @@ message SageInboundDiagnosticsRow {
   string lastAttemptResponseDetail = 31;
   bool canRequeue = 32;
   bool canForceRequeue = 33;
+
+  double lastGrossAmount = 34;
+  double lastAllocatedValue = 35;
+  double lastOutstandingAmount = 36;
+  double lastDocumentDiscountedValue = 37;
+  bool lastIsPaid = 38;
+  bool lastIsFullyPaid = 39;
+  string lastPaymentStateCode = 40;
+  google.protobuf.Timestamp lastTransactionDate = 41;
+  string lastSageTransactionReference = 42;
+  string lastSecondReference = 43;
+  int32 lastSageTransactionTypeCode = 44;
+  google.protobuf.Timestamp nextPollDueOnUtc = 45;
+  int32 pollAttemptCount = 46;
+  bool isTerminalState = 47;
 }
 
 message SageInboundDiagnosticsGetReply {
@@ -212,6 +325,19 @@ message SageInboundPaymentSyncResultItemMessage {
   int32 matched_invoice_request_id = 3;
   int32 matched_job_id = 4;
   string match_rule = 5;
+
+  string sage_transaction_reference = 6;
+  string sage_document_no = 7;
+  int32 sage_transaction_type_code = 8;
+  double gross_amount = 9;
+  double allocated_value = 10;
+  double outstanding_amount = 11;
+  double document_discounted_value = 12;
+  bool is_paid = 13;
+  bool is_fully_paid = 14;
+  string payment_state_code = 15;
+  google.protobuf.Timestamp transaction_date_utc = 16;
+  google.protobuf.Timestamp last_seen_on_utc = 17;
 }
 
 message SageInboundPaymentSyncReply {
@@ -225,6 +351,11 @@ message SageInboundPaymentSyncReply {
   int32 reconciled_allocation_count = 8;
   int32 updated_invoice_request_count = 9;
   repeated SageInboundPaymentSyncResultItemMessage items = 10;
+
+  int32 fully_paid_count = 11;
+  int32 partially_paid_count = 12;
+  int32 unpaid_count = 13;
+  bool should_continue_polling = 14;
 }
 
 message DocumentsEmailAttachmentRef {

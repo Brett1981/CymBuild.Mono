@@ -128,7 +128,7 @@ DECLARE
           AND qi.RowStatus NOT IN (0,254)
           AND qi.CreatedJobId > 0
     )
-    OR (@IsDead = 1 OR @DeadDate IS NOT NULL)
+    OR (@IsDead = 1 OR @DeadDate IS NOT NULL AND @IsReopened = 0)
     BEGIN
         INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
         VALUES (@EntityTypeGuid, N'E', 1, 0, 0, N'');
@@ -179,7 +179,7 @@ DECLARE
     END;
     -------------------------------------------------------------------------
     -- Sent => IsFinal locked (legacy field still locked, but NO net error now)
-    -------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
     IF ((@IsSent = 1) OR (@DateSent IS NOT NULL))
     BEGIN
         INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
@@ -270,7 +270,7 @@ DECLARE
     -------------------------------------------------------------------------
     -- Complete-status lock (latest-only)
     -------------------------------------------------------------------------
-    IF (@LatestIsCompleteStatus = 1)
+    IF (@LatestIsCompleteStatus = 1 AND @IsReopened = 1 )
     BEGIN
         INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
         SELECT epfvv.Guid, N'P', 1, 0, 0, N''

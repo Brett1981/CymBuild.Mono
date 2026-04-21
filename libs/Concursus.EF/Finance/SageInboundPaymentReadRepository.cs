@@ -2,7 +2,10 @@
 
 using Concursus.Common.Shared.Models.Finance;
 using Microsoft.Data.SqlClient;
+using System;
 using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Concursus.EF.Finance
 {
@@ -82,7 +85,7 @@ WHERE ir.Guid = @CymBuildDocumentGuid
                 return null;
             }
 
-            return new SageInboundSyncTarget
+            var target = new SageInboundSyncTarget
             {
                 CymBuildEntityTypeId = reader.GetInt32(reader.GetOrdinal("CymBuildEntityTypeID")),
                 CymBuildDocumentGuid = reader.GetGuid(reader.GetOrdinal("CymBuildDocumentGuid")),
@@ -94,6 +97,26 @@ WHERE ir.Guid = @CymBuildDocumentGuid
                 SageAccountReference = reader.GetString(reader.GetOrdinal("SageAccountReference")),
                 SageDocumentNo = reader.GetString(reader.GetOrdinal("SageDocumentNo"))
             };
+
+            if (string.IsNullOrWhiteSpace(target.SageDataset))
+            {
+                throw new InvalidOperationException(
+                    $"No Sage dataset could be resolved for inbound sync target {cymBuildDocumentGuid}.");
+            }
+
+            if (string.IsNullOrWhiteSpace(target.SageAccountReference))
+            {
+                throw new InvalidOperationException(
+                    $"No Sage account reference could be resolved for inbound sync target {cymBuildDocumentGuid}.");
+            }
+
+            if (string.IsNullOrWhiteSpace(target.SageDocumentNo))
+            {
+                throw new InvalidOperationException(
+                    $"No Sage document number could be resolved for inbound sync target {cymBuildDocumentGuid}.");
+            }
+
+            return target;
         }
     }
 }

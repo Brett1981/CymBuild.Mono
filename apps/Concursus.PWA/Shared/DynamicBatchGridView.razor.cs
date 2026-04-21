@@ -1102,14 +1102,42 @@ public partial class DynamicBatchGridView
     {
         try
         {
-            if (args.Item is IDictionary<string, object> dict &&
-                dict.TryGetValue("Guid", out var guidValue))
+            if (args.Item is IDictionary<string, object> dict)
             {
-                if (guidValue == null ||
-                    !Guid.TryParse(guidValue.ToString(), out var parsedGuid) ||
-                    parsedGuid == Guid.Empty)
+                if (dict.TryGetValue("Guid", out var guidValue))
                 {
-                    args.Class = "invalid-row";
+                    if (guidValue == null ||
+                        !Guid.TryParse(guidValue.ToString(), out var parsedGuid) ||
+                        parsedGuid == Guid.Empty)
+                    {
+                        args.Class = "invalid-row";
+                        return;
+                    }
+                }
+
+                if (string.Equals(ViewDefinition?.Code, "INVOICEREQUESTS", StringComparison.OrdinalIgnoreCase))
+                {
+                    var hasFinanceIssue = false;
+                    var hasBatchingIssue = false;
+
+                    if (dict.TryGetValue("HasFinanceAccountIssue", out var hasFinanceIssueValue) &&
+                        hasFinanceIssueValue != null)
+                    {
+                        TryConvertToBoolean(hasFinanceIssueValue, out hasFinanceIssue);
+                    }
+
+                    if (dict.TryGetValue("HasBatchingIssue", out var hasBatchingIssueValue) &&
+                        hasBatchingIssueValue != null)
+                    {
+                        TryConvertToBoolean(hasBatchingIssueValue, out hasBatchingIssue);
+                    }
+
+                    if (hasFinanceIssue || hasBatchingIssue)
+                    {
+                        args.Class = string.IsNullOrWhiteSpace(args.Class)
+                            ? "invoice-request-warning-row"
+                            : $"{args.Class} invoice-request-warning-row";
+                    }
                 }
             }
         }

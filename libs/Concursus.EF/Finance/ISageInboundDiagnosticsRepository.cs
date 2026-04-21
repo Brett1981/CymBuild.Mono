@@ -20,15 +20,8 @@ namespace Concursus.EF.Finance
             SageInboundDiagnosticsGetRequestModel request,
             CancellationToken cancellationToken = default)
         {
-            if (entityFramework == null)
-            {
-                throw new ArgumentNullException(nameof(entityFramework));
-            }
-
-            if (request == null)
-            {
-                throw new ArgumentNullException(nameof(request));
-            }
+            ArgumentNullException.ThrowIfNull(entityFramework);
+            ArgumentNullException.ThrowIfNull(request);
 
             const string sql = @"
 SELECT
@@ -53,6 +46,20 @@ SELECT
     d.LastErrorIsRetryable,
     d.LastSourceWatermarkUtc,
     d.UpdatedDateTimeUTC,
+    d.LastGrossAmount,
+    d.LastAllocatedValue,
+    d.LastOutstandingAmount,
+    d.LastDocumentDiscountedValue,
+    d.LastIsPaid,
+    d.LastIsFullyPaid,
+    d.LastPaymentStateCode,
+    d.LastTransactionDate,
+    d.LastSageTransactionReference,
+    d.LastSecondReference,
+    d.LastSageTransactionTypeCode,
+    d.NextPollDueOnUtc,
+    d.PollAttemptCount,
+    d.IsTerminalState,
     d.LastAttemptedOnUtc,
     d.LastCompletedOnUtc,
     d.LastAttemptIsSuccess,
@@ -76,9 +83,11 @@ ORDER BY
         WHEN N'Failed' THEN 0
         WHEN N'RetryPending' THEN 1
         WHEN N'Pending' THEN 2
-        WHEN N'Succeeded' THEN 3
-        ELSE 4
+        WHEN N'PartiallyPaid' THEN 3
+        WHEN N'Succeeded' THEN 4
+        ELSE 5
     END,
+    ISNULL(d.NextPollDueOnUtc, CONVERT(DATETIME2(7), '1900-01-01T00:00:00')) ASC,
     ISNULL(d.LastFailedOnUtc, CONVERT(DATETIME2(7), '1900-01-01T00:00:00')) DESC,
     d.SageAccountReference ASC,
     d.SageDocumentNo ASC,
@@ -150,6 +159,20 @@ ORDER BY
                 LastErrorIsRetryable = GetNullableBoolean(reader, "LastErrorIsRetryable"),
                 LastSourceWatermarkUtc = GetNullableDateTime(reader, "LastSourceWatermarkUtc"),
                 UpdatedDateTimeUtc = reader.GetDateTime(reader.GetOrdinal("UpdatedDateTimeUTC")),
+                LastGrossAmount = reader.GetDecimal(reader.GetOrdinal("LastGrossAmount")),
+                LastAllocatedValue = reader.GetDecimal(reader.GetOrdinal("LastAllocatedValue")),
+                LastOutstandingAmount = reader.GetDecimal(reader.GetOrdinal("LastOutstandingAmount")),
+                LastDocumentDiscountedValue = reader.GetDecimal(reader.GetOrdinal("LastDocumentDiscountedValue")),
+                LastIsPaid = reader.GetBoolean(reader.GetOrdinal("LastIsPaid")),
+                LastIsFullyPaid = reader.GetBoolean(reader.GetOrdinal("LastIsFullyPaid")),
+                LastPaymentStateCode = reader.GetString(reader.GetOrdinal("LastPaymentStateCode")),
+                LastTransactionDate = GetNullableDateTime(reader, "LastTransactionDate"),
+                LastSageTransactionReference = GetNullableString(reader, "LastSageTransactionReference"),
+                LastSecondReference = GetNullableString(reader, "LastSecondReference"),
+                LastSageTransactionTypeCode = reader.GetInt32(reader.GetOrdinal("LastSageTransactionTypeCode")),
+                NextPollDueOnUtc = GetNullableDateTime(reader, "NextPollDueOnUtc"),
+                PollAttemptCount = reader.GetInt32(reader.GetOrdinal("PollAttemptCount")),
+                IsTerminalState = reader.GetBoolean(reader.GetOrdinal("IsTerminalState")),
                 LastAttemptedOnUtc = GetNullableDateTime(reader, "LastAttemptedOnUtc"),
                 LastCompletedOnUtc = GetNullableDateTime(reader, "LastCompletedOnUtc"),
                 LastAttemptIsSuccess = GetNullableBoolean(reader, "LastAttemptIsSuccess"),

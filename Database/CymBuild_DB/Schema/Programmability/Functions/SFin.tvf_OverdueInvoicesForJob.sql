@@ -4,7 +4,6 @@ PRINT (N'Create function [SFin].[tvf_OverdueInvoicesForJob]')
 GO
 PRINT (N'Create function [SFin].[tvf_OverdueInvoicesForJob]')
 GO
-
 CREATE FUNCTION [SFin].[tvf_OverdueInvoicesForJob]
 (
     @ParentGuid UNIQUEIDENTIFIER
@@ -47,6 +46,9 @@ InvoicedRequestItems AS
 -- 2) Transaction totals per transaction (gross), signed by TransactionType.IsNegated
 TxnTotals AS
 (
+
+	--DECLARE @ParentGuid UNIQUEIDENTIFIER = 'dfe51119-a16d-4bb8-95cf-0c0fa6358447';	
+
     SELECT
         t.ID AS TransactionID,
         t.JobID,
@@ -56,13 +58,17 @@ TxnTotals AS
         t.Number,
         CAST(t.[Date] AS date) AS InvoiceDate,
         t.ExpectedDate,
-        -- DueDate rule: ExpectedDate else InvoiceDate + CreditTerms.DueDays
-        CAST(
+        -- DueDate rule: ExpectedDate else InvoiceDate + CreditTerms.DueDays + 30 days (USE DATEADD/
+        CASE WHEN  CAST(SUM(ISNULL(td.Gross, 0)) AS decimal(19,2)) <> 0 THEN
+		CAST(
             COALESCE(
                 CAST(t.ExpectedDate AS date),
-                DATEADD(DAY, ISNULL(ct.DueDays, 0), CAST(t.[Date] AS date))
+                DATEADD(DAY, ISNULL(ct.DueDays, 0),DATEADD(DAY, 30, ISNULL(CAST(t.[Date] AS DATETIME), 0)))
             )
-        AS date) AS DueDate,
+        AS date)
+		ELSE Null
+		END
+		AS DueDate,
         CAST(SUM(ISNULL(td.Gross, 0)) AS decimal(19,2)) AS TransactionGross
     FROM SFin.Transactions t
     JOIN SFin.TransactionTypes tt ON tt.ID = t.TransactionTypeID
@@ -169,7 +175,7 @@ SELECT
     Overdue_31_60  = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_31_60'  THEN Amount ELSE 0 END) FROM OverdueBuckets),
     Overdue_61_90  = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_61_90'  THEN Amount ELSE 0 END) FROM OverdueBuckets),
     Overdue_90Plus = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_90Plus' THEN Amount ELSE 0 END) FROM OverdueBuckets),
-
+	--DueDate = (SELECT MIN(EarliestDueDate) From OverdueBuckets),
     -- JSON detail for tooltips / UI
     OverdueBucketsJson =
         (SELECT

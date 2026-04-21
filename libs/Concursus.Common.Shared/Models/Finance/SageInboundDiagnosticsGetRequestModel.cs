@@ -36,6 +36,22 @@ namespace Concursus.Common.Shared.Models.Finance
         public bool? LastErrorIsRetryable { get; set; }
         public DateTime? LastSourceWatermarkUtc { get; set; }
         public DateTime UpdatedDateTimeUtc { get; set; }
+
+        public decimal LastGrossAmount { get; set; }
+        public decimal LastAllocatedValue { get; set; }
+        public decimal LastOutstandingAmount { get; set; }
+        public decimal LastDocumentDiscountedValue { get; set; }
+        public bool LastIsPaid { get; set; }
+        public bool LastIsFullyPaid { get; set; }
+        public string LastPaymentStateCode { get; set; } = string.Empty;
+        public DateTime? LastTransactionDate { get; set; }
+        public string LastSageTransactionReference { get; set; } = string.Empty;
+        public string LastSecondReference { get; set; } = string.Empty;
+        public int LastSageTransactionTypeCode { get; set; } = -1;
+        public DateTime? NextPollDueOnUtc { get; set; }
+        public int PollAttemptCount { get; set; }
+        public bool IsTerminalState { get; set; }
+
         public DateTime? LastAttemptedOnUtc { get; set; }
         public DateTime? LastCompletedOnUtc { get; set; }
         public bool? LastAttemptIsSuccess { get; set; }

@@ -32,7 +32,7 @@ namespace Concursus.EF
             };
 
             command.Parameters.AddWithValue("@BatchSize", batchSize);
-            command.Parameters.AddWithValue("@ClaimStaleAfterMinutes", claimStaleAfterMinutes);
+            command.Parameters.AddWithValue("@StaleClaimMinutes", claimStaleAfterMinutes);
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
@@ -52,22 +52,30 @@ namespace Concursus.EF
                     SageAccountReference = reader.GetString(reader.GetOrdinal("SageAccountReference")),
                     SageDocumentNo = reader.GetString(reader.GetOrdinal("SageDocumentNo")),
                     StatusCode = reader.GetString(reader.GetOrdinal("StatusCode")),
-                    IsInProgress = reader.GetBoolean(reader.GetOrdinal("IsInProgress")),
-                    InProgressClaimedOnUtc = reader.IsDBNull(reader.GetOrdinal("InProgressClaimedOnUtc"))
-                        ? null
-                        : reader.GetDateTime(reader.GetOrdinal("InProgressClaimedOnUtc")),
-                    LastSucceededOnUtc = reader.IsDBNull(reader.GetOrdinal("LastSucceededOnUtc"))
-                        ? null
-                        : reader.GetDateTime(reader.GetOrdinal("LastSucceededOnUtc")),
-                    LastFailedOnUtc = reader.IsDBNull(reader.GetOrdinal("LastFailedOnUtc"))
-                        ? null
-                        : reader.GetDateTime(reader.GetOrdinal("LastFailedOnUtc")),
-                    LastError = reader.IsDBNull(reader.GetOrdinal("LastError"))
-                        ? string.Empty
-                        : reader.GetString(reader.GetOrdinal("LastError")),
-                    LastErrorIsRetryable = reader.IsDBNull(reader.GetOrdinal("LastErrorIsRetryable"))
-                        ? null
-                        : reader.GetBoolean(reader.GetOrdinal("LastErrorIsRetryable"))
+
+                    IsInProgress = HasColumn(reader, "IsInProgress") && !reader.IsDBNull(reader.GetOrdinal("IsInProgress"))
+                        ? reader.GetBoolean(reader.GetOrdinal("IsInProgress"))
+                        : false,
+
+                    InProgressClaimedOnUtc = HasColumn(reader, "InProgressClaimedOnUtc") && !reader.IsDBNull(reader.GetOrdinal("InProgressClaimedOnUtc"))
+                        ? reader.GetDateTime(reader.GetOrdinal("InProgressClaimedOnUtc"))
+                        : null,
+
+                    LastSucceededOnUtc = HasColumn(reader, "LastSucceededOnUtc") && !reader.IsDBNull(reader.GetOrdinal("LastSucceededOnUtc"))
+                        ? reader.GetDateTime(reader.GetOrdinal("LastSucceededOnUtc"))
+                        : null,
+
+                    LastFailedOnUtc = HasColumn(reader, "LastFailedOnUtc") && !reader.IsDBNull(reader.GetOrdinal("LastFailedOnUtc"))
+                        ? reader.GetDateTime(reader.GetOrdinal("LastFailedOnUtc"))
+                        : null,
+
+                    LastError = HasColumn(reader, "LastError") && !reader.IsDBNull(reader.GetOrdinal("LastError"))
+                        ? reader.GetString(reader.GetOrdinal("LastError"))
+                        : string.Empty,
+
+                    LastErrorIsRetryable = HasColumn(reader, "LastErrorIsRetryable") && !reader.IsDBNull(reader.GetOrdinal("LastErrorIsRetryable"))
+                        ? reader.GetBoolean(reader.GetOrdinal("LastErrorIsRetryable"))
+                        : null
                 });
             }
 
@@ -98,6 +106,19 @@ namespace Concursus.EF
             });
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        private static bool HasColumn(SqlDataReader reader, string columnName)
+        {
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                if (string.Equals(reader.GetName(i), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

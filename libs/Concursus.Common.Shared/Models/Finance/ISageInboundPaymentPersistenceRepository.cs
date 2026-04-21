@@ -1,5 +1,6 @@
 ﻿#nullable enable
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -25,6 +26,16 @@ namespace Concursus.Common.Shared.Models.Finance
 
         Task ApplyInvoicePaymentStatusAsync(
             int invoiceRequestId,
+            CancellationToken cancellationToken = default);
+
+        Task<SageAggregatePaymentStateResult> ApplyAggregatePaymentStateAsync(
+            long externalTransactionId,
+            CancellationToken cancellationToken = default);
+
+        Task UpdateInboundStatusFromExternalTransactionAsync(
+            Guid cymBuildDocumentGuid,
+            long externalTransactionId,
+            DateTime? nextPollDueOnUtc,
             CancellationToken cancellationToken = default);
     }
 }

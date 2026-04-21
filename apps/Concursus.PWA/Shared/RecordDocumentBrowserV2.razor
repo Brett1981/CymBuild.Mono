@@ -9,6 +9,7 @@
 @inject IConfiguration Config
 @inject IJSRuntime JS
 @inject IHttpClientFactory HttpClientFactory
+@inject AppConfiguration appConfiguration
 
 <div class="record-doc-browser v2-docs cb-v2-shell">
 
@@ -68,12 +69,15 @@
                 <i class="bi bi-folder-plus me-1"></i> New Folder
             </button>
 
-            <button type="button"
+            @if (appConfiguration.EnvironmentType == "DEV")
+            {
+                <button type="button"
                     class="btn btn-sm cb-v2-btn-secondary"
                     @onclick="CreateEmailFromSelectionAsync"
                     disabled="@(!CanEmailSelected() || _busy || !string.IsNullOrWhiteSpace(_currentLocationWarning))">
-                <i class="bi bi-envelope me-1"></i> Email Selected
-            </button>
+                    <i class="bi bi-envelope me-1"></i> Email Selected
+                </button>
+            }
 
             <button type="button"
                     class="btn btn-sm btn-outline-danger cb-v2-doc-danger"
@@ -393,13 +397,15 @@
                                                                         @onclick="() => DownloadAsync(item)">
                                                                     <i class="bi bi-download me-1"></i>Open
                                                                 </button>
-
-                                                                <button type="button"
-                                                                        class="btn btn-sm cb-v2-btn-secondary"
-                                                                        @onclick="() => CreateEmailForSingleFileAsync(item)"
-                                                                        disabled="@string.IsNullOrWhiteSpace(item.WebUrl)">
-                                                                    <i class="bi bi-envelope me-1"></i>Email
-                                                                </button>
+                                                                @if (appConfiguration.EnvironmentType == "DEV")
+                                                                {
+                                                                    <button type="button"
+                                                                            class="btn btn-sm cb-v2-btn-secondary"
+                                                                            @onclick="() => CreateEmailForSingleFileAsync(item)"
+                                                                            disabled="@string.IsNullOrWhiteSpace(item.WebUrl)">
+                                                                        <i class="bi bi-envelope me-1"></i>Email
+                                                                    </button>
+                                                                }
                                                             }
 
                                                             @if (item.CanDelete)

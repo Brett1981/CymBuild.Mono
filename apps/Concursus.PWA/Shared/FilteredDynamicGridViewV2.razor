@@ -523,13 +523,20 @@
                             <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Success"
                                            Enabled="@(!_closureBusy)"
                                            OnClick="@((MouseEventArgs e) => SubmitClosureApprove())">
-                                Approve Closure
+
+                            @(_closureEntityTypeName == "Enquiries"
+                                                        ? "Approve Inquiry"
+                                                        : "Approve Closure")
+
+
                             </TelerikButton>
 
                             <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Error"
                                            Enabled="@(!_closureBusy)"
                                            OnClick="@((MouseEventArgs e) => SubmitClosureReject())">
-                                Reject Closure
+                            @(_closureEntityTypeName == "Enquiries"
+                                                        ? "Reject Inquiry"
+                                                        : "Reject Closuse")
                             </TelerikButton>
                         </div>
                     </div>

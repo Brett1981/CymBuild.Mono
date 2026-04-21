@@ -49,6 +49,7 @@
         @if (ShowMonthBreakDownGrid)
         {
             <DynamicGrid GridCode="INVSCEDMONTHLY"
+                         @bind-Disabled="@DisableNewButton"
                          ParentGuid="@GetCurrentInvoiceScheduleGuid()"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
                          ParentRowStatus="@editPage.dataObject.RowStatus"
@@ -58,6 +59,7 @@
         else if (ShowPercentageBreakDownGrid)
         {
             <DynamicGrid GridCode="INVSCEDULEPERCENTAGE"
+                         @bind-Disabled="@DisableNewButton"
                          ParentGuid="@RecordGuid"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
                          ParentRowStatus="@editPage.dataObject.RowStatus"
@@ -79,9 +81,11 @@
     [Parameter] public bool DisableDefaultActions { get; set; } = false;
     [Parameter] public bool BypassReadOnlyForAutomationReenable { get; set; } = false;
     [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    [Parameter] public bool ScheduleReenabled { get; set; } = false;
 
     private bool ShowMonthBreakDownGrid { get; set; } = false;
     private bool ShowPercentageBreakDownGrid { get; set; } = false;
+    private bool DisableNewButton { get; set;  } = false;
 
     private Dictionary<string, Any> BuildTransientVirtualProperties()
     {
@@ -186,40 +190,100 @@
     {
         if (!firstRender && editPage?.dataObject != null)
         {
-            const string MonthlyTriggerType = "1a6296d5-6f78-4692-9acb-895ba1e7e9bb";
-            const string PercentageTriggerType = "3f5d1de2-05cf-47ed-9e0d-af56cc6cead0";
+            ShowCorrectInvoiceSchedulingGrid();
+            ShouldDisableNewButton();
 
-            var dataObject = editPage.dataObject;
-            var triggerTypeProperty = dataObject.DataProperties
-                .FirstOrDefault(x => x.EntityPropertyGuid == "bb1fc1da-d825-4cb7-ba29-936b3218fc42");
-
-            if (triggerTypeProperty?.Value != null &&
-                triggerTypeProperty.Value.Is(StringValue.Descriptor))
-            {
-                var triggerTypeValue = triggerTypeProperty.Value.Unpack<StringValue>().Value?.ToLowerInvariant() ?? string.Empty;
-                var updated = false;
-
-                if (triggerTypeValue == MonthlyTriggerType && !ShowMonthBreakDownGrid)
-                {
-                    ShowMonthBreakDownGrid = true;
-                    ShowPercentageBreakDownGrid = false;
-                    updated = true;
-                }
-                else if (triggerTypeValue == PercentageTriggerType && !ShowPercentageBreakDownGrid)
-                {
-                    ShowPercentageBreakDownGrid = true;
-                    ShowMonthBreakDownGrid = false;
-                    updated = true;
-                }
-
-                if (updated)
-                {
-                    InvokeAsync(StateHasChanged);
-                }
-            }
+            // if (ScheduleReenabled)
+            // {
+            //     ScheduleHasBeenReenabled();
+            // }
         }
 
         base.OnAfterRender(firstRender);
+    }
+
+    /// <summary>
+    /// Sets the SchdeuleReenabled field to true, which in turn
+    /// will disable the mechanism by which the user can edit after the first
+    /// time enabling automation. (works with the validation script)
+    /// </summary>
+    // private void ScheduleHasBeenReenabled()
+    // {
+    //     string SchdeuleReenabledFieldGuid = "47583ed8-d82b-4575-9447-8374fddc9068";
+
+    //     var dataObject = editPage.dataObject;
+    //     var SchdeuleReenabledProperty = dataObject.DataProperties
+    //         .FirstOrDefault(x => x.EntityPropertyGuid == SchdeuleReenabledFieldGuid);
+
+    //     //Set it to true
+    //     if (SchdeuleReenabledProperty != null)
+    //     {
+    //         Console.WriteLine("Setting 'chdeuleReenabled' to true.");
+    //         SchdeuleReenabledProperty.Value = Any.Pack(new BoolValue { Value = true });
+    //     }
+    // }
+
+
+    /// <summary>
+    /// Extracts the set configuration from the dropdown (Invoicing Structure)
+    /// and shows the appropriate grid.
+    /// </summary>
+    private void ShowCorrectInvoiceSchedulingGrid()
+    {
+        const string MonthlyTriggerType = "1a6296d5-6f78-4692-9acb-895ba1e7e9bb";
+        const string PercentageTriggerType = "3f5d1de2-05cf-47ed-9e0d-af56cc6cead0";
+
+        var dataObject = editPage.dataObject;
+        var triggerTypeProperty = dataObject.DataProperties
+            .FirstOrDefault(x => x.EntityPropertyGuid == "bb1fc1da-d825-4cb7-ba29-936b3218fc42");
+
+        if (triggerTypeProperty?.Value != null &&
+            triggerTypeProperty.Value.Is(StringValue.Descriptor))
+        {
+            var triggerTypeValue = triggerTypeProperty.Value.Unpack<StringValue>().Value?.ToLowerInvariant() ?? string.Empty;
+            var updated = false;
+
+            if (triggerTypeValue == MonthlyTriggerType && !ShowMonthBreakDownGrid)
+            {
+                ShowMonthBreakDownGrid = true;
+                ShowPercentageBreakDownGrid = false;
+                updated = true;
+            }
+            else if (triggerTypeValue == PercentageTriggerType && !ShowPercentageBreakDownGrid)
+            {
+                ShowPercentageBreakDownGrid = true;
+                ShowMonthBreakDownGrid = false;
+                updated = true;
+            }
+
+            if (updated)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hides the "New" button for the grid - based on the "IsEnabled" prop for the field "Name".
+    /// </summary>
+    private void ShouldDisableNewButton()
+    {
+        string NameFieldGuid = "e770228e-e75a-4a36-bd58-5ebdd365f234";
+        DataObject dataObject = editPage.dataObject;
+
+
+        var NameField = dataObject.DataProperties.Where(x => x.EntityPropertyGuid == NameFieldGuid).FirstOrDefault();
+
+        if(NameField != null)
+        {
+            var IsNameFieldDisabled = NameField.IsReadOnly;
+
+            if (IsNameFieldDisabled == true)
+            {
+                DisableNewButton = true;
+                
+            }
+        }
     }
 
     public Task SaveAndExitAsync()

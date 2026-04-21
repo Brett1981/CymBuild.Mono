@@ -62,20 +62,16 @@ BEGIN
    
         IF EXISTS
         (
-            SELECT 1
-            FROM SFin.InvoiceSchedules AS ins
-            INNER JOIN SSop.Quotes AS q
-                ON q.ID = ins.QuoteId
-               AND q.RowStatus NOT IN (0,254)
-            INNER JOIN SSop.QuoteItems AS qi
-                ON qi.QuoteId = q.ID
-               AND qi.RowStatus NOT IN (0,254)
-               AND qi.CreatedJobId > 0
-            INNER JOIN SJob.Jobs AS j
-                ON j.ID = qi.CreatedJobId
-               AND j.RowStatus NOT IN (0,254)
-            WHERE ins.ID = @InvoiceScheduleId
-              AND ins.RowStatus NOT IN (0,254)
+			SELECT 1
+			FROM SFin.InvoiceSchedules AS ins
+			INNER JOIN SSop.Quotes AS q			ON (q.ID = ins.QuoteId AND q.RowStatus NOT IN (0,254))
+			INNER JOIN SSop.QuoteItems AS qi	ON (qi.QuoteId = q.ID AND ins.ID = qi.InvoicingSchedule AND qi.RowStatus NOT IN (0,254) AND qi.CreatedJobId > 0 )
+			INNER JOIN SJob.Jobs AS j			ON (j.ID = qi.CreatedJobId AND j.RowStatus NOT IN (0,254))
+			WHERE 
+					qi.InvoicingSchedule = @InvoiceScheduleId
+				AND qi.CreatedJobId <> -1
+				AND ins.RowStatus NOT IN (0,254)
+				AND j.InvoiceProcessingMode <> 1
         )
         BEGIN
             SET @HasCreatedJob = 1;

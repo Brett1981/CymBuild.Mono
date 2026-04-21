@@ -1,0 +1,67 @@
+﻿CREATE TABLE [SFin].[TransactionSageSubmissionStatus] (
+  [ID] [bigint] IDENTITY,
+  [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_RowStatus] DEFAULT (1),
+  [RowVersion] [timestamp],
+  [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_Guid] DEFAULT (newid()) ROWGUIDCOL,
+  [TransactionID] [bigint] NOT NULL,
+  [TransactionGuid] [uniqueidentifier] NOT NULL,
+  [LastTransitionGuid] [uniqueidentifier] NULL,
+  [LastOperationName] [nvarchar](100) NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_LastOperationName] DEFAULT (N'CreateSalesOrder'),
+  [StatusCode] [nvarchar](30) NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_StatusCode] DEFAULT (N'Pending'),
+  [IsInProgress] [bit] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_IsInProgress] DEFAULT (0),
+  [InProgressClaimedOnUtc] [datetime2] NULL,
+  [LastSucceededOnUtc] [datetime2] NULL,
+  [LastFailedOnUtc] [datetime2] NULL,
+  [SageOrderId] [nvarchar](100) NULL,
+  [SageOrderNumber] [nvarchar](100) NULL,
+  [LastError] [nvarchar](max) NULL,
+  [LastErrorIsRetryable] [bit] NULL,
+  [CreatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_CreatedDateTimeUTC] DEFAULT (sysutcdatetime()),
+  [CreatedByUserID] [int] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_CreatedByUserID] DEFAULT (-1),
+  [UpdatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_UpdatedDateTimeUTC] DEFAULT (sysutcdatetime()),
+  [UpdatedByUserID] [int] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_UpdatedByUserID] DEFAULT (-1),
+  CONSTRAINT [PK_TransactionSageSubmissionStatus] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80),
+  CONSTRAINT [UQ_TransactionSageSubmissionStatus_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+)
+ON [PRIMARY]
+TEXTIMAGE_ON [PRIMARY]
+GO
+
+CREATE INDEX [IX_TransactionSageSubmissionStatus_StatusCode]
+  ON [SFin].[TransactionSageSubmissionStatus] ([StatusCode], [IsInProgress])
+  INCLUDE ([TransactionGuid], [SageOrderId], [SageOrderNumber], [LastSucceededOnUtc], [LastFailedOnUtc])
+  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
+GO
+
+CREATE UNIQUE INDEX [UX_TransactionSageSubmissionStatus_TransactionGuid_Active]
+  ON [SFin].[TransactionSageSubmissionStatus] ([TransactionGuid])
+  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_CreatedBy] FOREIGN KEY ([CreatedByUserID]) REFERENCES [SCore].[Identities] ([ID])
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  NOCHECK CONSTRAINT [FK_TransactionSageSubmissionStatus_DataObjects]
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_Transactions] FOREIGN KEY ([TransactionID]) REFERENCES [SFin].[Transactions] ([ID])
+GO
+
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+  ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_UpdatedBy] FOREIGN KEY ([UpdatedByUserID]) REFERENCES [SCore].[Identities] ([ID])
+GO

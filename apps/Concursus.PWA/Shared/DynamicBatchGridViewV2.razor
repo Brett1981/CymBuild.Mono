@@ -208,7 +208,20 @@
 
                                                 @foreach (var column in VisibleColumns)
                                                 {
-                                                    <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell">
+                                                    var columnsWithTooltip = new List<string>() { "LatestResponseDetail", "LastError", "LatestOutboxError" };
+                                                    var customClass = "";
+                                                    var tooltipTxt = "";
+
+                                                    if(columnsWithTooltip.Contains(column.Name))
+                                                    {
+                                                        customClass = "tooltip-target";
+                                                        tooltipTxt = RenderCellValue(rowDict, column.Name).ToString();
+
+                                                        <TelerikTooltip TargetSelector=".tooltip-target" />
+                                                     
+                                                    }
+
+                                                    <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell @customClass" title="@tooltipTxt" >
                                                         @RenderCellValue(rowDict, column.Name)
                                                     </td>
                                                 }

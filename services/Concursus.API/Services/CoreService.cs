@@ -43,22 +43,23 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly IDelegatedGraphClientFactory _delegatedGraphClientFactory;
     private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
+
     #endregion Private Fields
 
     #region Public Constructors
 
     public CoreService(
-        ILogger<CoreService> logger,
-        IConfiguration config,
-        IHttpContextAccessor httpContextAccessor,
-        ISharepointService sharepointService,
-        JobClosureDecisionRepository repo,
-        ILookupService lookupService,
-        ISageApiClient sageApiClient,
-        ITransactionSageSubmissionAdminService transactionSageSubmissionAdminService,
-        IDelegatedGraphClientFactory delegatedGraphClientFactory,
-        ISageInboundPaymentSyncService sageInboundPaymentSyncService,
-        ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository)
+    ILogger<CoreService> logger,
+    IConfiguration config,
+    IHttpContextAccessor httpContextAccessor,
+    ISharepointService sharepointService,
+    JobClosureDecisionRepository repo,
+    ILookupService lookupService,
+    ISageApiClient sageApiClient,
+    ITransactionSageSubmissionAdminService transactionSageSubmissionAdminService,
+    IDelegatedGraphClientFactory delegatedGraphClientFactory,
+    ISageInboundPaymentSyncService sageInboundPaymentSyncService,
+    ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository)
     {
         _config = config;
         _serviceBase = new ServiceBase(config, httpContextAccessor, new Logging(logger, config));

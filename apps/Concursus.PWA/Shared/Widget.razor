@@ -212,7 +212,7 @@ else
                                                     </Template>
                                                 </TelerikTooltip>
 
-                                                
+
                                             }
                                             <btn class="btn btn-default"   @onclick="() => ToggleFullScreen(Widget)" disabled="@isFullScreen" >
                                                 <i class="bi bi-arrows-angle-expand" />
@@ -684,25 +684,40 @@ else
     }
 
 
-    public async void AdaptToScreenSize(bool ToAdapt)
-    {
-        isSmallScreen = ToAdapt;
+    public async void AdaptToScreenSize(bool toAdapt)
+{
+    isSmallScreen = toAdapt;
 
+    try
+    {
         if (isSmallScreen)
         {
             MobileScreenClass = "fitGridToMobile";
-            mobileTileLayout = "d-flex flex-column";
+            mobileTileLayout = "WidgetBoard";
 
             await JS.InvokeVoidAsync("adjustColumnWidths");
+            await JS.InvokeVoidAsync("registerAdjustFunction");
         }
         else
         {
             MobileScreenClass = "";
             mobileTileLayout = "WidgetBoard";
-        }
 
-        StateHasChanged();
+            await RemoveAdjustFunctionSafelyAsync();
+        }
     }
+    catch (Exception ex)
+    {
+        HandleRenderHandleError(ex);
+
+        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+        ex.Data.Add("AdditionalInfo", "Error adapting dashboard to screen size.");
+        ex.Data.Add("PageMethod", "Dashboard/AdaptToScreenSize()");
+        await OnError(ex);
+    }
+
+    StateHasChanged();
+}
 
 
     public async void GetUserId()
@@ -746,7 +761,7 @@ else
                 MyWorkCSSAsJSON = System.Text.Json.JsonSerializer.Serialize(MyWorkCSS);
             }
 
-          
+
             AddWidgetsFromConfig();
 
             await Task.Delay(100);
@@ -1068,52 +1083,48 @@ else
     * Main function for adding widgets to the board.
     */
     private async void AddWidget(ButtonSelection item)
+{
+    try
     {
-        try
+        if (BoardIsEmpty)
+            BoardIsEmpty = false;
+
+        DashBoardWidget widget = new DashBoardWidget();
+
+        switch (item.WidgetType)
         {
-            //Reset, otherwise the widget will not show.
-            if (BoardIsEmpty)
-                BoardIsEmpty = false;
+            case "GA":
+                widget = await AddGaugeToBoard(item);
+                break;
 
-            DashBoardWidget Widget = new DashBoardWidget();
+            case "GR":
+                widget = await AddGridToBoard(item);
+                await JS.InvokeVoidAsync("adjustColumnWidths");
 
-            switch (item.WidgetType)
-            {
-
-                //Gauge
-                case "GA":
-                    Widget = await AddGaugeToBoard(item);
-                    break;
-
-                //Grid
-                case "GR":
-
-                    Widget = await AddGridToBoard(item);
-                    await JS.InvokeVoidAsync("adjustColumnWidths");
-
-                    break;
-            }
-
-            DashboardWidgets.Add(Widget);
-
-            if(IsEditMode)
-                HasChanges = true;
-
-            //await Task.Delay(300); //Task.Delay seems to ensure that the tile state is always correct before we try to get it.
-
-            StateHasChanged();
-
+                if (isSmallScreen)
+                {
+                    await JS.InvokeVoidAsync("registerAdjustFunction");
+                }
+                break;
         }
-        catch (Exception ex)
-        {
-            HandleRenderHandleError(ex);
 
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
-            ex.Data.Add("AdditionalInfo", "Error adding the widget to the dashboard.");
-            ex.Data.Add("PageMethod", "AddWidget()");
-            OnError(ex);
-        }
+        DashboardWidgets.Add(widget);
+
+        if (IsEditMode)
+            HasChanges = true;
+
+        StateHasChanged();
     }
+    catch (Exception ex)
+    {
+        HandleRenderHandleError(ex);
+
+        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+        ex.Data.Add("AdditionalInfo", "Error adding the widget to the dashboard.");
+        ex.Data.Add("PageMethod", "Dashboard/AddWidget()");
+        await OnError(ex);
+    }
+}
 
     private async Task<DashBoardWidget> AddGridToBoard(ButtonSelection item)
     {
@@ -1464,7 +1475,7 @@ else
                 stateToBeSaved.MyWorkCSS = MyWorkCSS;
             }
 
-          
+
             //string TileStateJSON = System.Text.Json.JsonSerializer.Serialize(Dashboard.GetState() ?? new TileLayoutState());
             string TileStateJSON = System.Text.Json.JsonSerializer.Serialize(stateToBeSaved, new System.Text.Json.JsonSerializerOptions() { WriteIndented = true });
 
@@ -1773,28 +1784,25 @@ else
      * Shows a confirmation dialog if there are changes
      */
     private async Task OnNavigation(LocationChangingContext context)
+{
+    if (HasChanges)
     {
-
-        if (HasChanges)
+        if (!await ShowDialogAsync())
         {
-            if (!await this.ShowDialogAsync())
-            {
-                context.PreventNavigation();
-            }
-        }
-        else
-        {
-             await JS.InvokeVoidAsync("removeAdjustFunction");
+            context.PreventNavigation();
+            return;
         }
     }
+
+    await RemoveAdjustFunctionSafelyAsync();
+}
 
     private async Task<Task> Navigate()
-    {
-        await CloseDialogAsync(true);
-        await JS.InvokeVoidAsync("removeAdjustFunction");
-
-        return Task.CompletedTask;
-    }
+{
+    await CloseDialogAsync(true);
+    await RemoveAdjustFunctionSafelyAsync();
+    return Task.CompletedTask;
+}
 
      private Task Cancel()
         => CloseDialogAsync(false);
@@ -1826,5 +1834,21 @@ else
         // this is a running Task that the caller can await
         return _taskCompletionSource.Task;
     }
+
+    private async Task RemoveAdjustFunctionSafelyAsync()
+{
+    try
+    {
+        await JS.InvokeVoidAsync("removeAdjustFunction");
+    }
+    catch (JSException)
+    {
+        // Do NOT block navigation or rendering for optional UI cleanup.
+    }
+    catch (TaskCanceledException)
+    {
+        // Ignore cancellation during navigation / disposal.
+    }
+}
 
 }

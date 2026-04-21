@@ -114,7 +114,7 @@
                     <ul>
                         @if (RedIndicator != "")
                         {
-                            <li><span class="dot red"></span>   @RedIndicator</li>
+                            <li><span class="dot red"></span> @RedIndicator</li>
                         }
                         else if (GreenIndicator != "")
                         {
@@ -142,7 +142,7 @@
                             </TelerikButton>
 
                             <TelerikButton Class="@QuickFilterGroupByCSS"
-                                           OnClick="@(() => GroupByButton() )">
+                                           OnClick="@(() => GroupByButton())">
                                 Group by @GroupByColumTranslation
                             </TelerikButton>
                         </div>
@@ -198,17 +198,19 @@
                                  OnRowRender="@OnRowRenderHandler"
                                  OnRowClick="@OnRowClickHandler"
                                  OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                 OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
                         <GridSettings>
                             <GridPagerSettings InputType="PagerInputType.Input"
-                                               PageSizes=null
+                                               PageSizes="null"
                                                ButtonCount="5"
                                                Responsive="true"
                                                Position="PagerPosition.Bottom">
                             </GridPagerSettings>
                         </GridSettings>
+
                         <GridColumns>
                             <GridCheckboxColumn Width="30px" />
+
                             @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
                             {
                                 @if (gvcd.Name == "ID")
@@ -223,29 +225,80 @@
                                                 Resizable="true">
                                         <Template>
                                             @{
-                                                var chaseOverdueLabel = "dot red";
-                                                var chaseDueThisWeekLabel = "dot yellow";
-                                                var noChaseDateNeededLabel = "dot green";
+                                                var redLabel = "dot red";
+                                                var greenLabel = "dot green";
 
-                                                var indicatorToAssign = "";
+                                                var indicatorToAssign = greenLabel;
+                                                var indicatorTitle = string.Empty;
 
                                                 var item = (IDictionary<string, object>)context;
-                                                var ExpectedDate = item["ExpectedDate"].ToString();
 
-                                                if (DateTime.TryParse(ExpectedDate, out DateTime expDate))
+                                                if (string.Equals(ViewDefinition?.Code, "INVOICEREQUESTS", StringComparison.OrdinalIgnoreCase))
                                                 {
-                                                    var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
-                                                    indicatorToAssign = daysSinceExpectedDate >= 1
-                                                        ? chaseOverdueLabel
-                                                        : noChaseDateNeededLabel;
+                                                    var hasFinanceIssue = false;
+                                                    var hasBatchingIssue = false;
+
+                                                    if (item.TryGetValue("HasFinanceAccountIssue", out var hasFinanceIssueValue)
+                                                        && hasFinanceIssueValue is not null)
+                                                    {
+                                                        TryConvertToBoolean(hasFinanceIssueValue, out hasFinanceIssue);
+                                                    }
+
+                                                    if (item.TryGetValue("HasBatchingIssue", out var hasBatchingIssueValue)
+                                                        && hasBatchingIssueValue is not null)
+                                                    {
+                                                        TryConvertToBoolean(hasBatchingIssueValue, out hasBatchingIssue);
+                                                    }
+
+                                                    if (hasFinanceIssue || hasBatchingIssue)
+                                                    {
+                                                        indicatorToAssign = redLabel;
+
+                                                        var messages = new List<string>();
+
+                                                        if (hasFinanceIssue &&
+                                                            item.TryGetValue("FinanceAccountIssueMessage", out var financeIssueMessageValue) &&
+                                                            financeIssueMessageValue is not null &&
+                                                            !string.IsNullOrWhiteSpace(financeIssueMessageValue.ToString()))
+                                                        {
+                                                            messages.Add(financeIssueMessageValue.ToString()!);
+                                                        }
+
+                                                        if (hasBatchingIssue &&
+                                                            item.TryGetValue("BatchingIssueMessage", out var batchingIssueMessageValue) &&
+                                                            batchingIssueMessageValue is not null &&
+                                                            !string.IsNullOrWhiteSpace(batchingIssueMessageValue.ToString()))
+                                                        {
+                                                            messages.Add(batchingIssueMessageValue.ToString()!);
+                                                        }
+
+                                                        indicatorTitle = string.Join(" ", messages.Distinct());
+                                                    }
+                                                    else
+                                                    {
+                                                        indicatorToAssign = greenLabel;
+                                                        indicatorTitle = "Ready for batching.";
+                                                    }
                                                 }
                                                 else
                                                 {
-                                                    indicatorToAssign = noChaseDateNeededLabel;
+                                                    var expectedDate = item.ContainsKey("ExpectedDate")
+                                                        ? item["ExpectedDate"]?.ToString()
+                                                        : null;
+
+                                                    if (DateTime.TryParse(expectedDate, out DateTime expDate))
+                                                    {
+                                                        var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
+                                                        indicatorToAssign = daysSinceExpectedDate >= 1 ? redLabel : greenLabel;
+                                                    }
+                                                    else
+                                                    {
+                                                        indicatorToAssign = greenLabel;
+                                                    }
                                                 }
                                             }
 
-                                            <div class="custom-ellipsis">
+                                            <div class="custom-ellipsis" title="@indicatorTitle">
                                                 <li>
                                                     <span class="@indicatorToAssign"></span>
                                                     @item["ID"]
@@ -312,17 +365,19 @@
                                  OnRowRender="@OnRowRenderHandler"
                                  OnRowClick="@OnRowClickHandler"
                                  OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                 OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
+                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
                         <GridSettings>
                             <GridPagerSettings InputType="PagerInputType.Input"
-                                               PageSizes=null
+                                               PageSizes="null"
                                                ButtonCount="5"
                                                Responsive="true"
                                                Position="PagerPosition.Bottom">
                             </GridPagerSettings>
                         </GridSettings>
+
                         <GridColumns>
                             <GridCheckboxColumn Width="30px" />
+
                             @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
                             {
                                 @if (gvcd.Name == "ID")
@@ -337,31 +392,80 @@
                                                 Resizable="true">
                                         <Template>
                                             @{
-                                                var chaseOverdueLabel = "dot red";
-                                                var chaseDueThisWeekLabel = "dot yellow";
-                                                var noChaseDateNeededLabel = "dot green";
+                                                var redLabel = "dot red";
+                                                var greenLabel = "dot green";
 
-                                                var indicatorToAssign = "";
+                                                var indicatorToAssign = greenLabel;
+                                                var indicatorTitle = string.Empty;
 
                                                 var item = (IDictionary<string, object>)context;
-                                                var ExpectedDate = item["ExpectedDate"].ToString();
 
-                                                if (DateTime.TryParse(ExpectedDate, out DateTime expDate))
+                                                if (string.Equals(ViewDefinition?.Code, "INVOICEREQUESTS", StringComparison.OrdinalIgnoreCase))
                                                 {
-                                                    var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
-                                                    indicatorToAssign = daysSinceExpectedDate >= 1
-                                                        ? chaseOverdueLabel
-                                                        : noChaseDateNeededLabel;
+                                                    var hasFinanceIssue = false;
+                                                    var hasBatchingIssue = false;
+
+                                                    if (item.TryGetValue("HasFinanceAccountIssue", out var hasFinanceIssueValue)
+                                                        && hasFinanceIssueValue is not null)
+                                                    {
+                                                        TryConvertToBoolean(hasFinanceIssueValue, out hasFinanceIssue);
+                                                    }
+
+                                                    if (item.TryGetValue("HasBatchingIssue", out var hasBatchingIssueValue)
+                                                        && hasBatchingIssueValue is not null)
+                                                    {
+                                                        TryConvertToBoolean(hasBatchingIssueValue, out hasBatchingIssue);
+                                                    }
+
+                                                    if (hasFinanceIssue || hasBatchingIssue)
+                                                    {
+                                                        indicatorToAssign = redLabel;
+
+                                                        var messages = new List<string>();
+
+                                                        if (hasFinanceIssue &&
+                                                            item.TryGetValue("FinanceAccountIssueMessage", out var financeIssueMessageValue) &&
+                                                            financeIssueMessageValue is not null &&
+                                                            !string.IsNullOrWhiteSpace(financeIssueMessageValue.ToString()))
+                                                        {
+                                                            messages.Add(financeIssueMessageValue.ToString()!);
+                                                        }
+
+                                                        if (hasBatchingIssue &&
+                                                            item.TryGetValue("BatchingIssueMessage", out var batchingIssueMessageValue) &&
+                                                            batchingIssueMessageValue is not null &&
+                                                            !string.IsNullOrWhiteSpace(batchingIssueMessageValue.ToString()))
+                                                        {
+                                                            messages.Add(batchingIssueMessageValue.ToString()!);
+                                                        }
+
+                                                        indicatorTitle = string.Join(" ", messages.Distinct());
+                                                    }
+                                                    else
+                                                    {
+                                                        indicatorToAssign = greenLabel;
+                                                        indicatorTitle = "Ready for batching.";
+                                                    }
                                                 }
                                                 else
                                                 {
-                                                    indicatorToAssign = noChaseDateNeededLabel;
-                                                }
+                                                    var expectedDate = item.ContainsKey("ExpectedDate")
+                                                        ? item["ExpectedDate"]?.ToString()
+                                                        : null;
 
-                                                Console.WriteLine("Indicator => " + indicatorToAssign);
+                                                    if (DateTime.TryParse(expectedDate, out DateTime expDate))
+                                                    {
+                                                        var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
+                                                        indicatorToAssign = daysSinceExpectedDate >= 1 ? redLabel : greenLabel;
+                                                    }
+                                                    else
+                                                    {
+                                                        indicatorToAssign = greenLabel;
+                                                    }
+                                                }
                                             }
 
-                                            <div class="custom-ellipsis">
+                                            <div class="custom-ellipsis" title="@indicatorTitle">
                                                 <li>
                                                     <span class="@indicatorToAssign"></span>
                                                     @item["ID"]
@@ -437,6 +541,7 @@
             }
         }
     </ChildContent>
+
     <ErrorContent Context="ex">
         <ErrorDisplay ErrorMessage="@ex.Message" />
     </ErrorContent>
@@ -519,7 +624,8 @@
         margin-right: 10px;
     }
 
-    .quick-filter-toolbar, .custom-range-panel {
+    .quick-filter-toolbar,
+    .custom-range-panel {
         display: flex;
         gap: 8px;
         padding: 12px 0;
@@ -576,4 +682,12 @@
         background-color: #0d6efd !important;
         color: white !important;
     }
+
+    .invoice-request-warning-row {
+        background-color: #fff3cd;
+    }
+
+        .invoice-request-warning-row:hover {
+            background-color: #ffe69c;
+        }
 </style>

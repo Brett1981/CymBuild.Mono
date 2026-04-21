@@ -1,6 +1,7 @@
 ﻿using Concursus.API.Client;
 using Concursus.API.Client.Models;
 using Concursus.PWA.Classes;
+using DocumentFormat.OpenXml.ExtendedProperties;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -114,7 +115,7 @@ public partial class DynamicBatchGridView
             var formHelperForInvoiceReq = new FormHelper(coreClient, sageIntegrationService, "27a13441-73c4-425a-8b55-dc048dabe6bb", userService);
             var entityType = await formHelperForInvoiceReq.GetEntityType();
 
-            string Notes = "";
+            var notesList = new List<string>();
 
 
             /*
@@ -147,8 +148,9 @@ public partial class DynamicBatchGridView
                         var NewInvoiceReqJobID = NewInvoiceReqDataObject.DataProperties.Where(x => x.EntityPropertyGuid == EntityPropertiesToCopy.JobID).FirstOrDefault();
                         NewInvoiceReqJobID.Value = PackedJobId.Value;
                     }
+
                     //Extract Consultant
-                    else if(PackedConsultant != null)
+                    if(PackedConsultant != null)
                     {
                         var NewInvoiceReqConsultant = NewInvoiceReqDataObject.DataProperties.Where(x => x.EntityPropertyGuid == EntityPropertiesToCopy.Consultant).FirstOrDefault();
                         NewInvoiceReqConsultant.Value = PackedConsultant.Value;
@@ -190,18 +192,26 @@ public partial class DynamicBatchGridView
                 //Unpack the notes -> we need combine the various notes. 
                 var PackedNotes = CurrentInvoiceReq.DataProperties.Where(x => x.EntityPropertyGuid == EntityPropertiesToCopy.Notes).FirstOrDefault();
 
+                //Add the comments to the list.
                 if (PackedNotes != null && PackedNotes.Value.TypeUrl != "type.googleapis.com/google.protobuf.Empty")
-                    Notes = Notes + PackedNotes.Value.Unpack<StringValue>().Value  + " \n" ;
+                {
+                    var note = PackedNotes.Value.Unpack<StringValue>().Value;
+
+                    if (!string.IsNullOrWhiteSpace(note))
+                        notesList.Add(note.Trim());
+                }
             }
 
 
             //Assign the comment
             var NewInvoiceReqComment = NewInvoiceReqDataObject.DataProperties.Where(x => x.EntityPropertyGuid == EntityPropertiesToCopy.Notes).FirstOrDefault();
-
-            if (NewInvoiceReqComment != null) 
-                NewInvoiceReqComment.Value = Any.Pack(new StringValue() { Value = Notes});
+            if (NewInvoiceReqComment != null)
+            {
+                var Notes = string.Join("\n", notesList.Distinct());
+                NewInvoiceReqComment.Value = Any.Pack(new StringValue() { Value = Notes });
+            }
+               
             
-
             //Create the new invoice request.
             var (message, UpsertedNewInvoiceRequest ) = await formHelperForInvoiceReq.UpsertDataObject(NewInvoiceReqDataObject, null, false);
 

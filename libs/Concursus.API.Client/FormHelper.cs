@@ -61,6 +61,115 @@ public partial class FormHelper
 
     #region Public Methods
 
+    public async Task<TransactionInvoicePrintModel?> TransactionInvoicePrintModelGetAsync(
+    Guid transactionGuid,
+    TransactionInvoiceRenderMode renderMode = TransactionInvoiceRenderMode.Preview,
+    CancellationToken ct = default)
+    {
+        var reply = await _coreClient.TransactionInvoicePrintModelGetAsync(
+            new TransactionInvoicePrintModelGetRequestMessage
+            {
+                TransactionGuid = transactionGuid.ToString(),
+                RenderMode = renderMode == TransactionInvoiceRenderMode.Final
+                    ? TransactionInvoiceRenderModeMessage.TransactionInvoiceRenderModeFinal
+                    : TransactionInvoiceRenderModeMessage.TransactionInvoiceRenderModePreview
+            },
+            cancellationToken: ct);
+
+        if (string.IsNullOrWhiteSpace(reply.TransactionGuid))
+        {
+            return null;
+        }
+
+        var result = new TransactionInvoicePrintModel
+        {
+            TransactionGuid = Guid.TryParse(reply.TransactionGuid, out var parsedGuid) ? parsedGuid : Guid.Empty,
+            RenderMode = reply.RenderMode == TransactionInvoiceRenderModeMessage.TransactionInvoiceRenderModeFinal
+                ? TransactionInvoiceRenderMode.Final
+                : TransactionInvoiceRenderMode.Preview,
+            CustomerReference = reply.CustomerReference ?? string.Empty,
+            InvoiceToBlock = reply.InvoiceToBlock ?? string.Empty,
+            TaxPointDate = reply.TaxPointDateSpecified
+                ? (FromTimestamp(reply.TaxPointDate) ?? DateTime.MinValue)
+                : DateTime.MinValue,
+            PaymentTerms = reply.PaymentTerms ?? string.Empty,
+            CostCentre = reply.CostCentre ?? string.Empty,
+            Department = reply.Department ?? string.Empty,
+            InvoiceNumber = reply.InvoiceNumber ?? string.Empty,
+            SalesOrderNumber = reply.SalesOrderNumber ?? string.Empty,
+            PurchaseOrderNumber = reply.PurchaseOrderNumber ?? string.Empty,
+            TotalAmountExcludingVat = Convert.ToDecimal(reply.TotalAmountExcludingVat),
+            TotalVat = Convert.ToDecimal(reply.TotalVat),
+            TotalAmountDue = Convert.ToDecimal(reply.TotalAmountDue)
+        };
+
+        foreach (var line in reply.Lines)
+        {
+            result.Lines.Add(new TransactionInvoicePrintLineModel
+            {
+                Description = line.Description ?? string.Empty,
+                Quantity = Convert.ToDecimal(line.Quantity),
+                UnitPrice = Convert.ToDecimal(line.UnitPrice),
+                AmountExVat = Convert.ToDecimal(line.AmountExVat),
+                VatCode = line.VatCode ?? string.Empty,
+                VatAmount = Convert.ToDecimal(line.VatAmount)
+            });
+        }
+
+        return result;
+    }
+
+    public async Task<TransactionInvoicePreviewGenerateResult> TransactionInvoicePreviewGenerateAsync(
+    Guid transactionGuid,
+    bool forceRegenerate = false,
+    CancellationToken ct = default)
+    {
+        var reply = await _coreClient.TransactionInvoicePreviewGenerateAsync(
+            new TransactionInvoicePreviewGenerateRequestMessage
+            {
+                TransactionGuid = transactionGuid.ToString(),
+                ForceRegenerate = forceRegenerate
+            },
+            cancellationToken: ct);
+
+        return new TransactionInvoicePreviewGenerateResult
+        {
+            TransactionGuid = Guid.TryParse(reply.TransactionGuid, out var transactionGuidParsed) ? transactionGuidParsed : Guid.Empty,
+            IsSuccess = reply.IsSuccess,
+            Message = reply.Message ?? string.Empty,
+            ReservedInvoiceNumber = reply.ReservedInvoiceNumber ?? string.Empty,
+            SharePointDriveId = reply.SharePointDriveId ?? string.Empty,
+            SharePointItemId = reply.SharePointItemId ?? string.Empty,
+            SharePointWebUrl = reply.SharePointWebUrl ?? string.Empty,
+            Filename = reply.Filename ?? string.Empty,
+            MimeType = reply.MimeType ?? string.Empty,
+            GeneratedDateTimeUtc = reply.GeneratedDateTimeUtcSpecified ? FromTimestamp(reply.GeneratedDateTimeUtc) : null,
+            IsCurrent = reply.IsCurrent
+        };
+    }
+
+    public async Task<TransactionInvoicePostingGuardResult> TransactionInvoicePreviewPostingGuardGetAsync(
+        Guid transactionGuid,
+        CancellationToken ct = default)
+    {
+        var reply = await _coreClient.TransactionInvoicePreviewPostingGuardGetAsync(
+            new TransactionInvoicePreviewPostingGuardRequestMessage
+            {
+                TransactionGuid = transactionGuid.ToString()
+            },
+            cancellationToken: ct);
+
+        return new TransactionInvoicePostingGuardResult
+        {
+            TransactionGuid = Guid.TryParse(reply.TransactionGuid, out var parsedGuid) ? parsedGuid : Guid.Empty,
+            HasPreview = reply.HasPreview,
+            HasReservedInvoiceNumber = reply.HasReservedInvoiceNumber,
+            PreviewMatchesCurrentTransaction = reply.PreviewMatchesCurrentTransaction,
+            ReservedInvoiceNumber = reply.ReservedInvoiceNumber ?? string.Empty,
+            BlockingReason = reply.BlockingReason ?? string.Empty
+        };
+    }
+
     public async Task<TransactionSageSubmissionRequeueClientResult> TransactionSageSubmissionRequeueAsync(
     IEnumerable<Guid> transactionGuids,
     CancellationToken cancellationToken = default)
@@ -164,7 +273,22 @@ public partial class FormHelper
                 LastAttemptResponseStatus = row.LastAttemptResponseStatus,
                 LastAttemptResponseDetail = row.LastAttemptResponseDetail,
                 CanRequeue = row.CanRequeue,
-                CanForceRequeue = row.CanForceRequeue
+                CanForceRequeue = row.CanForceRequeue,
+
+                LastGrossAmount = (decimal)row.LastGrossAmount,
+                LastAllocatedValue = (decimal)row.LastAllocatedValue,
+                LastOutstandingAmount = (decimal)row.LastOutstandingAmount,
+                LastDocumentDiscountedValue = (decimal)row.LastDocumentDiscountedValue,
+                LastIsPaid = row.LastIsPaid,
+                LastIsFullyPaid = row.LastIsFullyPaid,
+                LastPaymentStateCode = row.LastPaymentStateCode,
+                LastTransactionDate = FromTimestamp(row.LastTransactionDate),
+                LastSageTransactionReference = row.LastSageTransactionReference,
+                LastSecondReference = row.LastSecondReference,
+                LastSageTransactionTypeCode = row.LastSageTransactionTypeCode,
+                NextPollDueOnUtc = FromTimestamp(row.NextPollDueOnUtc),
+                PollAttemptCount = row.PollAttemptCount,
+                IsTerminalState = row.IsTerminalState
             });
         }
 
@@ -1657,7 +1781,11 @@ public partial class FormHelper
             ExternalAllocationCount = reply.ExternalAllocationCount,
             ReconciledInvoiceCount = reply.ReconciledInvoiceCount,
             ReconciledAllocationCount = reply.ReconciledAllocationCount,
-            UpdatedInvoiceRequestCount = reply.UpdatedInvoiceRequestCount
+            UpdatedInvoiceRequestCount = reply.UpdatedInvoiceRequestCount,
+            FullyPaidCount = reply.FullyPaidCount,
+            PartiallyPaidCount = reply.PartiallyPaidCount,
+            UnpaidCount = reply.UnpaidCount,
+            ShouldContinuePolling = reply.ShouldContinuePolling
         };
 
         foreach (var item in reply.Items)
@@ -1668,7 +1796,19 @@ public partial class FormHelper
                 MatchedTransactionId = item.MatchedTransactionId,
                 MatchedInvoiceRequestId = item.MatchedInvoiceRequestId,
                 MatchedJobId = item.MatchedJobId,
-                MatchRule = item.MatchRule ?? string.Empty
+                MatchRule = item.MatchRule ?? string.Empty,
+                SageTransactionReference = item.SageTransactionReference ?? string.Empty,
+                SageDocumentNo = item.SageDocumentNo ?? string.Empty,
+                SageTransactionTypeCode = item.SageTransactionTypeCode,
+                GrossAmount = (decimal)item.GrossAmount,
+                AllocatedValue = (decimal)item.AllocatedValue,
+                OutstandingAmount = (decimal)item.OutstandingAmount,
+                DocumentDiscountedValue = (decimal)item.DocumentDiscountedValue,
+                IsPaid = item.IsPaid,
+                IsFullyPaid = item.IsFullyPaid,
+                PaymentStateCode = item.PaymentStateCode ?? string.Empty,
+                TransactionDateUtc = FromTimestamp(item.TransactionDateUtc),
+                LastSeenOnUtc = FromTimestamp(item.LastSeenOnUtc)
             });
         }
 

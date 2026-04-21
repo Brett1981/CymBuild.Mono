@@ -1,5 +1,6 @@
 ﻿using Concursus.API.Core;
 using Concursus.API.Models;
+using Concursus.API.Services.Finance;
 using Concursus.Common.Shared.Helpers;
 using DocumentFormat.OpenXml;
 
@@ -7,10 +8,12 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.Data.SqlClient;
 using Microsoft.Graph;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats;
 using System.Data;
+using System.Security.Cryptography;
 using Telerik.Windows.Documents.Flow.FormatProviders.Docx;
 using Telerik.Windows.Documents.Flow.Model;
 using Telerik.Windows.Documents.Spreadsheet.FormatProviders.OpenXml.Xlsx;
@@ -68,19 +71,118 @@ namespace Concursus.API.Classes
 
         #region Public Constructors
 
-        public WordDocumentService(GraphServiceClient _graphServiceClient)
+        public WordDocumentService(
+    GraphServiceClient graphServiceClient,
+    IConfiguration config)
         {
-            graphServiceClient = _graphServiceClient;
+            WordDocumentService.graphServiceClient = graphServiceClient
+                ?? throw new ArgumentNullException(nameof(graphServiceClient));
+
+            _config = config ?? throw new ArgumentNullException(nameof(config));
+
             var factory = LoggerFactory.Create(builder =>
             {
-                builder.AddDebug(); // Or AddConsole(), AddFile(), etc.
+                builder.AddDebug();
             });
+
             _logger = factory.CreateLogger<DocumentIncludeHelper>();
         }
 
         #endregion Public Constructors
 
         #region Public Methods
+        public async Task<GeneratedFinanceInvoicePreviewPdf> GenerateFinanceInvoicePreviewPdfAsync(
+    Guid mergeDocumentGuid,
+    Guid transactionGuid,
+    string reservedInvoiceNumber,
+    string targetSharePointUrl,
+    CancellationToken cancellationToken = default)
+        {
+            if (mergeDocumentGuid == Guid.Empty)
+                throw new ArgumentException("A valid mergeDocumentGuid is required.", nameof(mergeDocumentGuid));
+
+            if (transactionGuid == Guid.Empty)
+                throw new ArgumentException("A valid transactionGuid is required.", nameof(transactionGuid));
+
+            if (string.IsNullOrWhiteSpace(reservedInvoiceNumber))
+                throw new ArgumentException("A reserved invoice number is required.", nameof(reservedInvoiceNumber));
+
+            if (string.IsNullOrWhiteSpace(targetSharePointUrl))
+                throw new ArgumentException("A target SharePointUrl is required.", nameof(targetSharePointUrl));
+
+            if (_config is null)
+                throw new InvalidOperationException("WordDocumentService configuration has not been initialised.");
+
+            FinanceInvoicePreviewContext context = await LoadFinanceInvoicePreviewContextAsync(
+                mergeDocumentGuid,
+                transactionGuid,
+                reservedInvoiceNumber,
+                targetSharePointUrl,
+                cancellationToken).ConfigureAwait(false);
+
+            string templateDriveId = await ResolveTemplateDriveIdAsync(
+                context.TemplateSiteIdentifier,
+                context.TemplateDocumentId,
+                cancellationToken).ConfigureAwait(false);
+
+            byte[] workingDocumentBytes;
+            await using (var templateStream = await DownloadDocumentContent(templateDriveId, context.TemplateDocumentId).ConfigureAwait(false))
+            {
+                workingDocumentBytes = await WordDocumentHelpers.StreamToByteArrayAsync(templateStream).ConfigureAwait(false);
+            }
+
+            if (workingDocumentBytes.Length == 0)
+                throw new InvalidOperationException("The template document could not be downloaded or was empty.");
+
+            workingDocumentBytes = await ProcessMergeFieldsExtended(
+                workingDocumentBytes,
+                context.HeaderMergeData).ConfigureAwait(false);
+
+            if (context.LineRowsByBookmark.Count > 0)
+            {
+                workingDocumentBytes = ApplyFinanceTableContentControls(
+                    workingDocumentBytes,
+                    context.LineRowsByBookmark);
+            }
+
+            SharepointDocumentsGetResponse uploadResponse;
+            await using (var outputStream = new MemoryStream(workingDocumentBytes, writable: false))
+            {
+                uploadResponse = await UploadModifiedDocument(
+                    context.TemplateSiteIdentifier,
+                    context.FilenameTemplate,
+                    context.TargetSharePointUrl,
+                    context.TemplateDocumentId,
+                    outputStream,
+                    _config,
+                    "Transactions",
+                    "PDF").ConfigureAwait(false);
+            }
+
+            if (uploadResponse?.DriveItem is null)
+                throw new InvalidOperationException("The generated invoice preview was not returned from SharePoint upload.");
+
+            byte[] pdfBytes;
+            await using (var pdfStream = await DownloadDocumentContent(
+                uploadResponse.DriveItem.DriveId,
+                uploadResponse.DriveItem.Id).ConfigureAwait(false))
+            {
+                pdfBytes = await WordDocumentHelpers.StreamToByteArrayAsync(pdfStream).ConfigureAwait(false);
+            }
+
+            if (pdfBytes.Length == 0)
+                throw new InvalidOperationException("The generated PDF was uploaded but the content could not be re-downloaded.");
+
+            return new GeneratedFinanceInvoicePreviewPdf
+            {
+                DriveId = uploadResponse.DriveItem.DriveId,
+                ItemId = uploadResponse.DriveItem.Id,
+                WebUrl = uploadResponse.DriveItem.WebUrl,
+                Filename = uploadResponse.DriveItem.Name,
+                MimeType = "application/pdf",
+                FileBytes = pdfBytes
+            };
+        }
 
         /// <summary>
         /// Returns the name of the record based on the provided GUID.
@@ -837,6 +939,136 @@ namespace Concursus.API.Classes
             return val.ToString("X4");
         }
 
+
+        public async Task<(bool IsValid, string Message)> ValidateFinanceInvoicePreviewAsync(
+    Guid mergeDocumentGuid,
+    Guid transactionGuid,
+    string reservedInvoiceNumber,
+    string targetSharePointUrl,
+    CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (mergeDocumentGuid == Guid.Empty)
+                    return (false, "Invoice preview is not configured because the merge document guid is empty.");
+
+                if (transactionGuid == Guid.Empty)
+                    return (false, "Invoice preview could not be generated because the transaction guid is empty.");
+
+                if (string.IsNullOrWhiteSpace(reservedInvoiceNumber))
+                    return (false, "Invoice preview could not be generated because there is no reserved invoice number.");
+
+                if (string.IsNullOrWhiteSpace(targetSharePointUrl))
+                    return (false, "Invoice preview could not be generated because the linked Job SharePointUrl could not be resolved.");
+
+                await using var connection = new SqlConnection(ResolveFinanceConnectionString());
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                var mergeDocument = await LoadMergeDocumentAsync(connection, mergeDocumentGuid, cancellationToken).ConfigureAwait(false);
+                if (mergeDocument is null)
+                    return (false, "Invoice preview could not be generated because the Finance Invoice Preview merge document does not exist.");
+
+                var headerMergeData = await LoadInvoiceHeaderMergeDataAsync(
+                    connection,
+                    transactionGuid,
+                    reservedInvoiceNumber,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (headerMergeData.Count == 0)
+                    return (false, "Invoice preview could not be generated because no invoice header merge data was returned for the selected transaction.");
+
+                var lineBookmarks = await LoadMergeDocumentTableBookmarksAsync(
+                    connection,
+                    mergeDocumentGuid,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (lineBookmarks.Count == 0)
+                    return (false, "Invoice preview could not be generated because the merge document does not define any Data Table bookmarks.");
+
+                var templateDriveId = await ResolveTemplateDriveIdAsync(
+                    mergeDocument.TemplateSiteIdentifier,
+                    mergeDocument.DocumentId,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (string.IsNullOrWhiteSpace(templateDriveId))
+                    return (false, "Invoice preview could not be generated because the SharePoint template drive could not be resolved.");
+
+                return (true, string.Empty);
+            }
+            catch (SqlException ex)
+            {
+                return (false, BuildFriendlySqlValidationError(ex));
+            }
+            catch (Exception ex)
+            {
+                return (false, BuildFriendlyPreviewError(ex));
+            }
+        }
+
+        private static string BuildFriendlyPreviewError(Exception ex)
+        {
+            var message = ex.Message ?? string.Empty;
+
+            if (message.Contains("Merge document", StringComparison.OrdinalIgnoreCase) &&
+                message.Contains("was not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the Finance Invoice Preview merge document has not been configured in SCore.MergeDocuments.";
+            }
+
+            if (message.Contains("No invoice header merge data was returned", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the selected transaction did not return any header merge data.";
+            }
+
+            if (message.Contains("Microsoft.Graph.IAuthenticationProviderOption", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated due to a system configuration issue with Microsoft Graph libraries. Please contact support.";
+            }
+
+            if (message.Contains("SharePointUrl", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the invoice header merge source does not provide SharePointUrl.";
+            }
+
+            if (message.Contains("could not be found in any drive", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the configured SharePoint template document could not be found.";
+            }
+
+            if (message.Contains("template document could not be downloaded", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the Word template could not be downloaded from SharePoint.";
+            }
+
+            if (message.Contains("generated invoice preview was not returned from SharePoint upload", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the generated file was not returned after SharePoint upload.";
+            }
+
+            if (message.Contains("generated PDF was uploaded but the content could not be re-downloaded", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Invoice preview could not be generated because the PDF was created but could not be read back from SharePoint.";
+            }
+
+            return $"Invoice preview could not be generated: {message}";
+        }
+
+        private static string BuildFriendlySqlValidationError(SqlException ex)
+        {
+            var message = ex.Message ?? string.Empty;
+
+            if (message.Contains("Invalid object name 'SFin.Transaction_InvoiceMergeInfo'", StringComparison.OrdinalIgnoreCase))
+                return "Invoice preview cannot be generated because the SQL view SFin.Transaction_InvoiceMergeInfo has not been deployed.";
+
+            if (message.Contains("Invalid object name 'SFin.tvf_TransactionInvoiceLines'", StringComparison.OrdinalIgnoreCase))
+                return "Invoice preview cannot be generated because the SQL function SFin.tvf_TransactionInvoiceLines has not been deployed.";
+
+            if (message.Contains("Invalid object name 'SCore.MergeDocuments'", StringComparison.OrdinalIgnoreCase))
+                return "Invoice preview cannot be generated because merge document metadata is not available in the database.";
+
+            return $"Invoice preview validation failed due to a database error: {message}";
+        }
+
         private void CleanupInvalidElements(WordprocessingDocument doc)
         {
             // Remove invalid style pane filters
@@ -1218,6 +1450,435 @@ namespace Concursus.API.Classes
             return Task.FromResult(memoryStream.ToArray());
         }
 
+        private async Task<FinanceInvoicePreviewContext> LoadFinanceInvoicePreviewContextAsync(
+            Guid mergeDocumentGuid,
+            Guid transactionGuid,
+            string reservedInvoiceNumber,
+            string targetSharePointUrl,
+            CancellationToken cancellationToken)
+        {
+            await using var connection = new SqlConnection(ResolveFinanceConnectionString());
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            var mergeDocument = await LoadMergeDocumentAsync(connection, mergeDocumentGuid, cancellationToken).ConfigureAwait(false);
+            if (mergeDocument is null)
+                throw new InvalidOperationException($"Merge document '{mergeDocumentGuid}' was not found.");
+
+            var headerMergeData = await LoadInvoiceHeaderMergeDataAsync(
+                connection,
+                transactionGuid,
+                reservedInvoiceNumber,
+                cancellationToken).ConfigureAwait(false);
+
+            if (headerMergeData.Count == 0)
+                throw new InvalidOperationException($"No invoice header merge data was returned for transaction '{transactionGuid}'.");
+
+            if (string.IsNullOrWhiteSpace(targetSharePointUrl))
+                throw new InvalidOperationException("The target SharePointUrl for the linked Job could not be resolved.");
+
+            headerMergeData[0]["SharePointUrl"] = targetSharePointUrl;
+
+            var lineRows = await LoadInvoiceLineMergeDataAsync(
+                connection,
+                transactionGuid,
+                cancellationToken).ConfigureAwait(false);
+
+            var lineBookmarks = await LoadMergeDocumentTableBookmarksAsync(
+                connection,
+                mergeDocumentGuid,
+                cancellationToken).ConfigureAwait(false);
+
+            var lineRowsByBookmark = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+            var safeLineRows = BuildFinanceInvoiceLineRows(lineRows);
+
+            foreach (var bookmark in lineBookmarks)
+            {
+                if (!string.IsNullOrWhiteSpace(bookmark))
+                {
+                    lineRowsByBookmark[bookmark] = safeLineRows;
+                }
+            }
+
+            return new FinanceInvoicePreviewContext
+            {
+                TemplateSiteIdentifier = mergeDocument.TemplateSiteIdentifier,
+                TemplateDocumentId = mergeDocument.DocumentId,
+                FilenameTemplate = BuildFinanceInvoiceFilename(
+                    mergeDocument.FilenameTemplate,
+                    reservedInvoiceNumber,
+                    transactionGuid,
+                    headerMergeData),
+                TargetSharePointUrl = targetSharePointUrl,
+                HeaderMergeData = headerMergeData,
+                LineRowsByBookmark = lineRowsByBookmark
+            };
+        }
+
+        private static List<Dictionary<string, string>> BuildFinanceInvoiceLineRows(
+    List<Dictionary<string, string>> input)
+        {
+            if (input == null || input.Count == 0)
+                return new List<Dictionary<string, string>>();
+
+            return input.Select(row => new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Line"] = SanitizeValue(row.GetValueOrDefault("LineOrder")),
+                ["Description"] = SanitizeValue(row.GetValueOrDefault("Description")),
+                ["Net"] = FormatMoney(row.GetValueOrDefault("Net")),
+                ["VAT"] = FormatMoney(row.GetValueOrDefault("Vat")),
+                ["Gross"] = FormatMoney(row.GetValueOrDefault("Gross")),
+                ["VAT %"] = FormatRate(row.GetValueOrDefault("VatRate"))
+            }).ToList();
+        }
+
+        private static string SanitizeValue(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return value
+                .Replace("\r", " ")
+                .Replace("\n", " ")
+                .Replace("\t", " ")
+                .Trim();
+        }
+
+        private static string FormatMoney(string? value)
+        {
+            if (decimal.TryParse(value, out var d))
+                return d.ToString("0.00");
+
+            return SanitizeValue(value);
+        }
+
+        private static string FormatRate(string? value)
+        {
+            if (decimal.TryParse(value, out var d))
+                return d.ToString("0.##");
+
+            return SanitizeValue(value);
+        }
+
+        private async Task<FinanceMergeDocumentInfo?> LoadMergeDocumentAsync(
+    SqlConnection connection,
+    Guid mergeDocumentGuid,
+    CancellationToken cancellationToken)
+        {
+            const string sql = @"
+SELECT TOP (1)
+    md.Guid,
+    md.Name,
+    md.FilenameTemplate,
+    md.DocumentId,
+    sps.SiteIdentifier AS TemplateSiteIdentifier
+FROM SCore.MergeDocuments AS md
+INNER JOIN SCore.SharepointSites AS sps
+    ON sps.ID = md.SharepointSiteId
+WHERE md.Guid = @MergeDocumentGuid
+  AND md.RowStatus NOT IN (0, 254);";
+
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandType = CommandType.Text
+            };
+
+            command.Parameters.Add(new SqlParameter("@MergeDocumentGuid", SqlDbType.UniqueIdentifier) { Value = mergeDocumentGuid });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                return null;
+
+            return new FinanceMergeDocumentInfo
+            {
+                Guid = reader.GetGuid(reader.GetOrdinal("Guid")),
+                Name = reader.GetString(reader.GetOrdinal("Name")),
+                FilenameTemplate = reader.GetString(reader.GetOrdinal("FilenameTemplate")),
+                DocumentId = reader.GetString(reader.GetOrdinal("DocumentId")),
+                TemplateSiteIdentifier = reader.GetString(reader.GetOrdinal("TemplateSiteIdentifier"))
+            };
+        }
+
+        private async Task<List<string>> LoadMergeDocumentTableBookmarksAsync(
+    SqlConnection connection,
+    Guid mergeDocumentGuid,
+    CancellationToken cancellationToken)
+        {
+            const string sql = @"
+SELECT
+    mdi.BookmarkName
+FROM SCore.MergeDocumentItems AS mdi
+INNER JOIN SCore.MergeDocuments AS md
+    ON md.ID = mdi.MergeDocumentId
+INNER JOIN SCore.MergeDocumentItemTypes AS mdit
+    ON mdit.ID = mdi.MergeDocumentItemTypeId
+WHERE md.Guid = @MergeDocumentGuid
+  AND md.RowStatus NOT IN (0, 254)
+  AND mdi.RowStatus NOT IN (0, 254)
+  AND mdit.Name = N'Data Table'
+ORDER BY mdi.ID;";
+
+            var results = new List<string>();
+
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandType = CommandType.Text
+            };
+
+            command.Parameters.Add(new SqlParameter("@MergeDocumentGuid", SqlDbType.UniqueIdentifier) { Value = mergeDocumentGuid });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (!reader.IsDBNull(reader.GetOrdinal("BookmarkName")))
+                {
+                    results.Add(reader.GetString(reader.GetOrdinal("BookmarkName")));
+                }
+            }
+
+            return results;
+        }
+        private async Task<List<Dictionary<string, string>>> LoadInvoiceHeaderMergeDataAsync(
+    SqlConnection connection,
+    Guid transactionGuid,
+    string reservedInvoiceNumber,
+    CancellationToken cancellationToken)
+        {
+            const string sql = @"
+SELECT TOP (1) *
+FROM SFin.Transaction_InvoiceMergeInfo
+WHERE TransactionGuid = @TransactionGuid;";
+
+            var rows = await ReadRowsAsStringDictionaryAsync(
+                connection,
+                sql,
+                new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier) { Value = transactionGuid },
+                cancellationToken).ConfigureAwait(false);
+
+            if (rows.Count == 0)
+                return rows;
+
+            // Force the outbound invoice number that will be sent to Sage.
+            var row = rows[0];
+            row["InvoiceNumber"] = reservedInvoiceNumber;
+            row["ReservedInvoiceNumber"] = reservedInvoiceNumber;
+            row["Number"] = reservedInvoiceNumber;
+            row["SageTransactionReference"] = reservedInvoiceNumber;
+
+            return rows;
+        }
+        private async Task<List<Dictionary<string, string>>> LoadInvoiceLineMergeDataAsync(
+    SqlConnection connection,
+    Guid transactionGuid,
+    CancellationToken cancellationToken)
+        {
+            const string sql = @"
+SELECT *
+FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
+
+            return await ReadRowsAsStringDictionaryAsync(
+                connection,
+                sql,
+                new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier) { Value = transactionGuid },
+                cancellationToken).ConfigureAwait(false);
+        }
+        private async Task<List<Dictionary<string, string>>> ReadRowsAsStringDictionaryAsync(
+    SqlConnection connection,
+    string sql,
+    SqlParameter parameter,
+    CancellationToken cancellationToken)
+        {
+            var rows = new List<Dictionary<string, string>>();
+
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandType = CommandType.Text
+            };
+
+            command.Parameters.Add(parameter);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    string columnName = reader.GetName(i);
+                    string value = reader.IsDBNull(i)
+                        ? string.Empty
+                        : Convert.ToString(reader.GetValue(i)) ?? string.Empty;
+
+                    row[columnName] = value;
+                }
+
+                rows.Add(row);
+            }
+
+            return rows;
+        }
+
+        private async Task<string> ResolveTemplateDriveIdAsync(
+    string siteIdentifier,
+    string documentId,
+    CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(siteIdentifier))
+                throw new ArgumentException("A SharePoint site identifier is required.", nameof(siteIdentifier));
+
+            if (string.IsNullOrWhiteSpace(documentId))
+                throw new ArgumentException("A document id is required.", nameof(documentId));
+
+            var drives = await graphServiceClient.Sites[siteIdentifier].Drives.GetAsync().ConfigureAwait(false);
+            if (drives?.Value == null || drives.Value.Count == 0)
+                throw new InvalidOperationException($"No drives were found for SharePoint site '{siteIdentifier}'.");
+
+            foreach (var drive in drives.Value)
+            {
+                try
+                {
+                    var item = await graphServiceClient.Drives[drive.Id].Items[documentId].GetAsync().ConfigureAwait(false);
+                    if (item != null)
+                        return drive.Id;
+                }
+                catch
+                {
+                    // Ignore and try next drive.
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            throw new InvalidOperationException(
+                $"The merge template document '{documentId}' could not be found in any drive for site '{siteIdentifier}'.");
+        }
+
+        private string ResolveFinanceConnectionString()
+        {
+            var connectionString =
+                _config.GetConnectionString("DefaultConnection")
+                ?? _config.GetConnectionString("ShoreDB")
+                ?? _config.GetConnectionString("CymBuild");
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "No database connection string was found. Expected one of: DefaultConnection, ShoreDB, CymBuild.");
+            }
+
+            return connectionString;
+        }
+
+
+        private static string BuildFinanceInvoiceFilename(
+    string filenameTemplate,
+    string reservedInvoiceNumber,
+    Guid transactionGuid,
+    List<Dictionary<string, string>> headerMergeData)
+        {
+            string resolved = string.IsNullOrWhiteSpace(filenameTemplate)
+                ? $"Invoice_{reservedInvoiceNumber}"
+                : filenameTemplate;
+
+            if (headerMergeData.Count > 0)
+            {
+                var header = headerMergeData[0];
+
+                foreach (var kvp in header)
+                {
+                    resolved = resolved.Replace($"[[{kvp.Key}]]", kvp.Value ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+
+            resolved = resolved.Replace("[[ReservedInvoiceNumber]]", reservedInvoiceNumber, StringComparison.OrdinalIgnoreCase);
+            resolved = resolved.Replace("[[InvoiceNumber]]", reservedInvoiceNumber, StringComparison.OrdinalIgnoreCase);
+            resolved = resolved.Replace("[[TransactionGuid]]", transactionGuid.ToString(), StringComparison.OrdinalIgnoreCase);
+
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                resolved = resolved.Replace(invalidChar, '_');
+            }
+
+            return string.IsNullOrWhiteSpace(resolved)
+                ? $"Invoice_{reservedInvoiceNumber}"
+                : resolved.Trim();
+        }
+
+        private static string ComputeSha256(byte[] data)
+        {
+            using var sha = SHA256.Create();
+            byte[] hashBytes = sha.ComputeHash(data);
+            return Convert.ToHexString(hashBytes);
+        }
+
+        private sealed class FinanceInvoicePreviewContext
+        {
+            public string TemplateSiteIdentifier { get; set; } = string.Empty;
+            public string TemplateDocumentId { get; set; } = string.Empty;
+            public string FilenameTemplate { get; set; } = string.Empty;
+            public string TargetSharePointUrl { get; set; } = string.Empty;
+            public List<Dictionary<string, string>> HeaderMergeData { get; set; } = new();
+            public Dictionary<string, List<Dictionary<string, string>>> LineRowsByBookmark { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private sealed class FinanceMergeDocumentInfo
+        {
+            public Guid Guid { get; set; }
+            public string Name { get; set; } = string.Empty;
+            public string FilenameTemplate { get; set; } = string.Empty;
+            public string DocumentId { get; set; } = string.Empty;
+            public string TemplateSiteIdentifier { get; set; } = string.Empty;
+        }
+
+        private static string ExtractRequiredHeaderValue(
+    List<Dictionary<string, string>> headerMergeData,
+    string key,
+    string errorMessage)
+        {
+            if (headerMergeData.Count == 0)
+                throw new InvalidOperationException(errorMessage);
+
+            if (!headerMergeData[0].TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                throw new InvalidOperationException(errorMessage);
+
+            return value;
+        }
+
+        private byte[] ApplyFinanceTableContentControls(
+    byte[] documentBytes,
+    IReadOnlyDictionary<string, List<Dictionary<string, string>>> lineRowsByBookmark)
+        {
+            if (documentBytes == null || documentBytes.Length == 0)
+                throw new ArgumentException("Document content cannot be null or empty.", nameof(documentBytes));
+
+            if (lineRowsByBookmark == null || lineRowsByBookmark.Count == 0)
+                return documentBytes;
+
+            using var memoryStream = new MemoryStream();
+            memoryStream.Write(documentBytes, 0, documentBytes.Length);
+            memoryStream.Position = 0;
+
+            using (var wordDoc = WordprocessingDocument.Open(memoryStream, true))
+            {
+                var mainPart = wordDoc.MainDocumentPart;
+                if (mainPart == null)
+                    throw new InvalidOperationException("MainDocumentPart is missing from the template.");
+
+                foreach (var kvp in lineRowsByBookmark)
+                {
+                    if (string.IsNullOrWhiteSpace(kvp.Key))
+                        continue;
+
+                    if (kvp.Value == null || kvp.Value.Count == 0)
+                        continue;
+
+                    ReplaceContentControlWithTable(mainPart, kvp.Key, kvp.Value);
+                }
+
+                mainPart.Document.Save();
+            }
+
+            return memoryStream.ToArray();
+        }
         private static WordprocessingDocument CreateTransientWordDocumentForElement(
             OpenXmlElement sourceElement,
             MemoryStream memoryStream)
@@ -2118,10 +2779,13 @@ namespace Concursus.API.Classes
             }
         }
 
-        private void ReplaceContentControlWithTable(MainDocumentPart mainPart, string controlTag, List<Dictionary<string, string>> tableData)
+        private void ReplaceContentControlWithTable(
+    MainDocumentPart mainPart,
+    string controlTag,
+    List<Dictionary<string, string>> tableData)
         {
             var sdt = mainPart.Document.Body.Descendants<SdtElement>()
-                        .FirstOrDefault(s => s.SdtProperties.GetFirstChild<Tag>()?.Val == controlTag);
+                .FirstOrDefault(s => s.SdtProperties?.GetFirstChild<Tag>()?.Val == controlTag);
 
             if (sdt == null)
             {
@@ -2131,45 +2795,73 @@ namespace Concursus.API.Classes
 
             Console.WriteLine($"[INFO] Found Content Control '{controlTag}', preparing to insert table...");
 
-            // Step 1: Log Table Data Before Insertion
-            Console.WriteLine("\n[DEBUG] Table Preview:");
-            if (tableData.Count == 0)
+            if (tableData == null || tableData.Count == 0)
             {
-                Console.WriteLine("[WARNING] Table data is empty. No rows to insert.");
+                Console.WriteLine("[WARNING] Table data is empty. Skipping table insertion.");
+                return;
             }
-            else
-            {
-                // Print header row
-                var headers = tableData[0].Keys.ToList();
-                Console.WriteLine("+" + string.Join("+", headers.Select(h => new string('-', h.Length + 4))) + "+");
-                Console.WriteLine("| " + string.Join(" | ", headers) + " |");
-                Console.WriteLine("+" + string.Join("+", headers.Select(h => new string('-', h.Length + 4))) + "+");
 
-                // Print table rows
-                foreach (var row in tableData)
-                {
-                    Console.WriteLine("| " + string.Join(" | ", row.Values) + " |");
-                }
-                Console.WriteLine("+" + string.Join("+", headers.Select(h => new string('-', h.Length + 4))) + "+\n");
-            }
-            // Ensure SOCOTEC style is added before inserting the table
             var bookmarkReplacer = new BookmarkReplacer();
             bookmarkReplacer.AddSocotecStyle(mainPart);
 
-            // Generate the table using the existing `GenerateTable` method
             Table newTable = bookmarkReplacer.GenerateTable(tableData, mainPart, controlTag);
-
-            // **Apply SOCOTEC style explicitly to table properties**
-            newTable.GetFirstChild<TableProperties>()?.Append(new TableStyle { Val = "SOCOTEC" });
 
             ValidateTableStructure(newTable);
 
-            // Replace Content Control with Table
-            sdt.InsertAfterSelf(newTable);
-            sdt.Remove(); // Remove the old content control
+            var parent = sdt.Parent;
 
-            Console.WriteLine($"[SUCCESS] Table inserted at content control '{controlTag}' with SOCOTEC style and header row.");
+            if (parent is Body body)
+            {
+                body.InsertAfter(newTable, sdt);
+            }
+            else if (parent is TableCell cell)
+            {
+                cell.InsertAfter(newTable, sdt);
+            }
+            else if (parent is Paragraph paragraph)
+            {
+                paragraph.InsertAfterSelf(newTable);
+            }
+            else if (parent is Run run && run.Parent is Paragraph runParagraph)
+            {
+                runParagraph.InsertAfterSelf(newTable);
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Unsupported parent type for content control '{controlTag}': {parent?.GetType().Name}");
+            }
+
+            sdt.Remove();
+
+            Console.WriteLine($"[SUCCESS] Table safely inserted for '{controlTag}'.");
         }
+
+        private static List<Dictionary<string, string>> SanitizeTableData(
+            List<Dictionary<string, string>> input)
+        {
+            if (input == null || input.Count == 0)
+                return new();
+
+            var excludedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "ID",
+                "Guid",
+                "RowGuid",
+                "TransactionGuid",
+                "InvoiceRequestItemId"
+            };
+
+            return input.Select(row =>
+                row
+                    .Where(kvp => !excludedColumns.Contains(kvp.Key))
+                    .ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => SanitizeValue(kvp.Value),
+                        StringComparer.OrdinalIgnoreCase)
+            ).ToList();
+        }
+
 
         private async Task<SharepointDocumentsGetResponse> UploadModifiedDocument(
     string siteId,

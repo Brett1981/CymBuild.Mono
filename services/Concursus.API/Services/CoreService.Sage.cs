@@ -20,8 +20,8 @@ public partial class CoreService
     };
 
     public override async Task<SageInboundPaymentSyncReply> SageInboundPaymentSync(
-    SageInboundPaymentSyncRequestMessage request,
-    ServerCallContext context)
+     SageInboundPaymentSyncRequestMessage request,
+     ServerCallContext context)
     {
         if (request is null || string.IsNullOrWhiteSpace(request.CymBuildDocumentGuid))
         {
@@ -50,7 +50,11 @@ public partial class CoreService
             ExternalAllocationCount = result.ExternalAllocationCount,
             ReconciledInvoiceCount = result.ReconciledInvoiceCount,
             ReconciledAllocationCount = result.ReconciledAllocationCount,
-            UpdatedInvoiceRequestCount = result.UpdatedInvoiceRequestCount
+            UpdatedInvoiceRequestCount = result.UpdatedInvoiceRequestCount,
+            FullyPaidCount = result.FullyPaidCount,
+            PartiallyPaidCount = result.PartiallyPaidCount,
+            UnpaidCount = result.UnpaidCount,
+            ShouldContinuePolling = result.ShouldContinuePolling
         };
 
         foreach (var item in result.Items)
@@ -61,7 +65,19 @@ public partial class CoreService
                 MatchedTransactionId = item.MatchedTransactionId,
                 MatchedInvoiceRequestId = item.MatchedInvoiceRequestId,
                 MatchedJobId = item.MatchedJobId,
-                MatchRule = item.MatchRule ?? string.Empty
+                MatchRule = item.MatchRule ?? string.Empty,
+                SageTransactionReference = item.SageTransactionReference ?? string.Empty,
+                SageDocumentNo = item.SageDocumentNo ?? string.Empty,
+                SageTransactionTypeCode = item.SageTransactionTypeCode,
+                GrossAmount = (double)item.GrossAmount,
+                AllocatedValue = (double)item.AllocatedValue,
+                OutstandingAmount = (double)item.OutstandingAmount,
+                DocumentDiscountedValue = (double)item.DocumentDiscountedValue,
+                IsPaid = item.IsPaid,
+                IsFullyPaid = item.IsFullyPaid,
+                PaymentStateCode = item.PaymentStateCode ?? string.Empty,
+                TransactionDateUtc = ToTimestamp(item.TransactionDateUtc),
+                LastSeenOnUtc = ToTimestamp(item.LastSeenOnUtc)
             });
         }
 
@@ -98,8 +114,8 @@ public partial class CoreService
     }
 
     public override async Task<SageInboundDiagnosticsGetReply> SageInboundDiagnosticsGet(
-            SageInboundDiagnosticsGetRequest request,
-            ServerCallContext context)
+    SageInboundDiagnosticsGetRequest request,
+    ServerCallContext context)
     {
         if (request == null)
         {
@@ -124,6 +140,7 @@ public partial class CoreService
                 .ConfigureAwait(false);
 
             var reply = new SageInboundDiagnosticsGetReply();
+
             foreach (var row in rows)
             {
                 reply.Rows.Add(new SageInboundDiagnosticsRow
@@ -160,7 +177,22 @@ public partial class CoreService
                     LastAttemptResponseStatus = row.LastAttemptResponseStatus ?? string.Empty,
                     LastAttemptResponseDetail = row.LastAttemptResponseDetail ?? string.Empty,
                     CanRequeue = row.CanRequeue,
-                    CanForceRequeue = row.CanForceRequeue
+                    CanForceRequeue = row.CanForceRequeue,
+
+                    LastGrossAmount = (double)row.LastGrossAmount,
+                    LastAllocatedValue = (double)row.LastAllocatedValue,
+                    LastOutstandingAmount = (double)row.LastOutstandingAmount,
+                    LastDocumentDiscountedValue = (double)row.LastDocumentDiscountedValue,
+                    LastIsPaid = row.LastIsPaid,
+                    LastIsFullyPaid = row.LastIsFullyPaid,
+                    LastPaymentStateCode = row.LastPaymentStateCode ?? string.Empty,
+                    LastTransactionDate = ToTimestamp(row.LastTransactionDate),
+                    LastSageTransactionReference = row.LastSageTransactionReference ?? string.Empty,
+                    LastSecondReference = row.LastSecondReference ?? string.Empty,
+                    LastSageTransactionTypeCode = row.LastSageTransactionTypeCode,
+                    NextPollDueOnUtc = ToTimestamp(row.NextPollDueOnUtc),
+                    PollAttemptCount = row.PollAttemptCount,
+                    IsTerminalState = row.IsTerminalState
                 });
             }
 

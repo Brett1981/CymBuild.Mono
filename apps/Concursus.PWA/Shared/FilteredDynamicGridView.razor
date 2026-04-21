@@ -62,25 +62,9 @@
 
             </div>
 
-
-
             @if (ViewDefinition is not null)
             {
                     <div class="filter-control">
-                        <div class="status-explanation">
-                            <ul>
-                                @if (RedIndicator != "")
-                                {
-                                    <li><span class="dot red"></span> @RedIndicator</li>
-                                }
-                                else if(GreenIndicator != "")
-                                {
-                                    <li><span class="dot green"></span> @GreenIndicator</li>
-                                }
-
-                          
-                            </ul>
-                        </div>
 
                         <div class="quick-filter-toolbar">
                             <div>
@@ -145,13 +129,6 @@
                         <GridColumns>
 
 
-
-
-
-
-
-
-
                         @{
                                     //OE: [CBLD-348]: Variables to ensure that only the first column gets locked.
                                     int index = 0;
@@ -162,6 +139,8 @@
                         
                         @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder))
                         {
+
+                            
                                       
                             if (!isLocked && !gvcd.IsHidden)
                             {
@@ -196,7 +175,6 @@
                                             <Template>
                                             @{
 
-                                               
 
                                                 var item = (IDictionary<string, object>)context;
                                                 var chaseDateStr = item["QuoteSentDate"].ToString();
@@ -226,14 +204,13 @@
 
                                                 }
                                                 <div class="custom-ellipsis">
-                                                @if (!statusesToExclude.Contains(status))
-                                                {
+                                                    @if (!statusesToExclude.Contains(status))
+                                                    {
                                                     <li><span class="@labelToAssign"></span> @item["QuoteStatus"]</li>
-                                                } else
-                                                {
-                                                     @item["QuoteStatus"]
-                                                }
-                                               
+                                                    } else
+                                                    {
+                                                                @item["QuoteStatus"]
+                                                    }
                                                  </div>
                                                 
                                             </Template>
@@ -258,29 +235,101 @@
                                                 var IsOverdue = item["IsOverdue"].ToString();
 
 
-
-
+                                                //Check if it is overdue
                                                 if (IsOverdue != "")
                                                     labelToAssign = chaseOverdueLabel;
                                                 else
                                                     //If there is not date returned, assume the chase date 1 field is empty (no chase)
                                                     labelToAssign = noChaseDateNeededLabel;
+
+                                                //Next, get the Sage status
+                                                var SageIcon = "";
+                                                var SageStatus = item["SageStatusCode"].ToString();
+                                                var SageReference = item["SageTransactionReference"].ToString();
+                                                var HasSagereference = (SageReference != String.Empty ? true : false);
+                                                var SageBadgeColour = "";
+
+                                                switch (SageStatus)
+                                                {
+                                                    case "Succeeded":
+                                                        SageBadgeColour = "badge rounded-pill m-2 bg-success";
+                                                        break;
+                                                    case "Pending":
+                                                        SageBadgeColour = "badge rounded-pill m-2 bg-primary";
+                                                        break;
+                                                    case "InProgress":
+                                                        SageStatus = "In Progress";
+                                                        SageBadgeColour = "badge rounded-pill m-2 bg-secondary";
+                                                        break;
+                                                    case "FailedRetryable":
+                                                        SageStatus = "In Progress";
+                                                        SageBadgeColour = "badge rounded-pill m-2 bg-warning";
+                                                        break;
+                                                    case "Not Sent":
+                                                        if (HasSagereference)
+                                                        {
+                                                            SageStatus = "Sent (Legacy)";
+                                                            SageBadgeColour = "badge rounded-pill m-2 bg-sageLegacyCustom";
+                                                        }
+                                                        else
+                                                        {
+                                                            SageStatus = "Not Sent";
+                                                            SageBadgeColour = "badge rounded-pill m-2 bg-info";
+                                                        }
+                                                        break;
+                                                    default:
+                                                        SageStatus = "Not Sent";
+                                                        SageBadgeColour = "badge rounded-pill m-2 bg-info";
+                                                        break;
+                                                }
+
                                                 
-
-
+                                        
                                             }
                                                 <div class="custom-ellipsis">
-                                                @if (IsOverdue != "")
-                                                {
-                                                     <li><span class="@labelToAssign"></span> @item[gvcd.Name]</li>
-                                                }
-                                                else
-                                                {
-                                                    @item[gvcd.Name]
-                                                }
+                                                    @if (IsOverdue != "")
+                                                    {
+                                                        <div class="d-flex flex-row justify-content-between">
+                                                            <div class="d-flex flex-row">
+                                                                <span class="badge rounded-pill bg-danger d-inline-flex align-items-center" style="margin: 6px;">
+                                                                  <i class="bi bi-exclamation-circle me-1" style="font-size:16px;"></i>
+                                                                    Overdue
+                                                                </span>
+                                                                 <span class="@SageBadgeColour d-inline-flex align-items-center">
+                                                                    @if (!HasSagereference)
+                                                                    {
+                                                                            <img src="sage-icon.png" alt="" width="16" height="16" class="me-1">
+                                                                    }
 
-                                                    </div>
+                                                                    @SageStatus
+                                                                </span> 
+                                                            </div>
+                                                            <div>
+                                                                @item["Date"]
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="d-flex flex-row justify-content-between">
+                                                        <div class="d-flex flex-row">
+                                                                <span class="" style="width: 80px;"></span>
+                                                                <span class="@SageBadgeColour d-inline-flex align-items-center">
+                                                                    @if (!HasSagereference)
+                                                                    {
+                                                                        <img src="sage-icon.png" alt="" width="16" height="16" class="me-1">
+                                                                    }
+                                                                
+                                                                    @SageStatus
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                @item["Date"]
+                                                            </div>
+                                                        </div>
+                                                    }
 
+                                                </div>
                                             </Template>
                                     </GridColumn>
                                 }
@@ -307,9 +356,6 @@
                             else
                             {
 
-
-                                
-
                                         <GridColumn Field="@gvcd.Name"
                                                 Title="@gvcd.Title"
                                                 FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
@@ -324,8 +370,6 @@
                                             </div>
                                         </Template>
                                     </GridColumn>
-
-                                
 
                             }
 
@@ -372,6 +416,9 @@
 
 <style>
 
+        .bg-sageLegacyCustom{
+            background-color: #ADEBB3 !important;
+        }
 
         .sticky {
             position: sticky;
