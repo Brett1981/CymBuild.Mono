@@ -10,6 +10,9 @@ SELECT
             -- 1) JOB-DRIVEN COMPLETION (highest priority)
             --    Explicit calculated override retained by design.
             ----------------------------------------------------------------------
+			WHEN LatestWorkflowStatus.Guid = Statuses.Quoting AND PreviousWorkflowStatus.Guid = Statuses.Reopened
+				THEN N'Reopened'
+			
 			WHEN LatestWorkflowStatus.Guid = Statuses.Reopened
                 THEN N'Reopened'
 
@@ -185,7 +188,8 @@ OUTER APPLY
         Sent        = CONVERT(uniqueidentifier, '25D5491C-42A8-4B04-B3AC-D648AF0F8032'),
         firstChase  = CONVERT(uniqueidentifier, '9FF22CEA-A2A6-4907-9B2D-E62DF8150913'),
         secondChase = CONVERT(uniqueidentifier, '1F01C16B-1A73-4844-A938-FE357405FD93'),
-		Reopened    = CONVERT(uniqueidentifier, '34EF363A-C8F7-4BA8-A2C6-067EBAEF12FD')
+		Reopened    = CONVERT(uniqueidentifier, '34EF363A-C8F7-4BA8-A2C6-067EBAEF12FD'),
+		Quoting     = CONVERT(uniqueidentifier, '9A60F983-24BA-4733-907E-C5CCE0B691CB')
 ) AS Statuses
 
 OUTER APPLY
@@ -201,6 +205,20 @@ OUTER APPLY
       AND wfs.RowStatus NOT IN (0,254)
     ORDER BY dot.ID DESC
 ) AS LatestWorkflowStatus
+
+OUTER APPLY
+(
+    SELECT TOP (1)
+        Name = wfs.Name,
+        Guid = wfs.Guid
+    FROM SCore.DataObjectTransition dot
+    JOIN SCore.WorkflowStatus wfs
+        ON wfs.ID = dot.OldStatusID
+    WHERE dot.DataObjectGuid = q.Guid
+      AND dot.RowStatus NOT IN (0,254)
+      AND wfs.RowStatus NOT IN (0,254)
+    ORDER BY dot.ID DESC
+) AS PreviousWorkflowStatus
 
 OUTER APPLY
 (

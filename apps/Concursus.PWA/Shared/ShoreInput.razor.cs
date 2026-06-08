@@ -16,9 +16,11 @@ using EntityProperty = Concursus.API.Core.EntityProperty;
 
 namespace Concursus.PWA.Shared;
 
-public partial class ShoreInput
+public partial class ShoreInput : IDisposable
 {
     #region Private Fields
+
+    private readonly Guid _componentInstanceGuid = Guid.NewGuid();
 
     private readonly DateTime _max = new(2050, 12, 31);
 
@@ -75,7 +77,9 @@ public partial class ShoreInput
     [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
     [Parameter] public string? RecordGuid { get; set; }
 
-    private Timer _debounceTimer; //OE - 02/01/25: Pertaining to input fix where user has to click off field before save.
+    private Timer? _debounceTimer; //OE - 02/01/25: Pertaining to input fix where user has to click off field before save.
+
+    private bool _isRegisteredWithParent;
 
     #endregion Public Properties
 
@@ -444,6 +448,8 @@ public partial class ShoreInput
 
     private string PropertyId { get; set; } = "";
 
+    private string DatePickerId => $"{PropertyId}-date";
+
     private string PropertyName { get; set; } = "";
 
     private string StepValue
@@ -652,7 +658,11 @@ public partial class ShoreInput
     {
         if (firstRender)
         {
-            Parent.ChildInputs.Add(this);
+            if (!_isRegisteredWithParent && !Parent.ChildInputs.Contains(this))
+            {
+                Parent.ChildInputs.Add(this);
+                _isRegisteredWithParent = true;
+            }
             // Get User of Selected Record When in Settings --> Users --> User Record
             if (EntityProperty.EntityTypeGuid == "b123cd82-291e-4dd2-8bb4-c9e51302786d" && RecordGuid != "00000000-0000-0000-0000-000000000000")
             {
@@ -669,14 +679,26 @@ public partial class ShoreInput
         await base.OnAfterRenderAsync(firstRender);
     }
 
+    protected override void OnParametersSet()
+    {
+        try
+        {
+            RefreshResolvedPropertyMetadata();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error in OnParametersSet().");
+            ex.Data.Add("PageMethod", "ShoreInput/OnParametersSet()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            PropertyId = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty.Guid).ToString();
-            PropertyName = EntityProperty.Label;
-            Placeholder = EntityProperty.Label;
-            Dependents = EntityProperty.DependantProperties.ToList();
+            RefreshResolvedPropertyMetadata();
 
             await base.OnInitializedAsync();
         }
@@ -824,6 +846,39 @@ public partial class ShoreInput
     #endregion Protected Methods
 
     #region Private Methods
+
+    private void RefreshResolvedPropertyMetadata()
+    {
+        var entityPropertyGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty?.Guid);
+
+        if (entityPropertyGuid == Guid.Empty)
+        {
+            entityPropertyGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataProperty?.EntityPropertyGuid);
+        }
+
+        PropertyId = entityPropertyGuid == Guid.Empty
+            ? $"shore-input-{_componentInstanceGuid:N}"
+            : $"shore-input-{entityPropertyGuid:N}-{_componentInstanceGuid:N}";
+
+        var resolvedLabel = string.IsNullOrWhiteSpace(EntityProperty?.Label)
+            ? EntityProperty?.Name ?? string.Empty
+            : EntityProperty.Label;
+
+        PropertyName = resolvedLabel;
+        Placeholder = resolvedLabel;
+        Dependents = EntityProperty?.DependantProperties?.ToList() ?? new List<EntityPropertyDependant>();
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+
+        if (_isRegisteredWithParent)
+        {
+            Parent.ChildInputs.Remove(this);
+            _isRegisteredWithParent = false;
+        }
+    }
 
     private async Task HandleOnBlur(FocusEventArgs e)
     {

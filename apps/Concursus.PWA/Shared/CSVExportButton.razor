@@ -1,0 +1,324 @@
+﻿@using Concursus.PWA.Classes;
+@using Microsoft.AspNetCore.Components;
+@using System.Dynamic;
+@using System.Globalization;
+@using Telerik.Blazor.Components.Grid;
+@using Concursus.PWA.Helpers;
+@inject Core.CoreClient coreClient
+
+@*
+    CSV Export Component
+    ----------------------------------------------------------------------------------------------------
+    This component handles exporting grid data to a CSV file.
+
+    It uses the same data and filters as the grid, so the export matches what the user sees on screen.
+
+    What it does:
+    - Exports the current grid data to CSV
+    - Applies any active grid filters (quick filters)
+    - Supports optional date range filtering (UI exists but is not currently active/available everywhere)
+    - Keeps the same column order as the grid
+    - Formats values consistently (dates, numbers, etc.)
+
+    Notes:
+    - Hidden/internal fields like ID and Guid are not included in the export
+    - The export is generated dynamically based on the current grid configuration
+*@
+
+
+    @if (ViewDefinition.AllowCsvExport && ShowButton)
+    {
+        <button type="button"
+                class="btn btn-success dropdown-toggle"
+                data-bs-toggle="dropdown"
+                data-bs-auto-close="outside"
+                aria-expanded="false"
+                title="Export CSV">
+
+            <i class="bi bi-filetype-csv" style="font-size:16px"></i>
+        </button>
+
+        <div class="dropdown-menu p-3 shadow" style="min-width: 320px;">
+
+
+            @if (EnableRangeFiltering)
+            {
+                <label class="form-label fw-semibold mb-2">
+                    <b>Select Date Range</b>
+                </label>
+
+                <div class="mb-3">
+                    <label class="form-label">Start Date</label>
+                    <InputDate @bind-Value="StartDate"
+                               class="form-control"
+                               max="@Today.ToString("yyyy-MM-dd")" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">End Date</label>
+                    <InputDate @bind-Value="EndDate"
+                               class="form-control"
+                               max="@Today.ToString("yyyy-MM-dd")" />
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(ValidationMessage))
+                {
+                    <div class="text-danger small mb-2">
+                        @ValidationMessage
+                    </div>
+                }
+
+                @*
+                                                                Button with validation check (when using range export)
+                                                            *@
+                <div class="mt-3 d-flex justify-content-end">
+                    <button class="btn btn-primary btn-sm"
+                            disabled="@(!IsValid)"
+                            @onclick="ExportCsv">
+                        Export
+                    </button>
+                </div>
+            }
+            else
+            {
+                <label class="form-label fw-semibold mb-2">
+                    <b>Export data with filter applied.</b>
+                </label>
+
+                @*
+                                                                Button without validation check (for filtered data)
+                                                            *@
+                <div class="mt-3 d-flex justify-content-end">
+                    <button class="btn btn-primary btn-sm"
+                            @onclick="ExportCsv">
+                        Export
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+@code {
+    [Parameter] public bool ShowButton { get; set; } = false;
+    [Parameter] public TelerikGrid<ExpandoObject> GridRef { get; set; }
+    [Parameter] public GridViewDefinition ViewDefinition { get; set; }
+    [Parameter] public bool EnableRangeFiltering { get; set; }
+    [Parameter] public string GridCode { get; set; }
+    [Parameter] public string ParentGuid { get; set; }
+    [Parameter] public EventCallback<string> ParentGuidChanged { get; set; }
+
+
+    [Parameter] public DataCompositeFilter QuickFilters { get; set; }
+    [Parameter] public EventCallback<DataCompositeFilter> QuickFiltersChanged { get; set; }
+    [Parameter] public DataCompositeFilter RangeFilters { get; set; }
+    [Parameter] public EventCallback<DataCompositeFilter> RangeFiltersChanged { get; set; }
+
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+
+
+    private List<System.Dynamic.ExpandoObject> GridDataToExport { get; set; } = new List<System.Dynamic.ExpandoObject>();
+    private List<Telerik.Blazor.Components.Grid.GridCsvExportColumn> GridDataColumns { get; set; }
+
+    private DateTime? StartDate { get; set; }
+    private DateTime? EndDate { get; set; }
+    private DateTime Today => DateTime.Today;
+
+    private bool IsValid =>
+        StartDate.HasValue &&
+        EndDate.HasValue &&
+        StartDate <= Today &&
+        EndDate <= Today &&
+        EndDate >= StartDate;
+
+    private string? ValidationMessage
+    {
+        get
+        {
+            if (!StartDate.HasValue || !EndDate.HasValue)
+                return "Both dates are required.";
+
+            if (StartDate > Today)
+                return "Start date cannot be in the future.";
+
+            if (EndDate > Today)
+                return "End date cannot be in the future.";
+
+            if (EndDate < StartDate)
+                return "End date cannot be before start date.";
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Main function that exports the CSV file.
+    /// </summary>
+    /// <returns></returns>
+    private async Task ExportCsv()
+    {
+
+        try
+        {
+            if (ViewDefinition == null) return;
+
+
+            var gridDataListRequest = new API.Core.GridDataListRequest
+            {
+                GridCode = GridCode,
+                GridViewCode = ViewDefinition.Code,
+                Page = 1,
+                PageSize = 1000,
+                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
+            };
+
+            //if (gridDataListRequest.ParentGuid == Guid.Empty.ToString()) return;
+
+            // Ensure we handle single `DataCompositeFilter` properly
+            var compositeFilter = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(new List<Telerik.DataSource.IFilterDescriptor>());
+
+            //Check for quick filters
+            if (QuickFilters != null)
+                compositeFilter.CompositeFilters.Add(QuickFilters);
+
+            if (RangeFilters != null)
+                compositeFilter.CompositeFilters.Add(RangeFilters);
+
+            if (compositeFilter != null)
+                gridDataListRequest.Filters.Add(compositeFilter);
+
+
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+
+
+            foreach (var r in gridDataListReply.DataTable)
+            {
+                dynamic dataObj = new ExpandoObject();
+                var dictionary = dataObj as IDictionary<string, object>;
+
+                foreach (var c in r.Columns)
+                {
+                    var name = c.Name;
+                    var value = FormatGridColumnValue(name, c.Value);
+                    dictionary[name] = value;
+                }
+
+                GridDataToExport.Add(dataObj);
+            }
+
+
+
+            await GridRef.SaveAsCsvFileAsync(new GridCsvExportOptions()
+            {
+                FileName = $"{ViewDefinition.Name}_{DateTime.Today.Date}",
+                Data = GridDataToExport.ToList(),
+                Columns = DefineCSVColumns(gridDataListReply.DataTable[0])
+            });
+
+            //Clear it.
+            GridDataToExport.Clear();
+
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "DynamicGridView/ExportCsv()");
+            await OnError.InvokeAsync(ex);
+        }
+    }
+
+
+    /// <summary>
+    /// Defines the columns and their order.
+    /// Made sure to reflect the ordering as seen on the front-end.
+    /// </summary>
+    /// <param name="row"></param>
+    /// <returns></returns>
+    private List<GridCsvExportColumn> DefineCSVColumns(Concursus.API.Core.GridDataRow row)
+    {
+        var columns = new List<GridCsvExportColumn>();
+
+        foreach (var vc in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
+        {
+            var c = row.Columns.FirstOrDefault(x => x.Name == vc.Name);
+
+            if (c == null)
+                continue;
+
+            if (c.Name == "ID" || c.Name == "Guid" || c.Name == "RowStatus")
+                continue;
+
+            columns.Add(new GridCsvExportColumn()
+            {
+                Field = c.Name
+            });
+        }
+
+        return columns;
+    }
+
+    /// <summary>
+    /// Formats the column values displayed - reusing function.
+    /// </summary>
+    /// <param name="columnName"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
+    private object FormatGridColumnValue(string columnName, string value)
+    {
+        ////CBLD-530
+        bool isPhoneNumber = CheckIfMobileNumber(columnName, value);
+
+        if (isPhoneNumber)
+        {
+            return value;
+        }
+
+        // Try numeric parsing first
+        if (int.TryParse(value, out var intValue)) return intValue;
+
+        if (decimal.TryParse(value, out var decimalValue))
+            return decimalValue.ToString("F2"); // Standard 2dp
+
+        if (bool.TryParse(value, out var boolValue))
+            return boolValue ? "Yes" : "No";
+
+        if (Guid.TryParse(value, out var guidValue))
+            return guidValue.ToString();
+
+        // Handle DateTime with standardized logic
+        if (DateTime.TryParse(value, out var dateTimeValue))
+        {
+            // Use UiFormattingHelper to normalize and format
+            var localDateTime = UiFormattingHelper.NormalizeToLocal(dateTimeValue);
+
+            // Smart formatting based on column name
+            bool isDateOnly = columnName.ToLower().EndsWith("date") && !columnName.ToLower().Contains("time");
+
+            return UiFormattingHelper.FormatDateForUI(localDateTime, isDateOnly);
+        }
+
+        // Default to raw string
+        return value;
+    }
+
+
+    private bool CheckIfMobileNumber(string columnName, string columnValue)
+    {
+        //Check for common ways a phone number might start.
+        bool startsWithZero = columnValue.StartsWith("0") && !columnValue.Contains("/"); //Date can start with 0, therefore check for '/'
+        bool startWithFourtyFour = columnValue.StartsWith("44");
+        bool startsWithPlus = columnValue.StartsWith("+");
+
+        if (startsWithZero || startWithFourtyFour || startsWithPlus)
+        {
+            return true;
+        }
+
+        return false;
+    }
+    
+    
+
+
+}

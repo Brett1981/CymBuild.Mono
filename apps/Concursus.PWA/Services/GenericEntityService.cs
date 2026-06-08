@@ -151,6 +151,7 @@ namespace Concursus.PWA.Services
                 ShowOnMobile = grpcEntity.ShowOnMobile,
                 IsAlwaysVisibleInGroup = grpcEntity.IsAlwaysVisibleInGroup,
                 IsAlwaysVisibleInGroupMobile = grpcEntity.IsAlwaysVisibleInGroupMobile,
+                HelpText = grpcEntity.HelpText,
             };
 
             // Add ObjectSecurity
@@ -287,6 +288,7 @@ namespace Concursus.PWA.Services
                 DoNotTrackChanges = grpcEntity.DoNotTrackChanges,
                 Label = grpcEntity.Label,
                 IconCss = grpcEntity.IconCss
+               
             };
 
             // Add EntityProperties

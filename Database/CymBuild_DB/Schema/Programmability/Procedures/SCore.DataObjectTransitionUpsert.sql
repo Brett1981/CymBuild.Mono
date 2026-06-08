@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SCore].[DataObjectTransitionUpsert]')
+GO
+
+
 /* =============================================================================
    CYB-101 – QA enforcement fix (write-path)
    Object: SCore.DataObjectTransitionUpsert
@@ -20,7 +24,7 @@ GO
        the Quote MUST have at least 1 active QuoteItem.
      This prevents the invalid state QA has recorded, even if the UI is bypassed.
 ============================================================================= */
-CREATE PROCEDURE [SCore].[DataObjectTransitionUpsert]
+CREATE   PROCEDURE [SCore].[DataObjectTransitionUpsert]
 (
     @Guid UNIQUEIDENTIFIER,
     @OldStatusGuid UNIQUEIDENTIFIER,
@@ -159,7 +163,7 @@ BEGIN
              • Enquiry 2569 / Quote 2340
              • Enquiry 2574 (pending confirmation)
         ---------------------------------------------------------------------- */
-        IF (@RecordTypeGuid = @IsQuote AND @StatusName IN (N'Sent', N'Accepted'))
+        IF (@RecordTypeGuid = @IsQuote AND @StatusName IN (N'Sent', N'Customer Accepted'))
         BEGIN
             DECLARE @QuoteItemCount INT = 0;
 
@@ -171,7 +175,7 @@ BEGIN
               AND qi.RowStatus NOT IN (0,254);
 
             IF (ISNULL(@QuoteItemCount, 0) <= 0)
-                THROW 60022, N'Cannot set Quote status to "Sent" or "Accepted" until at least one Quote Item has been created for the Quote.', 1;
+                THROW 60022, N'Cannot set Quote status to "Sent" or "Customer Accepted" until at least one Quote Item has been created for the Quote.', 1;
         END
 
         -------------------------------------------------------------------------
@@ -229,18 +233,23 @@ BEGIN
         END
 
         -------------------------------------------------------------------------
-        -- JOB CREATION FIX
+        -- JOB CREATION DEFAULT STATUS SAFETY
+        -- Do not override an explicitly requested job status.
+        -- Only default to "New" when no valid job status was supplied.
         -------------------------------------------------------------------------
-        SELECT @IsJob = Guid FROM SCore.EntityTypes WHERE Name = N'Jobs';
-
         IF (@RecordTypeGuid = @IsJob)
         BEGIN
             IF NOT EXISTS
             (
                 SELECT 1
-                FROM SCore.DataObjectTransition dot
+                FROM SCore.DataObjectTransition AS dot
                 WHERE dot.DataObjectGuid = @DataObjectGuid
-                  AND dot.RowStatus NOT IN (0,254)
+                  AND dot.RowStatus NOT IN (0, 254)
+            )
+            AND
+            (
+                @StatusID IS NULL
+                OR ISNULL(@StatusName, N'') = N''
             )
             BEGIN
                 DECLARE @JobNewStatusID INT = NULL;
@@ -249,21 +258,20 @@ BEGIN
                 SELECT TOP (1)
                     @JobNewStatusID = ws.ID,
                     @JobNewStatusName = ws.Name
-                FROM SCore.WorkflowStatus ws
-                WHERE ws.RowStatus NOT IN (0,254)
+                FROM SCore.WorkflowStatus AS ws
+                WHERE ws.RowStatus NOT IN (0, 254)
                   AND ws.ShowInJobs = 1
                   AND ws.Name = N'New'
                 ORDER BY ws.ID;
 
-                IF (@JobNewStatusID IS NOT NULL)
-                BEGIN
-                    SET @StatusID = @JobNewStatusID;
-                    SET @StatusName = @JobNewStatusName;
-                    SET @ShowInJobs = 1;
-                END
+                IF (@JobNewStatusID IS NULL)
+                    THROW 60014, N'Cannot create first Job transition: default Job status "New" was not found.', 1;
+
+                SET @StatusID = @JobNewStatusID;
+                SET @StatusName = @JobNewStatusName;
+                SET @ShowInJobs = 1;
             END
         END
-
         -------------------------------------------------------------------------
         -- Ensure DataObjects row exists for Transition GUID
         -------------------------------------------------------------------------
@@ -359,7 +367,46 @@ BEGIN
                 );
             END
         END;
+        -------------------------------------------------------------------------
+        -- JOB ACTIVE COMPATIBILITY SYNC
+        -- Workflow remains source of truth.
+        -- This only keeps legacy SJob.Jobs active date/flag behaviour aligned
+        -- for older queries that still use SJob.Jobs.IsActive.
+        -------------------------------------------------------------------------
+        IF (@RecordTypeGuid = @IsJob)
+        BEGIN
+            DECLARE @LatestJobIsActiveStatus BIT = NULL;
 
+            SELECT TOP (1)
+                @LatestJobIsActiveStatus = ws.IsActiveStatus
+            FROM SCore.DataObjectTransition AS dot
+            JOIN SCore.WorkflowStatus AS ws
+                ON ws.ID = dot.StatusID
+            WHERE dot.DataObjectGuid = @DataObjectGuid
+              AND dot.RowStatus NOT IN (0, 254)
+              AND ws.RowStatus NOT IN (0, 254)
+              AND ws.ShowInJobs = 1
+            ORDER BY dot.DateTimeUTC DESC, dot.ID DESC;
+
+            IF (@LatestJobIsActiveStatus = 1)
+            BEGIN
+                UPDATE SJob.Jobs
+                SET
+                    JobDormant = NULL,
+                    JobCompleted = NULL,
+                    JobCancelled = NULL,
+                    DeadDate = NULL
+                WHERE Guid = @DataObjectGuid
+                  AND RowStatus NOT IN (0, 254)
+                  AND
+                  (
+                      JobDormant IS NOT NULL
+                      OR JobCompleted IS NOT NULL
+                      OR JobCancelled IS NOT NULL
+                      OR DeadDate IS NOT NULL
+                  );
+            END
+        END
         -------------------------------------------------------------------------
         -- (Job->Quote completion, Quote->Enquiry sync, etc.)
         -- (left unchanged)

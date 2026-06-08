@@ -121,7 +121,11 @@ namespace Concursus.API.Services.Finance
                     var upsertRequest = new SageExternalTransactionUpsertRequest
                     {
                         SageDataset = target.SageDataset,
-                        SageAccountReference = GetString(row, "accountReference"),
+                        SageAccountReference = !string.IsNullOrWhiteSpace(GetString(row, "accountReference"))
+                                            ? GetString(row, "accountReference")
+                                            : (!string.IsNullOrWhiteSpace(GetString(row, "customerAccountNumber"))
+                                                ? GetString(row, "customerAccountNumber")
+                                                : target.SageAccountReference),
                         SageDocumentNo = ResolveDocumentNo(row, target.SageDocumentNo),
                         SageTransactionReference = GetString(row, "transactionReference"),
                         SecondReference = GetString(row, "secondReference"),
@@ -158,6 +162,12 @@ namespace Concursus.API.Services.Finance
                     var aggregateResult = await _persistenceRepository.ApplyAggregatePaymentStateAsync(
                         externalTransactionId,
                         cancellationToken).ConfigureAwait(false);
+                    if (aggregateResult.AllocatedValue > 0m && reconcileResult.IsMatched)
+                    {
+                        await _persistenceRepository.MaterialiseReceiptAndAllocationAsync(
+                            externalTransactionId,
+                            cancellationToken).ConfigureAwait(false);
+                    }
 
                     if (aggregateResult.PaymentStateCode == SageAggregatePaymentStateCodes.Paid ||
                         aggregateResult.PaymentStateCode == SageAggregatePaymentStateCodes.OverAllocated)
@@ -331,8 +341,8 @@ namespace Concursus.API.Services.Finance
         }
 
         private static DateTime? CalculateNextPollDueOnUtc(
-            SageAggregatePaymentStateResult aggregateState,
-            DateTime nowUtc)
+    SageAggregatePaymentStateResult aggregateState,
+    DateTime nowUtc)
         {
             ArgumentNullException.ThrowIfNull(aggregateState);
 

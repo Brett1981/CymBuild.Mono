@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[GridViewDefinitions]')
 GO
+PRINT (N'Create table [SUserInterface].[GridViewDefinitions]')
+GO
 CREATE TABLE [SUserInterface].[GridViewDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_GridViewDefinition_RowStatus] DEFAULT (0),
@@ -51,7 +53,8 @@ CREATE TABLE [SUserInterface].[GridViewDefinitions] (
   [FilteredListRedStatusIndicatorTxt] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__78D74A81] DEFAULT (N''),
   [FilteredListOrangeStatusIndicatorTxt] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__79CB6EBA] DEFAULT (N''),
   [FilteredListGreenStatusIndicatorTxt] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__7ABF92F3] DEFAULT (N''),
-  [FilteredListGroupBy] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__7BB3B72C] DEFAULT (N'')
+  [FilteredListGroupBy] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__7BB3B72C] DEFAULT (N''),
+  [IsHidden] [bit] NOT NULL CONSTRAINT [DF_GridViewDefinitions_IsHidden] DEFAULT (0)
 )
 ON [METADATA]
 TEXTIMAGE_ON [PRIMARY]
@@ -79,18 +82,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-PRINT (N'Create index [IX_GridViewDefinitions_Read] on table [SUserInterface].[GridViewDefinitions]')
-GO
-CREATE INDEX [IX_GridViewDefinitions_Read]
-  ON [SUserInterface].[GridViewDefinitions] ([GridDefinitionId], [ID], [Code], [RowStatus])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [METADATA]
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
 PRINT (N'Create index [IX_UQ_GridViewDefinition_Code] on table [SUserInterface].[GridViewDefinitions]')
 GO
 CREATE UNIQUE INDEX [IX_UQ_GridViewDefinition_Code]
@@ -104,18 +95,6 @@ PRINT (N'Create index [IX_UQ_GridViewDefinition_Guid] on table [SUserInterface].
 GO
 CREATE UNIQUE INDEX [IX_UQ_GridViewDefinition_Guid]
   ON [SUserInterface].[GridViewDefinitions] ([Guid])
-  WITH (FILLFACTOR = 80)
-  ON [METADATA]
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_UQ_GridViewDefinition_SortOrder] on table [SUserInterface].[GridViewDefinitions]')
-GO
-CREATE UNIQUE INDEX [IX_UQ_GridViewDefinition_SortOrder]
-  ON [SUserInterface].[GridViewDefinitions] ([DisplayOrder], [GridDefinitionId], [RowStatus])
-  WHERE ([RowStatus]=(1) AND [DisplayOrder]<>(0))
   WITH (FILLFACTOR = 80)
   ON [METADATA]
 GO
@@ -159,4 +138,7 @@ GO
 PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewDefinitions]')
 GO
 EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of Grid Views, these are children of GridDefinitions and contain GridViewColumnDefinitions', 'SCHEMA', N'SUserInterface', 'TABLE', N'GridViewDefinitions'
+GO
+
+PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewDefinitions]')
 GO

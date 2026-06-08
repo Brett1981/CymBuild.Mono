@@ -94,3 +94,5 @@ services/CymBuild_AIErrorServiceAPI/publish/
 /services/PostCodeLookup/appsettings.json
 /services/Sage200Microservice/Sage200Microservice.API/appsettings.Development.json
 /services/Sage200Microservice/Sage200Microservice.API/appsettings.json
+/services/SageAPI
+/services/Concursus.API/appsettings.QA.json

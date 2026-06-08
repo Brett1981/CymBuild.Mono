@@ -160,7 +160,31 @@ public partial class BatchButtonMenu
 
         return Task.CompletedTask;
     }
+    private static bool IsInvoiceTransactionRow(IDictionary<string, object> row)
+    {
+        static string GetValue(IDictionary<string, object> values, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (values.TryGetValue(key, out var value) && value is not null)
+                {
+                    return value.ToString()?.Trim() ?? string.Empty;
+                }
+            }
 
+            return string.Empty;
+        }
+
+        var transactionType = GetValue(
+            row,
+            "TransactionType",
+            "Transaction Type",
+            "TransactionTypeName",
+            "Type",
+            "TypeName");
+
+        return transactionType.Equals("Invoice", StringComparison.OrdinalIgnoreCase);
+    }
     private async Task OpenInvoicePreviewModalAsync()
     {
         try
@@ -180,13 +204,44 @@ public partial class BatchButtonMenu
 
             foreach (var selectedItem in SelectedItems)
             {
-                if (selectedItem is not IDictionary<string, object> dict ||
-                    !dict.TryGetValue("Guid", out var guidValue) ||
-                    guidValue == null ||
-                    !Guid.TryParse(guidValue.ToString(), out var transactionGuid) ||
-                    transactionGuid == Guid.Empty)
+                if (selectedItem is not IDictionary<string, object> dict)
                 {
                     continue;
+                }
+
+                var transactionType = GetRowStringValue(
+                    dict,
+                    "TransactionType",
+                    "Transaction Type",
+                    "Type",
+                    "TypeName",
+                    "TransactionTypeName");
+
+                if (!transactionType.Equals("Invoice", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ShowMessageAsync(
+                        "Invoice preview is only available for Invoice transactions.",
+                        MessageDisplay.ShowMessageType.Information,
+                        "BatchButtonMenu/OpenInvoicePreviewModalAsync");
+
+                    return;
+                }
+
+                var transactionGuid = GetRowGuidValue(
+                    dict,
+                    "Guid",
+                    "TransactionGuid",
+                    "RecordGuid",
+                    "DataObjectGuid");
+
+                if (transactionGuid == Guid.Empty)
+                {
+                    await ShowMessageAsync(
+                        "Invoice preview could not be opened because the selected invoice transaction guid could not be resolved.",
+                        MessageDisplay.ShowMessageType.Error,
+                        "BatchButtonMenu/OpenInvoicePreviewModalAsync");
+
+                    return;
                 }
 
                 selectedTransactionGuids.Add(transactionGuid);
@@ -199,7 +254,7 @@ public partial class BatchButtonMenu
             if (selectedTransactionGuids.Count == 0)
             {
                 await ShowMessageAsync(
-                    "Invoice preview could not be opened because no valid transaction guids were found in the selected rows.",
+                    "Invoice preview could not be opened because no valid invoice transactions were found in the selected rows.",
                     MessageDisplay.ShowMessageType.Error,
                     "BatchButtonMenu/OpenInvoicePreviewModalAsync");
 
@@ -208,7 +263,8 @@ public partial class BatchButtonMenu
 
             foreach (var transactionGuid in selectedTransactionGuids)
             {
-                var previewModel = await formHelper.TransactionInvoicePrintModelGetAsync(transactionGuid,
+                var previewModel = await formHelper.TransactionInvoicePrintModelGetAsync(
+                    transactionGuid,
                     TransactionInvoiceRenderMode.Preview);
 
                 if (previewModel is null)
@@ -223,7 +279,7 @@ public partial class BatchButtonMenu
             if (_invoicePreviewModels.Count == 0)
             {
                 await ShowMessageAsync(
-                    "Invoice preview could not be loaded for the selected transaction(s).",
+                    "Invoice preview could not be loaded for the selected invoice transaction(s).",
                     MessageDisplay.ShowMessageType.Error,
                     "BatchButtonMenu/OpenInvoicePreviewModalAsync");
 
@@ -251,6 +307,37 @@ public partial class BatchButtonMenu
         }
     }
 
+    private static string GetRowStringValue(
+    IDictionary<string, object> row,
+    params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (row.TryGetValue(key, out var value) && value is not null)
+            {
+                return value.ToString()?.Trim() ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static Guid GetRowGuidValue(
+        IDictionary<string, object> row,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (row.TryGetValue(key, out var value) &&
+                value is not null &&
+                Guid.TryParse(value.ToString(), out var guid))
+            {
+                return guid;
+            }
+        }
+
+        return Guid.Empty;
+    }
 
     private void ShowPreviousInvoicePreview()
     {

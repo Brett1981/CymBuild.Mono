@@ -6,7 +6,7 @@ CREATE FUNCTION [SCore].[tvf_EntityTypes]
     @UserId INT
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN SELECT
           et.RowStatus,
@@ -23,7 +23,8 @@ AS
           et.DoNotTrackChanges,
           os.CanRead,
           os.CanWrite,
-          lt.Label
+          lt.Label,
+		  et.IsDeletable
   FROM
           SCore.EntityTypes AS et
   JOIN

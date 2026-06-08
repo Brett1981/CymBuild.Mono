@@ -671,6 +671,9 @@ public partial class ButtonMenu
     //CBLD-416: Seperated function so we can call on its own.
     public async Task InitializeButton()
     {
+
+        var IsDeletable = true;
+
         //Call it before the button is actually rendered. //CBLD-416
         // if ((sharePointUrl == "" && !ToPreventSharePointCreationIfEmptyGuid())
         //if(!string.IsNullOrEmpty(dataObject?.SharePointSiteIdentifier) && sharePointUrl == "")
@@ -682,6 +685,13 @@ public partial class ButtonMenu
                 await SetSharePointLocationForButton();
             }
         }
+
+        if (formHelper is null)
+            formHelper = new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+
+       var IsDeletablePropertyValue = await formHelper.GetEntityType();
+           IsDeletable = IsDeletablePropertyValue.IsDeletable;
+        
 
         MenuItems = new List<API.Client.MenuItem>
             {
@@ -727,14 +737,7 @@ public partial class ButtonMenu
                         {
                             IsSeparator = true
                         },
-                        new()
-                        {
-                            Text = "Delete",
-                            Icon = "bi bi-trash",
-                            EntityTypeGuid = dataObject?.EntityTypeGuid,
-                            EntityQueryGuid = Guid.Empty.ToString(),
-                            ObjectGuid = dataObject?.Guid
-                        },
+                        
                         //If Development environment, show Modal Collection
                         appConfiguration.EnvironmentType == "DEV" ? new()
                         {
@@ -744,6 +747,20 @@ public partial class ButtonMenu
                     }
                 }
             };
+
+        if (IsDeletable)
+        {
+            MenuItems[0].Items.Add(new API.Client.MenuItem
+            {
+                Text = "Delete",
+                Icon = "bi bi-trash",
+                EntityTypeGuid = dataObject?.EntityTypeGuid,
+                EntityQueryGuid = Guid.Empty.ToString(),
+                ObjectGuid = dataObject?.Guid
+            });
+        }
+
+
         if (MenuItems != null && MenuItems[0].Items == null) MenuItems[0].Items = new List<API.Client.MenuItem>();
         {
             var mergeDocumentEntry = dataObject?.EntityTypeGuid ?? "";

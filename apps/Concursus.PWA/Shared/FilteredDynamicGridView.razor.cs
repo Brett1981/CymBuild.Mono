@@ -441,11 +441,12 @@ public partial class FilteredDynamicGridView : ComponentBase
 
     protected async Task ReadItems(GridReadEventArgs args)
     {
+       
         try
         {
             if (ViewDefinition == null) return;
 
-            //await EnsureCorrectParentGuid(); // Ensure Parent GUID is properly set before API calls
+            ShowCSVButton = false;
 
             var pageNum = args.Request.Page;
             var SavedPageNum = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
@@ -476,11 +477,13 @@ public partial class FilteredDynamicGridView : ComponentBase
             //Check for quick filters
             if (QuickFilters != null)
             {
+                ShowCSVButton = true;
                 compositeFilter.CompositeFilters.Add(QuickFilters);
             }
 
             if (RangeFilters != null)
             {
+                ShowCSVButton = true;
                 compositeFilter.CompositeFilters.Add(RangeFilters);
             }
 
@@ -489,7 +492,7 @@ public partial class FilteredDynamicGridView : ComponentBase
                 gridDataListRequest.Filters.Add(compositeFilter);
                 LogCompositeFilter(compositeFilter);
             }
-
+           
             gridDataListRequest.Sort.AddRange(
                 API.Client.TypeHelpers.GridDataSortFromKendoSortDescriptor(args.Request.Sorts));
 
@@ -511,10 +514,11 @@ public partial class FilteredDynamicGridView : ComponentBase
                 gridData.Add(dataObj);
             }
 
+
             args.Data = gridData;
             args.Total = (int)gridDataListReply.TotalRows;
             CurrentGridItems = gridData;
-
+           
             //CBLD-686: Ensure grid is rebinded, otherwise you will have to click the backwards/forwards arrow 2x on the grid (for the page number)
             if (ComingFromModal)
             {

@@ -12,7 +12,9 @@ CREATE PROCEDURE [SJob].[MilestoneTypesUpsert] @Name NVARCHAR(100),
 										  @IncludeSchedule BIT,
 										  @IncludeDueDate BIT,
 										  @HasExternalSubmission BIT,
-										  @Guid UNIQUEIDENTIFIER OUT
+										  @Guid UNIQUEIDENTIFIER OUT,
+										  @HasReference BIT,
+										  @HasQuotedHours BIT
 AS
 BEGIN
 	DECLARE @IsInsert BIT;
@@ -38,7 +40,9 @@ BEGIN
 			  IncludeStart,
 			  IncludeSchedule,
 			  IncludeDueDate,
-			  HasExternalSubmission)
+			  HasExternalSubmission,
+			  HasReference,
+			  HasQuotedHours)
 		VALUES
 			 (
 				 1,		-- RowStatus - tinyint
@@ -54,7 +58,9 @@ BEGIN
 				 @IncludeStart,
 				 @IncludeSchedule,
 				 @IncludeDueDate,
-				 @HasExternalSubmission
+				 @HasExternalSubmission,
+				 @HasReference,
+				 @HasQuotedHours
 			 );
 	END;
 	ELSE
@@ -71,7 +77,9 @@ BEGIN
 				IncludeStart = @IncludeStart,
 				IncludeSchedule = @IncludeSchedule,
 				IncludeDueDate = @IncludeDueDate,
-				HasExternalSubmission = @HasExternalSubmission
+				HasExternalSubmission = @HasExternalSubmission,
+				HasReference = @HasReference,
+				HasQuotedHours = @HasQuotedHours
 		WHERE	(Guid = @Guid);
 	END;
 END;

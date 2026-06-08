@@ -10,8 +10,6 @@ using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Graph;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
 using System.Data;
 using System.Security.Cryptography;
 using Telerik.Windows.Documents.Flow.FormatProviders.Docx;
@@ -1930,6 +1928,190 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
             return imageBytesList;
         }
 
+
+        private readonly struct ImageInfo
+        {
+            public ImageInfo(PartTypeInfo partType, string formatName, int width, int height)
+            {
+                PartType = partType;
+                FormatName = formatName;
+                Width = width;
+                Height = height;
+            }
+
+            public PartTypeInfo PartType { get; }
+            public string FormatName { get; }
+            public int Width { get; }
+            public int Height { get; }
+        }
+
+        private static ImageInfo DetectImageInfo(byte[] imageBytes)
+        {
+            if (imageBytes == null || imageBytes.Length < 10)
+                throw new NotSupportedException("Unsupported image format: empty or incomplete image data.");
+
+            if (IsPng(imageBytes))
+            {
+                return new ImageInfo(
+                    ImagePartType.Png,
+                    "PNG",
+                    ReadInt32BigEndian(imageBytes, 16),
+                    ReadInt32BigEndian(imageBytes, 20));
+            }
+
+            if (IsJpeg(imageBytes))
+            {
+                var dimensions = ReadJpegDimensions(imageBytes);
+                return new ImageInfo(ImagePartType.Jpeg, "JPEG", dimensions.Width, dimensions.Height);
+            }
+
+            if (IsGif(imageBytes))
+            {
+                return new ImageInfo(
+                    ImagePartType.Gif,
+                    "GIF",
+                    ReadUInt16LittleEndian(imageBytes, 6),
+                    ReadUInt16LittleEndian(imageBytes, 8));
+            }
+
+            if (IsBmp(imageBytes))
+            {
+                return new ImageInfo(
+                    ImagePartType.Bmp,
+                    "BMP",
+                    ReadInt32LittleEndian(imageBytes, 18),
+                    Math.Abs(ReadInt32LittleEndian(imageBytes, 22)));
+            }
+
+            if (IsTiff(imageBytes))
+            {
+                var dimensions = ReadTiffDimensions(imageBytes);
+                return new ImageInfo(ImagePartType.Tiff, "TIFF", dimensions.Width, dimensions.Height);
+            }
+
+            throw new NotSupportedException("Unsupported image format. Supported formats are PNG, JPEG, GIF, BMP and TIFF.");
+        }
+
+        private static (long Cx, long Cy) FitImageWithinBox(int width, int height, long maxCx, long maxCy)
+        {
+            if (width <= 0 || height <= 0)
+                return (maxCx, maxCy);
+
+            double scale = Math.Min((double)maxCx / width, (double)maxCy / height);
+            return ((long)Math.Round(width * scale), (long)Math.Round(height * scale));
+        }
+
+        private static bool IsPng(byte[] bytes) =>
+            bytes.Length >= 24 &&
+            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
+
+        private static bool IsJpeg(byte[] bytes) =>
+            bytes.Length >= 4 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+
+        private static bool IsGif(byte[] bytes) =>
+            bytes.Length >= 10 &&
+            bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x38;
+
+        private static bool IsBmp(byte[] bytes) =>
+            bytes.Length >= 26 && bytes[0] == 0x42 && bytes[1] == 0x4D;
+
+        private static bool IsTiff(byte[] bytes) =>
+            bytes.Length >= 8 &&
+            ((bytes[0] == 0x49 && bytes[1] == 0x49 && bytes[2] == 0x2A && bytes[3] == 0x00) ||
+             (bytes[0] == 0x4D && bytes[1] == 0x4D && bytes[2] == 0x00 && bytes[3] == 0x2A));
+
+        private static (int Width, int Height) ReadJpegDimensions(byte[] bytes)
+        {
+            int offset = 2;
+            while (offset + 9 < bytes.Length)
+            {
+                if (bytes[offset] != 0xFF)
+                {
+                    offset++;
+                    continue;
+                }
+
+                byte marker = bytes[offset + 1];
+                offset += 2;
+
+                if (marker == 0xD8 || marker == 0xD9 || marker == 0x01)
+                    continue;
+
+                if (offset + 2 > bytes.Length)
+                    break;
+
+                int segmentLength = ReadUInt16BigEndian(bytes, offset);
+                if (segmentLength < 2 || offset + segmentLength > bytes.Length)
+                    break;
+
+                if (IsJpegStartOfFrame(marker))
+                {
+                    int height = ReadUInt16BigEndian(bytes, offset + 3);
+                    int width = ReadUInt16BigEndian(bytes, offset + 5);
+                    return (width, height);
+                }
+
+                offset += segmentLength;
+            }
+
+            throw new NotSupportedException("Unsupported JPEG image: dimensions could not be read.");
+        }
+
+        private static bool IsJpegStartOfFrame(byte marker) =>
+            marker is 0xC0 or 0xC1 or 0xC2 or 0xC3 or 0xC5 or 0xC6 or 0xC7 or 0xC9 or 0xCA or 0xCB or 0xCD or 0xCE or 0xCF;
+
+        private static (int Width, int Height) ReadTiffDimensions(byte[] bytes)
+        {
+            bool littleEndian = bytes[0] == 0x49;
+            int ifdOffset = ReadInt32(bytes, 4, littleEndian);
+            if (ifdOffset < 0 || ifdOffset + 2 > bytes.Length)
+                throw new NotSupportedException("Unsupported TIFF image: invalid directory offset.");
+
+            int entryCount = ReadUInt16(bytes, ifdOffset, littleEndian);
+            int width = 0;
+            int height = 0;
+
+            for (int i = 0; i < entryCount; i++)
+            {
+                int entryOffset = ifdOffset + 2 + (i * 12);
+                if (entryOffset + 12 > bytes.Length)
+                    break;
+
+                int tag = ReadUInt16(bytes, entryOffset, littleEndian);
+                int type = ReadUInt16(bytes, entryOffset + 2, littleEndian);
+                int value = type == 3
+                    ? ReadUInt16(bytes, entryOffset + 8, littleEndian)
+                    : ReadInt32(bytes, entryOffset + 8, littleEndian);
+
+                if (tag == 256) width = value;
+                if (tag == 257) height = value;
+            }
+
+            if (width <= 0 || height <= 0)
+                throw new NotSupportedException("Unsupported TIFF image: dimensions could not be read.");
+
+            return (width, height);
+        }
+
+        private static int ReadInt32BigEndian(byte[] bytes, int offset) =>
+            (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+
+        private static int ReadInt32LittleEndian(byte[] bytes, int offset) =>
+            bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+
+        private static int ReadUInt16BigEndian(byte[] bytes, int offset) =>
+            (bytes[offset] << 8) | bytes[offset + 1];
+
+        private static int ReadUInt16LittleEndian(byte[] bytes, int offset) =>
+            bytes[offset] | (bytes[offset + 1] << 8);
+
+        private static int ReadUInt16(byte[] bytes, int offset, bool littleEndian) =>
+            littleEndian ? ReadUInt16LittleEndian(bytes, offset) : ReadUInt16BigEndian(bytes, offset);
+
+        private static int ReadInt32(byte[] bytes, int offset, bool littleEndian) =>
+            littleEndian ? ReadInt32LittleEndian(bytes, offset) : ReadInt32BigEndian(bytes, offset);
+
         private static uint GenerateUniqueDrawingId()
         {
             uint newId = (uint)new Random().Next(10, 10000);
@@ -1954,56 +2136,25 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
 
             Console.WriteLine($"[INFO] Inserting signature into content control '{contentControlTag}'...");
 
+            ImageInfo imageInfo = DetectImageInfo(imageBytes);
+
             // Create ImagePart
-            ImagePart imagePart = mainPart.AddImagePart(ImagePartType.Jpeg);
+            ImagePart imagePart = mainPart.AddImagePart(imageInfo.PartType);
             using (var stream = new MemoryStream(imageBytes))
             {
                 imagePart.FeedData(stream);
             }
             string imagePartId = mainPart.GetIdOfPart(imagePart);
 
-            // Calculate dimensions using ImageSharp
-            long cx, cy;
-            using (var image = Image.Load(imageBytes))
-            {
-                const long emusPerPixel = 914400L;
-                const long targetWidthCm = 5L; // 5cm width
-                const long targetHeightCm = 2L; // 2cm height
-                const long cmToEmus = 360000L; // 1cm = 360,000 EMUs
-
-                long targetWidthEmus = targetWidthCm * cmToEmus;
-                long targetHeightEmus = targetHeightCm * cmToEmus;
-
-                long imageWidthEmus = image.Width * emusPerPixel;
-                long imageHeightEmus = image.Height * emusPerPixel;
-
-                double aspectRatio = (double)image.Height / image.Width;
-
-                if (imageWidthEmus > imageHeightEmus)
-                {
-                    // Landscape: scale height to maintain aspect ratio
-                    cx = Math.Min(targetWidthEmus, imageWidthEmus);
-                    cy = (long)(cx * aspectRatio);
-                }
-                else
-                {
-                    // Portrait/Square: scale width to maintain aspect ratio
-                    cy = Math.Min(targetHeightEmus, imageHeightEmus);
-                    cx = (long)(cy / aspectRatio);
-                }
-
-                // Ensure image fits within defined dimensions
-                if (cx > targetWidthEmus)
-                {
-                    cx = targetWidthEmus;
-                    cy = (long)(cx * aspectRatio);
-                }
-                if (cy > targetHeightEmus)
-                {
-                    cy = targetHeightEmus;
-                    cx = (long)(cy / aspectRatio);
-                }
-            }
+            // Calculate dimensions without third-party imaging dependencies.
+            const long targetWidthCm = 5L;
+            const long targetHeightCm = 2L;
+            const long cmToEmus = 360000L;
+            (long cx, long cy) = FitImageWithinBox(
+                imageInfo.Width,
+                imageInfo.Height,
+                targetWidthCm * cmToEmus,
+                targetHeightCm * cmToEmus);
 
             // Build Drawing Element
             Drawing drawing = new Drawing(
@@ -2114,7 +2265,7 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
             // 3. Export to XLSX stream
             var formatProvider = new XlsxFormatProvider();
             var excelStream = new MemoryStream();
-            formatProvider.Export(workbook, excelStream);
+            formatProvider.Export(workbook, excelStream, TimeSpan.FromSeconds(30));
             excelStream.Position = 0;
             return excelStream;
         }
@@ -2122,7 +2273,7 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
         private List<List<List<string>>> ExtractTablesFromWord_Telerik(Stream documentStream)
         {
             var formatProvider = new DocxFormatProvider();
-            RadFlowDocument document = formatProvider.Import(documentStream);
+            RadFlowDocument document = formatProvider.Import(documentStream, TimeSpan.FromSeconds(30));
 
             var tablesList = new List<List<List<string>>>();
 
@@ -2431,30 +2582,21 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                 "Signature" => 300, // Signature-sized image
                 _ => 600 // Default size
              */
-            // Detect Image Format
-            IImageFormat format = Image.DetectFormat(imageBytes);
-            PartTypeInfo partType = format?.Name switch
-            {
-                "PNG" => ImagePartType.Png,
-                "JPEG" => ImagePartType.Jpeg,
-                "GIF" => ImagePartType.Gif,
-                "BMP" => ImagePartType.Bmp,
-                "TIFF" => ImagePartType.Tiff,
-                _ => throw new NotSupportedException($"Unsupported image format: {format?.Name}")
-            };
+            ImageInfo imageInfo = DetectImageInfo(imageBytes);
 
-            Console.WriteLine($"[DEBUG] Inserting image of type '{partType}' into the document.");
+            Console.WriteLine($"[DEBUG] Inserting image of type '{imageInfo.FormatName}' into the document.");
 
             // Add image part
-            ImagePart imagePart = mainPart.AddImagePart(partType);
+            ImagePart imagePart = mainPart.AddImagePart(imageInfo.PartType);
             using (var stream = new MemoryStream(imageBytes))
             {
                 imagePart.FeedData(stream);
             }
             string imagePartId = mainPart.GetIdOfPart(imagePart);
             // **Set max width while maintaining aspect ratio**
-            long cx = maxWidth * 9525L; // Convert pixels to EMUs
-            long cy = (long)(cx * 0.75); // Maintain aspect ratio (assuming 4:3)
+            long maxCx = maxWidth * 9525L; // Convert pixels to EMUs
+            long maxCy = maxCx; // Keep image inside a square box based on maxWidth.
+            (long cx, long cy) = FitImageWithinBox(imageInfo.Width, imageInfo.Height, maxCx, maxCy);
 
             // Build Drawing Element (Using Correct Namespaces)
             Drawing element = new Drawing(
@@ -2512,73 +2654,26 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
 
             try
             {
-                // Detect Image Format
-                IImageFormat format = Image.DetectFormat(imageBytes);
-                PartTypeInfo partType = format?.Name switch
-                {
-                    "PNG" => ImagePartType.Png,
-                    "JPEG" => ImagePartType.Jpeg,
-                    "GIF" => ImagePartType.Gif,
-                    "BMP" => ImagePartType.Bmp,
-                    "TIFF" => ImagePartType.Tiff,
-                    _ => throw new NotSupportedException($"Unsupported image format: {format?.Name}")
-                };
+                ImageInfo imageInfo = DetectImageInfo(imageBytes);
 
-                Console.WriteLine($"[DEBUG] Inserting image of type '{partType}' into the document.");
+                Console.WriteLine($"[DEBUG] Inserting image of type '{imageInfo.FormatName}' into the document.");
 
                 // Add image part
-                ImagePart imagePart = mainPart.AddImagePart(partType);
+                ImagePart imagePart = mainPart.AddImagePart(imageInfo.PartType);
                 using (var stream = new MemoryStream(imageBytes))
                 {
                     imagePart.FeedData(stream);
                 }
                 string imagePartId = mainPart.GetIdOfPart(imagePart);
 
-                // Calculate dimensions using ImageSharp
-                long cx, cy;
-                using (var image = Image.Load(imageBytes))
-                {
-                    const long emusPerPixel = 914400L;
-                    const long targetSizeCm = 6L; // Target size in cm
-                    const long cmToEmus = 360000L; // 1 cm = 360,000 EMUs
-
-                    // Convert 5cm to EMUs
-                    long targetWidthEmus = targetSizeCm * cmToEmus;
-                    long targetHeightEmus = targetSizeCm * cmToEmus;
-
-                    // Get the original image dimensions in EMUs
-                    long imageWidthEmus = image.Width * emusPerPixel;
-                    long imageHeightEmus = image.Height * emusPerPixel;
-
-                    // Calculate aspect ratio
-                    double aspectRatio = (double)image.Height / image.Width;
-
-                    // Scale image to fit within 5cm x 5cm while maintaining aspect ratio
-                    if (imageWidthEmus > imageHeightEmus)
-                    {
-                        // Landscape image: width is max, scale height accordingly
-                        cx = Math.Min(targetWidthEmus, imageWidthEmus);
-                        cy = (long)(cx * aspectRatio);
-                    }
-                    else
-                    {
-                        // Portrait or square image: height is max, scale width accordingly
-                        cy = Math.Min(targetHeightEmus, imageHeightEmus);
-                        cx = (long)(cy / aspectRatio);
-                    }
-
-                    // Ensure the image does not exceed the 5cm x 5cm box
-                    if (cx > targetWidthEmus)
-                    {
-                        cx = targetWidthEmus;
-                        cy = (long)(cx * aspectRatio);
-                    }
-                    if (cy > targetHeightEmus)
-                    {
-                        cy = targetHeightEmus;
-                        cx = (long)(cy / aspectRatio);
-                    }
-                }
+                // Calculate dimensions without third-party imaging dependencies.
+                const long targetSizeCm = 6L;
+                const long cmToEmus = 360000L;
+                (long cx, long cy) = FitImageWithinBox(
+                    imageInfo.Width,
+                    imageInfo.Height,
+                    targetSizeCm * cmToEmus,
+                    targetSizeCm * cmToEmus);
 
                 // Build Drawing Element
                 Drawing drawing = new Drawing(
@@ -3080,54 +3175,26 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                 }
 
                 Console.WriteLine("[INFO] Detecting image format...");
-                IImageFormat format = Image.DetectFormat(imageBytes);
-                if (format == null)
-                {
-                    Console.WriteLine("[ERROR] Unrecognized image format.");
-                    throw new Exception("Unsupported image format for signature.");
-                }
+                ImageInfo imageInfo = DetectImageInfo(imageBytes);
 
-                PartTypeInfo partType = format.Name switch
-                {
-                    "PNG" => ImagePartType.Png,
-                    "JPEG" => ImagePartType.Jpeg,
-                    "GIF" => ImagePartType.Gif,
-                    "BMP" => ImagePartType.Bmp,
-                    "TIFF" => ImagePartType.Tiff,
-                    _ => throw new Exception($"Unsupported image format: {format.Name}")
-                };
-
-                Console.WriteLine($"[INFO] Image format detected as {format.Name}. Adding image part...");
-                ImagePart imagePart = wordDoc.MainDocumentPart.AddImagePart(partType);
+                Console.WriteLine($"[INFO] Image format detected as {imageInfo.FormatName}. Adding image part...");
+                ImagePart imagePart = wordDoc.MainDocumentPart.AddImagePart(imageInfo.PartType);
                 using var safeStream = new MemoryStream();
                 safeStream.Write(imageBytes, 0, imageBytes.Length);
                 safeStream.Position = 0;
                 imagePart.FeedData(safeStream);
                 string imagePartId = wordDoc.MainDocumentPart.GetIdOfPart(imagePart);
 
-                long cx, cy;
-                using (var image = Image.Load(imageBytes))
-                {
-                    const long cmToEmus = 360000L;
-                    const long maxWidthCm = 4L;  // 5 cm width
-                    const double maxHeightCm = 1.0; // 1.0 cm height
-                    long maxCx = maxWidthCm * cmToEmus;
-                    long maxCy = (long)(maxHeightCm * cmToEmus);
+                const long cmToEmus = 360000L;
+                const long maxWidthCm = 4L;
+                const double maxHeightCm = 1.0;
+                (long cx, long cy) = FitImageWithinBox(
+                    imageInfo.Width,
+                    imageInfo.Height,
+                    maxWidthCm * cmToEmus,
+                    (long)(maxHeightCm * cmToEmus));
 
-                    double aspectRatio = (double)image.Width / image.Height;
-                    if (aspectRatio > 1) // Wider than tall
-                    {
-                        cx = maxCx;
-                        cy = (long)(maxCx / aspectRatio);
-                    }
-                    else // Taller than wide or square
-                    {
-                        cy = maxCy;
-                        cx = (long)(maxCy * aspectRatio);
-                    }
-
-                    Console.WriteLine($"[INFO] Scaled signature dimensions: {cx} x {cy} EMUs");
-                }
+                Console.WriteLine($"[INFO] Scaled signature dimensions: {cx} x {cy} EMUs");
 
                 Console.WriteLine("[INFO] Building Drawing element...");
                 uint drawingId = GenerateUniqueDrawingId();

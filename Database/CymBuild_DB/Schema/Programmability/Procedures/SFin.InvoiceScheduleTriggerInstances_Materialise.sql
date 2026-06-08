@@ -3,6 +3,9 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceScheduleTriggerInstances_Materialise]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceScheduleTriggerInstances_Materialise]')
+GO
+
 CREATE PROCEDURE [SFin].[InvoiceScheduleTriggerInstances_Materialise]
 (
       @DetectedDateTimeUTC DATETIME2(7) = NULL
@@ -16,12 +19,24 @@ BEGIN
     DECLARE @NowUtc DATETIME2(7) = COALESCE(@DetectedDateTimeUTC, SYSUTCDATETIME());
     DECLARE @Attempt INT = 0;
 
-    WHILE (1=1)
+    /* Confirmed from SCore.EntityTypes */
+    DECLARE @InvoiceScheduleTriggerEntityTypeId INT = 198;
+
+    WHILE (1 = 1)
     BEGIN
         SET @Attempt += 1;
 
         BEGIN TRY
             BEGIN TRAN;
+
+            DECLARE @ToInsert TABLE
+            (
+                  InvoiceScheduleId     INT               NOT NULL
+                , InstanceType          NVARCHAR(100)     NOT NULL
+                , InstanceKey           NVARCHAR(200)     NOT NULL
+                , CompletedDateTimeUTC  DATETIME2(7)      NULL
+                , TriggerInstanceGuid   UNIQUEIDENTIFIER  NOT NULL
+            );
 
             ;WITH Detections AS
             (
@@ -31,26 +46,22 @@ BEGIN
                     , d.InstanceKey
                     , d.CompletedDateTimeUTC
                 FROM [SFin].[tvf_InvoiceAutomation_Phase3Detections]() d
-                WHERE d.InstanceType <> N'Percentage'   -- ✅ LOCK: Percentage is config-driven (Answer B)
+                WHERE d.InstanceType <> N'Percentage'
             )
-            INSERT INTO [SFin].[InvoiceScheduleTriggerInstances]
+            INSERT INTO @ToInsert
             (
-                  RowStatus
-                , InvoiceScheduleId
+                  InvoiceScheduleId
                 , InstanceType
                 , InstanceKey
-                , DetectedDateTimeUTC
                 , CompletedDateTimeUTC
-                , LegacySystemID
+                , TriggerInstanceGuid
             )
             SELECT
-                  1
-                , d.InvoiceScheduleId
+                  d.InvoiceScheduleId
                 , d.InstanceType
                 , d.InstanceKey
-                , @NowUtc
                 , d.CompletedDateTimeUTC
-                , -1
+                , NEWID()
             FROM Detections d
             WHERE NOT EXISTS
             (
@@ -62,6 +73,41 @@ BEGIN
                   AND t.RowStatus NOT IN (0,254)
             );
 
+            /* Core identity layer must exist first */
+            INSERT INTO [SCore].[DataObjects]
+            (
+                  [Guid]
+                , [EntityTypeId]
+                , [RowStatus]
+            )
+            SELECT
+                  i.TriggerInstanceGuid
+                , @InvoiceScheduleTriggerEntityTypeId
+                , 1
+            FROM @ToInsert i;
+
+            INSERT INTO [SFin].[InvoiceScheduleTriggerInstances]
+            (
+                  [Guid]
+                , [RowStatus]
+                , [InvoiceScheduleId]
+                , [InstanceType]
+                , [InstanceKey]
+                , [DetectedDateTimeUTC]
+                , [CompletedDateTimeUTC]
+                , [LegacySystemID]
+            )
+            SELECT
+                  i.TriggerInstanceGuid
+                , 1
+                , i.InvoiceScheduleId
+                , i.InstanceType
+                , i.InstanceKey
+                , @NowUtc
+                , i.CompletedDateTimeUTC
+                , -1
+            FROM @ToInsert i;
+
             DECLARE @InsertedCount INT = @@ROWCOUNT;
 
             ;WITH Detections AS
@@ -72,10 +118,10 @@ BEGIN
                     , d.InstanceKey
                     , d.CompletedDateTimeUTC
                 FROM [SFin].[tvf_InvoiceAutomation_Phase3Detections]() d
-                WHERE d.InstanceType <> N'Percentage'   -- ✅ same lock for update path
+                WHERE d.InstanceType <> N'Percentage'
             )
             UPDATE t
-                SET t.CompletedDateTimeUTC = d.CompletedDateTimeUTC
+               SET t.CompletedDateTimeUTC = d.CompletedDateTimeUTC
             FROM [SFin].[InvoiceScheduleTriggerInstances] t
             JOIN Detections d
               ON d.InvoiceScheduleId = t.InvoiceScheduleId
@@ -97,7 +143,8 @@ BEGIN
             RETURN;
         END TRY
         BEGIN CATCH
-            IF (XACT_STATE() <> 0) ROLLBACK;
+            IF (XACT_STATE() <> 0)
+                ROLLBACK;
 
             DECLARE
                   @ErrNum INT = ERROR_NUMBER()
@@ -107,13 +154,13 @@ BEGIN
             BEGIN
                 WAITFOR DELAY '00:00:00.250';
                 CONTINUE;
-            END
+            END;
 
-            IF ((@ErrNum IN (2601, 2627)) AND @Attempt < @MaxAttempts)
+            IF (@ErrNum IN (2601, 2627) AND @Attempt < @MaxAttempts)
             BEGIN
                 WAITFOR DELAY '00:00:00.050';
                 CONTINUE;
-            END
+            END;
 
             RAISERROR(N'Phase 4 materialisation failed. Error %d: %s', 16, 1, @ErrNum, @ErrMsg);
             RETURN;

@@ -9,9 +9,9 @@
 @inject IToastService Toast
 
 
-@using Blazored.Modal;
-@using Blazored.Modal.Services;
 @using Concursus.API.Client.Classes;
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Dashbaord
 @using Concursus.Components.Shared.Services
 @using Concursus.PWA.Services
 @using Newtonsoft.Json
@@ -482,7 +482,7 @@ else
 
     private string mobileTileLayout { get; set; } = "WidgetBoard";
     private string MobileXGap { get; set; } = "d-flex mb-2 justify-content-center";
-
+    private DataObjectReference DashboardParentDataObjectReference { get; set; } = new("", "");
     #endregion Responsive Tile
 
     #region Database
@@ -500,6 +500,7 @@ else
     [Parameter] public int RowHeight { get; set; } = 500;
     [Parameter] public int ColumnWidth { get; set; } = 500;
     [Parameter] public string DrawerGuid { get; set; } = "00000000-0000-0000-0000-000000000000";
+
     #endregion Base Parameters
 
 
@@ -820,7 +821,11 @@ else
                     var gvd = gd.Views.Where(view => view.Code == GridViewDef).FirstOrDefault();
 
                     tile.IsFullScreen = true;
-                    tile.Content =@<DynamicGridView GridCode="@GridCode" FullGrid="true"  ViewDefinition="@gvd"/>;
+                    tile.Content = @<CymBuildDashboardGrid
+                            GridCode="@GridCode"
+                            FullGrid="true"
+                            ViewDefinition="@gvd"
+                            ParentDataObjectReference="@DashboardParentDataObjectReference" />;
 
                 }
             }
@@ -1311,7 +1316,12 @@ else
                 if (Widget is not null)
                 {
 
-                    Content =@<DynamicGridView GridCode="@item.GridCode" FullGrid="true" ViewDefinition="@gvd" @key="@($"Tree-{gvd.Code}-{Guid.NewGuid()}")" />;
+                    Content = @<CymBuildDashboardGrid
+                        GridCode="@item.GridCode"
+                        FullGrid="true"
+                        ViewDefinition="@gvd"
+                        ParentDataObjectReference="@DashboardParentDataObjectReference"
+                        @key="@($"DashboardGrid-{gvd.Code}-{Guid.NewGuid()}")" />;
                     WidgetRowSpan = GridRowSpan;
 
 

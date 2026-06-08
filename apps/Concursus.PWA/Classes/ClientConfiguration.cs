@@ -16,5 +16,7 @@
     {
         public string Type { get; set; } = string.Empty;
         public bool ShowDocumentsTab { get; set; }
+
+        public bool ShowSageDiagnostics { get; set; }
     }
 }

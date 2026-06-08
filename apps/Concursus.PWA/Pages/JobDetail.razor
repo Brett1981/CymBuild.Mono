@@ -17,6 +17,7 @@
 @inject RefreshService refreshService
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject AppConfiguration appConfiguration
+@inject ModalService modalService
 @inject IOptions<ClientConfiguration> Config
 
 @attribute [Authorize]
@@ -36,7 +37,8 @@
           EnableBrowserTabTitle="true"
           BrowserTabTitlePropertyName="Number"
           BrowserTabTitlePrefix="Job"
-          TransientVirtualProperties="@TransientVirtualProperties">
+          TransientVirtualProperties="@TransientVirtualProperties"
+          DataObjectLoaded="@OnJobDataObjectLoadedAsync">
     <FormTitle>
         <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
     </FormTitle>
@@ -89,11 +91,21 @@
                     <i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees
                 </HeaderTemplate>
                 <Content>
+                    @if (ShowReplacementInvoiceScheduleButton)
+                    {
+                        <div class="mb-2">
+                            <button class="btn btn-primary"
+                                    @onclick="CreateReplacementInvoiceScheduleAsync">
+                                New Invoice Schedule
+                            </button>
+                        </div>
+                    }
                     <DynamicGrid GridCode="JOBFEES"
-                                 OnActionCompleted="RefreshJobProgress"
+                                 OnActionCompleted="RefreshJobProgressAndInvoiceScheduleActions"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 TransientVirtualProperties="@TransientVirtualProperties" />
 
                     <DynamicGrid GridCode="JOBFINANCEMEMO"
                                  OnActionCompleted="RefreshJobProgress"
@@ -156,14 +168,16 @@
                                  DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
 
 
-@*                     @if (appConfiguration.EnvironmentType == "DEV")
-                    { *@
+                    @if (ShowSubContractorGrid)
+                    {
                         <DynamicGrid GridCode="SUBCONTRACTOR"
                                      OnActionCompleted="RefreshJobProgress"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                    @* } *@
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    }
+
+
 
 
 
@@ -411,7 +425,7 @@
                                                          Windowed="true"
                                                          IsDetailWindowed="true"
                                                          HideDefaultActions="true"
-                                                         BypassReadOnlyForAutomationReenable="true" 
+                                                         BypassReadOnlyForAutomationReenable="true"
                                                          ScheduleReenabled="true"
                                                          TransientVirtualProperties="@TransientVirtualProperties" />
                             </div>
@@ -447,8 +461,8 @@
     [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
-    [Parameter]
-    public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
     private InvoiceProcessingModeUi _currentMode = InvoiceProcessingModeUi.Manual;
     private InvoiceProcessingModeUi _selectedMode = InvoiceProcessingModeUi.Manual;
     private string _modeChangeReason = string.Empty;
@@ -470,6 +484,8 @@
     private InvoicingScheduleDetail? _scheduleDetailRef;
 
     private Guid _jobInvoiceScheduleGuid = Guid.Empty;
+
+    private bool ShowSubContractorGrid = true;
 
     // Optional: show loading while we resolve schedule
     private bool _loadingScheduleForAutomation;
@@ -502,6 +518,8 @@
         }
     }
 
+
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
@@ -516,11 +534,65 @@
 
             _currentMode = await _formHelper.JobInvoiceProcessingModeGetAsync(jobGuid);
             _selectedMode = _currentMode;
+
+
+            await RefreshReplacementInvoiceScheduleButtonAsync();
             StateHasChanged();
         }
         catch
         {
             // Non-blocking
+        }
+    }
+
+
+    private async Task OnJobDataObjectLoadedAsync(DataObject loadedDataObject)
+    {
+        try
+        {
+            ShowSubContractorGrid = true;
+
+            if (loadedDataObject?.DataProperties == null || editPage?.entityProperties == null)
+                return;
+
+            var orgUnitPropertyGuid = editPage.entityProperties
+                .FirstOrDefault(x => string.Equals(x.Name, "OrganisationalUnitID", StringComparison.OrdinalIgnoreCase))
+                ?.Guid;
+
+            if (string.IsNullOrWhiteSpace(orgUnitPropertyGuid))
+                return;
+
+            var orgUnitProperty = loadedDataObject.DataProperties
+                .FirstOrDefault(x => string.Equals(x.EntityPropertyGuid, orgUnitPropertyGuid, StringComparison.OrdinalIgnoreCase));
+
+            if (orgUnitProperty?.Value == null)
+                return;
+
+            var orgUnitValue = string.Empty;
+
+            if (orgUnitProperty.Value.Is(StringValue.Descriptor))
+            {
+                orgUnitValue = orgUnitProperty.Value.Unpack<StringValue>().Value?.Trim() ?? string.Empty;
+            }
+
+            var excludedOrgUnits = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "2C9489BD-EAE8-4703-90D7-56C94E802EDA", // CDM
+            "A5068E63-B86B-4DF6-A0DF-4F8ACE9CF94A", // BRAC
+            "0125329F-003B-4CE4-A2C9-8C6DCC1A4DFF",
+            "F233BB03-3181-49AE-B331-39C58F328457",
+            "830E1F3B-FD6A-4D98-BE41-CBB630F7EF1C"
+        };
+
+            ShowSubContractorGrid =
+                string.IsNullOrWhiteSpace(orgUnitValue)
+                || !excludedOrgUnits.Contains(orgUnitValue);
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            ShowSubContractorGrid = true;
         }
     }
 
@@ -768,6 +840,8 @@ private async Task CancelAutomationReenableAsync()
                     editPage.MyDataObjectReference = ParentDataObjectReference;
                 }
 
+
+
                 StateHasChanged();
                 jobProgressRef?.RefreshProgress();
             }
@@ -798,5 +872,136 @@ private async Task CancelAutomationReenableAsync()
         InvoiceProcessingModeUi.Paused => "mode-paused",
         _ => ""
     };
+    private bool ShowReplacementInvoiceScheduleButton { get; set; }
+
+    private async Task RefreshJobProgressAndInvoiceScheduleActions()
+    {
+        RefreshJobProgress();
+        await RefreshReplacementInvoiceScheduleButtonAsync();
+    }
+
+    private async Task RefreshReplacementInvoiceScheduleButtonAsync()
+    {
+        try
+        {
+            ShowReplacementInvoiceScheduleButton = false;
+
+            if (string.IsNullOrWhiteSpace(RecordGuid) || editPage?.MyDataObjectReference == null)
+            {
+                return;
+            }
+
+            var gridDataListRequest = new GridDataListRequest
+            {
+                GridCode = "JOBFEES",
+                GridViewCode = "JOBINVOICESCHEDULES",
+                Page = 1,
+                PageSize = 50,
+                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid).ToString()
+            };
+
+            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
+
+            if (gridDataListReply == null || gridDataListReply.DataTable == null || gridDataListReply.DataTable.Count == 0)
+            {
+                ShowReplacementInvoiceScheduleButton = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var activeRows = gridDataListReply.DataTable
+                .Where(r => GetIntColumnValue(r, "RowStatus") is int rs && rs != 0 && rs != 254)
+                .ToList();
+
+            ShowReplacementInvoiceScheduleButton =
+                activeRows.Count == 1 &&
+                GetBoolColumnValue(activeRows[0], "IsSystemGeneratedManual");
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            ShowReplacementInvoiceScheduleButton = false;
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "JobDetail/RefreshReplacementInvoiceScheduleButtonAsync()");
+            _ = OnError.InvokeAsync(ex);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task CreateReplacementInvoiceScheduleAsync()
+    {
+        try
+        {
+            if (editPage?.MyDataObjectReference == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            var parentGuid = Guid.Empty.ToString();
+
+            var (parentDataObjectReference, serializedParentDataObjectReference) =
+                PWAFunctions.ProcessDataObjectReference(
+                    modalService,
+                    editPage.MyDataObjectReference,
+                    parentGuid,
+                    "00000000-0000-0000-0000-000000000000");
+
+            var encodedReturnUrl = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
+
+            var url =
+                "InvoicingScheduleDetail/" +
+                Guid.Empty + "/" +
+                serializedParentDataObjectReference + "/" +
+                encodedReturnUrl;
+
+            NavManager.NavigateTo(url, forceLoad: false);
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "JobDetail/CreateReplacementInvoiceScheduleAsync()");
+            _ = OnError.InvokeAsync(ex);
+            return Task.CompletedTask;
+        }
+    }
+
+    private static bool GetBoolColumnValue(GridDataRow row, string columnName)
+    {
+        var column = row.Columns.FirstOrDefault(x =>
+            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        if (column == null || string.IsNullOrWhiteSpace(column.Value))
+        {
+            return false;
+        }
+
+        if (bool.TryParse(column.Value, out var boolValue))
+        {
+            return boolValue;
+        }
+
+        if (int.TryParse(column.Value, out var intValue))
+        {
+            return intValue == 1;
+        }
+
+        return false;
+    }
+
+    private static int? GetIntColumnValue(GridDataRow row, string columnName)
+    {
+        var column = row.Columns.FirstOrDefault(x =>
+            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        if (column == null || string.IsNullOrWhiteSpace(column.Value))
+        {
+            return null;
+        }
+
+        return int.TryParse(column.Value, out var intValue) ? intValue : null;
+    }
 }
 

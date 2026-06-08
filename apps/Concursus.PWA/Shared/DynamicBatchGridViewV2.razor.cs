@@ -43,6 +43,7 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
     #endregion
 
     #region Private state
+    private SageFinanceTab ActiveTab { get; set; } = SageFinanceTab.PostingStatus;
 
     private List<ExpandoObject> AllRows { get; set; } = new();
     private List<ExpandoObject> FilteredRows { get; set; } = new();
@@ -71,6 +72,17 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
     private string SearchText { get; set; } = "";
     private string CurrentSortColumn { get; set; } = "";
     private bool IsSortDescending { get; set; }
+    private int ReceivedCount => CountByStatus("Received");
+
+    private bool IsReceivedAlreadySubmitted(IDictionary<string, object> row)
+    {
+        var latestOutboxError = row.TryGetValue("LatestOutboxError", out var outboxValue)
+            ? outboxValue?.ToString()
+            : null;
+
+        return !string.IsNullOrWhiteSpace(latestOutboxError)
+            && latestOutboxError.Contains("already been submitted to sage", StringComparison.OrdinalIgnoreCase);
+    }
 
     private bool IsSageSubmissionMonitorView =>
         string.Equals(ViewDefinition?.Code, "ALLSAGESUBMON", StringComparison.OrdinalIgnoreCase);
@@ -85,6 +97,116 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
     private int PageStartRow => TotalRows == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
     private int PageEndRow => Math.Min(CurrentPage * PageSize, TotalRows);
 
+
+    private enum SageFinanceTab
+    {
+        PostingStatus,
+        InboundDiagnostics
+    }
+
+    private void SetActiveTab(SageFinanceTab tab)
+    {
+        if (ActiveTab == tab)
+            return;
+
+        ActiveTab = tab;
+    }
+
+    private string GetTabClass(SageFinanceTab tab)
+    {
+        return ActiveTab == tab ? "is-active" : string.Empty;
+    }
+
+    private bool IsResettingFailedSageSubmission { get; set; }
+
+    private bool CanResetFailedSelectedSageSubmissions =>
+        !IsBulkProcessing
+        && !IsRequeueingSageSubmission
+        && !IsResettingFailedSageSubmission
+        && IsSageSubmissionMonitorView
+        && GetSelectedFailedNonRetryableTransactionGuids().Count > 0;
+
+    private List<Guid> GetSelectedFailedNonRetryableTransactionGuids()
+    {
+        var result = new List<Guid>();
+
+        foreach (var row in FilteredRows)
+        {
+            var dict = (IDictionary<string, object>)row;
+            var guid = GetRowGuid(dict);
+
+            if (guid == Guid.Empty || !SelectedRowGuids.Contains(guid))
+                continue;
+
+            if (!string.Equals(GetStatusText(dict), "FailedNonRetryable", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (dict.TryGetValue("TransactionGuid", out var txObj)
+                && Guid.TryParse(txObj?.ToString(), out var txGuid)
+                && txGuid != Guid.Empty
+                && !result.Contains(txGuid))
+            {
+                result.Add(txGuid);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task ResetFailedSelectedSageSubmissionsAsync()
+    {
+        if (!CanResetFailedSelectedSageSubmissions)
+            return;
+
+        var transactionGuids = GetSelectedFailedNonRetryableTransactionGuids();
+        if (transactionGuids.Count == 0)
+            return;
+
+        var confirmed = await JsRuntime.InvokeAsync<bool>(
+            "confirm",
+            $"Reset {transactionGuids.Count} failed non-retryable Sage submission record(s) to Pending so they can be retried?");
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            IsResettingFailedSageSubmission = true;
+            StateHasChanged();
+
+            var request = new TransactionSageSubmissionRequeueRequest
+            {
+                IncludeNonRetryableFailures = true
+            };
+
+            request.TransactionGuids.AddRange(transactionGuids.Select(x => x.ToString()));
+
+            var reply = await coreClient.TransactionSageSubmissionRequeueAsync(request);
+
+            SelectedRowGuids.Clear();
+
+            await LoadDataAsync();
+
+            if (OnActionCompleted.HasDelegate)
+                await OnActionCompleted.InvokeAsync();
+
+            Toast.ShowSuccess(
+                string.IsNullOrWhiteSpace(reply.Message)
+                    ? $"{reply.RequeuedTransactionCount} failed Sage submission(s) reset for retry."
+                    : reply.Message);
+        }
+        catch (Exception ex)
+        {
+            ex.Data["PageMethod"] = "DynamicBatchGridViewV2/ResetFailedSelectedSageSubmissionsAsync()";
+            ex.Data["MessageType"] = ShowMessageType.Error;
+            await OnError(ex);
+        }
+        finally
+        {
+            IsResettingFailedSageSubmission = false;
+            StateHasChanged();
+        }
+    }
     private List<GridViewColumnDefinition> VisibleColumns =>
         ViewDefinition?.Columns?
             .Where(c => c.IsHidden != true
@@ -398,12 +520,8 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
             if (guid == Guid.Empty || !SelectedRowGuids.Contains(guid))
                 continue;
 
-            if (dict.TryGetValue("CanRequeue", out var canRequeueObj)
-                && bool.TryParse(canRequeueObj?.ToString(), out var canRequeue)
-                && !canRequeue)
-            {
+            if (!IsRowRetryable(dict))
                 continue;
-            }
 
             if (dict.TryGetValue("TransactionGuid", out var txObj)
                 && Guid.TryParse(txObj?.ToString(), out var txGuid)
@@ -596,12 +714,24 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
     }
     private string GetStatusText(IDictionary<string, object> row)
     {
+        if (IsReceivedAlreadySubmitted(row))
+            return "Received";
+
         if (!row.TryGetValue("StatusCode", out var value) || value is null)
             return "Unknown";
 
         return value.ToString() ?? "Unknown";
     }
 
+    private bool IsRowRetryable(IDictionary<string, object> row)
+    {
+        if (IsReceivedAlreadySubmitted(row))
+            return false;
+
+        return row.TryGetValue("CanRequeue", out var canRequeueObj)
+            && bool.TryParse(canRequeueObj?.ToString(), out var canRequeue)
+            && canRequeue;
+    }
     private string GetStatusBadgeClass(IDictionary<string, object> row)
     {
         var status = GetStatusText(row);
@@ -612,6 +742,7 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
             "FailedRetryable" => "status-badge status-amber",
             "FailedNonRetryable" => "status-badge status-red",
             "InProgress" => "status-badge status-blue",
+            "Received" => "status-badge status-purple",
             "Pending" => "status-badge status-slate",
             _ => "status-badge status-slate"
         };
@@ -627,13 +758,35 @@ public partial class DynamicBatchGridViewV2 : ComponentBase
             "FailedRetryable" => "row-accent-amber",
             "FailedNonRetryable" => "row-accent-red",
             "InProgress" => "row-accent-blue",
+            "Received" => "row-accent-purple",
+            "Pending" => "row-accent-slate",
             _ => string.Empty
         };
     }
 
     private object? RenderCellValue(IDictionary<string, object> row, string columnName)
     {
-        return row.TryGetValue(columnName, out var value) ? value : null;
+        if (string.Equals(columnName, "CanRequeue", StringComparison.OrdinalIgnoreCase))
+            return IsRowRetryable(row);
+
+        if (IsReceivedAlreadySubmitted(row)
+            && string.Equals(columnName, "LatestResponseStatus", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Received";
+        }
+
+        return row.TryGetValue(columnName, out var value)
+            ? value
+            : null;
+    }
+
+
+    private string GetColumnTitle(GridViewColumnDefinition column)
+    {
+        if (string.Equals(column.Name, "LatestOutboxError", StringComparison.OrdinalIgnoreCase))
+            return "Latest Response";
+
+        return column.Title;
     }
 
     #endregion

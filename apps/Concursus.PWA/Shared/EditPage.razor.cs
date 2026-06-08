@@ -98,6 +98,8 @@ public partial class EditPage
 
     [Parameter] public bool HideDefaultActions { get; set; } = false;
     [Parameter] public bool DisableDefaultActions { get; set; } = false;
+
+    [Parameter] public EventCallback<DataObject> DataObjectLoaded { get; set; }
     #endregion Public Properties
 
     #region Protected Properties
@@ -648,7 +650,7 @@ public partial class EditPage
 
         if (save)
         {
-           
+
             await WaitForPendingInputUpdatesIfNeededAsync(maxWaitMs: 2000);
 
             // Now decide "no changes" based on sequence, not sticky flags
@@ -1050,6 +1052,10 @@ public partial class EditPage
                     modalService,
                     IsBulkUpdate,
                     transientVirtualProperties: TransientVirtualProperties);
+                if (DataObjectLoaded.HasDelegate)
+                {
+                    await DataObjectLoaded.InvokeAsync(dataObject);
+                }
                 if (!string.IsNullOrEmpty(dataObject.ErrorReturned))
                 {
                     throw new Exception(dataObject.ErrorReturned);
@@ -1099,6 +1105,15 @@ public partial class EditPage
             {
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl, IsBulkUpdate);
                 Console.WriteLine($"Storage URL - {storageUrl}");
+                //if (!IsBulkUpdate &&
+                //    dataObject != null &&
+                //    dataObject.HasDocuments &&
+                //    string.Equals(EntityTypeGuid, "63542427-46ab-4078-abd1-1d583c24315c", StringComparison.OrdinalIgnoreCase) &&
+                //    string.IsNullOrWhiteSpace(dataObject.SharePointUrl))
+                //{
+                //    await SetupSharePointUrlAsync(UpdateSharePoint: true);
+                //}
+
 
                 //OE: CBLD-446
                 // if (EntityTypeGuid == "571a9397-7e28-4bef-8ddc-fd4c56787bde"

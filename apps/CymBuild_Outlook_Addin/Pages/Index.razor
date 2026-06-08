@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @inject LoggingHelper LoggingHelper
 @inject HttpClient Http
 @inject GraphService GraphService
@@ -20,354 +20,386 @@
 @using CymBuild_Outlook_Common.Models.SharePoint
 @using Microsoft.AspNetCore.Components.Web
 @* @using Microsoft.AspNetCore.Components.WebAssembly.Authentication *@
-@using Telerik.Blazor
-@using Telerik.Blazor.Components
-@using Telerik.DataSource
 
 <NavMenu />
 
-<div class="container mt-4">
-    <div class="messageFilerTab">
-        <div class="buttonContainer collapsed">
-            <button id="fileWithPreviousButton" class="btn btn-primary me-2" @onclick="FileWithPreviousAsync" title="File with previous">
-                <i class="fas fa-copy"></i><span class="btn-text"></span>
+<div class="outlook-addin-shell">
+    <header class="outlook-compact-header">
+        <div class="outlook-brand-row">
+            <div class="outlook-brand-icon" aria-hidden="true">
+                <i class="fas fa-envelope-open-text"></i>
+            </div>
+            <div class="outlook-brand-copy">
+                <div class="outlook-brand-title-row">
+                    <h1 class="outlook-brand-title">Outlook Filing</h1>
+                    <span class="outlook-env-pill">DEV</span>
+                </div>
+                <p class="outlook-brand-subtitle">File email into CymBuild SharePoint locations.</p>
+            </div>
+        </div>
+
+        <div class="outlook-toolbar-actions" aria-label="Quick actions">
+            <button id="fileWithPreviousButton"
+                    type="button"
+                    class="outlook-toolbar-button pastel-purple"
+                    @onclick="FileWithPreviousAsync"
+                    title="File with previous">
+                <i class="fas fa-copy" aria-hidden="true"></i>
+                <span>Previous</span>
             </button>
 
-            <button type="button" @onclick="RefreshSearch" class="btn btn-primary me-2" title="Refresh">
-                <i class="fas fa-redo"></i><span class="btn-text"></span>
-            </button>
-
-            <button class="btn btn-success" @onclick="SaveEmailToSharePointAsync" title="Save to SharePoint">
-                <i class="fas fa-cloud-upload-alt"></i><span class="btn-text"></span>
+            <button type="button"
+                    class="outlook-toolbar-button pastel-blue"
+                    @onclick="RefreshSearch"
+                    title="Refresh">
+                <i class="fas fa-rotate-right" aria-hidden="true"></i>
+                <span>Refresh</span>
             </button>
         </div>
-    </div>
+    </header>
 
-    <div class="btn-group" role="group" aria-label="Basic example">
+    <nav class="outlook-section-tabs" aria-label="Outlook filing sections">
         @foreach (var button in buttonConfigurations)
         {
             if (MailReadData != null && MailReadData.ItemType == button.ItemType)
             {
-                <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection(button.Section))">
+                <button type="button"
+                        class="outlook-tab-button @(currentSection == button.Section ? "selected" : string.Empty)"
+                        @onclick="@(() => ShowSection(button.Section))">
                     @button.Label
                 </button>
             }
         }
 
-        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("attachments"))"><i class="bi-paperclip"></i></button>
-        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("info"))"><i class="bi-info-circle"></i></button>
-        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("settings"))"><i class="bi-gear"></i></button>
-        <button type="button" class="btn btn-primary" @onclick="@(() => ShowSection("help"))"><i class="bi bi-question-diamond"></i></button>
-    </div>
+        <button type="button" class="outlook-tab-button icon-only @(currentSection == "attachments" ? "selected" : string.Empty)" @onclick="@(() => ShowSection("attachments"))" title="Attachments">
+            <i class="bi-paperclip" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="outlook-tab-button icon-only @(currentSection == "info" ? "selected" : string.Empty)" @onclick="@(() => ShowSection("info"))" title="Information">
+            <i class="bi-info-circle" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="outlook-tab-button icon-only @(currentSection == "settings" ? "selected" : string.Empty)" @onclick="@(() => ShowSection("settings"))" title="Settings">
+            <i class="bi-gear" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="outlook-tab-button icon-only @(currentSection == "help" ? "selected" : string.Empty)" @onclick="@(() => ShowSection("help"))" title="Help">
+            <i class="bi-question-diamond" aria-hidden="true"></i>
+        </button>
+    </nav>
 
     @if (currentSection == "details")
     {
         if (MailReadData is not null)
         {
-            <div class="card">
-                <div class="card-body panel-content">
-                    @if (FiledRecords != null && FiledRecords.Any())
-                    {
+            <section class="outlook-card outlook-filing-panel">
+                @if (FiledRecords != null && FiledRecords.Any())
+                {
+                    <div class="outlook-filed-records">
                         <FiledItemsDisplay FiledRecords="FiledRecords" />
-                    }
-
-                    @if (selectedRecords != null && selectedRecords.Any())
-                    {
-                        <SelectedItemsDisplay SelectedRecords="selectedRecords" OnRemove="RemoveSelectedItem" />
-                    }
-
-                    <div class="row" style="padding-top: 2px;padding-bottom: 2px">
-                        <span @onkeypress="HandleKeyPress" @onkeydown="HandleKeyPress">
-                            <TelerikTextBox Id="TextSearch" Placeholder="Search..." @bind-Value="searchString" />
-                        </span>
                     </div>
+                }
 
-                    @if (selectedRecords != null && selectedRecords.Any())
-                    {
-                        <div class="row" style="padding-top: 8px;padding-bottom: 8px">
-                            <div class="col-12">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <label for="emailDescription" class="form-label mb-0">Description (Optional)</label>
-                                    <button class="btn btn-sm btn-outline-primary" 
-                                            @onclick="GenerateDescriptionAsync" 
-                                            disabled="@isGeneratingDescription"
-                                            title="Generate description using AI">
-                                        @if (isGeneratingDescription)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="fas fa-magic me-1"></i>
-                                        }
-                                        AI Generate
-                                    </button>
-                                </div>
-                                <TelerikTextArea Id="emailDescription"
-                                                 Placeholder="Add a note or context about this email..."
-                                                 @bind-Value="emailDescription"
-                                                 Rows="3"
-                                                 MaxLength="4000"
-                                                 Class="form-control" />
-                                <small class="form-text text-muted">@emailDescription.Length / 4000 characters</small>
+                @if (selectedRecords != null && selectedRecords.Any())
+                {
+                    <div class="outlook-selected-strip" aria-label="Selected records">
+                        @foreach (var record in selectedRecords.OrderBy(x => x.EntityTypeName).ThenBy(x => x.Name))
+                        {
+                            <div class="outlook-selected-chip" title="@($"{record.Name} | {record.EntityTypeName} | {record.ID}")">
+                                <span class="outlook-selected-name">@record.Name</span>
+                                <span class="outlook-selected-meta">@record.EntityTypeName @record.ID</span>
+                                <button type="button"
+                                        class="outlook-chip-remove"
+                                        @onclick="@(() => RemoveSelectedItem(record))"
+                                        title="Remove selected record">
+                                    <i class="fas fa-trash" aria-hidden="true"></i>
+                                </button>
                             </div>
-                        </div>
-                    }
+                        }
+                    </div>
+                }
 
-                    <div id="filingDestinationsGridContainer" class="grid-container" style="padding-top:0.250rem">
-                        <TelerikGrid Data="@gridData"
-                                     Pageable="false"
-                                     Sortable="false"
-                                     FilterMode="GridFilterMode.None"
-                                     OnRowClick="OnRowClick"
-                                     Groupable="true"
-                                     TItem="RecordSearchResult"
-                                     OnStateInit="@OnGridStateInit"
-                                     Id="filingDestinationsGrid"
-                                     Class="no-header">
-                            <GridColumns>
-                                <GridColumn Field="Name" Title="Record">
-                                    <Template>
-                                        @{
-                                            RecordSearchResult record = (RecordSearchResult)context;
-                                            <span data-recordId="@record.ID" class="tooltip-target">@record.Name</span>
-                                        }
-                                    </Template>
-                                </GridColumn>
-                                <GridColumn Field="EntityTypeName" Title="Type" Visible="false" />
-                            </GridColumns>
-                            <NoDataTemplate>
-                                <div>No records found, please enter a search request</div>
-                            </NoDataTemplate>
-                        </TelerikGrid>
-
-                        <TelerikTooltip TargetSelector=".tooltip-target"
-                                        Class="blue-yellow no-flicker"
-                                        Width="250px" Height="150px"
-                                        Position="@TooltipPosition.Top"
-                                        ShowDelay="50">
-                            <Template Context="ttipContext">
-                                <h6>Record Details</h6>
-                                <hr />
-                                @{
-                                    int recordId = int.Parse(ttipContext.DataAttributes?["recordid"] ?? string.Empty);
-                                    var recordDetails = GetRecordDetails(recordId);
-
-                                    <div>
-                                        <p><strong>Name</strong>: @recordDetails?.Name</p>
-                                        <p><strong>Type</strong>: @recordDetails?.EntityTypeName</p>
-                                        <p><strong>ID</strong>: @recordDetails?.ID</p>
-                                    </div>
-                                }
-                            </Template>
-                        </TelerikTooltip>
+                <div class="outlook-field-block compact">
+                    <label for="TextSearch" class="outlook-field-label">Search record</label>
+                    <div class="outlook-search-row">
+                        <input id="TextSearch"
+                               class="outlook-input"
+                               placeholder="Search..."
+                               @bind="searchString"
+                               @bind:event="oninput"
+                               @onkeydown="HandleKeyPress" />
+                        <button type="button" class="outlook-action-button pastel-blue" @onclick="RefreshSearch">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <span>Search</span>
+                        </button>
                     </div>
                 </div>
-            </div>
+
+                @if (selectedRecords != null && selectedRecords.Any())
+                {
+                    <div class="outlook-field-block compact">
+                        <div class="outlook-field-header compact">
+                            <label for="emailDescription" class="outlook-field-label">Description <span>(optional)</span></label>
+                            <button class="outlook-ai-icon-button"
+                                    @onclick="GenerateDescriptionAsync"
+                                    disabled="@isGeneratingDescription"
+                                    title="Generate description using AI">
+                                @if (isGeneratingDescription)
+                                {
+                                    <span class="outlook-mini-spinner" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+                                }
+                                <span>AI</span>
+                            </button>
+                        </div>
+                        <textarea id="emailDescription"
+                                  class="outlook-input outlook-textarea"
+                                  placeholder="Add note or context..."
+                                  @bind="emailDescription"
+                                  rows="2"
+                                  maxlength="4000"></textarea>
+                        <div class="outlook-micro-hint">@emailDescription.Length / 4000 characters</div>
+                    </div>
+                }
+
+                @if (FilingFolders?.Any() == true)
+                {
+                    <div class="outlook-field-block compact">
+                        <label for="filingFolderSelect" class="outlook-field-label">Folder</label>
+                        <select id="filingFolderSelect"
+                                class="outlook-input outlook-select"
+                                @bind="selectedFolderPath">
+                            <option value="">Default: Emails folder</option>
+                            @foreach (var folder in FilingFolders.OrderBy(x => x.Path))
+                            {
+                                <option value="@folder.Path">@folder.Name</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="outlook-destination-card" role="status" aria-live="polite">
+                        <div class="outlook-destination-topline">
+                            <span class="outlook-direction-pill @FilingDirectionBadgeCss">@FilingDirectionLabel</span>
+                            <span class="outlook-destination-dot">•</span>
+                            <span class="outlook-destination-folder">@EffectiveFilingFolderName</span>
+                        </div>
+                        <div class="outlook-destination-path">@EffectiveFilingFolderPath</div>
+                    </div>
+                }
+
+                <div id="filingDestinationsGridContainer" class="outlook-record-results">
+                    @if (gridData?.Any() == true)
+                    {
+                        <div class="outlook-results-card">
+                            @foreach (var group in gridData.GroupBy(x => x.EntityTypeName).OrderBy(x => x.Key))
+                            {
+                                <div class="outlook-results-group">@group.Key</div>
+
+                                @foreach (var record in group.OrderBy(x => x.Name))
+                                {
+                                    var isSelected = selectedRecords?.Any(x => x.ID == record.ID) == true;
+
+                                    <button type="button"
+                                            class="outlook-result-item @(isSelected ? "selected" : string.Empty)"
+                                            title="@($"{record.Name} | {record.EntityTypeName} | {record.ID}")"
+                                            @onclick="@(() => OnRecordClick(record))">
+                                        <span class="outlook-result-main">
+                                            <span class="outlook-result-name">@record.Name</span>
+                                            <span class="outlook-result-type">@record.EntityTypeName</span>
+                                        </span>
+                                        <span class="outlook-result-id">@record.ID</span>
+                                    </button>
+                                }
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="outlook-empty-state">
+                            <i class="fas fa-magnifying-glass" aria-hidden="true"></i>
+                            <span>No records found. Enter a search request.</span>
+                        </div>
+                    }
+                </div>
+            </section>
         }
         else
         {
-            <div class="alert alert-danger" role="alert">
-                Unable to read email and attachment data
+            <div class="outlook-alert outlook-alert-danger" role="alert">
+                Unable to read email and attachment data.
             </div>
         }
     }
 
     @if (currentSection == "attachments")
     {
-        if (MailReadData?.Attachments?.Any() == true)
-        {
-            <table class="table table-striped mt-3">
-                <thead>
-                    <tr>
-                        <th>Preview</th>
-                        <th width="55px">Name</th>
-                        <th width="45px">Type</th>
-                        <th>Inline</th>
-                        <th width="55px">Immutable ID</th>
-                    </tr>
-                </thead>
-                <tbody>
+        <section class="outlook-card outlook-panel">
+            <div class="outlook-section-heading">
+                <h2>Attachments</h2>
+                <span>@(MailReadData?.Attachments?.Count() ?? 0)</span>
+            </div>
+
+            @if (MailReadData?.Attachments?.Any() == true)
+            {
+                <div class="outlook-attachment-list">
                     @foreach (var attachment in MailReadData.Attachments)
                     {
-                        <tr>
-                            <td>
-                                <div class="attachment-icon">
-                                    @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
-                                    {
-                                        <img src="@attachment.AttachmentImageURL" class="img-thumbnail" alt="Image Preview" />
-                                    }
-                                    else
-                                    {
-                                        <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
-                                    }
-                                </div>
-                            </td>
-                            <td class="shortened-name" title="@attachment.AttachmentName">
-                                @(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)
-                            </td>
-                            <td>@attachment.AttachmentType</td>
-                            <td>@(attachment.Inline ? "Yes" : "No")</td>
-                            <td class="shortened-name" title="@attachment.ImmutableID">@attachment.ImmutableID</td>
-                        </tr>
+                        <div class="outlook-attachment-row" title="@attachment.AttachmentName">
+                            <div class="outlook-attachment-icon">
+                                @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
+                                {
+                                    <img src="@attachment.AttachmentImageURL" class="outlook-attachment-preview" alt="Image Preview" />
+                                }
+                                else
+                                {
+                                    <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
+                                }
+                            </div>
+                            <div class="outlook-attachment-copy">
+                                <span>@(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)</span>
+                                <small>@attachment.AttachmentType • @(attachment.Inline ? "Inline" : "Attachment")</small>
+                            </div>
+                        </div>
                     }
-                </tbody>
-            </table>
-        }
-        else
-        {
-            <div class="alert alert-warning" role="alert">
-                No attachments found.
-            </div>
-        }
+                </div>
+            }
+            else
+            {
+                <div class="outlook-alert outlook-alert-warning" role="alert">
+                    No attachments found.
+                </div>
+            }
+        </section>
     }
 
     @if (currentSection == "meetingInfo")
     {
-        if (MailReadData?.Meeting?.StartDateTime is not null)
-        {
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Meeting Information</h5>
-                    <dl class="row">
-                        <dt class="col-sm-3">Series ID</dt>
-                        <dd class="col-sm-9">@MailReadData.Meeting.SeriesId</dd>
-                    </dl>
-                    <dl class="row">
-                        <dt class="col-sm-3">Date</dt>
-                        <dd class="col-sm-9">@MailReadData.Meeting.StartDateTime - @MailReadData.Meeting.EndDateTime</dd>
-                    </dl>
+        <section class="outlook-card outlook-panel">
+            @if (MailReadData?.Meeting?.StartDateTime is not null)
+            {
+                <div class="outlook-section-heading">
+                    <h2>Meeting Information</h2>
                 </div>
-            </div>
-        }
-        else
-        {
-            <div class="alert alert-warning" role="alert">
-                There is no meeting information
-            </div>
-        }
+                <dl class="outlook-definition-list">
+                    <dt>Series ID</dt>
+                    <dd>@MailReadData.Meeting.SeriesId</dd>
+                    <dt>Date</dt>
+                    <dd>@MailReadData.Meeting.StartDateTime - @MailReadData.Meeting.EndDateTime</dd>
+                </dl>
+            }
+            else
+            {
+                <div class="outlook-alert outlook-alert-warning" role="alert">
+                    There is no meeting information.
+                </div>
+            }
+        </section>
     }
 
     @if (currentSection == "info")
     {
-        if (MailReadData is not null)
-        {
-            <div class="card">
-                <div class="card-body">
-                    <h5 class="card-title">Email Information</h5>
-                    <dl class="row">
-                        <dt class="col-sm-3">Item Type</dt>
-                        <dd class="col-sm-9">@MailReadData.ItemType</dd>
-                    </dl>
-                    <dl class="row">
-                        <dt class="col-sm-3">ID</dt>
-                        <dd class="col-sm-9">@MailReadData.ConversationId</dd>
-                    </dl>
-                    <dl class="row">
-                        <dt class="col-sm-3">Subject</dt>
-                        <dd class="col-sm-9">@MailReadData.Subject</dd>
-                    </dl>
-                    <dl class="row">
-                        <dt class="col-sm-3">Sender</dt>
-                        <dd class="col-sm-9">
-                            @MailReadData.Sender?.SenderName
-                            <a href="mailto:@MailReadData.Sender?.SenderEmail">@MailReadData.Sender?.SenderEmail</a>
-                        </dd>
-                    </dl>
-                    <dl class="row">
-                        <dt class="col-sm-3">Body</dt>
-                        <dd class="col-sm-9 multi-line-ellipsis">@MailReadData.Body</dd>
-                    </dl>
-
-                    @if (MailReadData.CustomProperties != null && MailReadData.CustomProperties.Any())
-                    {
-                        <dl class="row">
-                            <dt class="col-sm-3">Custom Properties</dt>
-                            <dd class="col-sm-9">
-                                @foreach (var property in MailReadData.CustomProperties)
-                                {
-                                    <div>@property.Key: @property.Value</div>
-                                }
-                            </dd>
-                        </dl>
-                    }
+        <section class="outlook-card outlook-panel">
+            @if (MailReadData is not null)
+            {
+                <div class="outlook-section-heading">
+                    <h2>Email Information</h2>
                 </div>
-            </div>
-        }
-        else
-        {
-            <div class="alert alert-danger" role="alert">
-                Unable to read email information
-            </div>
-        }
+                <dl class="outlook-definition-list compact">
+                    <dt>Type</dt>
+                    <dd>@MailReadData.ItemType</dd>
+                    <dt>ID</dt>
+                    <dd>@MailReadData.ConversationId</dd>
+                    <dt>Subject</dt>
+                    <dd>@MailReadData.Subject</dd>
+                    <dt>Sender</dt>
+                    <dd>
+                        @MailReadData.Sender?.SenderName
+                        <a href="mailto:@MailReadData.Sender?.SenderEmail">@MailReadData.Sender?.SenderEmail</a>
+                    </dd>
+                </dl>
+
+                <details class="outlook-details-panel">
+                    <summary>Email body</summary>
+                    <div class="outlook-email-body">@MailReadData.Body</div>
+                </details>
+
+                @if (MailReadData.CustomProperties != null && MailReadData.CustomProperties.Any())
+                {
+                    <details class="outlook-details-panel">
+                        <summary>Custom Properties</summary>
+                        <div class="outlook-custom-properties">
+                            @foreach (var property in MailReadData.CustomProperties)
+                            {
+                                <div><strong>@property.Key:</strong> @property.Value</div>
+                            }
+                        </div>
+                    </details>
+                }
+            }
+            else
+            {
+                <div class="outlook-alert outlook-alert-danger" role="alert">
+                    Unable to read email information.
+                </div>
+            }
+        </section>
     }
 
     @if (currentSection == "settings")
     {
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Settings</h5>
-
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="moveToCymBuildFiled" @bind="moveToCymBuildFiled" />
-                    <label class="form-check-label" for="moveToCymBuildFiled">Move Filed Email To "CymBuild Filed"</label>
-                </div>
-
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="extractAttachments" @bind="extractAttachments" />
-                    <label class="form-check-label" for="extractAttachments">Extract Attachments To Separate Folder</label>
-                </div>
-
-                <button class="btn btn-primary mt-3" @onclick="SaveSettings">Save Settings</button>
+        <section class="outlook-card outlook-panel">
+            <div class="outlook-section-heading">
+                <h2>Settings</h2>
             </div>
-        </div>
+
+            <label class="outlook-check-row" for="moveToCymBuildFiled">
+                <input type="checkbox" id="moveToCymBuildFiled" @bind="moveToCymBuildFiled" />
+                <span>Move filed email to "CymBuild Filed"</span>
+            </label>
+
+            <label class="outlook-check-row" for="extractAttachments">
+                <input type="checkbox" id="extractAttachments" @bind="extractAttachments" />
+                <span>Extract attachments to separate folder</span>
+            </label>
+
+            <button type="button" class="outlook-action-button pastel-green outlook-settings-save" @onclick="SaveSettings">Save Settings</button>
+        </section>
     }
 
     @if (currentSection == "help")
     {
-        <div class="card">
-            <div class="card-body">
-                <h3>Filing an Email</h3>
-                <ol>
-                    <li>Use the search box to find the record you want to file the email against.</li>
-                    <li>Select the desired record from the search results by clicking on it.</li>
-                    <li>Once all desired records are selected, click the "Save to SharePoint" button to file the email and attachments.</li>
-                </ol>
-
-                <p><strong>Note:</strong> You can file an email to multiple records by repeating the search and select steps before clicking the "Save to SharePoint" button.</p>
-
-                <img src="@imageSources["SearchAndSelectRecords"]" alt="Search and Select Records" class="img-fluid" />
-                <hr />
-
-                <h3>Actions</h3>
-
-                <h4>File with Previous...</h4>
-                <p>This button allows you to file the current email to the same records you used for the last filed email.</p>
-                <img src="@imageSources["FileWithPreviousButton"]" alt="File with Previous Button" class="img-fluid" />
-
-                <hr />
-
-                <h3>Field Descriptions</h3>
-
-                <h4>Search Box</h4>
-                <p>Use the search box to find relevant records to file your email against.</p>
-                <img src="@imageSources["SearchBoxExample"]" alt="Search Box Example" class="img-fluid" />
-
-                <h4>Selected Records</h4>
-                <p>The selected records section displays the records you have chosen to file the email against.</p>
-                <img src="@imageSources["SelectedRecordsExample"]" alt="Selected Records Example" class="img-fluid" />
-
-                <h4>Save to SharePoint</h4>
-                <p>This button files the email and its attachments to the selected records' locations in SharePoint.</p>
-                <img src="@imageSources["SaveToSharePointButton"]" alt="Save to SharePoint Button" class="img-fluid" />
+        <section class="outlook-card outlook-panel outlook-help-content">
+            <div class="outlook-section-heading">
+                <h2>Filing an Email</h2>
             </div>
-        </div>
+            <ol class="outlook-help-steps">
+                <li>Search for the record to file against.</li>
+                <li>Select the record from the results.</li>
+                <li>Confirm the destination shown before filing.</li>
+                <li>Click Save to SharePoint.</li>
+            </ol>
+
+            <p class="outlook-note"><strong>Note:</strong> You can file to multiple records by selecting more than one result before saving.</p>
+
+            <details class="outlook-details-panel">
+                <summary>Show screenshots</summary>
+                <img src='@imageSources["SearchAndSelectRecords"]' alt="Search and Select Records" class="outlook-help-image" />
+                <img src='@imageSources["FileWithPreviousButton"]' alt="File with Previous Button" class="outlook-help-image" />
+                <img src='@imageSources["SearchBoxExample"]' alt="Search Box Example" class="outlook-help-image" />
+                <img src='@imageSources["SelectedRecordsExample"]' alt="Selected Records Example" class="outlook-help-image" />
+                <img src='@imageSources["SaveToSharePointButton"]' alt="Save to SharePoint Button" class="outlook-help-image" />
+            </details>
+        </section>
     }
 
-    <div class="buttonContainer">
-        <button class="btn btn-success save-sharepoint" @onclick="SaveEmailToSharePointAsync" title="Save to SharePoint">
-            <i class="fas fa-cloud-upload-alt"></i><span class="btn-text"></span>
-            Save to SharePoint
+    <div class="outlook-save-dock">
+        <button type="button"
+                class="outlook-save-button"
+                @onclick="SaveEmailToSharePointAsync"
+                disabled="@(MailReadData == null || selectedRecords?.Any() != true)"
+                title="Save to SharePoint">
+            <i class="fas fa-cloud-upload-alt" aria-hidden="true"></i>
+            <span>Save to SharePoint</span>
         </button>
     </div>
 </div>

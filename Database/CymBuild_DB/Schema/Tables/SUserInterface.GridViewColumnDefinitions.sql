@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[GridViewColumnDefinitions]')
 GO
+PRINT (N'Create table [SUserInterface].[GridViewColumnDefinitions]')
+GO
 CREATE TABLE [SUserInterface].[GridViewColumnDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_GridViewColumnDefinition_RowStatus] DEFAULT (0),
@@ -49,18 +51,6 @@ CREATE UNIQUE INDEX [IX_UQ_GridViewColumnDefinition_Guid]
   ON [PRIMARY]
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_UQ_GridViewColumndefinition_IsPrimaryKey] on table [SUserInterface].[GridViewColumnDefinitions]')
-GO
-CREATE UNIQUE INDEX [IX_UQ_GridViewColumndefinition_IsPrimaryKey]
-  ON [SUserInterface].[GridViewColumnDefinitions] ([GridViewDefinitionId], [IsPrimaryKey])
-  WHERE ([IsPrimaryKey]=(1))
-  WITH (FILLFACTOR = 90)
-  ON [PRIMARY]
-GO
-
 PRINT (N'Create foreign key [FK_GridViewColumnDefinition_GridViewDefinition] on table [SUserInterface].[GridViewColumnDefinitions]')
 GO
 ALTER TABLE [SUserInterface].[GridViewColumnDefinitions] WITH NOCHECK
@@ -82,4 +72,7 @@ GO
 PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewColumnDefinitions]')
 GO
 EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of the columns that make up a Grid View', 'SCHEMA', N'SUserInterface', 'TABLE', N'GridViewColumnDefinitions'
+GO
+
+PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewColumnDefinitions]')
 GO

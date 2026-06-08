@@ -20,6 +20,8 @@ AS
 				JOIN	SCore.Groups AS g ON (g.ID = ug.GroupID)
 				WHERE	(ug.IdentityID = @UserID)
 					AND	(g.Code = N'ENQUIRYSU')
+					AND (ug.RowStatus NOT IN (0,254))
+					
 			)
 		)
 	BEGIN 

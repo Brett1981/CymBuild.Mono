@@ -4,6 +4,9 @@ using CymBuild_Outlook_Common.Helpers;
 using CymBuild_Outlook_Common.Models;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.Security;
+using System.Text.Json;
 
 namespace CymBuild_Outlook_API.Data
 {
@@ -16,7 +19,7 @@ namespace CymBuild_Outlook_API.Data
             _loggingHelper = loggingHelper;
         }
 
-        public DbSet<Message> Messages { get; set; }
+        public DbSet<CymBuild_Outlook_Common.Models.Message> Messages { get; set; }
         public DbSet<EntityType> EntityTypes { get; set; }
         public DbSet<OutlookCalendarEvent> OutlookCalendarEvents { get; set; }
         public DbSet<OutlookEmailMailbox> OutlookEmailMailboxes { get; set; }
@@ -200,6 +203,79 @@ namespace CymBuild_Outlook_API.Data
             var result = await Database.ExecuteSqlRawAsync("EXEC SOffice.OutlookCalendarEventsUpsert @TargetObjectGuid, @Mailbox, @ExchangeImmutableID, @Title, @StartDateTime, @EndDateTime, @IsAllDay, @Recurrence, @LastUpdateSource, @Guid", parameters);
 
             return result;
+        }
+
+        public async Task<Models.UserSettings> GetUserSettings(string UserEmail)
+        {
+            var defaultSaveSettings = new Models.UserSettings();
+            var settingsToReturn = new Models.UserSettings();
+
+            var settingsAsString = "";
+
+
+            var sql = @"
+                SELECT up.OutlookSettings AS Settings
+                FROM SCore.UserPreferences AS up
+                JOIN SCore.Identities AS i ON (up.ID = i.ID)
+                WHERE i.EmailAddress = @UserEmail;";
+
+            var parameter = new SqlParameter("@UserEmail", UserEmail);
+
+            try
+            {
+                await Database.OpenConnectionAsync();
+
+                using (var command = Database.GetDbConnection().CreateCommand())
+                {
+                    command.CommandText = sql;
+                    command.CommandType = System.Data.CommandType.Text;
+                    command.Parameters.Add(parameter);
+
+                    using (var result = await command.ExecuteReaderAsync())
+                    {
+                        if (await result.ReadAsync())
+                        {
+                            settingsAsString = result.GetString(result.GetOrdinal("Settings"));
+                        }
+                    }
+                }
+
+                //turn it into Dictionary<string, object>
+                 settingsToReturn =
+                        JsonSerializer.Deserialize<Models.UserSettings>(settingsAsString);
+
+                
+            }
+            catch (Exception ex)
+            {
+                _loggingHelper.LogError($"Error fetching Outlook Settings.");
+                throw;
+            }
+            finally
+            {
+                await Database.CloseConnectionAsync();
+                
+            }
+
+            return String.IsNullOrEmpty(settingsAsString) ? defaultSaveSettings : settingsToReturn;
+        }
+
+        public async Task<int> UpsertOutlookSettings(string SettingsAsJSON, string UserEmail)
+        {
+
+            // Prepare the parameters
+            var parameters = new[]
+            {
+                new SqlParameter("@SettingsJSON", SettingsAsJSON),
+                new SqlParameter("@UserEmail", UserEmail)
+            };
+
+
+            var result = await Database.ExecuteSqlRawAsync("EXEC SOffice.OutlookSettingsUpsert @SettingsJSON, @UserEmail", parameters);
+            _loggingHelper.LogInfo($"UpsertOutlookSettings() => [result = {result}", result.ToString());
+
+            return result;
+
         }
 
         public async Task<int> UpdateEmailSysProcessing(EmailSysProcessingUpdateDto updateDto)

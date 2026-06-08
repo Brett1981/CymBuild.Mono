@@ -176,7 +176,9 @@ public class Converters
                 IsAlwaysVisibleInGroup_Mobile = entityProperty.IsAlwaysVisibleInGroupMobile,
                 ExternalSearchPageUrl = entityProperty.ExternalSearchPageUrl,
                 IsLatitude = entityProperty.IsLatitude,
-                IsLongitude = entityProperty.IsLongitude
+                IsLongitude = entityProperty.IsLongitude,
+                HelpText = entityProperty.HelpText
+               
             };
 
             //CBLD-259
@@ -302,7 +304,10 @@ public class Converters
             FilteredListGroupBy = request.FilteredListGroupBy,
             FilteredListRedStatusIndicatorTxt = request.FilteredListRedStatusIndicatorTxt,
             FilteredListOrangeStatusIndicatorTxt = request.FilteredListOrangeStatusIndicatorTxt,
-            FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt
+            FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt,
+            IsHidden = request.IsHidden,
+            AllowCsvExport = request.AllowCsvExport,
+            AllowExcelExport = request.AllowExcelExport
         };
 
         foreach (var gridViewColumnDefinition in request.Columns)
@@ -649,7 +654,8 @@ public class Converters
             IsAlwaysVisibleInGroupMobile = entityProperty.IsAlwaysVisibleInGroup_Mobile,
             ExternalSearchPageUrl = entityProperty.ExternalSearchPageUrl,
             IsLongitude = entityProperty.IsLongitude,
-            IsLatitude = entityProperty.IsLatitude
+            IsLatitude = entityProperty.IsLatitude,
+            HelpText = entityProperty.HelpText
         };
 
         //CBLD-259
@@ -712,7 +718,8 @@ public class Converters
             LanguageLabelGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(entityType.LanguageLabelGuid.ToString()).ToString(),
             Name = entityType.Name,
             RowStatus = (int)entityType.RowStatus,
-            IconCss = entityType.IconCss
+            IconCss = entityType.IconCss,
+            IsDeletable = entityType.IsDeletable
         };
 
         foreach (var h in entityType.EntityHoBTs)
@@ -863,7 +870,10 @@ public class Converters
             FilteredListGroupBy = request.FilteredListGroupBy,
             FilteredListRedStatusIndicatorTxt = request.FilteredListRedStatusIndicatorTxt,
             FilteredListOrangeStatusIndicatorTxt = request.FilteredListOrangeStatusIndicatorTxt,
-            FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt
+            FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt,
+            IsHidden = request.IsHidden,
+            AllowCsvExport = request.AllowCsvExport,
+            AllowExcelExport = request.AllowExcelExport
         };
 
         foreach (var gridViewColumnDefinition in request.Columns)

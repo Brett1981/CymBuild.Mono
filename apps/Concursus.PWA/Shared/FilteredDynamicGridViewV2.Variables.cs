@@ -147,7 +147,7 @@ namespace Concursus.PWA.Shared
             _closureNumber = TryGetStringFromRow(row, "Number");                // #.
             _closureStatus = TryGetStringFromRow(row, "LatestWorkflowStatusName");
             _closureDiscipline = TryGetStringFromRow(row, "DisciplineName");
-            _closureLastUpdated = TryGetStringFromRow(row, "LatestTransitionUtc");
+            _closureLastUpdated = TryGetStringFromRow(row, "LatestTransitionLocal");
 
             _closureDisplayRef = TryGetStringFromRow(row, "DisplayRef");
             _closureClient = TryGetStringFromRow(row, "DisplayClientName");

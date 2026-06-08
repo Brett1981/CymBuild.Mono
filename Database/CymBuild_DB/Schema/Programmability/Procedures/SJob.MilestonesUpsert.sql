@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SJob].[MilestonesUpsert]')
+GO
+
 CREATE PROCEDURE [SJob].[MilestonesUpsert]
-  (
+(
     @JobGuid                UNIQUEIDENTIFIER,
     @MilestoneTypeGuid      UNIQUEIDENTIFIER,
     @Description            NVARCHAR(500),
@@ -18,189 +21,167 @@ CREATE PROCEDURE [SJob].[MilestonesUpsert]
     @ReviewedDateTimeUTC    DATETIME2,
     @ReviewerUserGuid       UNIQUEIDENTIFIER,
     @Reference              NVARCHAR(100),
-	@SubmittedDateTimeUTC	DATETIME2,
-	@SubmittedByGuid		UNIQUEIDENTIFIER,
-	@SubmissionExpiryDate	DATETIME2,	
+    @SubmittedDateTimeUTC   DATETIME2,
+    @SubmittedByGuid        UNIQUEIDENTIFIER,
+    @SubmissionExpiryDate   DATETIME2,
     @Guid                   UNIQUEIDENTIFIER
-  )
+)
 AS
-  BEGIN
+BEGIN
+    SET NOCOUNT ON;
+
     DECLARE @StartedByUserID   INT,
             @CompletedByUserID INT,
             @ReviewerUserID    INT,
-			@SubmittedByID		INT,
+            @SubmittedByID     INT,
             @MilestoneTypeID   INT,
             @JobID             INT,
-            @UserID            INT
+            @UserID            INT;
 
-    SELECT
-            @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1)
+    SELECT @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
 
-    SELECT
-            @StartedByUserID = ID
-    FROM
-            SCore.Identities
-    WHERE
-            ([Guid] = @StartedByUserGuid)
+    SELECT @StartedByUserID = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @StartedByUserGuid;
 
-    IF (@StartDateTimeUTC IS NOT NULL)
-      AND
-      (@StartedByUserID < 0)
-      BEGIN
-        SET @StartedByUserID = @UserID
-      END
+    IF @StartDateTimeUTC IS NOT NULL
+       AND ISNULL(@StartedByUserID, -1) < 0
+    BEGIN
+        SET @StartedByUserID = @UserID;
+    END;
 
-    SELECT
-            @ReviewerUserID = ID
-    FROM
-            SCore.Identities
-    WHERE
-            ([Guid] = @ReviewerUserGuid)
+    SELECT @ReviewerUserID = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @ReviewerUserGuid;
 
-    IF (@ReviewedDateTimeUTC IS NOT NULL)
-      AND
-      (@ReviewerUserID < 0)
-      BEGIN
-        SET @ReviewerUserID = @UserID
-      END
+    IF @ReviewedDateTimeUTC IS NOT NULL
+       AND ISNULL(@ReviewerUserID, -1) < 0
+    BEGIN
+        SET @ReviewerUserID = @UserID;
+    END;
 
-    SELECT
-            @CompletedByUserID = ID
-    FROM
-            SCore.Identities
-    WHERE
-            ([Guid] = @CompletedByUserGuid)
+    SELECT @CompletedByUserID = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @CompletedByUserGuid;
 
-    IF (@CompletedDateTimeUTC IS NOT NULL)
-      AND
-      (@CompletedByUserID < 0)
-      BEGIN
-        SET @CompletedByUserID = @UserID
-      END
+    IF @CompletedDateTimeUTC IS NOT NULL
+       AND ISNULL(@CompletedByUserID, -1) < 0
+    BEGIN
+        SET @CompletedByUserID = @UserID;
+    END;
 
-	SELECT	
-			@SubmittedByID = ID
-	FROM	
-			SCore.Identities AS i
-	WHERE	
-			([Guid] = @SubmittedByGuid)
+    SELECT @SubmittedByID = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @SubmittedByGuid;
 
-    SELECT
-            @MilestoneTypeID = ID
-    FROM
-            SJob.MilestoneTypes
-    WHERE
-            ([Guid] = @MilestoneTypeGuid)
+    SELECT @MilestoneTypeID = mt.ID
+    FROM SJob.MilestoneTypes AS mt
+    WHERE mt.Guid = @MilestoneTypeGuid;
 
-    SELECT
-            @JobID = ID
-    FROM
-            SJob.Jobs
-    WHERE
-            ([Guid] = @JobGuid)
+    SELECT @JobID = j.ID
+    FROM SJob.Jobs AS j
+    WHERE j.Guid = @JobGuid;
 
-    DECLARE @IsInsert BIT
+    DECLARE @IsInsert BIT;
+
     EXEC SCore.UpsertDataObject
-      @Guid       = @Guid,					-- uniqueidentifier
-      @SchemeName = N'SJob',				-- nvarchar(255)
-      @ObjectName = N'Milestones',				-- nvarchar(255)
-      @IsInsert   = @IsInsert OUTPUT	-- bit
+        @Guid       = @Guid,
+        @SchemeName = N'SJob',
+        @ObjectName = N'Milestones',
+        @IsInsert   = @IsInsert OUTPUT;
 
-    IF (@IsInsert = 1)
-      BEGIN
+    IF @IsInsert = 1
+    BEGIN
         INSERT SJob.Milestones
-              (
-                RowStatus,
-                Guid,
-                JobID,
-                QuoteLineID,
-                MilestoneTypeID,
-                Description,
-                StartDateTimeUTC,
-                DueDateTimeUTC,
-                ScheduledDateTimeUTC,
-                CompletedDateTimeUTC,
-                QuotedHours,
-                EstimatedRemainingHours,
-                SortOrder,
-                StartedByUserId,
-                CompletedByUserId,
-                IsNotApplicable,
-                ReviewedDateTimeUTC,
-                ReviewerUserId,
-                Reference,
-				SubmittedBy,
-				SubmittedDateTimeUTC,
-				SubmissionExpiryDate
-              )
+        (
+            RowStatus,
+            Guid,
+            JobID,
+            QuoteLineID,
+            MilestoneTypeID,
+            Description,
+            StartDateTimeUTC,
+            DueDateTimeUTC,
+            ScheduledDateTimeUTC,
+            CompletedDateTimeUTC,
+            QuotedHours,
+            EstimatedRemainingHours,
+            SortOrder,
+            StartedByUserId,
+            CompletedByUserId,
+            IsNotApplicable,
+            ReviewedDateTimeUTC,
+            ReviewerUserId,
+            Reference,
+            SubmittedBy,
+            SubmittedDateTimeUTC,
+            SubmissionExpiryDate
+        )
         VALUES
-                (
-                  1,	-- RowStatus - tinyint
-                  @Guid,	-- Guid - uniqueidentifier
-                  @JobID,	-- JobID - int
-                  -1,	-- QuoteLineID - int
-                  @MilestoneTypeID,	-- MilestoneTypeID - int
-                  @Description,	-- Description - nvarchar(500)
-                  @StartDateTimeUTC,		-- StartDateTime - datetime2(7)
-                  @DueDateTimeUTC,		-- DueDateTime - datetime2(7)
-                  @ScheduledDateTimeUTC,		-- ScheduledDateTime - datetime2(7)
-                  @CompletedDateTimeUTC,		-- CompletedDateTime - datetime2(7)
-                  0,	-- QuotedHours - decimal(19, 2)
-                  0,	-- EstimatedRemainingHours - decimal(19, 2)
-                  @SortOrder,	-- SortOrder - int
-                  @StartedByUserID,	-- StartedByUserId - int
-                  @CompletedByUserID,	-- CompletedByUserId - int
-                  @IsNotApplicable,	-- IsNotApplicable - bit
-                  @ReviewedDateTimeUTC,		-- ReviewedDateTime - datetime2(7)
-                  @ReviewerUserID,	-- ReviewerUserId - int
-                  @Reference,
-				  @SubmittedByID,
-				  @SubmittedDateTimeUTC,
-				  @SubmissionExpiryDate
-                )
-      END
+        (
+            1,
+            @Guid,
+            @JobID,
+            -1,
+            @MilestoneTypeID,
+            @Description,
+            @StartDateTimeUTC,
+            @DueDateTimeUTC,
+            @ScheduledDateTimeUTC,
+            @CompletedDateTimeUTC,
+            @QuotedHours,
+            @EstimateHoursRemaining,
+            @SortOrder,
+            ISNULL(@StartedByUserID, -1),
+            ISNULL(@CompletedByUserID, -1),
+            @IsNotApplicable,
+            @ReviewedDateTimeUTC,
+            ISNULL(@ReviewerUserID, -1),
+            @Reference,
+            ISNULL(@SubmittedByID, -1),
+            @SubmittedDateTimeUTC,
+            @SubmissionExpiryDate
+        );
+    END;
     ELSE
-      BEGIN
-        UPDATE  SJob.Milestones
-        SET     JobID = @JobID,
-                MilestoneTypeID = @MilestoneTypeID,
-                Description = @Description,
-                StartDateTimeUTC = @StartDateTimeUTC,
-                DueDateTimeUTC = @DueDateTimeUTC,
-                ScheduledDateTimeUTC = @ScheduledDateTimeUTC,
-                CompletedDateTimeUTC = @CompletedDateTimeUTC,
-                QuotedHours = @QuotedHours,
-                EstimatedRemainingHours = @EstimateHoursRemaining,
-                SortOrder = @SortOrder,
-                StartedByUserId = @StartedByUserID,
-                CompletedByUserId = @CompletedByUserID,
-                IsNotApplicable = @IsNotApplicable,
-                ReviewedDateTimeUTC = @ReviewedDateTimeUTC,
-                ReviewerUserId = @ReviewerUserID,
-                Reference = @Reference,
-				SubmittedBy = @SubmittedByID,
-				SubmittedDateTimeUTC = @SubmittedDateTimeUTC,
-				SubmissionExpiryDate = @SubmissionExpiryDate
-        WHERE
-          ([Guid] = @Guid)
-      END
+    BEGIN
+        UPDATE SJob.Milestones
+        SET JobID = @JobID,
+            MilestoneTypeID = @MilestoneTypeID,
+            Description = @Description,
+            StartDateTimeUTC = @StartDateTimeUTC,
+            DueDateTimeUTC = @DueDateTimeUTC,
+            ScheduledDateTimeUTC = @ScheduledDateTimeUTC,
+            CompletedDateTimeUTC = @CompletedDateTimeUTC,
+            QuotedHours = @QuotedHours,
+            EstimatedRemainingHours = @EstimateHoursRemaining,
+            SortOrder = @SortOrder,
+            StartedByUserId = ISNULL(@StartedByUserID, -1),
+            CompletedByUserId = ISNULL(@CompletedByUserID, -1),
+            IsNotApplicable = @IsNotApplicable,
+            ReviewedDateTimeUTC = @ReviewedDateTimeUTC,
+            ReviewerUserId = ISNULL(@ReviewerUserID, -1),
+            Reference = @Reference,
+            SubmittedBy = ISNULL(@SubmittedByID, -1),
+            SubmittedDateTimeUTC = @SubmittedDateTimeUTC,
+            SubmissionExpiryDate = @SubmissionExpiryDate
+        WHERE Guid = @Guid;
+    END;
 
-    UPDATE  m
-    SET     SortOrder = o.CalcOrder
-    FROM
-            SJob.Milestones m
+    UPDATE m
+    SET SortOrder = o.CalcOrder
+    FROM SJob.Milestones AS m
     INNER JOIN
-            (
-                SELECT
-                        ROW_NUMBER() OVER (ORDER BY m.SortOrder, m.ID) AS CalcOrder,
-                        m.ID
-                FROM
-                        SJob.Milestones m
-                WHERE
-                        (m.JobID = @JobID)
-            ) o ON (o.ID = m.ID)
-    WHERE
-      (o.CalcOrder <> m.SortOrder)
-      AND (m.JobID = @JobID)
-  END
+    (
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY m.SortOrder, m.ID) AS CalcOrder,
+            m.ID
+        FROM SJob.Milestones AS m
+        WHERE m.JobID = @JobID
+          AND m.RowStatus NOT IN (0, 254)
+    ) AS o
+        ON o.ID = m.ID
+    WHERE o.CalcOrder <> m.SortOrder
+      AND m.JobID = @JobID;
+END
 GO

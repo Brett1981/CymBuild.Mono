@@ -32,8 +32,10 @@
 
         <!--CBLD-408: Added -> allowNewButtonSection so we can hide the button on widgets
             <div class="d-flex flex-wrap justify-content-between allowNewButtonSection">
-                        <div class="p-2">
+                        <div class="p-2 d-flex flex-row">
                             <h5 class="view-name">@ViewDefinition?.Name</h5>
+
+                               
                         </div>
 
                         <div class="p-2">
@@ -54,7 +56,21 @@
                                     {
                                         <div class="button-menu-container d-flex flex-row align-items-center">
                                             <GridFilterButton GridRef="@GridRef" />
-                                            </div>
+                                            @* Button for exporting CSV. *@
+                                            <CSVExportButton 
+                                                ShowButton="@ShowCSVButton"
+                                                GridRef="@GridRef"
+                                                GridCode="@GridCode"
+                                                ViewDefinition="@ViewDefinition"
+                                                EnableRangeFiltering="false"
+                                                OnError="@OnError"
+                                                @bind-ParentGuid="@ParentGuid"
+                                                @bind-QuickFilters="@QuickFilters"
+                                                @bind-RangeFilters="@RangeFilters"
+                                                />
+                                          
+
+                                        </div>
                                     }
                                 }
                             </div>

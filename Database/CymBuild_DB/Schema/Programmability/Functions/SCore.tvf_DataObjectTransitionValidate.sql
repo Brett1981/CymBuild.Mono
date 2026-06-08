@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SCore].[tvf_DataObjectTransitionValidate]')
+GO
+
 CREATE FUNCTION [SCore].[tvf_DataObjectTransitionValidate]
 (
     @Guid           UNIQUEIDENTIFIER,
@@ -27,7 +30,7 @@ BEGIN
         @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
 
     -------------------------------------------------------------------------
-    -- Hide everything but the comment when first saving the transition record
+    -- Hide everything but the comment/Status ID when first saving the transition record
     -------------------------------------------------------------------------
     IF NOT EXISTS
     (
@@ -36,17 +39,23 @@ BEGIN
         WHERE Guid = @Guid
     )
     BEGIN
-        INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-        SELECT  epfvv.Guid,
-                N'P',
-                0,
-                1,
-                0,
-                N''
+        INSERT @ValidationResult
+            (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+        SELECT
+            epfvv.Guid,
+            N'P',
+            0,
+            1,
+            0,
+            N''
         FROM SCore.EntityPropertiesForValidationV AS epfvv
         WHERE epfvv.[Schema] = N'SCore'
           AND epfvv.Hobt     = N'DataObjectTransition'
-          AND epfvv.Name NOT IN (N'Comment');
+          AND epfvv.Name NOT IN
+          (
+              N'Comment',
+              N'StatusID'
+          );
     END;
 
     -------------------------------------------------------------------------

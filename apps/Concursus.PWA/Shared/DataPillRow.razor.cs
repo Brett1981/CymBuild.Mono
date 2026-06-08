@@ -169,22 +169,30 @@ public partial class DataPillRow : ComponentBase
 
             var amount = ParseMoney(valuePart);
 
-            if (label.Equals("Amount not invoiced", StringComparison.OrdinalIgnoreCase))
+            if (label.Equals("Remaining Fees", StringComparison.OrdinalIgnoreCase))
             {
-                cards.Add(new FinanceCard(FinanceCardKind.NotInvoiced, "🧾", "Amount not invoiced", amount, "Awaiting invoice creation", "neutral"));
+                cards.Add(new FinanceCard(FinanceCardKind.NotInvoiced, "🧾", "Remaining Fees (Without VAT)", amount, "Awaiting invoice creation", "neutral"));
             }
+            //else if (label.Equals("Amount not invoiced", StringComparison.OrdinalIgnoreCase))
+            //{
+            //    cards.Add(new FinanceCard(FinanceCardKind.NotInvoiced, "🧾", "Amount not invoiced", amount, "Awaiting invoice creation", "neutral"));
+            //}
             else if (label.Equals("Outstanding amount", StringComparison.OrdinalIgnoreCase))
             {
-                cards.Add(new FinanceCard(FinanceCardKind.Outstanding, "📌", "Outstanding amount", amount, "Total unpaid balance", "neutral"));
+                cards.Add(new FinanceCard(FinanceCardKind.Outstanding, "📌", "Outstanding amount (With VAT)", amount, "Total unpaid balance", "neutral"));
+            }
+            else if (label.Equals("Outstanding amount without VAT", StringComparison.OrdinalIgnoreCase))
+            {
+                cards.Add(new FinanceCard(FinanceCardKind.Outstanding, "📌", "Outstanding amount (Without VAT)", amount, "Total unpaid balance", "neutral"));
             }
             else if (label.StartsWith("Overdue_", StringComparison.OrdinalIgnoreCase))
             {
                 var nice = label switch
                 {
-                    "Overdue_1_30" => "Overdue (1–30 days)",
-                    "Overdue_31_60" => "Overdue (31–60 days)",
-                    "Overdue_61_90" => "Overdue (61–90 days)",
-                    "Overdue_90+" => "Overdue (90+ days)",
+                    "Overdue_1_30" => "Overdue (1–30 days) (With VAT)",
+                    "Overdue_31_60" => "Overdue (31–60 days) (With VAT)",
+                    "Overdue_61_90" => "Overdue (61–90 days) (With VAT)",
+                    "Overdue_90+" => "Overdue (90+ days) (With VAT)",
                     _ => label.Replace('_', ' ')
                 };
 

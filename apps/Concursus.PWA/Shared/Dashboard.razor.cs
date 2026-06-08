@@ -1,9 +1,9 @@
-﻿using Blazored.Modal;
-using Blazored.Modal.Services;
-using Concursus.API.Client.Classes;
+﻿using Concursus.API.Client.Classes;
 using Concursus.API.Client.Models;
 using Concursus.API.Core;
 using Concursus.Components.Shared.Controls;
+using Concursus.Components.Shared.Modals;
+using Concursus.PWA.Helpers;
 using Microsoft.AspNetCore.Components;
 using Newtonsoft.Json;
 using System.Collections;
@@ -13,44 +13,212 @@ using static Concursus.PWA.Shared.MessageDisplay;
 
 namespace Concursus.PWA.Shared;
 
-public partial class Dashboard
+public partial class Dashboard : IAsyncDisposable
 {
     protected MessageDisplay? _messageDisplay = new();
-    private bool _hasLoaded = false;
+
+    private readonly CancellationTokenSource _dashboardCancellationTokenSource = new();
+    private bool _dashboardLoadsStarted;
+
     private RecentItemResponse? _recentItems;
     private ScheduleItemsGetResponse? _scheduleItems;
-    [CascadingParameter] public IModalService Modal { get; set; } = default!;
+
+    private bool _metricsLoading = true;
+    private bool _recentItemsLoading = true;
+    private bool _scheduleItemsLoading = true;
+
+    private string? _metricsError;
+    private string? _recentItemsError;
+    private string? _scheduleItemsError;
+
+    [Inject] public CymBuildModalService ModalService { get; set; } = default!;
+
     [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+
     protected string ErrorMessage { get; set; } = "";
     protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
     protected string PageMethod { get; set; } = "Not Set";
+
     private List<DashboardMetric> Metrics { get; set; } = new();
 
-    //public void OnError(Exception error)
-    //{
-    //    if (string.IsNullOrEmpty(error.Message)) return;
+    protected override Task OnInitializedAsync()
+    {
+        return Task.CompletedTask;
+    }
 
-    // ErrorMessage = error.Message; PageMethod = (error.Data.Contains("PageMethod") ?
-    // error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+    protected void StartDashboardDataLoads()
+    {
+        if (_dashboardLoadsStarted)
+        {
+            return;
+        }
 
-    // if (error.Data.Contains("MessageType")) { MessageType =
-    // (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ??
-    // MessageDisplay.ShowMessageType.Information); } else { MessageType =
-    // MessageDisplay.ShowMessageType.Error; }
+        _dashboardLoadsStarted = true;
 
-    // // Extract all exception data and pass it to the MessageDisplay component if (messageDisplay
-    // != null) { // Pass Exception Data using the new method messageDisplay?.UpdateExceptionData(
-    // error.Data.Count > 0 ? error.Data.Cast<DictionaryEntry>() .ToDictionary( de =>
-    // de.Key?.ToString() ?? "UnknownKey", de => de.Value!) : null );
+        var cancellationToken = _dashboardCancellationTokenSource.Token;
 
-    // // Update the stack trace dynamically messageDisplay?.UpdateStackTrace(error.StackTrace);
+        _ = LoadMetricsAsync(cancellationToken);
+        _ = LoadRecentItemsAsync(UserService?.UserId ?? -1, cancellationToken);
+        _ = LoadScheduleItemsAsync(cancellationToken);
+    }
 
-    // messageDisplay?.ShowError(true); }
+    private async Task LoadMetricsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _metricsLoading = true;
+            _metricsError = null;
+            await InvokeAsync(StateHasChanged);
 
-    // // Recover from error (if using a custom boundary) // customErrorBoundary.Recover();
+            var dashboardMetricsGetResponse = await CoreClient.DashboardMetricsGetAsync(
+                new DashboardMetricsGetRequest(),
+                cancellationToken: cancellationToken);
 
-    //    StateHasChanged();
-    //}
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            Metrics = dashboardMetricsGetResponse?.Metrics?.ToList() ?? new List<DashboardMetric>();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _metricsError = "Unable to load dashboard metrics.";
+
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error loading dashboard metrics.";
+            ex.Data["PageMethod"] = "Dashboard/LoadMetricsAsync()";
+
+            await OnError(ex);
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _metricsLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task LoadRecentItemsAsync(int userId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            _recentItemsLoading = true;
+            _recentItemsError = null;
+            await InvokeAsync(StateHasChanged);
+
+            if (userId == -1)
+            {
+                _recentItems = new RecentItemResponse();
+                return;
+            }
+
+            var recentItemRequest = new RecentItemRequest
+            {
+                UserId = userId
+            };
+
+            _recentItems = await CoreClient.RecentItemsGetAsync(
+                recentItemRequest,
+                cancellationToken: cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _recentItemsError = "Unable to load recent items.";
+
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error getting recent items list.";
+            ex.Data["PageMethod"] = "Dashboard/LoadRecentItemsAsync()";
+
+            await OnError(ex);
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _recentItemsLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task LoadScheduleItemsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _scheduleItemsLoading = true;
+            _scheduleItemsError = null;
+            await InvokeAsync(StateHasChanged);
+
+            var scheduleItemsGetRequest = new ScheduleItemsGetRequest
+            {
+                CurrentUserOnly = true
+            };
+
+            var listOfScheduleItems = await CoreClient.ScheduleItemsGetAsync(
+                scheduleItemsGetRequest,
+                cancellationToken: cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(listOfScheduleItems?.ErrorReturned))
+            {
+                throw new InvalidOperationException(listOfScheduleItems.ErrorReturned);
+            }
+
+            var earlyDate = DateTime.UtcNow.AddDays(-7);
+            var lateDate = DateTime.UtcNow.AddDays(7);
+
+            _scheduleItems = new ScheduleItemsGetResponse();
+
+            if (listOfScheduleItems?.ScheduleItems is null)
+            {
+                return;
+            }
+
+            foreach (var item in listOfScheduleItems.ScheduleItems)
+            {
+                var start = item.Start.ToDateTime();
+
+                if (start.IsBetweenTwoDates(earlyDate, lateDate))
+                {
+                    _scheduleItems.ScheduleItems.Add(item);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _scheduleItemsError = "Unable to load scheduled items.";
+
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error getting schedule items list.";
+            ex.Data["PageMethod"] = "Dashboard/LoadScheduleItemsAsync()";
+
+            await OnError(ex);
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _scheduleItemsLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
 
     public async Task OnError(Exception error)
     {
@@ -64,6 +232,7 @@ public partial class Dashboard
         PageMethod = error.Data.Contains("PageMethod")
             ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
             : "Not Set";
+
         Console.WriteLine($"Dashboard: PageMethod = {PageMethod}");
 
         if (error.Data.Contains("MessageType"))
@@ -76,7 +245,6 @@ public partial class Dashboard
             Console.WriteLine("Dashboard: MessageType not found in error.Data. Defaulted to Error.");
         }
 
-        // Extract all exception data
         var exceptionData = error.Data.Count > 0
             ? error.Data.Cast<DictionaryEntry>().ToDictionary(
                 de => de.Key?.ToString() ?? "UnknownKey",
@@ -86,16 +254,20 @@ public partial class Dashboard
         if (exceptionData != null)
         {
             foreach (var kvp in exceptionData)
+            {
                 Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+            }
         }
 
-        _messageDisplay.UpdateExceptionData(exceptionData);
-        _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
-        _messageDisplay.ShowError(true);
+        if (_messageDisplay is not null)
+        {
+            _messageDisplay.UpdateExceptionData(exceptionData);
+            _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
+            _messageDisplay.ShowError(true);
+        }
 
         Console.WriteLine("Dashboard: MessageDisplay updated and error shown.");
 
-        // AI Error Reporting (only for actual errors)
         if (MessageType == ShowMessageType.Error)
         {
             try
@@ -103,24 +275,27 @@ public partial class Dashboard
                 var context = new
                 {
                     ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
+                    PageMethod = error.Data.Contains("PageMethod")
+                        ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod"
+                        : "UnknownMethod",
                     StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
+                    AdditionalInfo = error.Data.Contains("AdditionalInfo")
+                        ? error.Data["AdditionalInfo"]?.ToString() ?? "None"
+                        : "None",
                     Data = error.Data.Cast<DictionaryEntry>()
                         .ToDictionary(
                             de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
+                            de => de.Value?.ToString() ?? "null")
                 };
 
-                var log = InteractionTracker.GetAllLogs();
                 var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
                 error.Data["UserInteractionLog"] = description;
+
                 Console.WriteLine($"Dashboard: UserInteractionLog = {description}");
 
                 var result = await AiErrorReporter.ReportAsync(error, context);
 
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage) && _messageDisplay is not null)
                 {
                     _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
                     _messageDisplay.ShowError(true);
@@ -136,14 +311,13 @@ public partial class Dashboard
             }
         }
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     protected void HandleClickOnMetric(string id)
     {
         try
         {
-            //Loop through the metrics and find the one that was clicked and open its relevent blazor page. i.e. if the metric is "_schedule" then Navigate to the Schedule.razor page.
             switch (id)
             {
                 case "_schedule":
@@ -153,86 +327,10 @@ public partial class Dashboard
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error navigating to the page");
-            ex.Data.Add("PageMethod", "Dashboard/HandleClickOnMetric()");
-            OnError(ex);
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            var dashboardMetricsGetResponse = await CoreClient.DashboardMetricsGetAsync(new DashboardMetricsGetRequest());
-
-            Metrics = dashboardMetricsGetResponse.Metrics.ToList();
-
-            await base.OnInitializedAsync();
-
-            return;
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("PageMethod", "Dashboard/OnInitializedAsync()");
-            OnError(ex);
-        }
-    }
-
-    private async void GetRecentListAsync(int userId)
-    {
-        try
-        {
-            var recentItemRequest = new RecentItemRequest { UserId = userId };
-            _recentItems = await CoreClient.RecentItemsGetAsync(recentItemRequest);
-
-            GetScheduleListAsync(userId);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error getting recent items List.");
-            ex.Data.Add("PageMethod", "Dashboard/GetRecentListAsync()");
-            OnError(ex);
-        }
-    }
-
-    // ReSharper disable once MethodTooLong
-    private async void GetScheduleListAsync(int userId)
-    {
-        try
-        {
-            var scheduleItemsGetRequest = new ScheduleItemsGetRequest() { CurrentUserOnly = true };
-            var listOfScheduleItems = await CoreClient.ScheduleItemsGetAsync(scheduleItemsGetRequest);
-            if (listOfScheduleItems == null) return;
-            if (!string.IsNullOrEmpty(listOfScheduleItems.ErrorReturned))
-            { throw new Exception(listOfScheduleItems.ErrorReturned); }
-            var earlyDate = DateTime.Now.AddDays(-7);
-            var lateDate = DateTime.Now.AddDays(7);
-            _scheduleItems = new ScheduleItemsGetResponse();
-            foreach (var item in listOfScheduleItems.ScheduleItems)
-            {
-                var start = item.Start.ToDateTime();
-
-                if (start.IsBetweenTwoDates(earlyDate, lateDate))
-                {
-                    _scheduleItems.ScheduleItems.Add(item);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error getting schedule items List.");
-            ex.Data.Add("PageMethod", "Dashboard/GetScheduleListAsync()");
-            OnError(ex);
-        }
-
-        if (!_hasLoaded)
-        {
-            _hasLoaded = true;
-            StateHasChanged();
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error navigating to the page";
+            ex.Data["PageMethod"] = "Dashboard/HandleClickOnMetric()";
+            _ = OnError(ex);
         }
     }
 
@@ -241,14 +339,22 @@ public partial class Dashboard
         try
         {
             dynamic model = args.Item;
-            var onRowDoubleClickHandler = !string.IsNullOrEmpty(model?.DetailPageUri) ? "@HandleRowDoubleClick" : null;
-            if (onRowDoubleClickHandler == null) return;
 
-            if (model == null) return; // Check for null
+            var onRowDoubleClickHandler = !string.IsNullOrEmpty(model?.DetailPageUri)
+                ? "@HandleRowDoubleClick"
+                : null;
 
-            string serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(ParentDataObjectReference ?? new DataObjectReference("", ""))); ;
-            if (ParentDataObjectReference == null || ParentDataObjectReference.EntityTypeGuid == Guid.Empty
-                && ParentDataObjectReference.DataObjectGuid == Guid.Empty)
+            if (onRowDoubleClickHandler == null || model == null)
+            {
+                return;
+            }
+
+            var serializeParentDataObjectReferenced = HttpUtility.UrlEncode(
+                JsonConvert.SerializeObject(ParentDataObjectReference ?? new DataObjectReference("", "")));
+
+            if (ParentDataObjectReference == null ||
+                ParentDataObjectReference.EntityTypeGuid == Guid.Empty &&
+                ParentDataObjectReference.DataObjectGuid == Guid.Empty)
             {
                 try
                 {
@@ -262,80 +368,70 @@ public partial class Dashboard
             }
 
             if (model.DetailPageUri == "DynamicEdit")
-                Navigation.NavigateTo(model.DetailPageUri + "/" + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.EntityTypeGuid).ToString()
-                                      + "/" + Guid.Empty.ToString() + "/" +
-                                      serializeParentDataObjectReferenced + "/" + HttpUtility.UrlEncode(Navigation.Uri));
+            {
+                Navigation.NavigateTo(
+                    model.DetailPageUri + "/" +
+                    ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.EntityTypeGuid).ToString() + "/" +
+                    Guid.Empty.ToString() + "/" +
+                    serializeParentDataObjectReferenced + "/" +
+                    HttpUtility.UrlEncode(Navigation.Uri));
+            }
             else
-                Navigation.NavigateTo(model.DetailPageUri + "/" + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.RecordGuid).ToString() + "/" +
-                                      serializeParentDataObjectReferenced + "/" + HttpUtility.UrlEncode(Navigation.Uri));
+            {
+                Navigation.NavigateTo(
+                    model.DetailPageUri + "/" +
+                    ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(model.RecordGuid).ToString() + "/" +
+                    serializeParentDataObjectReferenced + "/" +
+                    HttpUtility.UrlEncode(Navigation.Uri));
+            }
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error handling row double click.");
-            ex.Data.Add("PageMethod", "Dashboard/HandleRowDoubleClick()");
-            OnError(ex);
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error handling row double click.";
+            ex.Data["PageMethod"] = "Dashboard/HandleRowDoubleClick()";
+            _ = OnError(ex);
         }
     }
 
-    // apply ellipsis to specific columns
-    private void OnCellRenderHandler(GridCellRenderEventArgs args)
-    {
-        args.Class = "custom-ellipsis";
-    }
-
-    // apply ellipsis to specific columns using OnRowRender
-    private void OnRowRenderHandler(GridRowRenderEventArgs args)
-    {
-        args.Class = "custom-ellipsis";
-    }
-
-    private void ScheduleRowDoubleClick(GridRowClickEventArgs args)
+    private async Task OpenScheduleInfoAsync(ScheduleItem item)
     {
         try
         {
-            dynamic model = args.Item;
-
-            // Open the modal and pass data as parameters
-            ShowModal<ScheduleItemView>(new ModalParameters
+            if (item == null)
             {
-                { "StartDateTime", model.Start.ToDateTime().ToUniversalTime().ToString("dd/MM/yyyy HH:mm:ss") },
-                { "EndDateTime", model.End.ToDateTime().ToUniversalTime().ToString("dd/MM/yyyy HH:mm:ss") },
-                { "Title", model.Title },
-                { "Description", model.Description },
-                { "JobNumber", model.JobNumber }
-                // Add other properties as needed
-            });
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error handling schedule row double click.");
-            ex.Data.Add("PageMethod", "Dashboard/ScheduleRowDoubleClick()");
-            OnError(ex);
-        }
-    }
+                return;
+            }
 
-    private void ShowModal<TModal>(ModalParameters parameters) where TModal : ComponentBase
-    {
-        try
-        {
-            var modalOptions = new ModalOptions
+            var parameters = new Dictionary<string, object?>
             {
-                AnimationType = ModalAnimationType.FadeInOut,
-                HideHeader = false,
-                UseCustomLayout = true,
-                Position = ModalPosition.Middle,
+                { nameof(ScheduleItemView.StartDateTime), UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false) },
+                { nameof(ScheduleItemView.EndDateTime), UiFormattingHelper.FormatDateForUI(item.End.ToDateTime(), false) },
+                { nameof(ScheduleItemView.Title), item.Title ?? string.Empty },
+                { nameof(ScheduleItemView.Description), item.Description ?? string.Empty },
+                { nameof(ScheduleItemView.JobNumber), item.JobNumber ?? string.Empty }
             };
-            Modal.Show<TModal>("Schedule Info", parameters, modalOptions);
-            //modal.Close();
+
+            await ModalService.ShowAsync<ScheduleItemView>(
+                "Schedule Info",
+                parameters);
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error showing modal.");
-            ex.Data.Add("PageMethod", "Dashboard/ShowModal()");
-            OnError(ex);
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error opening schedule info.";
+            ex.Data["PageMethod"] = "Dashboard/OpenScheduleInfoAsync()";
+            await OnError(ex);
         }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_dashboardCancellationTokenSource.IsCancellationRequested)
+        {
+            await _dashboardCancellationTokenSource.CancelAsync();
+        }
+
+        _dashboardCancellationTokenSource.Dispose();
     }
 }

@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SCrm].[AccountsUpsert]')
+GO
+
+
 CREATE PROCEDURE [SCrm].[AccountsUpsert]
 	(	@Name NVARCHAR(250),
 		@Code NVARCHAR(10),
@@ -14,6 +18,7 @@ CREATE PROCEDURE [SCrm].[AccountsUpsert]
 		@CompanyRegistrationNumber NVARCHAR(50),
 		@MainAccountContactGuid UNIQUEIDENTIFIER,
 		@MainAccountAddressGuid UNIQUEIDENTIFIER,
+		@DefaultCreditTermsGuid UNIQUEIDENTIFIER,
 		@Guid UNIQUEIDENTIFIER,
 		@BillingInstruction NVARCHAR(MAX) -- NEW [CBLD-521]
 	)
@@ -24,6 +29,7 @@ BEGIN
 			@MainAccountAddressID	   INT,
 			@MainAccountContactID	   INT,
 			@RelationshipManagerUserID INT,
+			@DefaultCreditTermsID      INT,
 			@IsInsert BIT
 
 	SELECT	@AccountStatusID = ID
@@ -41,6 +47,10 @@ BEGIN
 	SELECT	@MainAccountAddressID = ID
 	FROM	SCrm.AccountAddresses
 	WHERE	(Guid = @MainAccountAddressGuid);
+
+	SELECT  @DefaultCreditTermsID = ID
+	FROM    SFin.CreditTerms
+	WHERE   (Guid = @DefaultCreditTermsGuid)
 
 	IF (@MainAccountAddressID < 0)
 	BEGIN
@@ -62,6 +72,15 @@ BEGIN
 		JOIN		SCrm.Accounts		 AS a ON (a.ID = ac.AccountID)
 		WHERE		(a.Guid = @Guid)
 		ORDER BY	ac.ID;
+	END;
+
+	IF (@DefaultCreditTermsID < 0)
+	BEGIN
+		SELECT		TOP (1) @DefaultCreditTermsID = ct.ID
+		FROM		SFin.CreditTerms AS ct
+		JOIN		SCrm.Accounts		 AS a ON (a.DefaultCreditTermsId = ct.ID)
+		WHERE		(a.Guid = @Guid)
+		ORDER BY	ct.ID;
 	END;
 
 	EXEC SCore.UpsertDataObject @Guid = @Guid,					-- uniqueidentifier
@@ -88,6 +107,7 @@ BEGIN
 			  CompanyRegistrationNumber,
 			  MainAccountAddressId,
 			  MainAccountContactId,
+			  DefaultCreditTermsId,
 			  BillingInstruction) -- NEW [CBLD-521]
 		VALUES
 			 (
@@ -106,6 +126,7 @@ BEGIN
 				 @CompanyRegistrationNumber,	-- CompanyRegistrationNumber - nvarchar(50)
 				 @MainAccountAddressID,
 				 @MainAccountContactID,
+				 @DefaultCreditTermsID,
 				 @BillingInstruction
 			 );
 	END;
@@ -125,6 +146,7 @@ BEGIN
 				CompanyRegistrationNumber = @CompanyRegistrationNumber,
 				MainAccountAddressId = @MainAccountAddressID,
 				MainAccountContactId = @MainAccountContactID,
+				DefaultCreditTermsId = @DefaultCreditTermsID,
 				BillingInstruction = @BillingInstruction -- NEW [CBLD-521]
 		WHERE	(Guid = @Guid);
 	END;

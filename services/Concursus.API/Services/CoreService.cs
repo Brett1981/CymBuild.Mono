@@ -44,6 +44,12 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
 
+    private static readonly Guid JobEntityTypeGuid =
+    Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
+
+    private static readonly Guid QuoteEntityTypeGuid =
+        Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56");
+
     #endregion Private Fields
 
     #region Public Constructors
@@ -476,17 +482,92 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
             {
                 Id = r.Id,
                 Guid = r.Guid.ToString(),
-                Name = r.Name ?? "",
-                DescriptionOfWork = r.DescriptionOfWork ?? "",
+                Name = r.Name ?? string.Empty,
+                DescriptionOfWork = r.DescriptionOfWork ?? string.Empty,
                 Amount = (double)r.Amount,
-                TriggerId = r.TriggerId,
+                TriggerId = r.TriggerId ?? string.Empty,
                 ExpectedDateUtc = r.ExpectedDateUtc.HasValue
                     ? Timestamp.FromDateTime(DateTime.SpecifyKind(r.ExpectedDateUtc.Value, DateTimeKind.Utc))
-                    : null
+                    : null,
+
+                RibaStageGuid = r.RibaStageGuid?.ToString() ?? string.Empty,
+                RibaStageName = r.RibaStageName ?? string.Empty
             });
         }
 
         return resp;
+    }
+
+    private async Task QueueSharePointStructureRepairAsync(
+    DataObject dataObject,
+    DataObjectUpsertRequest? request,
+    CancellationToken cancellationToken)
+    {
+        if (dataObject == null)
+            return;
+
+        var dataObjectGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(dataObject.Guid);
+        var entityTypeGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(dataObject.EntityTypeGuid);
+
+        if (dataObjectGuid == Guid.Empty || entityTypeGuid == Guid.Empty)
+            return;
+
+        var payload = new
+        {
+            DataObjectGuid = dataObjectGuid,
+            EntityTypeGuid = entityTypeGuid,
+            EntityQueryGuid = request?.EntityQueryGuid ?? string.Empty,
+            RequestedOnUtc = DateTime.UtcNow
+        };
+
+        var payloadJson = System.Text.Json.JsonSerializer.Serialize(payload);
+
+        const string sql = @"
+            IF NOT EXISTS
+            (
+                SELECT 1
+                FROM SCore.IntegrationOutbox AS o
+                WHERE o.EventType = N'SharePointStructureRepairRequested'
+                  AND o.RowStatus NOT IN (0,254)
+                  AND o.PublishedOnUtc IS NULL
+                  AND JSON_VALUE(o.PayloadJson, '$.DataObjectGuid') = CONVERT(NVARCHAR(36), @DataObjectGuid)
+            )
+            BEGIN
+                INSERT INTO SCore.IntegrationOutbox
+                (
+                    Guid,
+                    EventType,
+                    PayloadJson,
+                    CreatedOnUtc,
+                    PublishedOnUtc,
+                    PublishAttempts,
+                    LastError,
+                    RowStatus
+                )
+                VALUES
+                (
+                    NEWID(),
+                    N'SharePointStructureRepairRequested',
+                    @PayloadJson,
+                    SYSUTCDATETIME(),
+                    NULL,
+                    0,
+                    N'',
+                    1
+                );
+            END;";
+
+        await using var cn = await OpenSqlAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = new SqlCommand(sql, cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 30
+        };
+
+        cmd.Parameters.Add("@DataObjectGuid", SqlDbType.UniqueIdentifier).Value = dataObjectGuid;
+        cmd.Parameters.Add("@PayloadJson", SqlDbType.NVarChar, -1).Value = payloadJson;
+
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public override async Task<JobInvoicePendingTriggerCountGetResponse> JobInvoicePendingTriggerCountGet(
@@ -775,8 +856,8 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
     public override async Task<DataObjectGetResponse> DataObjectGet(
-        DataObjectGetRequest request,
-        ServerCallContext context)
+    DataObjectGetRequest request,
+    ServerCallContext context)
     {
         if (string.IsNullOrEmpty(Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid).ToString()))
         {
@@ -801,66 +882,23 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     request,
                     entityTypeGuid);
 
-                // CBLD-405 - Here, we get try and decide the folder structure before we create the SharePoint folder.
-                EF.Types.JobType jobType = new();
-                var item = dataObject.DataProperties
-                    .Where(x => x.EntityPropertyGuid.ToString() == "39bdadbd-0e5c-48f0-82f5-07f240f1d3bd")
-                    .FirstOrDefault();
+                var coreDataObject = Converters.ConvertEfDataObjectToCoreDataObject(dataObject);
 
-                OrganisationalUnit organisationalUnit = new();
-
-                if (item != null)
+                if (ShouldQueueSharePointStructureRepair(coreDataObject, entityTypeGuid))
                 {
-                    var anyValue = item.Value;
-                    var jobTypeGuid = anyValue?.Unpack<StringValue>().Value;
-
-                    if (!string.IsNullOrWhiteSpace(jobTypeGuid))
-                    {
-                        jobType = await _serviceBase._entityFramework.GetJobType(
-                            Functions.ParseAndReturnEmptyGuidIfInvalid(jobTypeGuid).ToString());
-                    }
-
-                    if (jobType != null)
-                    {
-                        organisationalUnit = Converters.ConvertEfOrganisationalUnitToCoreOrganisationalUnit(
-                            await _serviceBase._entityFramework.OrganisationalUnitsByGuidGet(
-                                Functions.ParseAndReturnEmptyGuidIfInvalid(jobType.OrganisationalUnitGuid.ToString()).ToString()));
-                    }
-                }
-
-                // Check for SharePointFolderPath - prevents making an api call.
-                if (dataObject.HasDocuments && dataObject.SharePointFolderPath == "")
-                {
-                    var sharePoint = new SharePoint(_config, _sharepointService);
-
-                    try
-                    {
-                        var dataObjectUpdateResponse = await sharePoint.GetSharePointLocation(
-                            Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityTypeGuid).ToString(),
-                            dataObject,
-                            _serviceBase._entityFramework,
-                            _serviceBase,
+                    await QueueSharePointStructureRepairAsync(
+                            coreDataObject,
                             null,
-                            organisationalUnit);
-
-                        if (dataObjectUpdateResponse.DataObject.DataProperties.Count > 0)
-                        {
-                            dataObject = dataObjectUpdateResponse.DataObject;
-                        }
-                    }
-                    finally
-                    {
-                        sharePoint.Dispose();
-                    }
+                            context.CancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 return new DataObjectGetResponse
                 {
-                    DataObject = Converters.ConvertEfDataObjectToCoreDataObject(dataObject)
+                    DataObject = coreDataObject
                 };
             }
 
-            // If ObjectGuids is not null, then we need to page the request to the DataObjectGet method
             int pageSize = 50;
             var newDataObjects = new List<EF.Types.DataObject>();
             var entityTypeGuidForPagedRequest = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityTypeGuid);
@@ -876,45 +914,21 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     request.ForInformationView,
                     request.TransientVirtualProperties?.ToDictionary(x => x.Key, x => x.Value));
 
-                newDataObjects = new List<EF.Types.DataObject>();
-
                 foreach (var dataObjectItem in dataObjects)
                 {
+                    var coreDataObject = Converters.ConvertEfDataObjectToCoreDataObject(dataObjectItem);
 
-                    if (dataObjectItem.HasDocuments)
+                    if (ShouldQueueSharePointStructureRepair(coreDataObject, entityTypeGuidForPagedRequest))
                     {
-                        var sharePoint = new SharePoint(_config, _sharepointService);
-
-                        try
-                        {
-                            var dataObjectUpdateResponse = await sharePoint.GetSharePointLocation(
-                                Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityTypeGuid).ToString(),
-                                dataObjectItem,
-                                _serviceBase._entityFramework,
-                                _serviceBase,
-                                null);
-
-                            if (dataObjectUpdateResponse.DataObject.DataProperties.Count > 0)
-                            {
-                                newDataObjects.Add(dataObjectUpdateResponse.DataObject);
-                            }
-                            else
-                            {
-                                newDataObjects.Add(dataObjectItem);
-                            }
-                        }
-                        finally
-                        {
-                            sharePoint.Dispose();
-                        }
+                        await QueueSharePointStructureRepairAsync(
+                                coreDataObject,
+                                null,
+                                context.CancellationToken)
+                            .ConfigureAwait(false);
                     }
-                    else
-                    {
-                        newDataObjects.Add(dataObjectItem);
-                    }
+
+                    newDataObjects.Add(dataObjectItem);
                 }
-
-                // newDataObjects contains the updated dataObjects paged to the current page size
             }
 
             return new DataObjectGetResponse
@@ -1487,27 +1501,35 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
 
-    public override async Task<SharePointCreateResponse> SharePointCreate(SharePointCreateRequest request, ServerCallContext context)
+    public override async Task<SharePointCreateResponse> SharePointCreate(
+        SharePointCreateRequest request,
+        ServerCallContext context)
     {
         try
         {
-            var sharePoint = new SharePoint(_config, _sharepointService);
-            var dataObject = await sharePoint.GetSharePointLocation(
-                Functions.ParseAndReturnEmptyGuidIfInvalid(request.DataObject.EntityTypeGuid.ToString()).ToString()
-                , Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject)
-                , _serviceBase._entityFramework
-                , _serviceBase
-                , request.DataObjectUpsertRequest);
+            await QueueSharePointStructureRepairAsync(
+                    request.DataObject,
+                    request.DataObjectUpsertRequest,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
 
-            //OE - Added on 25/07/24
-            sharePoint.Dispose();
-
-            return dataObject.DataObject.DataProperties.Count > 0 ? new SharePointCreateResponse() { DataObject = Converters.ConvertEfDataObjectToCoreDataObject(dataObject.DataObject), Success = true } : new SharePointCreateResponse() { DataObject = request.DataObject, Success = false };
+            return new SharePointCreateResponse
+            {
+                DataObject = request.DataObject,
+                Success = true,
+                ErrorReturned = ""
+            };
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine(e);
-            return new SharePointCreateResponse() { ErrorReturned = e.Message };
+            _serviceBase.logger.LogException(ex, "Error in SharePointCreate");
+
+            return new SharePointCreateResponse
+            {
+                DataObject = request.DataObject,
+                Success = false,
+                ErrorReturned = ex.Message
+            };
         }
     }
 
@@ -2165,7 +2187,22 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
     }
 
 
+    private static bool ShouldQueueSharePointStructureRepair(
+    DataObject dataObject,
+    Guid entityTypeGuid)
+    {
+        if (dataObject == null || !dataObject.HasDocuments)
+            return false;
 
+        if (entityTypeGuid == JobEntityTypeGuid)
+            return true;
+
+        if (entityTypeGuid == QuoteEntityTypeGuid)
+            return true;
+
+        return string.IsNullOrWhiteSpace(dataObject.SharePointUrl)
+            || string.IsNullOrWhiteSpace(dataObject.SharePointFolderPath);
+    }
 
     #endregion Public Methods
 

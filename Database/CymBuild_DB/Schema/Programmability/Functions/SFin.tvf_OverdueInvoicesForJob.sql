@@ -1,9 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create function [SFin].[tvf_OverdueInvoicesForJob]')
 GO
-PRINT (N'Create function [SFin].[tvf_OverdueInvoicesForJob]')
-GO
+
+
 CREATE FUNCTION [SFin].[tvf_OverdueInvoicesForJob]
 (
     @ParentGuid UNIQUEIDENTIFIER
@@ -12,7 +13,6 @@ RETURNS TABLE
 AS
 RETURN
 WITH
--- 1) Not Invoiced: request items with no transaction detail yet
 RequestItems AS
 (
     SELECT
@@ -20,80 +20,138 @@ RequestItems AS
         ir.JobId,
         CAST(iri.Net AS decimal(19,2)) AS NetAmount,
         ir.ExpectedDate
-    FROM SFin.InvoiceRequests ir
-    JOIN SFin.InvoiceRequestItems iri ON iri.InvoiceRequestId = ir.ID
-    JOIN SJob.Jobs j ON j.ID = ir.JobId
+    FROM SFin.InvoiceRequests AS ir
+    INNER JOIN SFin.InvoiceRequestItems AS iri
+        ON iri.InvoiceRequestId = ir.ID
+        AND iri.RowStatus NOT IN (0,254)
+    INNER JOIN SJob.Jobs AS j
+        ON j.ID = ir.JobId
+        AND j.RowStatus NOT IN (0,254)
     WHERE
         j.Guid = @ParentGuid
-        AND ir.RowStatus <> 254
-        AND iri.RowStatus <> 254
+        AND ir.RowStatus NOT IN (0,254)
         AND ISNULL(ir.IsZeroValuePlaceholder, 0) = 0
         AND ISNULL(ir.ReconciliationRequired, 0) = 0
 ),
 InvoicedRequestItems AS
 (
-    SELECT DISTINCT td.InvoiceRequestItemId
-    FROM SFin.TransactionDetails td
-    JOIN SFin.Transactions t ON t.ID = td.TransactionID
-    JOIN SJob.Jobs j ON j.ID = t.JobID
+    SELECT DISTINCT
+        td.InvoiceRequestItemId
+    FROM SFin.TransactionDetails AS td
+    INNER JOIN SFin.Transactions AS t
+        ON t.ID = td.TransactionID
+        AND t.RowStatus NOT IN (0,254)
+    INNER JOIN SJob.Jobs AS j
+        ON j.ID = t.JobID
+        AND j.RowStatus NOT IN (0,254)
     WHERE
         j.Guid = @ParentGuid
-        AND t.RowStatus <> 254
-        AND td.RowStatus <> 254
+        AND td.RowStatus NOT IN (0,254)
         AND td.InvoiceRequestItemId <> -1
 ),
-
--- 2) Transaction totals per transaction (gross), signed by TransactionType.IsNegated
+JobFee AS
+(
+    SELECT
+        CAST(SUM(ISNULL(jf.Remaining, 0)) AS decimal(19,2)) AS Remaining
+    FROM SJob.Job_FeeDrawdown AS jf
+    WHERE
+        jf.Guid = @ParentGuid
+        AND jf.StageId = -2
+),
 TxnTotals AS
 (
-
-	--DECLARE @ParentGuid UNIQUEIDENTIFIER = 'dfe51119-a16d-4bb8-95cf-0c0fa6358447';	
-
     SELECT
         t.ID AS TransactionID,
         t.JobID,
         t.TransactionTypeID,
         tt.Name AS TransactionTypeName,
         tt.IsNegated,
+        tt.IsBank,
         t.Number,
         CAST(t.[Date] AS date) AS InvoiceDate,
-        t.ExpectedDate,
-        -- DueDate rule: ExpectedDate else InvoiceDate + CreditTerms.DueDays + 30 days (USE DATEADD/
-        CASE WHEN  CAST(SUM(ISNULL(td.Gross, 0)) AS decimal(19,2)) <> 0 THEN
-		CAST(
-            COALESCE(
-                CAST(t.ExpectedDate AS date),
-                DATEADD(DAY, ISNULL(ct.DueDays, 0),DATEADD(DAY, 30, ISNULL(CAST(t.[Date] AS DATETIME), 0)))
-            )
-        AS date)
-		ELSE Null
-		END
-		AS DueDate,
-        CAST(SUM(ISNULL(td.Gross, 0)) AS decimal(19,2)) AS TransactionGross
-    FROM SFin.Transactions t
-    JOIN SFin.TransactionTypes tt ON tt.ID = t.TransactionTypeID
-    JOIN SJob.Jobs j ON j.ID = t.JobID
-    LEFT JOIN SFin.TransactionDetails td
+        CAST(t.ExpectedDate AS date) AS ExpectedDate,
+
+        CASE
+            WHEN CAST(SUM(ISNULL(td.Gross, 0)) AS decimal(19,2)) <> 0
+            THEN
+                COALESCE(
+                    CAST(t.ExpectedDate AS date),
+                    CASE
+                        WHEN t.[Date] IS NOT NULL
+                        THEN DATEADD(DAY, ISNULL(ct.DueDays, 0) + 30, CAST(t.[Date] AS date))
+                    END
+                )
+            ELSE NULL
+        END AS DueDate,
+
+        CAST(
+            SUM(
+                CASE
+                    WHEN ISNULL(tt.IsNegated, 0) = 1
+                        THEN -ISNULL(td.Gross, 0)
+                    ELSE ISNULL(td.Gross, 0)
+                END
+            ) AS decimal(19,2)
+        ) AS TransactionGross,
+
+        CAST(
+            SUM(
+                CASE
+                    WHEN ISNULL(tt.IsNegated, 0) = 1
+                        THEN -ISNULL(td.Net, 0)
+                    ELSE ISNULL(td.Net, 0)
+                END
+            ) AS decimal(19,2)
+        ) AS TransactionNet,
+
+        CAST(
+            SUM(
+                CASE
+                    WHEN ISNULL(tt.IsNegated, 0) = 1
+                        THEN -ISNULL(td.Vat, 0)
+                    ELSE ISNULL(td.Vat, 0)
+                END
+            ) AS decimal(19,2)
+        ) AS TransactionTax
+    FROM SFin.Transactions AS t
+    INNER JOIN SFin.TransactionTypes AS tt
+        ON tt.ID = t.TransactionTypeID
+        AND tt.RowStatus NOT IN (0,254)
+        AND tt.IsActive = 1
+    INNER JOIN SJob.Jobs AS j
+        ON j.ID = t.JobID
+        AND j.RowStatus NOT IN (0,254)
+    LEFT JOIN SFin.TransactionDetails AS td
         ON td.TransactionID = t.ID
-        AND td.RowStatus <> 254
-    LEFT JOIN SFin.CreditTerms ct
+        AND td.RowStatus NOT IN (0,254)
+    LEFT JOIN SFin.CreditTerms AS ct
         ON ct.ID = t.CreditTermsId
-        AND ct.RowStatus <> 254
+        AND ct.RowStatus NOT IN (0,254)
     WHERE
         j.Guid = @ParentGuid
-        AND t.RowStatus <> 254
+        AND t.RowStatus NOT IN (0,254)
     GROUP BY
-        t.ID, t.JobID, t.TransactionTypeID, tt.Name, tt.IsNegated,
-        t.Number, t.[Date], t.ExpectedDate, ct.DueDays
+        t.ID,
+        t.JobID,
+        t.TransactionTypeID,
+        tt.Name,
+        tt.IsNegated,
+        tt.IsBank,
+        t.Number,
+        t.[Date],
+        t.ExpectedDate,
+        ct.DueDays
 ),
 AllocToTarget AS
 (
     SELECT
         ta.TargetTransactionID AS TransactionID,
         CAST(SUM(ISNULL(ta.AllocatedAmount, 0)) AS decimal(19,2)) AS AllocatedToTarget
-    FROM SFin.TransactionAllocations ta
-    WHERE ta.RowStatus <> 254
-    GROUP BY ta.TargetTransactionID
+    FROM SFin.TransactionAllocations AS ta
+    WHERE
+        ta.RowStatus NOT IN (0,254)
+    GROUP BY
+        ta.TargetTransactionID
 ),
 TxnBalances AS
 (
@@ -105,48 +163,56 @@ TxnBalances AS
         x.ExpectedDate,
         x.DueDate,
         x.TransactionGross,
+        x.TransactionNet,
+        x.TransactionTax,
 
-        SignedTotal =
-            CAST(x.TransactionGross * CASE WHEN x.IsNegated = 1 THEN -1 ELSE 1 END AS decimal(19,2)),
+        CAST(x.TransactionGross AS decimal(19,2)) AS SignedTotal,
 
-        AllocatedToTarget =
-            CAST(ISNULL(a.AllocatedToTarget, 0) AS decimal(19,2)),
+        CAST(ISNULL(a.AllocatedToTarget, 0) AS decimal(19,2)) AS AllocatedToTarget,
 
-        -- Allocation moves balance toward zero:
-        OutstandingSigned =
-            CAST(
-                (x.TransactionGross * CASE WHEN x.IsNegated = 1 THEN -1 ELSE 1 END)
-                - (ISNULL(a.AllocatedToTarget, 0)
-                   * CASE
-                        WHEN (x.TransactionGross * CASE WHEN x.IsNegated = 1 THEN -1 ELSE 1 END) >= 0 THEN 1
-                        ELSE -1
-                     END)
-            AS decimal(19,2)),
-
-        DaysOverdue =
+        CAST(
             CASE
-                WHEN x.DueDate IS NULL THEN NULL
-                ELSE DATEDIFF(DAY, x.DueDate, CAST(GETDATE() AS date))
+                WHEN x.TransactionGross > 0
+                    THEN x.TransactionGross - ISNULL(a.AllocatedToTarget, 0)
+                ELSE x.TransactionGross
             END
-    FROM TxnTotals x
-    LEFT JOIN AllocToTarget a ON a.TransactionID = x.TransactionID
+        AS decimal(19,2)) AS OutstandingSigned,
+
+        CAST(
+            CASE
+                WHEN x.TransactionGross > 0 AND x.TransactionGross <> 0
+                    THEN x.TransactionNet
+                         - (
+                            ISNULL(a.AllocatedToTarget, 0)
+                            * (x.TransactionNet / NULLIF(x.TransactionGross, 0))
+                           )
+                ELSE x.TransactionNet
+            END
+        AS decimal(19,2)) AS OutstandingWithoutVAT,
+
+        CASE
+            WHEN x.DueDate IS NULL THEN NULL
+            ELSE DATEDIFF(DAY, x.DueDate, CAST(GETDATE() AS date))
+        END AS DaysOverdue
+    FROM TxnTotals AS x
+    LEFT JOIN AllocToTarget AS a
+        ON a.TransactionID = x.TransactionID
 ),
 OverdueBuckets AS
 (
     SELECT
-        BucketKey =
-            CASE
-                WHEN b.DaysOverdue BETWEEN 1  AND 30 THEN N'Overdue_1_30'
-                WHEN b.DaysOverdue BETWEEN 31 AND 60 THEN N'Overdue_31_60'
-                WHEN b.DaysOverdue BETWEEN 61 AND 90 THEN N'Overdue_61_90'
-                WHEN b.DaysOverdue > 90              THEN N'Overdue_90Plus'
-                ELSE NULL
-            END,
-        Amount = CAST(SUM(b.OutstandingSigned) AS decimal(19,2)),
-        EarliestDueDate = MIN(b.DueDate),
-        MaxDaysOverdue  = MAX(b.DaysOverdue),
-        InvoiceCount    = COUNT(1)
-    FROM TxnBalances b
+        CASE
+            WHEN b.DaysOverdue BETWEEN 1  AND 30 THEN N'Overdue_1_30'
+            WHEN b.DaysOverdue BETWEEN 31 AND 60 THEN N'Overdue_31_60'
+            WHEN b.DaysOverdue BETWEEN 61 AND 90 THEN N'Overdue_61_90'
+            WHEN b.DaysOverdue > 90              THEN N'Overdue_90Plus'
+            ELSE NULL
+        END AS BucketKey,
+        CAST(SUM(b.OutstandingSigned) AS decimal(19,2)) AS Amount,
+        MIN(b.DueDate) AS EarliestDueDate,
+        MAX(b.DaysOverdue) AS MaxDaysOverdue,
+        COUNT(1) AS InvoiceCount
+    FROM TxnBalances AS b
     WHERE
         b.OutstandingSigned > 0
         AND b.DaysOverdue IS NOT NULL
@@ -161,30 +227,84 @@ OverdueBuckets AS
         END
 )
 SELECT
-    NotInvoicedAmount =
-        (SELECT SUM(ri.NetAmount)
-         FROM RequestItems ri
-         LEFT JOIN InvoicedRequestItems ii ON ii.InvoiceRequestItemId = ri.InvoiceRequestItemId
-         WHERE ii.InvoiceRequestItemId IS NULL),
+    CAST(ISNULL(
+        (
+            SELECT SUM(ri.NetAmount)
+            FROM RequestItems AS ri
+            LEFT JOIN InvoicedRequestItems AS ii
+                ON ii.InvoiceRequestItemId = ri.InvoiceRequestItemId
+            WHERE ii.InvoiceRequestItemId IS NULL
+        ), 0
+    ) AS decimal(19,2)) AS NotInvoicedAmount,
 
-    OutstandingAmount =
-        (SELECT SUM(CASE WHEN b.OutstandingSigned > 0 THEN b.OutstandingSigned ELSE 0 END)
-         FROM TxnBalances b),
+    CAST(ISNULL(
+        (
+            SELECT SUM(
+                CASE
+                    WHEN b.OutstandingSigned > 0 THEN b.OutstandingSigned
+                    ELSE 0
+                END
+            )
+            FROM TxnBalances AS b
+        ), 0
+    ) AS decimal(19,2)) AS OutstandingAmount,
 
-    Overdue_1_30   = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_1_30'   THEN Amount ELSE 0 END) FROM OverdueBuckets),
-    Overdue_31_60  = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_31_60'  THEN Amount ELSE 0 END) FROM OverdueBuckets),
-    Overdue_61_90  = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_61_90'  THEN Amount ELSE 0 END) FROM OverdueBuckets),
-    Overdue_90Plus = (SELECT SUM(CASE WHEN BucketKey = N'Overdue_90Plus' THEN Amount ELSE 0 END) FROM OverdueBuckets),
-	--DueDate = (SELECT MIN(EarliestDueDate) From OverdueBuckets),
-    -- JSON detail for tooltips / UI
-    OverdueBucketsJson =
-        (SELECT
-            BucketKey      AS [bucket],
-            Amount         AS [amount],
-            EarliestDueDate AS [earliestDueDate],
-            MaxDaysOverdue AS [maxDaysOverdue],
-            InvoiceCount   AS [invoiceCount]
-         FROM OverdueBuckets
-         WHERE BucketKey IS NOT NULL
-         FOR JSON PATH);
+    CAST(ISNULL(
+        (
+            SELECT SUM(
+                CASE
+                    WHEN b.OutstandingWithoutVAT > 0 THEN b.OutstandingWithoutVAT
+                    ELSE 0
+                END
+            )
+            FROM TxnBalances AS b
+        ), 0
+    ) AS decimal(19,2)) AS OutstandingAmountWithoutVAT,
+
+    CAST(ISNULL(
+        (
+            SELECT jf.Remaining
+            FROM JobFee AS jf
+        ), 0
+    ) AS decimal(19,2)) AS RemainingAmount,
+
+    CAST(ISNULL(
+        (
+            SELECT SUM(CASE WHEN ob.BucketKey = N'Overdue_1_30' THEN ob.Amount ELSE 0 END)
+            FROM OverdueBuckets AS ob
+        ), 0
+    ) AS decimal(19,2)) AS Overdue_1_30,
+
+    CAST(ISNULL(
+        (
+            SELECT SUM(CASE WHEN ob.BucketKey = N'Overdue_31_60' THEN ob.Amount ELSE 0 END)
+            FROM OverdueBuckets AS ob
+        ), 0
+    ) AS decimal(19,2)) AS Overdue_31_60,
+
+    CAST(ISNULL(
+        (
+            SELECT SUM(CASE WHEN ob.BucketKey = N'Overdue_61_90' THEN ob.Amount ELSE 0 END)
+            FROM OverdueBuckets AS ob
+        ), 0
+    ) AS decimal(19,2)) AS Overdue_61_90,
+
+    CAST(ISNULL(
+        (
+            SELECT SUM(CASE WHEN ob.BucketKey = N'Overdue_90Plus' THEN ob.Amount ELSE 0 END)
+            FROM OverdueBuckets AS ob
+        ), 0
+    ) AS decimal(19,2)) AS Overdue_90Plus,
+
+    (
+        SELECT
+            ob.BucketKey AS [bucket],
+            ob.Amount AS [amount],
+            ob.EarliestDueDate AS [earliestDueDate],
+            ob.MaxDaysOverdue AS [maxDaysOverdue],
+            ob.InvoiceCount AS [invoiceCount]
+        FROM OverdueBuckets AS ob
+        WHERE ob.BucketKey IS NOT NULL
+        FOR JSON PATH
+    ) AS OverdueBucketsJson;
 GO

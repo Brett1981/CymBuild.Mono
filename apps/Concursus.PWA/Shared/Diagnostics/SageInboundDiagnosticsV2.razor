@@ -1,55 +1,109 @@
 ﻿@page "/SageInboundDiagnosticsV2"
 @using System.Globalization
+@using System.Web
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.Common.Shared.Models.Finance
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Modals
+@using Concursus.PWA.Shared
+@using Newtonsoft.Json
+@using Concursus.PWA.Pages
 @using static Concursus.API.Client.FormHelper
+
 @inject Core.CoreClient CoreClient
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageClient
 @inject UserService UserService
+@inject NavigationManager NavManager
+@inject ModalService modalService
+@inject Concursus.Components.Shared.Modals.CymBuildModalService CymBuildModalService
 
-<div class="cb-v2-page">
+<div class="cb-v2-page sage-inbound-v2-page">
     <div class="cb-v2-card">
         <div class="cb-v2-card-body">
-            <div class="cb-v2-header-row mb-4">
-                <div>
-                    <div class="cb-v2-subtitle">Finance Admin</div>
-                    <h2 class="cb-v2-title">Sage Inbound Diagnostics</h2>
-                    <p class="cb-v2-description mb-0">
-                        Monitor inbound payment/allocation sync status, inspect latest attempt outcome, and safely requeue records without SQL access.
-                    </p>
-                </div>
+            @if (!IsEmbedded)
+            {
+                <div class="cb-v2-header-row mb-4">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="cb-v2-icon-wrap">
+                            <i class="fas fa-money-check-alt"></i>
+                        </div>
 
-                <div class="cb-v2-actions">
-                    <button class="cb-v2-btn-secondary"
-                            @onclick="ResetFiltersAsync"
-                            disabled="@_isBusy">
-                        Reset filters
-                    </button>
+                        <div>
+                            <div class="cb-v2-subtitle">Finance Admin</div>
+                            <h2 class="cb-v2-title">Sage Inbound Diagnostics</h2>
+                            <p class="cb-v2-description mb-0">
+                                Monitor inbound payment allocation sync, receipt creation, matching status, and linked CymBuild transactions.
+                            </p>
+                        </div>
+                    </div>
 
-                    <button class="cb-v2-btn-secondary"
-                            @onclick="LoadAsync"
-                            disabled="@_isBusy">
-                        @if (_isBusy)
-                        {
-                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                        }
-                        Refresh
-                    </button>
+                    <div class="cb-v2-actions">
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="ResetFiltersAsync" disabled="@_isBusy">
+                            Reset filters
+                        </button>
+
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="LoadAsync" disabled="@_isBusy">
+                            @if (_isBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Refresh
+                        </button>
+                    </div>
                 </div>
+            }
+
+            <div class="cb-v2-summary-grid sage-inbound-summary-grid mb-4">
+                <button type="button"
+                        class="cb-v2-summary-card @(GetSummaryCardClass(null))"
+                        @onclick='() => ApplyStatusSummaryFilterAsync(null)'>
+                    <div class="cb-v2-summary-title">Total</div>
+                    <div class="cb-v2-summary-value">@_rows.Count</div>
+                    <div class="cb-v2-summary-subtitle">All records</div>
+                </button>
+
+                <button type="button"
+                        class="cb-v2-summary-card sage-inbound-summary-green @(GetSummaryCardClass("Succeeded"))"
+                        @onclick='() => ApplyStatusSummaryFilterAsync("Succeeded")'>
+                    <div class="cb-v2-summary-title">Succeeded</div>
+                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.StatusCode, "Succeeded", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-subtitle">Completed successfully</div>
+                </button>
+
+                <button type="button"
+                        class="cb-v2-summary-card sage-inbound-summary-amber @(GetSummaryCardClass("RetryPending"))"
+                        @onclick='() => ApplyStatusSummaryFilterAsync("RetryPending")'>
+                    <div class="cb-v2-summary-title">Retry Pending</div>
+                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.StatusCode, "RetryPending", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-subtitle">Can be retried</div>
+                </button>
+
+                <button type="button"
+                        class="cb-v2-summary-card sage-inbound-summary-blue @(GetPaymentSummaryCardClass("Paid"))"
+                        @onclick='() => ApplyPaymentSummaryFilterAsync("Paid")'>
+                    <div class="cb-v2-summary-title">Paid</div>
+                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.LastPaymentStateCode, "Paid", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-subtitle">Fully settled</div>
+                </button>
+
+                <button type="button"
+                        class="cb-v2-summary-card sage-inbound-summary-purple @(GetPaymentSummaryCardClass("Receipts"))"
+                        @onclick='() => ApplyPaymentSummaryFilterAsync("Receipts")'>
+                    <div class="cb-v2-summary-title">Receipts Created</div>
+                    <div class="cb-v2-summary-value">@_rows.Count(x => x.HasMaterialisedReceipt)</div>
+                    <div class="cb-v2-summary-subtitle">CymBuild receipts</div>
+                </button>
             </div>
 
             <div class="cb-v2-toolbar mb-4">
                 <div class="cb-v2-toolbar-left">
                     <div>
                         <label class="form-label">Status</label>
-                        <select class="cb-v2-select"
-                                @bind="_filters.StatusCode"
-                                disabled="@_isBusy">
+                        <select class="cb-v2-select" @bind="_filters.StatusCode" disabled="@_isBusy">
                             <option value="">All</option>
                             <option value="Pending">Pending</option>
                             <option value="RetryPending">RetryPending</option>
-                            <option value="PartiallyPaid">PartiallyPaid</option>
                             <option value="Failed">Failed</option>
                             <option value="Succeeded">Succeeded</option>
                         </select>
@@ -57,27 +111,22 @@
 
                     <div>
                         <label class="form-label">Account reference</label>
-                        <input class="cb-v2-input"
-                               @bind="_filters.SageAccountReference"
-                               @bind:event="oninput"
-                               disabled="@_isBusy" />
+                        <input class="cb-v2-input" @bind="_filters.SageAccountReference" @bind:event="oninput" disabled="@_isBusy" />
                     </div>
 
                     <div>
                         <label class="form-label">Document no</label>
-                        <input class="cb-v2-input"
-                               @bind="_filters.SageDocumentNo"
-                               @bind:event="oninput"
-                               disabled="@_isBusy" />
+                        <input class="cb-v2-input" @bind="_filters.SageDocumentNo" @bind:event="oninput" disabled="@_isBusy" />
+                    </div>
+
+                    <div>
+                        <label class="form-label">Transaction no</label>
+                        <input class="cb-v2-input" @bind="_filters.TransactionNumber" @bind:event="oninput" placeholder="FIRE1234" disabled="@_isBusy" />
                     </div>
 
                     <div class="d-flex align-items-end">
                         <div class="form-check mb-2">
-                            <input id="retryableOnly"
-                                   class="form-check-input"
-                                   type="checkbox"
-                                   @bind="_retryableOnlyChecked"
-                                   disabled="@_isBusy" />
+                            <input id="retryableOnly" class="form-check-input" type="checkbox" @bind="_retryableOnlyChecked" disabled="@_isBusy" />
                             <label class="form-check-label" for="retryableOnly">Retryable failures only</label>
                         </div>
                     </div>
@@ -100,14 +149,11 @@
                     <thead>
                         <tr>
                             <th>Invoice / Transaction</th>
-                            <th>Account / Doc</th>
                             <th>Status</th>
                             <th>Amounts</th>
-                            <th>Payment State</th>
+                            <th>Payment</th>
+                            <th>Receipt / Allocation</th>
                             <th>Polling</th>
-                            <th>Last success</th>
-                            <th>Last failure</th>
-                            <th>Retryable</th>
                             <th>Error</th>
                             <th class="text-end">Actions</th>
                         </tr>
@@ -116,10 +162,8 @@
                         @if (_rows.Count == 0 && !_isBusy)
                         {
                             <tr>
-                                <td colspan="11">
-                                    <div class="cb-v2-empty-state">
-                                        No inbound sync records match the current filters.
-                                    </div>
+                                <td colspan="8">
+                                    <div class="cb-v2-empty-state">No inbound sync records match the current filters.</div>
                                 </td>
                             </tr>
                         }
@@ -128,37 +172,32 @@
                             @foreach (var row in _rows)
                             {
                                 <tr>
-                                    <td>
-                                        <div class="cb-v2-strong">@DisplayText(row.InvoiceReference)</div>
-                                        <div class="cb-v2-muted small">
-                                            @DisplayText(row.TransactionReference) · @DisplayText(row.JobReference)
-                                        </div>
-                                    </td>
+                                    <td class="sage-inbound-col-transaction">
+                                        <button type="button" class="cb-v2-btn-link cb-v2-strong" @onclick="() => OpenTransactionAsync(row)">
+                                            @DisplayText(row.DisplayTransactionNumber)
+                                        </button>
 
-                                    <td>
-                                        <div class="cb-v2-strong">@DisplayText(row.SageAccountReference)</div>
-                                        <div class="cb-v2-muted small">@DisplayText(row.SageDocumentNo)</div>
+                                        <div class="cb-v2-muted small">@DisplayText(row.InvoiceReference) · @DisplayText(row.TransactionReference) · @DisplayText(row.JobReference)</div>
+                                        <div class="cb-v2-muted small">Matched: @DisplayText(row.DisplayMatchedTransactionNumber)</div>
+                                        <div class="cb-v2-muted small">Account: @DisplayText(row.SageAccountReference)</div>
+                                        <div class="cb-v2-muted small">Doc: @DisplayText(row.SageDocumentNo)</div>
+
                                         @if (!string.IsNullOrWhiteSpace(row.LastSageTransactionReference))
                                         {
-                                            <div class="cb-v2-muted small">
-                                                Ref: @DisplayText(row.LastSageTransactionReference)
-                                            </div>
+                                            <div class="cb-v2-muted small">Sage Ref: @DisplayText(row.LastSageTransactionReference)</div>
                                         }
                                     </td>
 
                                     <td>
                                         <span class="cb-v2-badge @GetStatusBadgeClass(row)">@DisplayText(row.StatusCode)</span>
-                                        @if (row.IsInProgress)
-                                        {
-                                            <div class="cb-v2-muted small mt-1">
-                                                Claimed @FormatUtc(row.InProgressClaimedOnUtc)
-                                            </div>
-                                        }
+
                                         @if (row.IsTerminalState)
                                         {
-                                            <div class="cb-v2-muted small mt-1">
-                                                Terminal
-                                            </div>
+                                            <div class="cb-v2-muted small mt-1">Terminal</div>
+                                        }
+                                        else if (row.IsInProgress)
+                                        {
+                                            <div class="cb-v2-muted small mt-1">In progress</div>
                                         }
                                     </td>
 
@@ -169,66 +208,81 @@
                                     </td>
 
                                     <td>
-                                        <div>
-                                            <span class="cb-v2-badge @GetPaymentStateBadgeClass(row.LastPaymentStateCode)">
-                                                @DisplayText(row.LastPaymentStateCode)
-                                            </span>
-                                        </div>
-                                        <div class="cb-v2-muted small mt-1">
-                                            Paid: @FormatYesNo(row.LastIsPaid)
-                                        </div>
-                                        <div class="cb-v2-muted small">
-                                            Fully Paid: @FormatYesNo(row.LastIsFullyPaid)
-                                        </div>
+                                        <span class="cb-v2-badge @GetPaymentStateBadgeClass(row.LastPaymentStateCode)">
+                                            @DisplayText(row.LastPaymentStateCode)
+                                        </span>
+                                        <div class="cb-v2-muted small mt-1">Paid: @FormatYesNo(row.LastIsPaid)</div>
+                                        <div class="cb-v2-muted small">Fully Paid: @FormatYesNo(row.LastIsFullyPaid)</div>
+                                    </td>
+
+                                    <td class="sage-inbound-col-links">
+                                        @if (row.HasMaterialisedReceipt)
+                                        {
+                                            <button type="button" class="cb-v2-btn-link" @onclick="() => OpenReceiptAsync(row)">
+                                                Receipt: @DisplayText(row.DisplayReceiptTransactionNumber)
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <div class="cb-v2-muted small">Receipt: -</div>
+                                        }
+
+                                        @if (row.HasMaterialisedAllocation)
+                                        {
+                                            <div class="mt-1">
+                                                <button type="button" class="cb-v2-btn-link" @onclick="() => OpenAllocationAsync(row)">
+                                                    Allocation: #@row.MaterialisedAllocationId
+                                                </button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="cb-v2-muted small mt-1">Allocation: -</div>
+                                        }
                                     </td>
 
                                     <td>
                                         <div><span class="cb-v2-muted">Next:</span> @FormatUtc(row.NextPollDueOnUtc)</div>
-                                        <div class="cb-v2-muted small">
-                                            Attempts: @row.PollAttemptCount
-                                        </div>
+                                        <div class="cb-v2-muted small">Attempts: @row.PollAttemptCount</div>
+                                        <div class="cb-v2-muted small">Success: @FormatUtc(row.LastSucceededOnUtc)</div>
                                     </td>
 
-                                    <td>@FormatUtc(row.LastSucceededOnUtc)</td>
-
-                                    <td>
-                                        <div>@FormatUtc(row.LastFailedOnUtc)</div>
-                                        <div class="cb-v2-muted small">
-                                            Attempt: @FormatUtc(row.LastAttemptedOnUtc)
-                                        </div>
-                                    </td>
-
-                                    <td>@DisplayText(row.RetryableDisplay)</td>
-
-                                    <td style="max-width: 360px;">
-                                        <div class="cb-v2-ellipsis" title="@row.EffectiveErrorMessage">
+                                    <td class="sage-inbound-col-error">
+                                        <div class="cb-v2-ellipsis sage-inbound-error-text" title="@row.EffectiveErrorMessage">
                                             @DisplayText(row.EffectiveErrorMessage)
                                         </div>
-                                        @if (!string.IsNullOrWhiteSpace(row.LastAttemptResponseStatus))
-                                        {
-                                            <div class="cb-v2-muted small">@row.LastAttemptResponseStatus</div>
-                                        }
                                     </td>
 
                                     <td class="text-end">
-                                        <div class="cb-v2-actions justify-content-end">
-                                            <button class="cb-v2-btn-secondary"
-                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || !row.CanRequeue || _isBusy)"
-                                                    @onclick="() => RequeueAsync(row, false)">
-                                                Requeue
+                                        <div class="d-flex flex-column gap-2 align-items-end">
+                                            <button type="button" class="cb-v2-btn-secondary" @onclick="() => OpenTransactionAsync(row)" disabled="@IsRowBusy(row)">
+                                                @(row.TransactionIsBatched == true ? "Edit Transaction" : "View Transaction")
                                             </button>
 
-                                            <button class="cb-v2-btn-secondary"
-                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || !row.CanForceRequeue || _isBusy)"
-                                                    @onclick="() => RequeueAsync(row, true)">
+                                            @if (row.HasMaterialisedReceipt)
+                                            {
+                                                <button type="button" class="cb-v2-btn-secondary" @onclick="() => OpenReceiptAsync(row)" disabled="@IsRowBusy(row)">
+                                                    View Receipt
+                                                </button>
+                                            }
+
+                                            <button type="button" class="cb-v2-btn-secondary" @onclick="() => RunSyncNowAsync(row)" disabled="@IsRowBusy(row)">
+                                                Run Sync Now
+                                            </button>
+
+                                            <button type="button" class="cb-v2-btn-secondary" @onclick="() => RequeueAsync(row, true)" disabled="@(!row.CanForceRequeue || IsRowBusy(row))">
                                                 Force Requeue
                                             </button>
 
-                                            <button class="cb-v2-btn-secondary"
-                                                    disabled="@(_rowActionGuid == row.CymBuildDocumentGuid || _isBusy)"
-                                                    @onclick="() => RunSyncNowAsync(row)">
-                                                Run Sync Now
-                                            </button>
+                                            @if (row.LastAllocatedValue > 0 && !row.HasMaterialisedReceipt)
+                                            {
+                                                <button type="button"
+                                                        class="cb-v2-btn-secondary"
+                                                        @onclick="() => AutoCorrectRowAsync(row)"
+                                                        disabled="@IsRowBusy(row)">
+                                                    Fix Receipt
+                                                </button>
+                                            }
                                         </div>
                                     </td>
                                 </tr>
@@ -241,19 +295,120 @@
     </div>
 </div>
 
-@code {
-    private readonly List<SageInboundDiagnosticsRowModel> _rows = new();
+<CymBuildWindowedModal @ref="_modalHost" SizeCssClass="cb-v2-modal-lg" />
 
-    private readonly SageInboundDiagnosticsGetRequestModel _filters = new()
-    {
-        StatusCode = string.Empty,
-        SageAccountReference = string.Empty,
-        SageDocumentNo = string.Empty,
-        OnlyRetryableFailures = null,
-        InvoiceRequestId = null,
-        TransactionId = null,
-        JobId = null
-    };
+<style>
+    .sage-inbound-v2-page {
+        padding: 0;
+    }
+
+        .sage-inbound-v2-page .cb-v2-card {
+            box-shadow: none;
+        }
+
+    .sage-inbound-summary-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .sage-inbound-v2-page .cb-v2-summary-card {
+        min-height: 116px;
+    }
+
+    .sage-inbound-summary-green {
+        background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+        border-color: #bbf7d0;
+    }
+
+    .sage-inbound-summary-amber {
+        background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
+        border-color: #fde68a;
+    }
+
+    .sage-inbound-summary-blue {
+        background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+        border-color: #bfdbfe;
+    }
+
+    .sage-inbound-summary-purple {
+        background: linear-gradient(180deg, #ffffff 0%, #f5f3ff 100%);
+        border-color: #ddd6fe;
+    }
+
+    .sage-inbound-v2-page .sage-inbound-col-transaction {
+        min-width: 260px;
+    }
+
+    .sage-inbound-v2-page .sage-inbound-col-links {
+        min-width: 180px;
+    }
+
+    .sage-inbound-v2-page .sage-inbound-col-error {
+        min-width: 220px;
+        max-width: 220px;
+    }
+
+    .sage-inbound-v2-page .sage-inbound-error-text {
+        max-width: 220px;
+    }
+
+    .sage-inbound-transaction-window {
+        z-index: 1050;
+    }
+
+    .sage-inbound-transaction-frame {
+        width: 100%;
+        height: calc(92vh - 56px);
+        border: 0;
+        display: block;
+        background: #fff;
+    }
+
+    .sage-inbound-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.42);
+        z-index: 1050;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+
+    .sage-inbound-modal {
+        width: min(1200px, 96vw);
+        max-height: 94vh;
+        background: #fff;
+        border-radius: 18px;
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+        overflow: hidden;
+    }
+
+    .sage-inbound-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 20px;
+        border-bottom: 1px solid #e5edf7;
+    }
+
+    .sage-inbound-modal-body {
+        padding: 20px;
+        max-height: calc(94vh - 72px);
+        overflow: auto;
+    }
+
+
+</style>
+
+@code {
+    private static readonly Guid TransactionEntityTypeGuid = new("3679db86-9a2f-45bd-9e37-8e40967166d1");
+    private static readonly Guid TransactionAllocationEntityTypeGuid = new("be4741d2-121a-46e7-8c60-9ba5f598a88e");
+
+    private CymBuildWindowedModal? _modalHost;
+
+    private readonly List<SageInboundDiagnosticsRowModel> _rows = new();
+    private readonly SageInboundDiagnosticsGetRequestModel _filters = new();
 
     private FormHelper? _formHelper;
     private bool _retryableOnlyChecked;
@@ -261,6 +416,10 @@
     private bool _isError;
     private string _message = string.Empty;
     private Guid? _rowActionGuid;
+    private string? _activeSummaryStatus;
+    private string? _activePaymentSummary;
+
+    [Parameter] public bool IsEmbedded { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -270,11 +429,7 @@
 
     private void EnsureFormHelper()
     {
-        _formHelper ??= new FormHelper(
-            CoreClient,
-            SageClient,
-            Guid.Empty.ToString(),
-            UserService);
+        _formHelper ??= new FormHelper(CoreClient, SageClient, Guid.Empty.ToString(), UserService);
     }
 
     private async Task LoadAsync()
@@ -290,6 +445,7 @@
             _filters.StatusCode ??= string.Empty;
             _filters.SageAccountReference ??= string.Empty;
             _filters.SageDocumentNo ??= string.Empty;
+            _filters.TransactionNumber ??= string.Empty;
             _filters.OnlyRetryableFailures = _retryableOnlyChecked ? true : null;
 
             var rows = await _formHelper!.SageInboundDiagnosticsGetAsync(_filters);
@@ -298,7 +454,7 @@
 
             if (rows is not null && rows.Count > 0)
             {
-                _rows.AddRange(rows);
+                _rows.AddRange(ApplyClientPaymentFilter(rows));
             }
         }
         catch (Exception ex)
@@ -314,24 +470,56 @@
         }
     }
 
+    private IEnumerable<SageInboundDiagnosticsRowModel> ApplyClientPaymentFilter(IEnumerable<SageInboundDiagnosticsRowModel> rows)
+    {
+        return _activePaymentSummary switch
+        {
+            "Paid" => rows.Where(x => string.Equals(x.LastPaymentStateCode, "Paid", StringComparison.OrdinalIgnoreCase)),
+            "Open" => rows.Where(x => !x.IsTerminalState),
+            "Receipts" => rows.Where(x => x.HasMaterialisedReceipt),
+            _ => rows
+        };
+    }
+
+    private async Task ApplyStatusSummaryFilterAsync(string? statusCode)
+    {
+        _activeSummaryStatus = statusCode;
+        _activePaymentSummary = null;
+        _filters.StatusCode = statusCode ?? string.Empty;
+
+        await LoadAsync();
+    }
+
+    private async Task ApplyPaymentSummaryFilterAsync(string paymentSummary)
+    {
+        _activePaymentSummary = paymentSummary;
+        _activeSummaryStatus = null;
+        _filters.StatusCode = string.Empty;
+
+        await LoadAsync();
+    }
+
     private async Task ResetFiltersAsync()
     {
         _filters.StatusCode = string.Empty;
         _filters.SageAccountReference = string.Empty;
         _filters.SageDocumentNo = string.Empty;
+        _filters.TransactionNumber = string.Empty;
         _filters.OnlyRetryableFailures = null;
         _filters.InvoiceRequestId = null;
         _filters.TransactionId = null;
         _filters.JobId = null;
 
         _retryableOnlyChecked = false;
+        _activeSummaryStatus = null;
+        _activePaymentSummary = null;
 
         await LoadAsync();
     }
 
     private async Task RequeueAsync(SageInboundDiagnosticsRowModel row, bool force)
     {
-        if (row is null || row.CymBuildDocumentGuid == Guid.Empty)
+        if (row.CymBuildDocumentGuid == Guid.Empty)
         {
             _isError = true;
             _message = "The selected row does not contain a valid document guid.";
@@ -349,15 +537,15 @@
             await _formHelper!.SageInboundPaymentSyncEnqueueAsync(row.CymBuildDocumentGuid, force);
 
             _message = force
-                ? $"Force requeue submitted for {DisplayText(row.InvoiceReference)}."
-                : $"Requeue submitted for {DisplayText(row.InvoiceReference)}.";
+                ? $"Force requeue submitted for {DisplayText(row.DisplayTransactionNumber)}."
+                : $"Requeue submitted for {DisplayText(row.DisplayTransactionNumber)}.";
 
             await LoadAsync();
         }
         catch (Exception ex)
         {
             _isError = true;
-            _message = $"Requeue failed for {DisplayText(row.InvoiceReference)}: {ex.Message}";
+            _message = $"Requeue failed for {DisplayText(row.DisplayTransactionNumber)}: {ex.Message}";
         }
         finally
         {
@@ -368,7 +556,7 @@
 
     private async Task RunSyncNowAsync(SageInboundDiagnosticsRowModel row)
     {
-        if (row is null || row.CymBuildDocumentGuid == Guid.Empty)
+        if (row.CymBuildDocumentGuid == Guid.Empty)
         {
             _isError = true;
             _message = "The selected row does not contain a valid document guid.";
@@ -385,20 +573,118 @@
         {
             await _formHelper!.SageInboundPaymentSyncAsync(row.CymBuildDocumentGuid);
 
-            _message = $"Sync run requested for {DisplayText(row.InvoiceReference)}.";
+            _message = $"Sync run requested for {DisplayText(row.DisplayTransactionNumber)}.";
 
             await LoadAsync();
         }
         catch (Exception ex)
         {
             _isError = true;
-            _message = $"Run Sync Now failed for {DisplayText(row.InvoiceReference)}: {ex.Message}";
+            _message = $"Run Sync Now failed for {DisplayText(row.DisplayTransactionNumber)}: {ex.Message}";
         }
         finally
         {
             _rowActionGuid = null;
             StateHasChanged();
         }
+    }
+
+    private async Task AutoCorrectRowAsync(SageInboundDiagnosticsRowModel row)
+    {
+        EnsureFormHelper();
+
+        _rowActionGuid = row.CymBuildDocumentGuid;
+        _message = string.Empty;
+        _isError = false;
+
+        try
+        {
+            var result = await _formHelper!.SageInboundReceiptMaterialisationAutoCorrectAsync(
+                externalTransactionId: row.Id,
+                batchSize: 1,
+                dryRun: false);
+
+            _message =
+                $"Auto correct complete for {DisplayText(row.DisplayTransactionNumber)}. " +
+                $"Corrected: {result.CorrectedCount}, Failed: {result.FailedCount}.";
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _isError = true;
+            _message = $"Auto correct failed for {DisplayText(row.DisplayTransactionNumber)}: {ex.Message}";
+        }
+        finally
+        {
+            _rowActionGuid = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenTransactionAsync(SageInboundDiagnosticsRowModel row)
+    {
+        var transactionGuid =
+            row.MatchedTransactionGuid
+            ?? row.TransactionGuid
+            ?? Guid.Empty;
+
+        if (_modalHost is null)
+            return;
+
+        await _modalHost.OpenWindowedEntityAsync<TransactionDetail>(
+            recordGuid: transactionGuid,
+            entityTypeGuid: TransactionEntityTypeGuid,
+            title: row.TransactionIsBatched == true ? "Edit Transaction" : "View Transaction",
+            isInformationPage: row.TransactionIsBatched != true,
+            isMainRecordContext: true);
+    }
+
+    private async Task OpenReceiptAsync(SageInboundDiagnosticsRowModel row)
+    {
+        if (_modalHost is null)
+            return;
+
+        await _modalHost.OpenWindowedEntityAsync<TransactionDetail>(
+            recordGuid: row.MaterialisedReceiptTransactionGuid ?? Guid.Empty,
+            entityTypeGuid: TransactionEntityTypeGuid,
+            title: "View Receipt",
+            isInformationPage: true,
+            isMainRecordContext: true);
+    }
+
+    private async Task OpenAllocationAsync(SageInboundDiagnosticsRowModel row)
+    {
+        if (_modalHost is null)
+            return;
+
+        await _modalHost.OpenWindowedEntityAsync<DynamicEdit>(
+            recordGuid: row.MaterialisedAllocationGuid ?? Guid.Empty,
+            entityTypeGuid: TransactionAllocationEntityTypeGuid,
+            title: row.MaterialisedAllocationId.HasValue
+                ? $"Allocation #{row.MaterialisedAllocationId}"
+                : "View Allocation",
+            isInformationPage: false,
+            isMainRecordContext: false);
+    }
+
+    private bool IsRowBusy(SageInboundDiagnosticsRowModel row)
+    {
+        return _isBusy || (_rowActionGuid.HasValue && _rowActionGuid.Value == row.CymBuildDocumentGuid);
+    }
+
+    private string GetSummaryCardClass(string? statusCode)
+    {
+        return string.Equals(_activeSummaryStatus, statusCode, StringComparison.OrdinalIgnoreCase)
+            ? "active"
+            : string.Empty;
+    }
+
+    private string GetPaymentSummaryCardClass(string paymentSummary)
+    {
+        return string.Equals(_activePaymentSummary, paymentSummary, StringComparison.OrdinalIgnoreCase)
+            ? "active"
+            : string.Empty;
     }
 
     private static string FormatUtc(DateTime? value)
@@ -425,11 +711,6 @@
 
     private static string GetStatusBadgeClass(SageInboundDiagnosticsRowModel row)
     {
-        if (row is null)
-        {
-            return "cb-v2-badge-muted";
-        }
-
         return row.StatusCode switch
         {
             "Succeeded" => "cb-v2-badge-success",

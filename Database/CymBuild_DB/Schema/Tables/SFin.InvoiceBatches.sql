@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceBatches]')
 GO
+PRINT (N'Create table [SFin].[InvoiceBatches]')
+GO
 CREATE TABLE [SFin].[InvoiceBatches] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceBatches_RowStatus] DEFAULT (0),
@@ -21,18 +23,6 @@ PRINT (N'Create primary key [PK_InvoiceBatches] on table [SFin].[InvoiceBatches]
 GO
 ALTER TABLE [SFin].[InvoiceBatches] WITH NOCHECK
   ADD CONSTRAINT [PK_InvoiceBatches] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_InvoiceBatches_AutomationRunGuid] on table [SFin].[InvoiceBatches]')
-GO
-CREATE INDEX [IX_InvoiceBatches_AutomationRunGuid]
-  ON [SFin].[InvoiceBatches] ([AutomationRunGuid], [RowStatus])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
 GO
 
 PRINT (N'Create index [IX_UQ_InvoiceBatches_Guid] on table [SFin].[InvoiceBatches]')

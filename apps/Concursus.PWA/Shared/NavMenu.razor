@@ -157,21 +157,29 @@ else
                     <i class="bi bi-gear-fill me-2" style="font-size: 1.2rem;"></i> Settings
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+@*             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="dev" @onclick="@(() => OnNavItemClick(""))">
                     <i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development
                 </NavLink>
-            </div>
+            </div> *@
             <div class="nav-item px-3">
+                <NavLink class="nav-link" href="dev-v2" @onclick="@(() => OnNavItemClick(""))">
+                    <i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development
+                </NavLink>
+            </div>
+@*             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="quote-dashboard" @onclick="@(() => OnNavItemClick(""))">
                     <i class="bi bi-bar-chart me-2" style="font-size: 1.2rem;"></i> Quote Dashboard (Old)
                     </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="SageInboundDiagnosticsV2" @onclick="@(() => OnNavItemClick(""))">
+            </div> *@
+@*             @if (ShowSageDiagnostics)
+            {
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="SageInboundDiagnosticsV2" @onclick="@(() => OnNavItemClick(""))">
                     <i class="bi bi-info me-2" style="font-size: 1.2rem;"></i> Sage Diagnostics
                 </NavLink>
             </div>
+            } *@
 
 
         </nav>
@@ -186,6 +194,8 @@ else
     private HubConnection? hubConnection;
     [CascadingParameter] public string EnvironmentType { get; set; } = "DEV";
     private string? NavMenuCssClass => _collapseNavMenu ? "collapse" : null;
+
+    // private bool ShowSageDiagnostics => Config.Value.Environment.ShowSageDiagnostics;
 
     private async Task OnNavItemClick(string featureName = "")
     {
@@ -224,30 +234,20 @@ else
         if (hubConnection is not null && hubConnection.State == HubConnectionState.Connected)
             return;
 
-        string apiUrl = EnvironmentType switch
-        {
-            "LIVE" => "https://bre.socotec.co.uk:9601",
-            "TEST" => "https://bre.socotec.co.uk:9501",
-            "DEV" => "https://bre.socotec.co.uk:9401",
-            _ => "https://localhost:5033"
-        };
+        var apiUrl = ResolveFileProcessingHubBaseUrl();
 
         hubConnection = new HubConnectionBuilder()
-            .WithUrl($"{apiUrl}/fileProcessingHub")
+            .WithUrl($"{apiUrl.TrimEnd('/')}/fileProcessingHub")
             .WithAutomaticReconnect()
             .Build();
 
         hubConnection.On("SyncQueueUpdated", async () =>
         {
-            Console.WriteLine("📡 Received SyncQueueUpdated via SignalR");
-
-            // Update state on the Blazor render context
             await InvokeAsync(async () =>
             {
                 await LoadSyncQueueCount();
                 NotificationService.ShowInfo($"{syncQueueCount} items pending sync");
-                Console.WriteLine($"🔔 syncQueueCount: {syncQueueCount}");
-                StateHasChanged(); // this now works correctly
+                StateHasChanged();
             });
         });
 
@@ -267,11 +267,51 @@ else
         {
             Console.WriteLine($"Hub connection closed: {error?.Message}");
             await Task.Delay(2000);
-            await hubConnection.StartAsync();
+
+            try
+            {
+                await hubConnection.StartAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Hub reconnect failed: {ex.Message}");
+            }
         };
 
-        await hubConnection.StartAsync();
-        await hubConnection.InvokeAsync("RegisterConnectionId", hubConnection.ConnectionId, userService.Email);
+        try
+        {
+            await hubConnection.StartAsync();
+
+            if (!string.IsNullOrWhiteSpace(hubConnection.ConnectionId))
+            {
+                await hubConnection.InvokeAsync(
+                    "RegisterConnectionId",
+                    hubConnection.ConnectionId,
+                    userService.Email);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"File processing hub unavailable at {apiUrl}: {ex.Message}");
+        }
+    }
+
+    private string ResolveFileProcessingHubBaseUrl()
+    {
+        var currentHost = NavManager.BaseUri;
+
+        if (currentHost.Contains("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return "https://localhost:7202";
+        }
+
+        return EnvironmentType switch
+        {
+            "LIVE" => "https://bre.socotec.co.uk:9601",
+            "TEST" => "https://bre.socotec.co.uk:9501",
+            "DEV" => "https://bre.socotec.co.uk:9401",
+            _ => "https://localhost:7202"
+        };
     }
     private async Task LoadSyncQueueCount()
     {

@@ -1,147 +1,127 @@
-﻿@using Blazored.Modal;
-@using Blazored.Modal.Services;
-@using Concursus.API.Client.Classes;
-@using Concursus.API.Client.Models;
-@using Concursus.API.Core;
-@using Concursus.Components.Shared.Services
+﻿@using Concursus.API.Client.Classes
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Modals
 @using Concursus.PWA.Helpers
-@using Concursus.PWA.Services
-@using Microsoft.AspNetCore.Components;
-@using Newtonsoft.Json;
-@using System.Web;
-@using System.Collections
-@using Telerik.Blazor.Components;
-@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
-@using static Concursus.PWA.Shared.MessageDisplay
-
-@inject UserService UserService
 @inject Core.CoreClient CoreClient
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IAccessTokenProvider TokenProvider
-@inject IJSRuntime JsRuntime
-@inject AiErrorReporter AiErrorReporter
-@inject UserInteractionTrackerService InteractionTracker
-@inject IToastService Toast
+@inject CymBuildModalService ModalService
+@implements IAsyncDisposable
 
-<TelerikGrid Data="@_scheduleItems?.ScheduleItems" Resizable="true" Pageable="true" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="ScheduleRowDoubleClick">
-    <GridColumns>
-        <GridColumn Field="@nameof(ScheduleItem.Start)" Title="Start">
-            <Template Context="scheduleItem">
-                @UiFormattingHelper.FormatDateForUI(((ScheduleItem)scheduleItem).Start.ToDateTime(), false)
-            </Template>
-        </GridColumn>
-        <GridColumn Field="@nameof(ScheduleItem.Title)" Title="Title" Visible="true">
-            <Template Context="scheduleItem">
-                @{
-                    var item = (ScheduleItem)scheduleItem;
-                    <div class="custom-ellipsis">
-                        @item.Title;
-                    </div>
-                }
-            </Template>
-        </GridColumn>
-    </GridColumns>
-</TelerikGrid>
-
-@code {
-
-    [CascadingParameter] public IModalService Modal { get; set; } = default!;
-
-    private bool _hasLoaded = false;
-    private ScheduleItemsGetResponse? _scheduleItems;
-    protected MessageDisplay? messageDisplay;
-    protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
-    protected string ErrorMessage { get; set; } = "";
-
-    protected string PageMethod { get; set; } = "Not Set";
-
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
-
-            if (user?.Identity?.IsAuthenticated == true)
+<div class="cb-v2-table-wrap">
+    <table class="cb-v2-table cb-v2-dashboard-grid">
+        <thead>
+            <tr>
+                <th>Start</th>
+                <th>Title</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (_isLoading)
             {
-                var result = await TokenProvider.RequestAccessToken();
-                if (result.TryGetToken(out var token))
-                {
-                    await JsRuntime.InvokeVoidAsync("sendTokenToIframe", token.Value);
-                }
+                <tr>
+                    <td colspan="3">
+                        <div class="cb-v2-muted">Loading scheduled items...</div>
+                    </td>
+                </tr>
+            }
+            else if (!string.IsNullOrWhiteSpace(_loadError))
+            {
+                <tr>
+                    <td colspan="3">
+                        <div class="cb-v2-badge cb-v2-badge-danger">@_loadError</div>
+                    </td>
+                </tr>
+            }
+            else if (_scheduleItems?.ScheduleItems == null || _scheduleItems.ScheduleItems.Count == 0)
+            {
+                <tr>
+                    <td colspan="3">
+                        <div class="cb-v2-muted">No scheduled items found.</div>
+                    </td>
+                </tr>
             }
             else
             {
-                Exception ex = new Exception("Unable to identify if the user is authenticated");
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Unable to identify if the user is authenticated");
-                ex.Data.Add("PageMethod", "Dashboard/OnAfterRenderAsync()");
-                OnError(ex);
+                @foreach (var item in _scheduleItems.ScheduleItems)
+                {
+                    <tr>
+                        <td>@UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false)</td>
+                        <td>
+                            <div class="cb-v2-ellipsis" title="@item.Title">@item.Title</div>
+                        </td>
+                        <td class="text-end">
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="() => OpenScheduleInfoAsync(item)">
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                }
             }
-        }
+        </tbody>
+    </table>
+</div>
 
+@code {
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+    private ScheduleItemsGetResponse? _scheduleItems;
+    private bool _hasStartedLoad;
+    private bool _isLoading = true;
+    private string? _loadError;
+
+    protected override Task OnInitializedAsync()
+    {
+        return Task.CompletedTask;
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _hasStartedLoad)
+        {
+            return Task.CompletedTask;
+        }
+
+        _hasStartedLoad = true;
+        _ = LoadAsync(_cancellationTokenSource.Token);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAsync(CancellationToken cancellationToken)
     {
         try
         {
+            _isLoading = true;
+            _loadError = null;
+            await InvokeAsync(StateHasChanged);
 
-            GetScheduleListAsync();
-            StateHasChanged();
-            await base.OnInitializedAsync();
-
-            return;
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Unable to get the schedule list");
-            ex.Data.Add("PageMethod", "Dashboard/OnInitializedAsync()");
-            OnError(ex);
-        }
-    }
-
-    private void ScheduleRowDoubleClick(GridRowClickEventArgs args)
-    {
-        try
-        {
-            dynamic model = args.Item;
-
-            // Open the modal and pass data as parameters
-            ShowModal<ScheduleItemView>(new ModalParameters
+            var request = new ScheduleItemsGetRequest
             {
-                { "StartDateTime", UiFormattingHelper.FormatDateForUI(model.Start.ToDateTime(), false) },
-                { "EndDateTime", UiFormattingHelper.FormatDateForUI(model.End.ToDateTime(), false) },
-                { "Title", model.Title },
-                { "Description", model.Description },
-                { "JobNumber", model.JobNumber }
-                // Add other properties as needed
-            });
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Unable to open the schedule item modal");
-            ex.Data.Add("PageMethod", "Dashboard/ScheduleRowDoubleClick()");
-            OnError(ex);
-        }
-    }
+                CurrentUserOnly = true
+            };
 
-    private async void GetScheduleListAsync()
-    {
-        try
-        {
-            var scheduleItemsGetRequest = new ScheduleItemsGetRequest() { CurrentUserOnly = true };
-            var listOfScheduleItems = await CoreClient.ScheduleItemsGetAsync(scheduleItemsGetRequest);
-            if (listOfScheduleItems == null) return;
-            if (!string.IsNullOrEmpty(listOfScheduleItems.ErrorReturned))
-            { throw new Exception(listOfScheduleItems.ErrorReturned); }
+            var response = await CoreClient.ScheduleItemsGetAsync(
+                request,
+                cancellationToken: cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
             var earlyDate = DateTime.UtcNow.AddDays(-7);
             var lateDate = DateTime.UtcNow.AddDays(7);
+
             _scheduleItems = new ScheduleItemsGetResponse();
-            foreach (var item in listOfScheduleItems.ScheduleItems)
+
+            if (response?.ScheduleItems is null)
+            {
+                return;
+            }
+
+            foreach (var item in response.ScheduleItems)
             {
                 var start = item.Start.ToDateTime();
 
@@ -151,166 +131,44 @@
                 }
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Unable to retrieve schedule items. Please try again later.");
-            ex.Data.Add("PageMethod", "Dashboard/GetScheduleListAsync()");
-            OnError(ex);
-        }
-
-        if (!_hasLoaded)
-        {
-            _hasLoaded = true;
-            StateHasChanged();
-        }
-    }
-
-    private void ShowModal<TModal>(ModalParameters parameters) where TModal : ComponentBase
-    {
-        try
-        {
-            var modalOptions = new ModalOptions
-                {
-                    AnimationType = ModalAnimationType.FadeInOut,
-                    HideHeader = false,
-                    UseCustomLayout = true,
-                    Position = ModalPosition.Middle,
-                };
-            Modal.Show<TModal>("Schedule Info", parameters, modalOptions);
-            //modal.Close();
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Unable to show the modal");
-            ex.Data.Add("PageMethod", "Dashboard/ShowModal()");
-            OnError(ex);
+            _loadError = $"Unable to load scheduled items: {ex.Message}";
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _isLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
-    public async Task OnError(Exception error)
+
+    private async Task OpenScheduleInfoAsync(ScheduleItem item)
     {
-
-        if (string.IsNullOrEmpty(error.Message))
+        var parameters = new Dictionary<string, object?>
         {
-            Console.WriteLine("WidgetScheduledItems: Error message is empty. Aborting.");
-            return;
-        }
-        ErrorMessage = error.Message;
-        PageMethod = error.Data.Contains("PageMethod")
-            ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
-            : "Not Set";
-        Console.WriteLine($"WidgetScheduledItems: PageMethod = {PageMethod}");
+            { nameof(ScheduleItemView.StartDateTime), UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false) },
+            { nameof(ScheduleItemView.EndDateTime), UiFormattingHelper.FormatDateForUI(item.End.ToDateTime(), false) },
+            { nameof(ScheduleItemView.Title), item.Title ?? string.Empty },
+            { nameof(ScheduleItemView.Description), item.Description ?? string.Empty },
+            { nameof(ScheduleItemView.JobNumber), item.JobNumber ?? string.Empty }
+        };
 
-        if (error.Data.Contains("MessageType"))
-        {
-            MessageType = (ShowMessageType)(error.Data["MessageType"] ?? ShowMessageType.Information);
-        }
-        else
-        {
-            MessageType = ShowMessageType.Error;
-            Console.WriteLine("WidgetScheduledItems: MessageType not found in error.Data. Defaulted to Error.");
-        }
-
-        // Extract all exception data
-        var exceptionData = error.Data.Count > 0
-            ? error.Data.Cast<DictionaryEntry>().ToDictionary(
-                de => de.Key?.ToString() ?? "UnknownKey",
-                de => de.Value!)
-            : null;
-
-        if (exceptionData != null)
-        {
-            foreach (var kvp in exceptionData)
-                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
-        }
-
-        messageDisplay.UpdateExceptionData(exceptionData);
-        messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
-        messageDisplay.ShowError(true);
-
-
-        // AI Error Reporting (only for actual errors)
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
-                };
-
-                var log = InteractionTracker.GetAllLogs();
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-                Console.WriteLine($"WidgetScheduledItems: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("WidgetScheduledItems: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"WidgetScheduledItems: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
-
-        StateHasChanged();
+        await ModalService.ShowAsync<ScheduleItemView>("Schedule Info", parameters);
     }
-    // public void OnError(Exception error)
-    // {
-    //     if (string.IsNullOrEmpty(error.Message)) return;
 
-    //     ErrorMessage = error.Message;
-    //     PageMethod = (error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+    public async ValueTask DisposeAsync()
+    {
+        if (!_cancellationTokenSource.IsCancellationRequested)
+        {
+            await _cancellationTokenSource.CancelAsync();
+        }
 
-    //     if (error.Data.Contains("MessageType"))
-    //     {
-    //         MessageType = (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ?? MessageDisplay.ShowMessageType.Information);
-    //     }
-    //     else
-    //     {
-    //         MessageType = MessageDisplay.ShowMessageType.Error;
-    //     }
-
-    //     // Extract all exception data and pass it to the MessageDisplay component
-    //     if (messageDisplay != null)
-    //     {
-    //         // Pass Exception Data using the new method
-    //         messageDisplay?.UpdateExceptionData(
-    //             error.Data.Count > 0
-    //             ? error.Data.Cast<DictionaryEntry>()
-    //                         .ToDictionary(
-    //                             de => de.Key?.ToString() ?? "UnknownKey",
-    //                             de => de.Value!)
-    //             : null
-    //         );
-
-    //         // Update the stack trace dynamically
-    //         messageDisplay?.UpdateStackTrace(error.StackTrace);
-
-    //         messageDisplay?.ShowError(true);
-    //     }
-
-    //     // Recover from error (if using a custom boundary)
-    //     // customErrorBoundary.Recover();
-
-    //     StateHasChanged();
-    // }
+        _cancellationTokenSource.Dispose();
+    }
 }

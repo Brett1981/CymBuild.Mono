@@ -8,6 +8,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Graph.Users.Item.Messages.Item.Move;
 using Newtonsoft.Json;
+using OpenXmlPowerTools;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -291,7 +292,7 @@ namespace CymBuild_Outlook_Common.Helpers
         // SharePoint Upload (MIME)
         // ------------------------------------------------------------
 
-        public async Task<SaveToSharePointResponse> UploadEmailToSharePoint(
+    public async Task<SaveToSharePointResponse> UploadEmailToSharePoint(
     GraphServiceClient graphClient,
     string siteId,
     string folderPath,
@@ -528,6 +529,108 @@ namespace CymBuild_Outlook_Common.Helpers
                     ErrorMessage = ex.Message,
                     GraphClientRequestId = clientRequestId
                 };
+            }
+        }
+
+
+        /// <summary>
+        /// Uploads the attachments associated with an email to the "Attachments" folder.
+        /// </summary>
+        /// <param name="graphClient"></param>
+        /// <param name="siteId"></param>
+        /// <param name="_driveId"></param>
+        /// <param name="folderPath"></param>
+        /// <param name="subFolderPath"></param>
+        /// <param name="request"></param>
+        /// <param name="messageId"></param>
+        /// <param name="corr"></param>
+        /// <returns></returns>
+        public async Task UploadEmailAttachmentsToSharePoint(
+     GraphServiceClient graphClient,
+             string siteId,
+             string _driveId,
+             string folderPath,
+             string subFolderPath,
+             SaveToSharePointRequest request,
+             string messageId,
+             string? corr = null)
+        {
+            if (!request.ExtractAttachments)
+                return;
+
+            var c = corr ?? $"Upload-{DateTime.UtcNow:HHmmssfff}-{Guid.NewGuid():N}".Substring(0, 24);
+            var clientRequestId = Guid.NewGuid().ToString();
+
+            var (driveId, driveName, driveRelativeBasePath) = await ResolveDriveAndBasePathAsync(
+                  graphClient, siteId, folderPath, c, clientRequestId);
+
+            try
+            {
+                var swAttach = Stopwatch.StartNew();
+
+                Info(corr, nameof(UploadEmailToSharePoint),
+                    "ATTACHMENTS",
+                    "Fetching attachments from Graph.");
+
+                var attachmentResponse = await graphClient
+                    .Users[request.UserId]
+                    .Messages[messageId]
+                    .Attachments
+                    .GetAsync();
+
+                var attachments = attachmentResponse?.Value?
+                    .OfType<FileAttachment>()
+                    .ToList() ?? new List<FileAttachment>();
+
+                Info(corr, nameof(UploadEmailToSharePoint),
+                    "ATTACHMENTS",
+                    $"Attachment count={attachments.Count}");
+
+                foreach (var attachment in attachments)
+                {
+                    if (attachment.ContentBytes == null || attachment.ContentBytes.Length == 0)
+                        continue;
+
+                    using var attachmentStream = new MemoryStream(attachment.ContentBytes);
+
+                    var fileName = string.IsNullOrWhiteSpace(attachment.Name)
+                        ? "attachment.bin"
+                        : SanitizeFileName(attachment.Name);
+
+                    // IMPORTANT: match email folder structure
+                    var baseFolder = CombinePaths(driveRelativeBasePath, subFolderPath);
+                    var attachmentsFolder = $"{baseFolder}/Attachments"
+                        .Replace("\\", "/");
+
+                    var fullAttachmentPath = $"{attachmentsFolder}/{fileName}"
+                        .Replace("\\", "/");
+
+                    var uploadedItem = await graphClient
+                        .Drives[driveId]
+                        .Root
+                        .ItemWithPath(fullAttachmentPath)
+                        .Content
+                        .PutAsync(attachmentStream);
+
+                    Info(corr,
+                        nameof(UploadEmailToSharePoint),
+                        "ATTACH_UPLOAD_RESULT",
+                        $"Uploaded attachment '{fileName}' -> {uploadedItem?.WebUrl}");
+                }
+
+                swAttach.Stop();
+
+                Info(corr,
+                    nameof(UploadEmailToSharePoint),
+                    "ATTACHMENTS",
+                    $"Completed attachment upload ElapsedMs={swAttach.ElapsedMilliseconds}");
+            }
+            catch (Exception exAttach)
+            {
+                Info(corr,
+                    nameof(UploadEmailToSharePoint),
+                    "ATTACHMENTS",
+                    $"Attachment upload failed (continuing). {SafeText(exAttach.Message, 400)}");
             }
         }
 

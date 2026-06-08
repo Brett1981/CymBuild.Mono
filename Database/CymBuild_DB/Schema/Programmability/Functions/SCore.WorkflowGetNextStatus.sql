@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SCore].[WorkflowGetNextStatus]')
+GO
+PRINT (N'Create function [SCore].[WorkflowGetNextStatus]')
+GO
 /* =============================================================================
    CYB-101 – WorkflowGetNextStatus (UI next-status dropdown)
 
@@ -34,6 +38,30 @@ BEGIN
     DECLARE @ShowInJobs    BIT = 0;
 
     DECLARE @OrgUnitID INT;
+
+    DECLARE @UserID INT = -1;
+    DECLARE @IsSuperUser BIT = 0;
+
+    SELECT
+        @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
+
+
+	
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.UserGroups AS ug
+        JOIN SCore.Groups AS g
+            ON g.ID = ug.GroupID
+        WHERE ug.IdentityID = @UserID
+          AND g.Code = N'SU'
+          AND ug.RowStatus NOT IN (0,254)
+          AND g.RowStatus NOT IN (0,254)
+    )
+    BEGIN
+        SET @IsSuperUser = 1;
+    END;
 
     -------------------------------------------------------------------------
     -- Entity type + workflow scope lookup (via DataObjects -> EntityTypes)
@@ -86,6 +114,60 @@ BEGIN
       AND dot.RowStatus NOT IN (0,254)
     ORDER BY dot.DateTimeUTC DESC, dot.ID DESC;
 
+
+	/*
+		Get the "ToStatus" for the currently viewed record. 
+		This will be used to ensure that the dropdown always shows this value.
+	*/
+	DECLARE @OpenedStatusId	  INT,
+		@OpenedStatusGuid UNIQUEIDENTIFIER;
+				
+	SELECT 
+			@OpenedStatusGuid = wfs.Guid,
+			@OpenedStatusId = wfs.ID
+	FROM SCore.DataObjectTransition Dob
+	JOIN SCore.WorkflowStatus wfs ON (wfs.ID = Dob.StatusID)
+	WHERE Dob.Guid = @RecordGuid
+
+    -------------------------------------------------------------------------
+    /* SB CYB-347 */
+    -- Fallback only for dropdown display when no transition exists yet.
+    -- This does NOT create/update any DataObjectTransition row.
+    -------------------------------------------------------------------------
+    IF (@CurrentStatusID IS NULL)
+    BEGIN
+        SELECT TOP (1)
+            @CurrentStatusID = wft.FromStatusID
+        FROM SCore.WorkflowTransition AS wft
+        JOIN SCore.Workflow AS wf
+            ON wf.ID = wft.WorkflowID
+        JOIN SCore.WorkflowStatus AS fromStatus
+            ON fromStatus.ID = wft.FromStatusID
+        JOIN SCore.WorkflowStatus AS toStatus
+            ON toStatus.ID = wft.ToStatusID
+        WHERE wft.RowStatus NOT IN (0,254)
+          AND wf.Enabled = 1
+          AND wf.EntityTypeID = @EntityTypeID
+          AND wf.OrganisationalUnitId =
+              CASE
+                  WHEN EXISTS
+                  (
+                      SELECT 1
+                      FROM SCore.Workflow AS wf2
+                      WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                        AND wf2.EntityTypeID = @EntityTypeID
+                        AND wf2.Enabled = 1
+                  )
+                  THEN @OrgUnitID
+                  ELSE -1
+              END
+          AND fromStatus.RowStatus NOT IN (0,254)
+          AND toStatus.RowStatus NOT IN (0,254)
+        ORDER BY
+            CASE WHEN fromStatus.ID = 1 THEN 0 ELSE 1 END,
+            wft.SortOrder,
+            wft.ID;
+    END;
     -------------------------------------------------------------------------
     -- Determine if the latest transition is final (keep existing behaviour)
     -------------------------------------------------------------------------
@@ -110,7 +192,18 @@ BEGIN
     -------------------------------------------------------------------------
     -- If viewing an existing transition record, return all statuses (deduped)
     -------------------------------------------------------------------------
-    IF (EXISTS (SELECT 1 FROM SCore.DataObjectTransition AS d WHERE d.Guid = @RecordGuid AND d.StatusID <> 1))
+    IF
+        (
+            @IsSuperUser = 1
+            AND EXISTS
+            (
+                SELECT 1
+                FROM SCore.DataObjectTransition AS d
+                WHERE d.Guid = @RecordGuid
+                  AND d.RowStatus NOT IN (0,254)
+                  AND d.StatusID <> 1
+            )
+        )
     BEGIN
         INSERT INTO @WorkflowStatus (Name, Guid, RowStatus)
         SELECT x.Name, x.Guid, x.RowStatus
@@ -151,7 +244,7 @@ BEGIN
                     END
               AND fromStatus.RowStatus NOT IN (0,254)
               AND toStatus.RowStatus   NOT IN (0,254)
-			  AND toStatus.IsAuthStatus = 0
+			  AND ISNULL(toStatus.IsAuthStatus, 0) = 0
               AND
               (
                   (@ShowInEnquiry = 0 OR ISNULL(toStatus.ShowInEnquiries,0) = 1) AND
@@ -162,13 +255,66 @@ BEGIN
         ) AS x
         WHERE x.rn = 1;
 
+
+
+		IF(NOT EXISTS
+			(
+				SELECT 1 
+				FROM @WorkflowStatus WHERE Guid = @OpenedStatusGuid
+			)
+		  )
+		  BEGIN
+		  
+			INSERT INTO @WorkflowStatus (Name, Guid, RowStatus)
+			SELECT x.Name, x.Guid, x.RowStatus
+			FROM SCore.WorkflowStatus x
+			WHERE x.ID = @OpenedStatusId
+	
+		  END;
+
+
         RETURN;
     END;
 
     -------------------------------------------------------------------------
     -- Respect IsFinal
     -------------------------------------------------------------------------
-    IF (ISNULL(@IsFinal, 0) = 1)
+    DECLARE @HasAvailableNextTransition BIT = 0;
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.WorkflowTransition AS wft
+        JOIN SCore.Workflow AS wf
+            ON wf.ID = wft.WorkflowID
+        JOIN SCore.WorkflowStatus AS toStatus
+            ON toStatus.ID = wft.ToStatusID
+        WHERE wft.RowStatus NOT IN (0,254)
+          AND wf.Enabled = 1
+          AND wf.EntityTypeID = @EntityTypeID
+          AND wf.OrganisationalUnitId =
+            CASE
+                WHEN EXISTS
+                (
+                    SELECT 1
+                    FROM SCore.Workflow AS wf2
+                    WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                        AND wf2.EntityTypeID = @EntityTypeID
+                        AND wf2.Enabled = 1
+                )
+                THEN @OrgUnitID
+                ELSE -1
+            END
+          AND wft.FromStatusID = @CurrentStatusID
+          AND toStatus.RowStatus NOT IN (0,254)
+          AND toStatus.ID <> 1
+          AND ISNULL(toStatus.IsAuthStatus, 0) = 0
+    )
+    BEGIN
+        SET @HasAvailableNextTransition = 1;
+    END;
+
+    IF (ISNULL(@IsFinal, 0) = 1 AND @HasAvailableNextTransition = 0)
     BEGIN
         RETURN;
     END;
@@ -245,25 +391,47 @@ BEGIN
           AND toStatus.ID <> 1
           AND @CurrentStatusID IS NOT NULL
           AND wft.FromStatusID = @CurrentStatusID  -- LATEST-STATUS-ONLY enforcement
-          AND toStatus.ID NOT IN
-          (
-              SELECT dot.StatusID
-              FROM SCore.DataObjectTransition AS dot
-              WHERE dot.DataObjectGuid = @ParentGuid
-                AND dot.RowStatus NOT IN (0,254)
-          )
+          /* SB CYB-347 */
+          --AND toStatus.ID NOT IN
+          --(
+          --    SELECT dot.StatusID
+          --    FROM SCore.DataObjectTransition AS dot
+          --    WHERE dot.DataObjectGuid = @ParentGuid
+          --      AND dot.RowStatus NOT IN (0,254)
+          --)
           AND
           (
               -- CYB-101: Hide Sent/Accepted when quote has 0 items
               @ShowInQuotes = 0
               OR @QuoteHasItems = 1
-              OR toStatus.Name NOT IN (N'Sent', N'Accepted')
+              OR toStatus.Name NOT IN (N'Sent', N'Accepted', N'Customer Accepted')
           )
-		  AND toStatus.IsAuthStatus <> 1
+		  AND ISNULL(toStatus.IsAuthStatus, 0) = 0
 		 
     ) AS x
     WHERE x.rn = 1;
 
+
+	/*
+		Given we open a record with a status that would not be returned in this query,
+		the dropdown will show as empty, which is incorrect. This is here to enforce the 
+		status to be included if it's not already.
+	*/
+	IF(NOT EXISTS
+		(
+			SELECT 1 
+			FROM @WorkflowStatus WHERE Guid = @OpenedStatusGuid
+		)
+	)
+	BEGIN
+		  
+		INSERT INTO @WorkflowStatus (Name, Guid, RowStatus)
+		SELECT x.Name, x.Guid, x.RowStatus
+		FROM SCore.WorkflowStatus x
+		WHERE x.ID = @OpenedStatusId
+	
+	END;
+	
     RETURN;
 END;
 GO

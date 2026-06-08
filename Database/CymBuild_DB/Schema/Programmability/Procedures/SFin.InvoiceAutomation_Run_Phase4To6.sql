@@ -5,18 +5,18 @@ PRINT (N'Create procedure [SFin].[InvoiceAutomation_Run_Phase4To6]')
 GO
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_Run_Phase4To6]')
 GO
-
 /* =============================================================================
-   SFin.InvoiceAutomation_Run_Phase4To6 (REPLACEMENT - hardened)
+   SFin.InvoiceAutomation_Run_Phase4To6 (REPLACEMENT - hardened + DataObject-safe)
 
-   Fixes Msg 3930 ("transaction cannot be committed") by:
-   - SET XACT_ABORT OFF (do not doom the session transaction on inner errors)
-   - Guard all logging writes with IF XACT_STATE() <> -1
-   - Still raises the real underlying error
+   Key fix:
+   - InvoiceAutomationRunDetails.Guid has FK -> SCore.DataObjects.Guid
+   - Therefore every RunDetails insert must first create a matching DataObjects row
+     using SCore.UpsertDataObject(Guid,'SFin','InvoiceAutomationRunDetails',...).
 
    Notes:
    - No explicit BEGIN TRAN / COMMIT / ROLLBACK
-   - Keeps your OUTPUT-param child proc approach
+   - SET XACT_ABORT OFF to avoid "doomed transaction" behaviour
+   - Guard all logging writes with IF XACT_STATE() <> -1
 ============================================================================= */
 CREATE PROCEDURE [SFin].[InvoiceAutomation_Run_Phase4To6]
 (
@@ -45,6 +45,18 @@ BEGIN
         RAISERROR(N'RequesterUserGuid not found in SCore.Identities.', 16, 1);
         RETURN;
     END
+
+    /* ------------------------------------------------------------
+       Ensure DataObject exists for AutomationRun (required by FK)
+    ------------------------------------------------------------ */
+    DECLARE @RunIsInsert bit = 0;
+
+    EXEC SCore.UpsertDataObject
+          @Guid = @AutomationRunGuid
+        , @SchemeName = N'SFin'
+        , @ObjectName = N'InvoiceAutomationRuns'
+        , @IncludeDefaultSecurity = 0  -- system-generated
+        , @IsInsert = @RunIsInsert OUTPUT;
 
     /* Ensure Run header exists (idempotent upsert) */
     IF NOT EXISTS (SELECT 1 FROM SFin.InvoiceAutomationRuns r WHERE r.Guid = @AutomationRunGuid)
@@ -90,6 +102,10 @@ BEGIN
         , @BatchAttempt INT = NULL
         , @BatchCreatedAtUtc DATETIME2(7) = NULL;
 
+    /* Helper for detail rows */
+    DECLARE @DetailGuid UNIQUEIDENTIFIER;
+    DECLARE @DetailIsInsert bit;
+
     BEGIN TRY
         /* -------------------------
            Phase 4: Materialise TriggerInstances
@@ -97,6 +113,16 @@ BEGIN
 
         IF (XACT_STATE() <> -1)
         BEGIN
+            SET @DetailGuid = NEWID();
+            SET @DetailIsInsert = 0;
+
+            EXEC SCore.UpsertDataObject
+                  @Guid = @DetailGuid
+                , @SchemeName = N'SFin'
+                , @ObjectName = N'InvoiceAutomationRunDetails'
+                , @IncludeDefaultSecurity = 0
+                , @IsInsert = @DetailIsInsert OUTPUT;
+
             INSERT SFin.InvoiceAutomationRunDetails
             (
                   RowStatus, Guid, AutomationRunGuid,
@@ -106,7 +132,7 @@ BEGIN
             )
             VALUES
             (
-                  1, NEWID(), @AutomationRunGuid,
+                  1, @DetailGuid, @AutomationRunGuid,
                   -1, N'', NULL, NULL,
                   N'RUN', N'PHASE4', N'Started',
                   N'Phase 4: Materialising TriggerInstances from Phase 3 detections.',
@@ -120,6 +146,16 @@ BEGIN
 
         IF (XACT_STATE() <> -1)
         BEGIN
+            SET @DetailGuid = NEWID();
+            SET @DetailIsInsert = 0;
+
+            EXEC SCore.UpsertDataObject
+                  @Guid = @DetailGuid
+                , @SchemeName = N'SFin'
+                , @ObjectName = N'InvoiceAutomationRunDetails'
+                , @IncludeDefaultSecurity = 0
+                , @IsInsert = @DetailIsInsert OUTPUT;
+
             INSERT SFin.InvoiceAutomationRunDetails
             (
                   RowStatus, Guid, AutomationRunGuid,
@@ -129,7 +165,7 @@ BEGIN
             )
             VALUES
             (
-                  1, NEWID(), @AutomationRunGuid,
+                  1, @DetailGuid, @AutomationRunGuid,
                   -1, N'', NULL, NULL,
                   N'RUN', N'PHASE4', N'Success',
                   N'Phase 4 completed.',
@@ -161,6 +197,16 @@ BEGIN
 
             IF (XACT_STATE() <> -1)
             BEGIN
+                SET @DetailGuid = NEWID();
+                SET @DetailIsInsert = 0;
+
+                EXEC SCore.UpsertDataObject
+                      @Guid = @DetailGuid
+                    , @SchemeName = N'SFin'
+                    , @ObjectName = N'InvoiceAutomationRunDetails'
+                    , @IncludeDefaultSecurity = 0
+                    , @IsInsert = @DetailIsInsert OUTPUT;
+
                 INSERT SFin.InvoiceAutomationRunDetails
                 (
                       RowStatus, Guid, AutomationRunGuid,
@@ -170,7 +216,7 @@ BEGIN
                 )
                 VALUES
                 (
-                      1, NEWID(), @AutomationRunGuid,
+                      1, @DetailGuid, @AutomationRunGuid,
                       -1, N'TriggerInstance', NULL, NULL,
                       N'RUN', N'TRIGGERINSTANCES', N'Success',
                       CONCAT(N'Created from TriggerInstances (ACT/MS/RIBA): ', @Created_TriggerInstances),
@@ -199,6 +245,16 @@ BEGIN
 
             IF (XACT_STATE() <> -1)
             BEGIN
+                SET @DetailGuid = NEWID();
+                SET @DetailIsInsert = 0;
+
+                EXEC SCore.UpsertDataObject
+                      @Guid = @DetailGuid
+                    , @SchemeName = N'SFin'
+                    , @ObjectName = N'InvoiceAutomationRunDetails'
+                    , @IncludeDefaultSecurity = 0
+                    , @IsInsert = @DetailIsInsert OUTPUT;
+
                 INSERT SFin.InvoiceAutomationRunDetails
                 (
                       RowStatus, Guid, AutomationRunGuid,
@@ -208,7 +264,7 @@ BEGIN
                 )
                 VALUES
                 (
-                      1, NEWID(), @AutomationRunGuid,
+                      1, @DetailGuid, @AutomationRunGuid,
                       -1, N'MonthConfig', NULL, NULL,
                       N'RUN', N'MONTHCONFIG', N'Success',
                       CONCAT(N'Created from MonthConfig: ', @Created_MonthConfig),
@@ -237,6 +293,16 @@ BEGIN
 
             IF (XACT_STATE() <> -1)
             BEGIN
+                SET @DetailGuid = NEWID();
+                SET @DetailIsInsert = 0;
+
+                EXEC SCore.UpsertDataObject
+                      @Guid = @DetailGuid
+                    , @SchemeName = N'SFin'
+                    , @ObjectName = N'InvoiceAutomationRunDetails'
+                    , @IncludeDefaultSecurity = 0
+                    , @IsInsert = @DetailIsInsert OUTPUT;
+
                 INSERT SFin.InvoiceAutomationRunDetails
                 (
                       RowStatus, Guid, AutomationRunGuid,
@@ -246,7 +312,7 @@ BEGIN
                 )
                 VALUES
                 (
-                      1, NEWID(), @AutomationRunGuid,
+                      1, @DetailGuid, @AutomationRunGuid,
                       -1, N'PercentageConfig', NULL, NULL,
                       N'RUN', N'PERCENTAGECONFIG', N'Success',
                       CONCAT(N'Created from PercentageConfig: ', @Created_PercentageConfig),
@@ -262,6 +328,16 @@ BEGIN
 
         IF (XACT_STATE() <> -1)
         BEGIN
+            SET @DetailGuid = NEWID();
+            SET @DetailIsInsert = 0;
+
+            EXEC SCore.UpsertDataObject
+                  @Guid = @DetailGuid
+                , @SchemeName = N'SFin'
+                , @ObjectName = N'InvoiceAutomationRunDetails'
+                , @IncludeDefaultSecurity = 0
+                , @IsInsert = @DetailIsInsert OUTPUT;
+
             INSERT SFin.InvoiceAutomationRunDetails
             (
                   RowStatus, Guid, AutomationRunGuid,
@@ -271,7 +347,7 @@ BEGIN
             )
             VALUES
             (
-                  1, NEWID(), @AutomationRunGuid,
+                  1, @DetailGuid, @AutomationRunGuid,
                   -1, N'', NULL, NULL,
                   N'RUN', N'BATCH', N'Started',
                   N'Phase 6: Creating/assigning InvoiceBatch for this run.',
@@ -293,6 +369,16 @@ BEGIN
 
         IF (XACT_STATE() <> -1)
         BEGIN
+            SET @DetailGuid = NEWID();
+            SET @DetailIsInsert = 0;
+
+            EXEC SCore.UpsertDataObject
+                  @Guid = @DetailGuid
+                , @SchemeName = N'SFin'
+                , @ObjectName = N'InvoiceAutomationRunDetails'
+                , @IncludeDefaultSecurity = 0
+                , @IsInsert = @DetailIsInsert OUTPUT;
+
             INSERT SFin.InvoiceAutomationRunDetails
             (
                   RowStatus, Guid, AutomationRunGuid,
@@ -302,7 +388,7 @@ BEGIN
             )
             VALUES
             (
-                  1, NEWID(), @AutomationRunGuid,
+                  1, @DetailGuid, @AutomationRunGuid,
                   -1, N'', NULL, NULL,
                   N'RUN', N'BATCH', N'Success',
                   CONCAT(N'Batch assign completed. InvoiceBatchGuid=',
@@ -380,6 +466,17 @@ BEGIN
         /* If transaction is doomed, we cannot write run details safely. */
         IF (XACT_STATE() <> -1)
         BEGIN
+            /* IMPORTANT: even error detail rows need DataObjects rows */
+            SET @DetailGuid = NEWID();
+            SET @DetailIsInsert = 0;
+
+            EXEC SCore.UpsertDataObject
+                  @Guid = @DetailGuid
+                , @SchemeName = N'SFin'
+                , @ObjectName = N'InvoiceAutomationRunDetails'
+                , @IncludeDefaultSecurity = 0
+                , @IsInsert = @DetailIsInsert OUTPUT;
+
             INSERT SFin.InvoiceAutomationRunDetails
             (
                   RowStatus, Guid, AutomationRunGuid,
@@ -389,7 +486,7 @@ BEGIN
             )
             VALUES
             (
-                  1, NEWID(), @AutomationRunGuid,
+                  1, @DetailGuid, @AutomationRunGuid,
                   -1, N'', NULL, NULL,
                   N'RUN', N'ERROR', N'Failed',
                   CONCAT(N'Run failed (', @ErrNum, N'): ', @ErrMsg),

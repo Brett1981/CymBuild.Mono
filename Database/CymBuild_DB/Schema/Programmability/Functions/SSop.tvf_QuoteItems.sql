@@ -6,7 +6,7 @@ CREATE FUNCTION [SSop].[tvf_QuoteItems]
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS RETURN	
 SELECT  qi.ID,
         qi.RowStatus,
@@ -29,6 +29,7 @@ JOIN	SSop.Quotes q ON (q.ID = qi.QuoteId)
 JOIN	SSop.QuoteItemTotals qit ON (qit.ID = qi.ID)
 JOIN	SProd.Products p ON (p.ID = qi.ProductId)	
 JOIN    SFin.InvoiceSchedules as invsch ON (qi.InvoicingSchedule = invsch.ID)
+JOIN	SFin.InvoiceScheduleTrigger AS Invt ON (Invt.Id = invsch.TriggerId)
 JOIN	SJob.Jobs AS j ON (j.ID = qi.CreatedJobId)
 WHERE   (qi.RowStatus NOT IN (0, 254))
 AND	(EXISTS

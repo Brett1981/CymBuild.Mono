@@ -1,5 +1,7 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SUserInterface].[tvf_GridViewDefinitions]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_GridViewDefinitions]
   (
     @Id           INT,
@@ -8,7 +10,7 @@ CREATE FUNCTION [SUserInterface].[tvf_GridViewDefinitions]
     @UserId       INT
   )
 RETURNS TABLE
-      --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
   RETURN SELECT
 		gvd.ID,
@@ -45,7 +47,8 @@ AS
 		gvd.FilteredListGroupBy,
 		gvd.FilteredListRedStatusIndicatorTxt,
 		gvd.FilteredListOrangeStatusIndicatorTxt,
-		gvd.FilteredListGreenStatusIndicatorTxt
+		gvd.FilteredListGreenStatusIndicatorTxt,
+		gvd.IsHidden
 FROM
 		SUserInterface.GridViewDefinitions AS gvd
 JOIN

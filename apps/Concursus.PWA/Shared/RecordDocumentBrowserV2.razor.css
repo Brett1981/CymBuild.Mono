@@ -1,5 +1,10 @@
 /* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowserV2.razor.css */
 
+.empty-tr{
+    min-width: 100%;
+    text-align:center;
+}
+
 .v2-docs .doc-toolbar {
     border: 0;
 }

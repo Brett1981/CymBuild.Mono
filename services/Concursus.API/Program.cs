@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Concursus.API.Classes;
+using Concursus.API.Components;
 using Concursus.API.Interfaces;
 using Concursus.API.Models;
 using Concursus.API.Sage.SOAP;
@@ -239,7 +240,8 @@ try
     builder.Services.Configure<InvoiceAutomationOptions>(builder.Configuration.GetSection("InvoiceAutomation"));
     builder.Services.AddSingleton<InvoiceAutomationRepository>();
     builder.Services.AddHostedService<InvoiceAutomationScheduledWorker>();
-
+    builder.Services.AddScoped<SharePoint>();
+    builder.Services.AddHostedService<SharePointStructureRepairWorker>();
     // -------------------------------------------------------------------------
     // Dedicated Phase 5 Sage transaction submission worker
     // -------------------------------------------------------------------------

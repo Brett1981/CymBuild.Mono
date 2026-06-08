@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SCore].[tvf_PropertiesForEntityType]')
+GO
+
 CREATE FUNCTION [SCore].[tvf_PropertiesForEntityType]
 	(
 		@Guid UNIQUEIDENTIFIER,
 		@UserId INT
 	)
 RETURNS TABLE
-	     --WITH SCHEMABINDING 
+	             --WITH SCHEMABINDING 
 AS
 RETURN SELECT		p.RowStatus,
 					p.RowVersion,
@@ -14,6 +17,7 @@ RETURN SELECT		p.RowStatus,
 					p.Name,
 					e.Guid	  AS EntityTypeGuid,
 					ll.Guid	  AS LanguageLabelGuid,
+					llt.HelpText AS HelpText,
 					edt.Guid  AS EntityDataTypeGuid,
 					p.IsReadOnly,
 					p.IsImmutable,
@@ -64,6 +68,15 @@ RETURN SELECT		p.RowStatus,
 	   JOIN			SUserInterface.DropDownListDefinitions AS ddld ON (ddld.ID = p.DropDownListDefinitionID)
 	   JOIN			SCore.EntityTypes						AS ddlde ON (ddlde.ID = ddld.EntityTypeId)
 	   JOIN			SCore.LanguageLabels					AS ll ON (ll.ID = p.LanguageLabelID)
+	   LEFT JOIN
+		(
+			SELECT
+				LanguageLabelID,
+				MAX(HelpText) AS HelpText
+			FROM SCore.LanguageLabelTranslations
+			GROUP BY LanguageLabelID
+		) AS llt
+			ON llt.LanguageLabelID = ll.ID
 	   OUTER APPLY	SCore.ObjectSecurityForUser (	p.Guid,
 													@UserId
 												)			AS os

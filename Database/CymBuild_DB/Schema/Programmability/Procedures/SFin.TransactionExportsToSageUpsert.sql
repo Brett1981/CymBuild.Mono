@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SFin].[TransactionExportsToSageUpsert]')
+GO
+
+
+
 CREATE PROCEDURE [SFin].[TransactionExportsToSageUpsert]
 	(	@InclusiveToDate DATE,
 		@OrganisationalUnitGuid UNIQUEIDENTIFIER,
@@ -46,7 +51,8 @@ BEGIN
 				t.ID
 		FROM	SFin.Transactions	  AS t
 		JOIN	SFin.TransactionTypes AS tt ON (tt.ID = t.TransactionTypeID)
-		WHERE	(t.Date	 <= @InclusiveToDate)
+		WHERE	(T.Batched = 0) --Not Batched
+			AND (t.Date	 <= @InclusiveToDate)
 			AND (tt.Name = N'Invoice')
 			AND (t.LegacyId IS NULL)
 			AND	(t.OrganisationalUnitId = @OrganisationalUnitId)

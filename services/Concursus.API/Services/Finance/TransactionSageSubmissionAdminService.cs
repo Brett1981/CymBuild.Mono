@@ -23,12 +23,17 @@ namespace Concursus.API.Services.Finance
 
         public async Task<TransactionSageSubmissionRequeueResult> RequeueAsync(
             IReadOnlyCollection<Guid> transactionGuids,
+            bool includeNonRetryableFailures = false,
             CancellationToken cancellationToken = default)
         {
-            var result = await _repository.RequeueAsync(transactionGuids, cancellationToken);
+            var result = await _repository.RequeueAsync(
+                transactionGuids,
+                includeNonRetryableFailures,
+                cancellationToken);
 
             _logger.LogInformation(
-                "Transaction Sage submission requeue executed. RequeuedTransactionCount={RequeuedTransactionCount}, ResetOutboxRowCount={ResetOutboxRowCount}, ResetStatusRowCount={ResetStatusRowCount}",
+                "Transaction Sage submission reset executed. IncludeNonRetryableFailures={IncludeNonRetryableFailures}, RequeuedTransactionCount={RequeuedTransactionCount}, ResetOutboxRowCount={ResetOutboxRowCount}, ResetStatusRowCount={ResetStatusRowCount}",
+                includeNonRetryableFailures,
                 result.RequeuedTransactionCount,
                 result.ResetOutboxRowCount,
                 result.ResetStatusRowCount);

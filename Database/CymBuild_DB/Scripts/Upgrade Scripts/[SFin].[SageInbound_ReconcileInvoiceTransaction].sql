@@ -8,157 +8,120 @@ BEGIN
     SET XACT_ABORT ON;
 
     DECLARE
-        @SageTransactionTypeCode  INT,
-        @SageAccountReference     NVARCHAR(100),
-        @SageDocumentNo           NVARCHAR(100),
+        @NowUtc DATETIME2(7) = SYSUTCDATETIME(),
+        @SageDataset NVARCHAR(30),
+        @SageAccountReference NVARCHAR(100),
+        @SageDocumentNo NVARCHAR(100),
         @SageTransactionReference NVARCHAR(100),
-        @MatchedTransactionID     BIGINT = -1,
-        @MatchedInvoiceRequestID  INT = -1,
-        @MatchedJobID             INT = -1;
+        @SecondReference NVARCHAR(100),
+        @MatchedTransactionID BIGINT = -1,
+        @MatchedInvoiceRequestID INT = -1,
+        @MatchedJobID INT = -1,
+        @MatchRule NVARCHAR(100) = N'NoMatch',
+        @IsMatched BIT = 0;
 
     SELECT
-        @SageTransactionTypeCode  = ext.SageTransactionTypeCode,
-        @SageAccountReference     = ext.SageAccountReference,
-        @SageDocumentNo           = ext.SageDocumentNo,
-        @SageTransactionReference = ext.SageTransactionReference
-    FROM SFin.SageExternalTransactions ext
+        @SageDataset = ext.SageDataset,
+        @SageAccountReference = ext.SageAccountReference,
+        @SageDocumentNo = ext.SageDocumentNo,
+        @SageTransactionReference = ext.SageTransactionReference,
+        @SecondReference = ext.SecondReference
+    FROM SFin.SageExternalTransactions AS ext
     WHERE ext.ID = @ExternalTransactionID
       AND ext.RowStatus NOT IN (0,254);
 
-    IF @SageTransactionTypeCode IS NULL
+    IF @SageDocumentNo IS NULL
     BEGIN
         RAISERROR('Sage external transaction not found.', 16, 1);
         RETURN;
     END;
 
-    /*
-        Receipt / credit note rule:
-        do not guess direct invoice-request matches here.
-        This procedure only deterministically reconciles invoice rows (type 4).
-    */
-    IF @SageTransactionTypeCode <> 4
-    BEGIN
-        SELECT
-            @ExternalTransactionID AS ExternalTransactionID,
-            CAST(0 AS BIT) AS IsMatched,
-            CAST(-1 AS BIGINT) AS MatchedTransactionID,
-            CAST(-1 AS INT) AS MatchedInvoiceRequestID,
-            CAST(-1 AS INT) AS MatchedJobID,
-            N'Non-invoice transaction not directly reconciled here.' AS MatchRule;
-        RETURN;
-    END;
-
-    /* ============================================================
-       Rule 1: strongest
-       Transactions.SageTransactionReference = ext.SageTransactionReference
-    ============================================================ */
+    /* 1. Preferred current match */
     SELECT TOP (1)
         @MatchedTransactionID = t.ID,
-        @MatchedJobID         = t.JobID
-    FROM SFin.Transactions t
+        @MatchedJobID = ISNULL(t.JobID, -1),
+        @MatchRule = N'ReservedInvoiceNumber=SageDocumentNo'
+    FROM SFin.Transactions AS t
     WHERE t.RowStatus NOT IN (0,254)
-      AND t.SageTransactionReference = @SageTransactionReference
-    ORDER BY t.ID;
+      AND ISNULL(t.ReservedInvoiceNumber, N'') = ISNULL(@SageDocumentNo, N'')
+    ORDER BY t.ID DESC;
 
-    IF @MatchedTransactionID > 0
+    /* 2. Backward-compatible fallback for already-enqueued inbound rows */
+    IF ISNULL(@MatchedTransactionID, -1) <= 0
     BEGIN
         SELECT TOP (1)
-            @MatchedInvoiceRequestID = iri.InvoiceRequestId
-        FROM SFin.TransactionDetails td
-        JOIN SFin.InvoiceRequestItems iri
-            ON iri.ID = td.InvoiceRequestItemId
-        WHERE td.TransactionID = @MatchedTransactionID
-          AND td.RowStatus NOT IN (0,254)
-          AND iri.RowStatus NOT IN (0,254)
-        ORDER BY iri.ID;
+            @MatchedTransactionID = s.TransactionID,
+            @MatchedInvoiceRequestID = s.InvoiceRequestID,
+            @MatchedJobID = s.JobID,
+            @MatchRule = N'InboundStatus.TransactionID'
+        FROM SFin.SageInboundDocumentStatus AS s
+        WHERE s.RowStatus NOT IN (0,254)
+          AND s.TransactionID > 0
+          AND s.SageDataset = @SageDataset
+          AND s.SageAccountReference = @SageAccountReference
+          AND s.SageDocumentNo = @SageDocumentNo
+        ORDER BY s.ID DESC;
     END;
 
-    /* ============================================================
-       Rule 2:
-       Transactions.Number = SageDocumentNo
-       and Accounts.Code = SageAccountReference
-    ============================================================ */
-    IF @MatchedTransactionID <= 0
+    /* 3. Secondary ReservedInvoiceNumber fallback */
+    IF ISNULL(@MatchedTransactionID, -1) <= 0
+       AND ISNULL(@SecondReference, N'') <> N''
     BEGIN
         SELECT TOP (1)
             @MatchedTransactionID = t.ID,
-            @MatchedJobID         = t.JobID
-        FROM SFin.Transactions t
-        JOIN SCrm.Accounts a
-            ON a.ID = t.AccountID
+            @MatchedJobID = ISNULL(t.JobID, -1),
+            @MatchRule = N'ReservedInvoiceNumber=SecondReference'
+        FROM SFin.Transactions AS t
         WHERE t.RowStatus NOT IN (0,254)
-          AND a.RowStatus NOT IN (0,254)
-          AND t.Number = @SageDocumentNo
-          AND a.Code   = @SageAccountReference
-        ORDER BY t.ID;
-
-        IF @MatchedTransactionID > 0
-        BEGIN
-            SELECT TOP (1)
-                @MatchedInvoiceRequestID = iri.InvoiceRequestId
-            FROM SFin.TransactionDetails td
-            JOIN SFin.InvoiceRequestItems iri
-                ON iri.ID = td.InvoiceRequestItemId
-            WHERE td.TransactionID = @MatchedTransactionID
-              AND td.RowStatus NOT IN (0,254)
-              AND iri.RowStatus NOT IN (0,254)
-            ORDER BY iri.ID;
-        END;
+          AND ISNULL(t.ReservedInvoiceNumber, N'') = ISNULL(@SecondReference, N'')
+        ORDER BY t.ID DESC;
     END;
 
-    /* ============================================================
-       Rule 3:
-       Bridge through TransactionDetails -> InvoiceRequestItems -> InvoiceRequests
-       while keeping account-code / document-number / job consistency.
-    ============================================================ */
-    IF @MatchedTransactionID <= 0
+    IF ISNULL(@MatchedTransactionID, -1) > 0
     BEGIN
-        SELECT TOP (1)
-            @MatchedTransactionID    = t.ID,
-            @MatchedInvoiceRequestID = ir.ID,
-            @MatchedJobID            = t.JobID
-        FROM SFin.Transactions t
-        JOIN SCrm.Accounts a
-            ON a.ID = t.AccountID
-        JOIN SFin.TransactionDetails td
-            ON td.TransactionID = t.ID
-        JOIN SFin.InvoiceRequestItems iri
-            ON iri.ID = td.InvoiceRequestItemId
-        JOIN SFin.InvoiceRequests ir
-            ON ir.ID = iri.InvoiceRequestId
-        WHERE t.RowStatus NOT IN (0,254)
-          AND a.RowStatus NOT IN (0,254)
-          AND td.RowStatus NOT IN (0,254)
-          AND iri.RowStatus NOT IN (0,254)
-          AND ir.RowStatus NOT IN (0,254)
-          AND a.Code = @SageAccountReference
-          AND (@SageDocumentNo = N'' OR t.Number = @SageDocumentNo)
-          AND (ir.JobId = t.JobID OR ir.JobId = -1 OR t.JobID = -1)
-        ORDER BY t.ID, ir.ID;
+        IF ISNULL(@MatchedInvoiceRequestID, -1) <= 0
+        BEGIN
+            SELECT TOP (1)
+                @MatchedInvoiceRequestID = ISNULL(iri.InvoiceRequestID, -1)
+            FROM SFin.TransactionDetails AS td
+            JOIN SFin.InvoiceRequestItems AS iri
+                ON iri.ID = td.InvoiceRequestItemId
+               AND iri.RowStatus NOT IN (0,254)
+            WHERE td.TransactionID = @MatchedTransactionID
+              AND td.RowStatus NOT IN (0,254)
+              AND td.InvoiceRequestItemId IS NOT NULL
+            ORDER BY td.ID DESC;
+        END;
+
+        IF ISNULL(@MatchedJobID, -1) <= 0
+        BEGIN
+            SELECT TOP (1)
+                @MatchedJobID = ISNULL(t.JobID, -1)
+            FROM SFin.Transactions AS t
+            WHERE t.ID = @MatchedTransactionID
+              AND t.RowStatus NOT IN (0,254);
+        END;
+
+        SET @IsMatched = 1;
     END;
 
     UPDATE ext
     SET
-        MatchedTransactionID    = @MatchedTransactionID,
-        MatchedInvoiceRequestID = @MatchedInvoiceRequestID,
-        MatchedJobID            = @MatchedJobID,
-        UpdatedByUserID         = SCore.GetCurrentUserId(),
-        UpdatedDateTimeUTC      = GETUTCDATE()
-    FROM SFin.SageExternalTransactions ext
+        MatchedTransactionID = CASE WHEN @IsMatched = 1 THEN @MatchedTransactionID ELSE -1 END,
+        MatchedInvoiceRequestID = CASE WHEN @IsMatched = 1 THEN ISNULL(@MatchedInvoiceRequestID, -1) ELSE -1 END,
+        MatchedJobID = CASE WHEN @IsMatched = 1 THEN ISNULL(@MatchedJobID, -1) ELSE -1 END,
+        UpdatedByUserID = SCore.GetCurrentUserId(),
+        UpdatedDateTimeUTC = @NowUtc
+    FROM SFin.SageExternalTransactions AS ext
     WHERE ext.ID = @ExternalTransactionID
       AND ext.RowStatus NOT IN (0,254);
 
     SELECT
-        @ExternalTransactionID AS ExternalTransactionID,
-        CAST(CASE WHEN @MatchedTransactionID > 0 THEN 1 ELSE 0 END AS BIT) AS IsMatched,
-        @MatchedTransactionID AS MatchedTransactionID,
-        @MatchedInvoiceRequestID AS MatchedInvoiceRequestID,
-        @MatchedJobID AS MatchedJobID,
-        CASE
-            WHEN @MatchedTransactionID > 0 AND @SageTransactionReference <> N'' THEN N'Rule1_SageReference'
-            WHEN @MatchedTransactionID > 0 AND @SageDocumentNo <> N'' THEN N'Rule2_DocumentNo_AccountCode'
-            WHEN @MatchedTransactionID > 0 THEN N'Rule3_TransactionDetailBridge'
-            ELSE N'Rule4_Unmatched'
-        END AS MatchRule;
+        ExternalTransactionID = @ExternalTransactionID,
+        IsMatched = @IsMatched,
+        MatchedTransactionID = CASE WHEN @IsMatched = 1 THEN @MatchedTransactionID ELSE -1 END,
+        MatchedInvoiceRequestID = CASE WHEN @IsMatched = 1 THEN ISNULL(@MatchedInvoiceRequestID, -1) ELSE -1 END,
+        MatchedJobID = CASE WHEN @IsMatched = 1 THEN ISNULL(@MatchedJobID, -1) ELSE -1 END,
+        MatchRule = @MatchRule;
 END;
 GO

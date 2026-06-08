@@ -6,6 +6,7 @@ using CymBuild_Outlook_API.Services;
 using CymBuild_Outlook_Common.Models.SharePoint;
 using CymBuild_Outlook_Common.Types;
 using Google.Protobuf.WellKnownTypes;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Graph;
 using Microsoft.Graph.DirectoryObjects.GetByIds;
 using Microsoft.Graph.Drives.Item.Items.Item.CreateLink;
@@ -16,6 +17,7 @@ using Microsoft.Graph.Shares.Item.Permission.Grant;
 using Polly;
 using Polly.Retry;
 using System.Net;
+using System.Text;
 using DriveItem = Microsoft.Graph.Models.DriveItem;
 using List = Microsoft.Graph.Models.List;
 
@@ -570,25 +572,230 @@ namespace CymBuild_Outlook_Common.Helpers
             }
         }
 
-        private async Task EnsureDefaultStructureAsync(string siteId, DataObject dataObject, Drive drive, DriveItem folder, string quoteNo, string quoteUrl)
+        private static readonly Guid JobEntityTypeGuid =
+    Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
+
+        private static readonly Guid QuoteEntityTypeGuid =
+            Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56");
+
+        private async Task EnsureDefaultStructureAsync(
+            string siteId,
+            DataObject dataObject,
+            Drive drive,
+            DriveItem folder,
+            string quoteNo,
+            string quoteUrl)
         {
+            _loggingHelper.LogError(
+                $"Entered EnsureDefaultStructureAsync. EntityTypeGuid='{dataObject.EntityTypeGuid}', " +
+                $"DataObjectGuid='{dataObject.Guid}', Label='{dataObject.Label}', " +
+                $"DriveId='{drive.Id}', FolderId='{folder.Id}', FolderWebUrl='{folder.WebUrl}'",
+                new InvalidOperationException("SharePoint repair diagnostic."),
+                "EnsureDefaultStructureAsync()");
             try
             {
-                // Job entity type GUID you used
-                var isJob = dataObject.EntityTypeGuid == Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
+                var isJob = dataObject.EntityTypeGuid == JobEntityTypeGuid;
+                var isQuote = dataObject.EntityTypeGuid == QuoteEntityTypeGuid;
 
                 var folderNames = isJob
-                    ? new List<string> { "Admin", "Certs", "Design Information", "Design Risk", "Emails", "Finance", "Photos", "Reports" }
+                    ? new List<string>
+                    {
+                "Admin",
+                "Certs",
+                "Design Information",
+                "Design Risk",
+                "Emails",
+                "Finance",
+                "Photos",
+                "Reports"
+                    }
                     : new List<string>();
 
-                await EnsureFolderStructureExists(siteId, folderNames, drive, folder, dataObject.Label ?? "", quoteNo, quoteUrl)
-                    .ConfigureAwait(false);
+                await EnsureFolderStructureExists(
+                    siteId,
+                    folderNames,
+                    drive,
+                    folder,
+                    dataObject.Label ?? string.Empty,
+                    string.Empty,
+                    string.Empty).ConfigureAwait(false);
+
+                if (isQuote)
+                {
+                    var enquiryLink = await TryResolveEnquiryLinkForQuoteAsync(dataObject.Guid).ConfigureAwait(false);
+
+                    await EnsureShortcutLinkFileAsync(
+                        drive,
+                        folder,
+                        "Enquiry",
+                        enquiryLink.EnquiryNumber,
+                        enquiryLink.EnquiryUrl).ConfigureAwait(false);
+                }
+
+                if (isJob)
+                {
+                    var links = await TryResolveLinksForJobAsync(dataObject.Guid).ConfigureAwait(false);
+                    _loggingHelper.LogError(
+                        $"Resolved Job shortcut links. " +
+                        $"JobGuid='{dataObject.Guid}', " +
+                        $"QuoteNumber='{links.QuoteNumber}', QuoteUrl='{links.QuoteUrl}', " +
+                        $"EnquiryNumber='{links.EnquiryNumber}', EnquiryUrl='{links.EnquiryUrl}'",
+                        new InvalidOperationException("SharePoint shortcut resolver diagnostic."),
+                        "EnsureDefaultStructureAsync()");
+                    await EnsureShortcutLinkFileAsync(
+                        drive,
+                        folder,
+                        "Quote",
+                        !string.IsNullOrWhiteSpace(links.QuoteNumber) ? links.QuoteNumber : quoteNo,
+                        !string.IsNullOrWhiteSpace(links.QuoteUrl) ? links.QuoteUrl : quoteUrl).ConfigureAwait(false);
+
+                    await EnsureShortcutLinkFileAsync(
+                        drive,
+                        folder,
+                        "Enquiry",
+                        links.EnquiryNumber,
+                        links.EnquiryUrl).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
-                _loggingHelper.LogError("EnsureDefaultStructureAsync failed (best-effort).", ex, "EnsureDefaultStructureAsync()");
+                _loggingHelper.LogError("EnsureDefaultStructureAsync failed.", ex, "EnsureDefaultStructureAsync()");
             }
         }
+
+        private sealed class ShortcutLinkResult
+        {
+            public string QuoteNumber { get; set; } = string.Empty;
+            public string QuoteUrl { get; set; } = string.Empty;
+            public string EnquiryNumber { get; set; } = string.Empty;
+            public string EnquiryUrl { get; set; } = string.Empty;
+        }
+
+        private async Task<ShortcutLinkResult> TryResolveEnquiryLinkForQuoteAsync(Guid quoteGuid)
+        {
+            const string sql = @"
+SELECT TOP (1)
+       CONVERT(NVARCHAR(50), e.Number) AS EnquiryNumber,
+       COALESCE(NULLIF(edo.SharePointUrl, N''), NULLIF(edo.StorageUrl, N''), N'') AS EnquiryUrl
+FROM SSop.Quotes AS q
+JOIN SSop.EnquiryServices AS es
+    ON es.ID = q.EnquiryServiceID
+JOIN SSop.Enquiries AS e
+    ON e.ID = es.EnquiryId
+LEFT JOIN SCore.DataObjects AS edo
+    ON edo.Guid = e.Guid
+WHERE q.Guid = @Guid
+  AND q.RowStatus NOT IN (0,254)
+  AND es.RowStatus NOT IN (0,254)
+  AND e.RowStatus NOT IN (0,254);";
+
+            return await ExecuteShortcutLookupAsync(sql, quoteGuid).ConfigureAwait(false);
+        }
+
+        private async Task<ShortcutLinkResult> TryResolveLinksForJobAsync(Guid jobGuid)
+        {
+            const string sql = @"
+SELECT TOP (1)
+       CONVERT(NVARCHAR(50), q.Number) AS QuoteNumber,
+       COALESCE(NULLIF(qdo.SharePointUrl, N''), NULLIF(qdo.StorageUrl, N''), N'') AS QuoteUrl,
+       CONVERT(NVARCHAR(50), e.Number) AS EnquiryNumber,
+       COALESCE(NULLIF(edo.SharePointUrl, N''), NULLIF(edo.StorageUrl, N''), N'') AS EnquiryUrl
+FROM SJob.Jobs AS j
+JOIN SSop.QuoteItems AS qi
+    ON qi.CreatedJobId = j.ID
+JOIN SSop.Quotes AS q
+    ON q.ID = qi.QuoteId
+JOIN SSop.EnquiryServices AS es
+    ON es.ID = q.EnquiryServiceID
+JOIN SSop.Enquiries AS e
+    ON e.ID = es.EnquiryId
+LEFT JOIN SCore.DataObjects AS qdo
+    ON qdo.Guid = q.Guid
+LEFT JOIN SCore.DataObjects AS edo
+    ON edo.Guid = e.Guid
+WHERE j.Guid = @Guid
+  AND j.RowStatus NOT IN (0,254)
+  AND qi.RowStatus NOT IN (0,254)
+  AND q.RowStatus NOT IN (0,254)
+  AND es.RowStatus NOT IN (0,254)
+  AND e.RowStatus NOT IN (0,254)
+ORDER BY q.ID DESC;";
+
+            return await ExecuteShortcutLookupAsync(sql, jobGuid).ConfigureAwait(false);
+        }
+
+        private async Task<ShortcutLinkResult> ExecuteShortcutLookupAsync(string sql, Guid guid)
+        {
+            var result = new ShortcutLinkResult();
+
+            var connection = _dbContext.Database.GetDbConnection();
+            var shouldClose = connection.State != System.Data.ConnectionState.Open;
+
+            try
+            {
+                if (shouldClose)
+                    await connection.OpenAsync().ConfigureAwait(false);
+
+                await using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                command.CommandType = System.Data.CommandType.Text;
+
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@Guid";
+                parameter.Value = guid;
+                command.Parameters.Add(parameter);
+
+                await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+
+                if (await reader.ReadAsync().ConfigureAwait(false))
+                {
+                    result.QuoteNumber = GetString(reader, "QuoteNumber");
+                    result.QuoteUrl = GetString(reader, "QuoteUrl");
+                    result.EnquiryNumber = GetString(reader, "EnquiryNumber");
+                    result.EnquiryUrl = GetString(reader, "EnquiryUrl");
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _loggingHelper.LogError("Failed to resolve SharePoint shortcut links.", ex, "ExecuteShortcutLookupAsync()");
+                return result;
+            }
+            finally
+            {
+                if (shouldClose)
+                    await connection.CloseAsync().ConfigureAwait(false);
+            }
+        }
+
+        private static string GetString(System.Data.Common.DbDataReader reader, string columnName)
+        {
+            try
+            {
+                var ordinal = reader.GetOrdinal(columnName);
+                return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private async Task<string> ResolveEntityTypeNameAsync(Guid entityTypeGuid)
+        {
+            var entityType = await _dbContext.EntityTypes
+                .AsNoTracking()
+                .Where(x => x.Guid == entityTypeGuid)
+                .Select(x => x.Name)
+                .FirstOrDefaultAsync()
+                .ConfigureAwait(false);
+
+            return entityType ?? string.Empty;
+        }
+
+
+
 
         private async Task EnsureFolderStructureExists(
             string siteId,
@@ -686,16 +893,66 @@ namespace CymBuild_Outlook_Common.Helpers
         {
             try
             {
-                var prop = dataObject.DataProperties
-                    .FirstOrDefault(d => d.EntityPropertyGuid ==
-                        Functions.Functions.ParseAndReturnEmptyGuidIfInvalid("b5d2e1d9-6133-4ab2-b28a-827ab24103cf"));
+                var quotePropertyGuid = Functions.Functions.ParseAndReturnEmptyGuidIfInvalid(
+                    "b5d2e1d9-6133-4ab2-b28a-827ab24103cf");
 
-                return prop?.Value?.Unpack<StringValue>()?.ToString() ?? "";
+                var prop = dataObject.DataProperties
+                    .FirstOrDefault(d => d.EntityPropertyGuid == quotePropertyGuid);
+
+                return prop?.Value?.Unpack<StringValue>()?.Value ?? string.Empty;
             }
             catch
             {
-                return "";
+                return string.Empty;
             }
+        }
+
+        private async Task EnsureShortcutLinkFileAsync(
+    Drive drive,
+    DriveItem parentFolder,
+    string linkType,
+    string referenceNumber,
+    string targetUrl)
+        {
+            if (string.IsNullOrWhiteSpace(referenceNumber) || string.IsNullOrWhiteSpace(targetUrl))
+            {
+                _loggingHelper.LogError(
+                    $"Skipping {linkType} shortcut creation because referenceNumber or targetUrl is blank. " +
+                    $"ReferenceNumber='{referenceNumber}', TargetUrl='{targetUrl}'",
+                    new InvalidOperationException("Missing shortcut link data."),
+                    "EnsureShortcutLinkFileAsync()");
+                return;
+            }
+
+            var sanitizedNumber = Functions.Functions.SanitizeFileName(referenceNumber)?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(sanitizedNumber))
+                return;
+
+            var linkName = $"{linkType} Link - {sanitizedNumber}.url";
+
+            var existing = await _graphRetry.ExecuteAsync(async () =>
+                await GraphClient.Drives[drive.Id!].Items[parentFolder.Id!].Children.GetAsync(rc =>
+                {
+                    rc.QueryParameters.Filter = $"name eq '{EscapeODataString(linkName)}'";
+                }).ConfigureAwait(false)
+            ).ConfigureAwait(false);
+
+            if (existing?.Value?.FirstOrDefault() != null)
+                return;
+
+            var contentBytes = Encoding.UTF8.GetBytes($"[InternetShortcut]\r\nURL={targetUrl}\r\n");
+            await using var stream = new MemoryStream(contentBytes);
+
+            await _graphRetry.ExecuteAsync(async () =>
+            {
+                _ = await GraphClient
+                    .Drives[drive.Id!]
+                    .Items[parentFolder.Id!]
+                    .ItemWithPath(linkName)
+                    .Content
+                    .PutAsync(stream)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(false);
         }
 
         private async Task AssignGroupPermissionsAsync(GraphServiceClient graphClient, string driveId, string itemId, List<ObjectSecurity> objectSecurity)
@@ -1034,5 +1291,15 @@ namespace CymBuild_Outlook_Common.Helpers
 
             return _drive!;
         }
+        private sealed record SharePointShortcutLink(
+            string Number,
+            string Url);
+
+        private sealed record JobSharePointShortcutLinks(
+            string QuoteNumber,
+            string QuoteUrl,
+            string EnquiryNumber,
+            string EnquiryUrl);
     }
+
 }
