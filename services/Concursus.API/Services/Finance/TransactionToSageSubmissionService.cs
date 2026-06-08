@@ -256,11 +256,19 @@ namespace Concursus.API.Services.Finance
 
                 if (responseDto.IsOk && !string.IsNullOrWhiteSpace(responseDto.OrderId))
                 {
+                    var sageTransactionReference = ResolveStringProperty(
+                        responseDto,
+                        "SageTransactionReference",
+                        "TransactionReference",
+                        "TransactionRef",
+                        "Reference",
+                        "OrderReference");
                     await _idempotencyService.MarkSuccessAsync(
                         transaction.TransactionGuid,
                         transaction.TransitionGuid,
                         sageOrderId: responseDto.OrderId,
                         sageOrderNumber: responseDto.OrderId,
+                        sageTransactionReference: sageTransactionReference,
                         sageDataSet: requestDto.Dataset.ToString(),
                         responseStatus: responseDto.Status,
                         responseDetail: responseDto.Detail,
@@ -270,10 +278,11 @@ namespace Concursus.API.Services.Finance
                         cancellationToken: cancellationToken);
 
                     _logger.LogInformation(
-                        "Transaction successfully submitted to Sage. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}",
+                        "Transaction successfully submitted to Sage. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}, SageTransactionReference={SageTransactionReference}",
                         transaction.TransitionGuid,
                         transaction.TransactionGuid,
-                        responseDto.OrderId);
+                        responseDto.OrderId,
+                        sageTransactionReference);
 
                     return TransactionToSageProcessResult.Success(
                         transaction.TransitionGuid,

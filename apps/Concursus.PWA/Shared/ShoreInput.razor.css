@@ -33,3 +33,7 @@
 .k-input-inner:read-only {
     background: #e9ecef;
 }
+
+.dropdown-menu.p-3 {
+    min-width: 500px !important;
+}

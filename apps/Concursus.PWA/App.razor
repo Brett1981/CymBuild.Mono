@@ -1,5 +1,4 @@
 ﻿@using Concursus.API.Client.Models
-@using Blazored.Modal
 @using Concursus.Components.Shared.Services
 @using Concursus.PWA.Pages
 
@@ -23,7 +22,6 @@
     </div>
 }
 <CascadingAuthenticationState>
-    <CascadingBlazoredModal>
         <CascadingValue Value="AppConfig.EnvironmentType">
     @inject UserService UserService
 
@@ -50,8 +48,8 @@
             </LayoutView>
         </NotFound>
     </Router>
+        <Concursus.Components.Shared.Modals.CymBuildModalHost />
     </CascadingValue>
-    </CascadingBlazoredModal>
 </CascadingAuthenticationState>
 
 @code {

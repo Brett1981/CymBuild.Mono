@@ -1,5 +1,7 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SUserInterface].[GridViewDefinitionUpsert]')
+GO
 CREATE PROCEDURE [SUserInterface].[GridViewDefinitionUpsert]
   (
     @Code													NVARCHAR(20),
@@ -50,7 +52,8 @@ CREATE PROCEDURE [SUserInterface].[GridViewDefinitionUpsert]
 	@FilteredListRedStatusIndicatorTxt						NVARCHAR(100),
 	@FilteredListOrangeStatusIndicatorTxt					NVARCHAR(100),
 	@FilteredListGreenStatusIndicatorTxt					NVARCHAR(100),
-	@FilteredListGroupBy									NVARCHAR(100)
+	@FilteredListGroupBy									NVARCHAR(100),
+	@IsHidden												BIT
 
   )
 AS
@@ -167,7 +170,8 @@ AS
 				FilteredListRedStatusIndicatorTxt,	
 				FilteredListOrangeStatusIndicatorTxt,	
 				FilteredListGreenStatusIndicatorTxt,	
-				FilteredListGroupBy					
+				FilteredListGroupBy,
+				IsHidden
               )
         VALUES
                 (
@@ -219,7 +223,8 @@ AS
 				  @FilteredListRedStatusIndicatorTxt,
 				  @FilteredListOrangeStatusIndicatorTxt,	
 				  @FilteredListGreenStatusIndicatorTxt,
-				  @FilteredListGroupBy
+				  @FilteredListGroupBy,
+				  @IsHidden
                 )
 
         SELECT
@@ -347,7 +352,8 @@ AS
 				FilteredListRedStatusIndicatorTxt = @FilteredListRedStatusIndicatorTxt,
 				FilteredListOrangeStatusIndicatorTxt = @FilteredListOrangeStatusIndicatorTxt,
 				FilteredListGreenStatusIndicatorTxt = @FilteredListGreenStatusIndicatorTxt,
-				FilteredListGroupBy = @FilteredListGroupBy		
+				FilteredListGroupBy = @FilteredListGroupBy,
+				IsHidden = @IsHidden
         WHERE
           ([Guid] = @Guid)
       END

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[ObjectSecurity]')
 GO
+PRINT (N'Create table [SCore].[ObjectSecurity]')
+GO
 CREATE TABLE [SCore].[ObjectSecurity] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ObjectSecurity_RowStatus] DEFAULT (0),
@@ -51,26 +53,6 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-PRINT (N'Create index [IX_ObjectSecurity_ObjectGuid] on table [SCore].[ObjectSecurity]')
-GO
-CREATE INDEX [IX_ObjectSecurity_ObjectGuid]
-  ON [SCore].[ObjectSecurity] ([ObjectGuid], [RowStatus])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
-GO
-
-PRINT (N'Create index [IX_UQ_ObjectSecurity_Guid] on table [SCore].[ObjectSecurity]')
-GO
-CREATE UNIQUE INDEX [IX_UQ_ObjectSecurity_Guid]
-  ON [SCore].[ObjectSecurity] ([Guid])
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
 PRINT (N'Create index [IX_UQ_ObjectSecurity_Setting] on table [SCore].[ObjectSecurity]')
 GO
 CREATE UNIQUE INDEX [IX_UQ_ObjectSecurity_Setting]
@@ -85,6 +67,229 @@ PRINT (N'Create statistics [stat_ObjectSecurity_CanRead] on table [SCore].[Objec
 GO
 CREATE STATISTICS [stat_ObjectSecurity_CanRead]
   ON [SCore].[ObjectSecurity] ([UserId], [GroupId], [DenyRead], [ObjectGuid], [CanRead])
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_ObjectSecurity_RecordHistory] on table [SCore].[ObjectSecurity]')
+GO
+CREATE TRIGGER [SCore].[tg_ObjectSecurity_RecordHistory]
+   ON  [SCore].[ObjectSecurity]	
+   AFTER INSERT, UPDATE
+AS 
+BEGIN
+	SET NOCOUNT ON;
+
+    IF (ISNULL(CONVERT(int, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+    BEGIN 
+        RETURN
+    END
+
+	IF (EXISTS
+			(
+				SELECT	1
+				FROM	Inserted
+				WHERE	(ID = -1) 
+			)
+		)
+	BEGIN 
+		;THROW 60000, N'Data integrity exception: Attempt to alter -1 record', 1
+	END
+
+    DECLARE	@PreviousValue NVARCHAR(MAX),
+			@NewValue NVARCHAR(MAX),
+			@UserID INT = 0,
+			@SchemaName NVARCHAR(250) = N'SCore',
+			@TableName NVARCHAR(250) = N'ObjectSecurity',
+			@ColumnName NVARCHAR(250),
+			@MaxInsertedID BIGINT,
+			@CurrentInsertedID BIGINT,
+			@CurrentInsertedGuid UNIQUEIDENTIFIER
+
+	SELECT @UserID = ISNULL(CONVERT(int, SESSION_CONTEXT(N'user_id')), -1)
+
+	SELECT	@MaxInsertedID = MAX([ID]),
+			@CurrentInsertedID = -1
+	FROM	Inserted
+
+	WHILE	(@CurrentInsertedID < @MaxInsertedID)
+	BEGIN 
+		SELECT	TOP(1) @CurrentInsertedID = i.[ID],
+				@CurrentInsertedGuid = i.Guid
+		FROM	Inserted i
+		WHERE	(i.[ID] > @CurrentInsertedID)
+			ORDER BY i.[ID]
+		
+		
+		
+		IF (NOT EXISTS 
+				(
+					SELECT	1
+					FROM 	deleted d
+					WHERE	(d.[ID] = @CurrentInsertedID)
+				)
+			)
+		BEGIN 
+				
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, N'', N'', SYSTEM_USER, -1)
+	
+			RETURN 
+		END
+		
+		SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[CanRead]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[CanRead]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[CanRead] IS DISTINCT FROM i.[CanRead])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'CanRead', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1053)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[CanWrite]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[CanWrite]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[CanWrite] IS DISTINCT FROM i.[CanWrite])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'CanWrite', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1054)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[DenyRead]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[DenyRead]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[DenyRead] IS DISTINCT FROM i.[DenyRead])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'DenyRead', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1055)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[DenyWrite]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[DenyWrite]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[DenyWrite] IS DISTINCT FROM i.[DenyWrite])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'DenyWrite', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1056)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[GroupId]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[GroupId]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[GroupId] IS DISTINCT FROM i.[GroupId])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'GroupId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1057)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[ObjectGuid]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[ObjectGuid]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[ObjectGuid] IS DISTINCT FROM i.[ObjectGuid])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'ObjectGuid', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1060)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[RowStatus]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[RowStatus]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[RowStatus] IS DISTINCT FROM i.[RowStatus])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'RowStatus', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1061)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[UserId]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[UserId]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[UserId] IS DISTINCT FROM i.[UserId])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'UserId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1063)
+			END 
+			
+			
+			END
+		END
+		
+		
 GO
 
 PRINT (N'Create foreign key [FK_ObjectSecurity_DataObjects] on table [SCore].[ObjectSecurity]')
@@ -120,4 +325,7 @@ GO
 PRINT (N'Add extended property [MS_Description] on table [SCore].[ObjectSecurity]')
 GO
 EXEC sys.sp_addextendedproperty N'MS_Description', N'Security records for all rows both meta data and user data. ', 'SCHEMA', N'SCore', 'TABLE', N'ObjectSecurity'
+GO
+
+PRINT (N'Add extended property [MS_Description] on table [SCore].[ObjectSecurity]')
 GO

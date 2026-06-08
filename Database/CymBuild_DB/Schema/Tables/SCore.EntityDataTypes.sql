@@ -1,15 +1,27 @@
-﻿CREATE TABLE [SCore].[EntityDataTypes] (
+﻿PRINT (N'Create table [SCore].[EntityDataTypes]')
+GO
+CREATE TABLE [SCore].[EntityDataTypes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_EntityDataTypes_RowStatus] DEFAULT (0),
   [RowVersion] [timestamp],
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_EntityDataTypes_Guid] DEFAULT (newid()) ROWGUIDCOL,
   [Name] [nvarchar](250) NOT NULL CONSTRAINT [DF_EntityDataTypes_Name] DEFAULT (''),
-  [QuoteValue] [bit] NOT NULL CONSTRAINT [DF_EntityDataTypes_QuoteValue] DEFAULT (0),
-  CONSTRAINT [PK_EntityDataTypes] PRIMARY KEY CLUSTERED ([ID]) ON [METADATA]
+  [QuoteValue] [bit] NOT NULL CONSTRAINT [DF_EntityDataTypes_QuoteValue] DEFAULT (0)
 )
 ON [METADATA]
 GO
 
+PRINT (N'Create primary key [PK_EntityDataTypes] on table [SCore].[EntityDataTypes]')
+GO
+ALTER TABLE [SCore].[EntityDataTypes] WITH NOCHECK
+  ADD CONSTRAINT [PK_EntityDataTypes] PRIMARY KEY CLUSTERED ([ID]) ON [METADATA]
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_UQ_EntityDataTypes_Guid] on table [SCore].[EntityDataTypes]')
+GO
 CREATE UNIQUE INDEX [IX_UQ_EntityDataTypes_Guid]
   ON [SCore].[EntityDataTypes] ([Guid], [RowStatus])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
@@ -17,6 +29,11 @@ CREATE UNIQUE INDEX [IX_UQ_EntityDataTypes_Guid]
   ON [PRIMARY]
 GO
 
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_UQ_EntityDataTypes_Name] on table [SCore].[EntityDataTypes]')
+GO
 CREATE UNIQUE INDEX [IX_UQ_EntityDataTypes_Name]
   ON [SCore].[EntityDataTypes] ([Name])
   WHERE ([RowStatus]<>(0))
@@ -24,17 +41,136 @@ CREATE UNIQUE INDEX [IX_UQ_EntityDataTypes_Name]
   ON [PRIMARY]
 GO
 
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_EntityDataTypes_RecordHistory] on table [SCore].[EntityDataTypes]')
+GO
+CREATE TRIGGER [SCore].[tg_EntityDataTypes_RecordHistory]
+   ON  [SCore].[EntityDataTypes]	
+   AFTER UPDATE
+AS 
+BEGIN
+	SET NOCOUNT ON;
+
+    IF (ISNULL(CONVERT(int, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+    BEGIN 
+        RETURN
+    END
+
+    DECLARE	@PreviousValue NVARCHAR(MAX),
+			@NewValue NVARCHAR(MAX),
+			@UserID INT = 0,
+			@SchemaName NVARCHAR(250) = N'SCore',
+			@TableName NVARCHAR(250) = N'EntityDataTypes',
+			@ColumnName NVARCHAR(250),
+			@MaxInsertedID BIGINT,
+			@CurrentInsertedID BIGINT,
+			@CurrentInsertedGuid UNIQUEIDENTIFIER
+
+	SELECT @UserID = ISNULL(CONVERT(int, SESSION_CONTEXT(N'user_id')), -1)
+
+	SELECT	@MaxInsertedID = MAX([ID]),
+			@CurrentInsertedID = -1
+	FROM	Inserted
+
+	WHILE	(@CurrentInsertedID < @MaxInsertedID)
+	BEGIN 
+		SELECT	TOP(1) @CurrentInsertedID = i.[ID],
+				@CurrentInsertedGuid = i.Guid
+		FROM	Inserted i
+		WHERE	(i.[ID] > @CurrentInsertedID)
+			ORDER BY i.[ID]
+		
+		SELECT	
+					@PreviousValue = ISNULL(d.[Name], N''),
+					@NewValue = ISNULL(i.[Name], N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (
+                        (d.[Name] <> i.[Name])
+                        OR  (ISNULL(d.[Name], N'') <> ISNULL(i.[Name], N''))
+                    )
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'Name', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 532)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(d.[QuoteValue], N''),
+					@NewValue = ISNULL(i.[QuoteValue], N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (
+                        (d.[QuoteValue] <> i.[QuoteValue])
+                        OR  (ISNULL(d.[QuoteValue], N'') <> ISNULL(i.[QuoteValue], N''))
+                    )
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'QuoteValue', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 533)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(d.[RowStatus], N''),
+					@NewValue = ISNULL(i.[RowStatus], N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (
+                        (d.[RowStatus] <> i.[RowStatus])
+                        OR  (ISNULL(d.[RowStatus], N'') <> ISNULL(i.[RowStatus], N''))
+                    )
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'RowStatus', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 534)
+			END 
+			
+			
+			END
+		END
+		
+		
+GO
+
+PRINT (N'Create foreign key [FK_EntityDataTypes_DataObjects] on table [SCore].[EntityDataTypes]')
+GO
 ALTER TABLE [SCore].[EntityDataTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityDataTypes_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
+PRINT (N'Disable foreign key [FK_EntityDataTypes_DataObjects] on table [SCore].[EntityDataTypes]')
+GO
 ALTER TABLE [SCore].[EntityDataTypes]
   NOCHECK CONSTRAINT [FK_EntityDataTypes_DataObjects]
 GO
 
-ALTER TABLE [SCore].[EntityDataTypes]
+PRINT (N'Create foreign key [FK_EntityDataTypes_RowStatus] on table [SCore].[EntityDataTypes]')
+GO
+ALTER TABLE [SCore].[EntityDataTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityDataTypes_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
+PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityDataTypes]')
+GO
 EXEC sys.sp_addextendedproperty N'MS_Description', N'Describes the type of data stored in an Entity Property', 'SCHEMA', N'SCore', 'TABLE', N'EntityDataTypes'
 GO

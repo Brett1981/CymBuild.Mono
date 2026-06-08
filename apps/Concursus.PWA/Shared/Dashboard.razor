@@ -3,6 +3,7 @@
 @using Concursus.PWA.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Concursus.PWA.Helpers
 
 @inject Core.CoreClient CoreClient
 @inject NavigationManager Navigation
@@ -15,6 +16,7 @@
 @inject IToastService Toast
 
 @attribute [Authorize]
+
 <style>
     .custom-telerik-grid {
         max-height: auto;
@@ -26,131 +28,207 @@
     .card h5 {
         max-width: 200px;
     }
-    /* custom-ellipsis class */
+
     .custom-ellipsis,
-    /* OnCellRender class */
     .k-grid td.custom-ellipsis,
-    /* OnRowRender class */
     .k-grid tr.custom-ellipsis .k-table-td {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
+
+    .cb-v2-dashboard-loading {
+        min-height: 90px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 </style>
 
 <AuthorizeView>
     <Authorized>
-        <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
-        @if (UserService?.UserId != -1)
-        {
-            GetRecentListAsync(UserService?.UserId ?? -1);
-            <h4><i class="bi bi-house-fill me-2" style="font-size: 1.2rem;"></i> Dashboard</h4>
+        <MessageDisplay @ref="_messageDisplay"
+                        ErrorMessage="@ErrorMessage"
+                        PageMethod="@PageMethod"
+                        MessageType="MessageType" />
 
-            <div class="d-flex flex-row flex-wrap justify-content-around align-items-start transition-fade-in">
-                <!-- Left Column (30% width) -->
-                <div class="col-lg-3 align-items-start">
-                    @if (_recentItems?.RecentItems?.Count > 0)
-                    {
-                        <!-- TelerikGrid in the left column -->
-                        <div class="card shadow-sm p-2 m-2" style="max-height:auto">
-                            <div class="card-body">
-                                <div class="card-title d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Recent </h5>
+        <h4>
+            <i class="bi bi-house-fill me-2" style="font-size: 1.2rem;"></i>
+            Dashboard
+        </h4>
 
-                                </div>
-                                <!-- Telerik Grid -->
-                                <TelerikGrid Data="@_recentItems?.RecentItems" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="HandleRowDoubleClick">
-                                    <GridColumns>
-                                        <GridColumn Field="@nameof(RecentItem.EntityTypeLabel)" Title="Type" />
-                                        <GridColumn Field="@nameof(RecentItem.Label)" Title="Record" />
-                                    </GridColumns>
-                                </TelerikGrid>
-                            </div>
+        <div class="d-flex flex-row flex-wrap justify-content-around align-items-start transition-fade-in">
+            <div class="col-lg-3 align-items-start">
+
+                <div class="card shadow-sm p-2 m-2" style="max-height:auto">
+                    <div class="card-body">
+                        <div class="card-title d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Recent</h5>
                         </div>
-                    }
-                    @if (_scheduleItems?.ScheduleItems?.Count > 0)
-                    {
-                        <!-- TelerikGrid in the left column -->
-                        <div class="card shadow-sm p-2 m-2" style="max-height:auto">
-                            <div class="card-body">
-                                <div class="card-title d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">Schedule</h5>
-                                    <btn class="btn btn-default"
-                                         id="_schedule"
-                                         @onclick="@(_ => HandleClickOnMetric("_schedule"))">
-                                        <i class="bi bi-eye-fill"></i>
-                                    </btn>
-                                </div>
-                                <!-- Telerik Grid -->
-                                <TelerikGrid Data="@_scheduleItems?.ScheduleItems" Resizable="true" Pageable="true" PageSize="10" Class="custom-telerik-grid" SelectionMode="GridSelectionMode.Single" OnRowDoubleClick="ScheduleRowDoubleClick">
-                                    <GridColumns>
-                                        <GridColumn Field="@nameof(ScheduleItem.Start)" Title="Start">
-                                            <Template Context="scheduleItem">
-                                                @{
-                                                    var item = (ScheduleItem)scheduleItem;
-                                                    var createdDateTime = item.Start.ToDateTime();
-                                                    var formattedCreatedDateTime = createdDateTime.ToUniversalTime().ToString("dd/MM/yyyy HH:mm:ss");
-                                                }
-                                                @formattedCreatedDateTime
-                                            </Template>
-                                        </GridColumn>
-                                        <GridColumn Field="@nameof(ScheduleItem.Title)" Title="Title" Visible="true">
-                                            <Template Context="scheduleItem">
-                                                @{
-                                                    var item = (ScheduleItem)scheduleItem;
-                                                    <div class="custom-ellipsis">
-                                                        @item.Title;
-                                                    </div>
-                                                }
-                                            </Template>
-                                        </GridColumn>
-                                    </GridColumns>
-                                </TelerikGrid>
+
+                        @if (_recentItemsLoading)
+                        {
+                            <div class="cb-v2-dashboard-loading">
+                                <div class="cb-v2-muted">Loading recent items...</div>
                             </div>
-                        </div>
-                    }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_recentItemsError))
+                        {
+                            <div class="cb-v2-badge cb-v2-badge-danger">@_recentItemsError</div>
+                        }
+                        else if (_recentItems?.RecentItems?.Count > 0)
+                        {
+                            <TelerikGrid Data="@_recentItems.RecentItems"
+                                         PageSize="10"
+                                         Class="custom-telerik-grid"
+                                         SelectionMode="GridSelectionMode.Single"
+                                         OnRowDoubleClick="HandleRowDoubleClick">
+                                <GridColumns>
+                                    <GridColumn Field="@nameof(RecentItem.EntityTypeLabel)" Title="Type" />
+                                    <GridColumn Field="@nameof(RecentItem.Label)" Title="Record" />
+                                </GridColumns>
+                            </TelerikGrid>
+                        }
+                        else
+                        {
+                            <div class="cb-v2-muted">No recent items found.</div>
+                        }
+                    </div>
                 </div>
-                <!-- Right Column (70% width) -->
-                <div class="col-lg-9 d-flex flex-wrap">
+
+                <div class="card shadow-sm p-2 m-2" style="max-height:auto">
+                    <div class="card-body">
+                        <div class="card-title d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Schedule</h5>
+
+                            <button type="button"
+                                    class="btn btn-default"
+                                    id="_schedule"
+                                    @onclick="@(_ => HandleClickOnMetric("_schedule"))">
+                                <i class="bi bi-eye-fill"></i>
+                            </button>
+                        </div>
+
+                        @if (_scheduleItemsLoading)
+                        {
+                            <div class="cb-v2-dashboard-loading">
+                                <div class="cb-v2-muted">Loading scheduled items...</div>
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_scheduleItemsError))
+                        {
+                            <div class="cb-v2-badge cb-v2-badge-danger">@_scheduleItemsError</div>
+                        }
+                        else
+                        {
+                            <div class="cb-v2-table-wrap">
+                                <table class="cb-v2-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Start</th>
+                                            <th>Title</th>
+                                            <th class="text-end">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (_scheduleItems?.ScheduleItems == null || _scheduleItems.ScheduleItems.Count == 0)
+                                        {
+                                            <tr>
+                                                <td colspan="3">
+                                                    <div class="cb-v2-muted">No scheduled items found.</div>
+                                                </td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var item in _scheduleItems.ScheduleItems)
+                                            {
+                                                <tr>
+                                                    <td>@UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false)</td>
+                                                    <td>
+                                                        <div class="cb-v2-ellipsis" title="@item.Title">
+                                                            @item.Title
+                                                        </div>
+                                                    </td>
+                                                    <td class="text-end">
+                                                        <button type="button"
+                                                                class="cb-v2-btn-secondary"
+                                                                @onclick="() => OpenScheduleInfoAsync(item)">
+                                                            View
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-9 d-flex flex-wrap">
+                @if (_metricsLoading)
+                {
+                    <div class="card shadow-sm p-2 m-2 flex-fill">
+                        <div class="cb-v2-dashboard-loading">
+                            <div class="cb-v2-muted">Loading dashboard metrics...</div>
+                        </div>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_metricsError))
+                {
+                    <div class="card shadow-sm p-2 m-2 flex-fill">
+                        <div class="cb-v2-badge cb-v2-badge-danger">@_metricsError</div>
+                    </div>
+                }
+                else
+                {
                     @foreach (var dm in Metrics.OrderBy(m => m.DisplayGroupName).ThenBy(m => m.DisplayOrder))
                     {
                         switch (dm.MetricTypeName)
                         {
                             case "NumberValue":
                                 <div class="card shadow-sm p-2 m-2 flex-fill">
-                                    <NumberValue Metric="dm"></NumberValue>
+                                    <NumberValue Metric="dm" />
                                 </div>
                                 break;
+
                             case "ArcGauge":
                                 <div class="card shadow-sm p-2 m-2 flex-fill">
-                                    <ArcGauge Metric="dm"></ArcGauge>
+                                    <ArcGauge Metric="dm" />
                                 </div>
                                 break;
+
                             case "RadialGauge":
                                 <div class="card shadow-sm p-2 m-2 flex-fill">
-                                    <RadialGauge Metric="dm"></RadialGauge>
+                                    <RadialGauge Metric="dm" />
                                 </div>
                                 break;
                         }
                     }
-
-@*                     <!-- Embed the iframe in the right column -->
-                    <div class="card shadow-sm p-2 m-2 flex-fill" style="width: 100%;">
-                        <iframe id="secureIframe" src="https://10.100.34.244/single/?appid=cd194419-1fb0-4279-bc22-80561a431026&obj=nrspQm&opt=ctxmenu,currsel"
-                                style="border:none;width:100%;height:600px;"></iframe>
-                    </div> *@
-                </div>
+                }
             </div>
-        }
+        </div>
     </Authorized>
+
     <NotAuthorized>
         <p>You are not authorized to view this content. Please log in.</p>
     </NotAuthorized>
 </AuthorizeView>
+
 @code {
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender)
+        {
+            return;
+        }
+
+        StartDashboardDataLoads();
+
+        try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
@@ -158,6 +236,7 @@
             if (user?.Identity?.IsAuthenticated == true)
             {
                 var result = await TokenProvider.RequestAccessToken();
+
                 if (result.TryGetToken(out var token))
                 {
                     await JsRuntime.InvokeVoidAsync("sendTokenToIframe", token.Value);
@@ -165,19 +244,25 @@
             }
             else
             {
-
                 var ex = new Exception("Unable to identify if the user is authenticated")
+                {
+                    Data =
                     {
-                        Data =
-                            {
-                                { "MessageType", MessageDisplay.ShowMessageType.Error },
-                                { "AdditionalInfo", "Unable to identify if the user is authenticated."},
-                                { "PageMethod", "Dashboard/OnAfterRenderAsync()" }
-                            }
-                    };
-                OnError(ex);
+                        { "MessageType", MessageDisplay.ShowMessageType.Error },
+                        { "AdditionalInfo", "Unable to identify if the user is authenticated." },
+                        { "PageMethod", "Dashboard/OnAfterRenderAsync()" }
+                    }
+                };
+
+                await OnError(ex);
             }
         }
-
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error during dashboard post-render authentication setup.";
+            ex.Data["PageMethod"] = "Dashboard/OnAfterRenderAsync()";
+            await OnError(ex);
+        }
     }
 }

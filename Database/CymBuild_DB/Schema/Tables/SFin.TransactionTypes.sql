@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[TransactionTypes]')
 GO
+PRINT (N'Create table [SFin].[TransactionTypes]')
+GO
 CREATE TABLE [SFin].[TransactionTypes] (
   [ID] [smallint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionTypes_RowStatus] DEFAULT (1),
@@ -44,6 +46,157 @@ CREATE UNIQUE INDEX [IX_UQ_TransactionTypes_Name]
   INCLUDE ([IsNegated])
   WITH (FILLFACTOR = 100)
   ON [PRIMARY]
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_TransactionTypes_RecordHistory] on table [SFin].[TransactionTypes]')
+GO
+CREATE TRIGGER [SFin].[tg_TransactionTypes_RecordHistory]
+   ON  [SFin].[TransactionTypes]	
+   AFTER INSERT, UPDATE
+AS 
+BEGIN
+	SET NOCOUNT ON;
+
+    IF (ISNULL(CONVERT(int, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+    BEGIN 
+        RETURN
+    END
+
+	IF (EXISTS
+			(
+				SELECT	1
+				FROM	Inserted
+				WHERE	(ID = -1) 
+			)
+		)
+	BEGIN 
+		;THROW 60000, N'Data integrity exception: Attempt to alter -1 record', 1
+	END
+
+    DECLARE	@PreviousValue NVARCHAR(MAX),
+			@NewValue NVARCHAR(MAX),
+			@UserID INT = 0,
+			@SchemaName NVARCHAR(250) = N'SFin',
+			@TableName NVARCHAR(250) = N'TransactionTypes',
+			@ColumnName NVARCHAR(250),
+			@MaxInsertedID BIGINT,
+			@CurrentInsertedID BIGINT,
+			@CurrentInsertedGuid UNIQUEIDENTIFIER
+
+	SELECT @UserID = ISNULL(CONVERT(int, SESSION_CONTEXT(N'user_id')), -1)
+
+	SELECT	@MaxInsertedID = MAX([ID]),
+			@CurrentInsertedID = -1
+	FROM	Inserted
+
+	WHILE	(@CurrentInsertedID < @MaxInsertedID)
+	BEGIN 
+		SELECT	TOP(1) @CurrentInsertedID = i.[ID],
+				@CurrentInsertedGuid = i.Guid
+		FROM	Inserted i
+		WHERE	(i.[ID] > @CurrentInsertedID)
+			ORDER BY i.[ID]
+		
+		
+		
+		IF (NOT EXISTS 
+				(
+					SELECT	1
+					FROM 	deleted d
+					WHERE	(d.[ID] = @CurrentInsertedID)
+				)
+			)
+		BEGIN 
+				
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, N'', N'', SYSTEM_USER, -1)
+	
+			RETURN 
+		END
+		
+		SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[IsActive]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[IsActive]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[IsActive] IS DISTINCT FROM i.[IsActive])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'IsActive', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 729)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[Name]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[Name]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[Name] IS DISTINCT FROM i.[Name])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'Name', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 730)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[RowStatus]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[RowStatus]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[RowStatus] IS DISTINCT FROM i.[RowStatus])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'RowStatus', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 731)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[SequenceID]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[SequenceID]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[SequenceID] IS DISTINCT FROM i.[SequenceID])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'SequenceID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 733)
+			END 
+			
+			
+			END
+		END
+		
+		
 GO
 
 PRINT (N'Create foreign key [FK_TransactionTypes_DataObjects] on table [SFin].[TransactionTypes]')

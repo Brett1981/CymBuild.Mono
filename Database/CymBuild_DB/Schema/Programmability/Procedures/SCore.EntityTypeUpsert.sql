@@ -13,7 +13,8 @@ CREATE PROCEDURE [SCore].[EntityTypeUpsert]
     @IsRootEntity         BIT,
     @DetailPageUrl        NVARCHAR(250),
 	@IsMetaData			  BIT,
-    @Guid                 UNIQUEIDENTIFIER OUT
+    @Guid                 UNIQUEIDENTIFIER OUT,
+	@IsDeletable		  BIT
   )
 AS
   BEGIN
@@ -92,7 +93,8 @@ AS
                 IconId,
                 IsRootEntity,
                 DetailPageUrl,
-				IsMetaData
+				IsMetaData,
+				IsDeletable
               )
         VALUES
                 (
@@ -107,7 +109,8 @@ AS
                   @IconId,
                   @IsRootEntity,
                   @DetailPageUrl,
-				  @IsMetaData
+				  @IsMetaData,
+				  @IsDeletable
                 );
       END;
     ELSE
@@ -123,7 +126,8 @@ AS
                 IconId = @IconId,
                 IsRootEntity = @IsRootEntity,
                 DetailPageUrl = @DetailPageUrl,
-				IsMetaData = @IsMetaData
+				IsMetaData = @IsMetaData,
+				IsDeletable = @IsDeletable
         WHERE
           (Guid = @Guid);
       END;

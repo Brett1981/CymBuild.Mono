@@ -1,5 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SFin].[InvoiceRequestCreateInvoice]')
+GO
+
+
+
+
+
+
+
 CREATE PROCEDURE [SFin].[InvoiceRequestCreateInvoice]
 	(
 		@Guid UNIQUEIDENTIFIER
@@ -65,6 +74,13 @@ AS
 		FROM	SFin.TransactionTypes tt
 		WHERE	(tt.Name = N'Invoice')
 
+		DECLARE @ExpectedDateOnInvoiceRequest DATE;
+
+		SELECT @ExpectedDateOnInvoiceRequest = ir.ExpectedDate
+		FROM SFin.InvoiceRequests AS ir
+		WHERE ir.Guid = @Guid;
+
+
 		-- Create the invoice header
 		EXEC SFin.TransactionsUpsert @AccountGuid = @AccountGuid,				-- uniqueidentifier
 									 @JobGuid = @JobGuid,					-- uniqueidentifier
@@ -77,7 +93,8 @@ AS
 									 @SurveyorGuid = @SurveyorGuid,				-- uniqueidentifier
 									 @CreditTermsGuid = @CreditTermsGuid,			-- uniqueidentifier
 									 @Guid = @TransactionGuid,						-- uniqueidentifier
-									 @Batched = 1									-- Set it to 1
+									 @Batched = 1,									-- Set it to 1
+									 @ExpectedDate = @ExpectedDateOnInvoiceRequest
 
 		SELECT	@TransactionId = ID
 		FROM	SFin.Transactions t

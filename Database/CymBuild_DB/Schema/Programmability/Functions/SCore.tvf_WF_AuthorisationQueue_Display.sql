@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SCore].[tvf_WF_AuthorisationQueue_Display]')
+GO
+
 CREATE FUNCTION  [SCore].[tvf_WF_AuthorisationQueue_Display]
 (
     @UserId INT = NULL
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 
@@ -32,7 +35,14 @@ SELECT
     aq.LatestWorkflowStatusGuid,
     aq.LatestWorkflowStatusName,
     aq.LatestTransitionGuid,
+    -- Raw audit value. Keep this unchanged.
     aq.LatestTransitionUtc,
+
+    -- Display value for UK users. Handles GMT/BST automatically.
+    CAST(
+        aq.LatestTransitionUtc AT TIME ZONE 'UTC' AT TIME ZONE 'GMT Standard Time'
+        AS DATETIME2(0)
+    ) AS LatestTransitionLocal,
 
     aq.TargetGroupIdsCsv,
     aq.CanActionForUser,

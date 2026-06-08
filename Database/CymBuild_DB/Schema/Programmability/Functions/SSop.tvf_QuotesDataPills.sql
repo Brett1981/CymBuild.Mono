@@ -2,6 +2,9 @@
 GO
 PRINT (N'Create function [SSop].[tvf_QuotesDataPills]')
 GO
+PRINT (N'Create function [SSop].[tvf_QuotesDataPills]')
+GO
+
 
 CREATE FUNCTION [SSop].[tvf_QuotesDataPills]
 (
@@ -104,7 +107,7 @@ BEGIN
         ELSE IF (@LatestStatusGuid = @AcceptedGuid)
         BEGIN
             INSERT @DataPills (Label, Class, SortOrder)
-            VALUES (N'Accepted', N'bg-success', 1);
+            VALUES (N'Customer Accepted', N'bg-success', 1);
         END
         ELSE IF (@LatestStatusGuid IN (@RejectedGuid, @DeclinedGuid, @DeadGuid))
         BEGIN

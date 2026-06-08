@@ -2,6 +2,8 @@
 GO
 PRINT (N'Create table [SFin].[InvoiceAutomationRuns]')
 GO
+PRINT (N'Create table [SFin].[InvoiceAutomationRuns]')
+GO
 CREATE TABLE [SFin].[InvoiceAutomationRuns] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceAutomationRuns_RowStatus] DEFAULT (0),
@@ -30,6 +32,14 @@ PRINT (N'Create primary key [PK_InvoiceAutomationRuns] on table [SFin].[InvoiceA
 GO
 ALTER TABLE [SFin].[InvoiceAutomationRuns] WITH NOCHECK
   ADD CONSTRAINT [PK_InvoiceAutomationRuns] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
+GO
+
+PRINT (N'Create index [IX_SFin_InvoiceAutomationRuns_1885346130] on table [SFin].[InvoiceAutomationRuns]')
+GO
+CREATE INDEX [IX_SFin_InvoiceAutomationRuns_1885346130]
+  ON [SFin].[InvoiceAutomationRuns] ([RowStatus])
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
 GO
 
 PRINT (N'Create index [IX_UQ_InvoiceAutomationRuns_Guid] on table [SFin].[InvoiceAutomationRuns]')

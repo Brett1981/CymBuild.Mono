@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SJob].[JobsUpsert]')
+GO
+
 CREATE PROCEDURE [SJob].[JobsUpsert]
   @OrganisationalUnitGuid  UNIQUEIDENTIFIER,
   @JobTypeGuid             UNIQUEIDENTIFIER,
@@ -55,7 +58,9 @@ CREATE PROCEDURE [SJob].[JobsUpsert]
   @AgentContractGuid		UNIQUEIDENTIFIER,
   @CompleteForReviewDate	DATETIME2,
   @SectorGuid				UNIQUEIDENTIFIER,
-  @MarketGuid				UNIQUEIDENTIFIER
+  @MarketGuid				UNIQUEIDENTIFIER,
+  @DataClassificationGuid UNIQUEIDENTIFIER,
+  @SecurityClassificationGuid UNIQUEIDENTIFIER
  
 AS
   BEGIN
@@ -86,7 +91,9 @@ AS
 			@AgentContractID    INT = -1,
 			@CompletedForReviewDateTime DATETIME2 = @CompleteForReviewDate,
 			@SectorId			INT = -1,
-			@MarketId			INT = -1;
+			@MarketId			INT = -1,
+            @DataClassificationId INT = -1,
+            @SecurityClassificationId INT = -1;
 
     SELECT
             @UserID = ISNULL(CONVERT(INT,
@@ -256,6 +263,25 @@ AS
 	WHERE
 			([Guid] = @MarketGuid)
 
+    SELECT
+        @DataClassificationId = dc.ID
+    FROM
+        SCore.DataClassifications AS dc
+    WHERE
+        dc.Guid = @DataClassificationGuid
+        AND dc.RowStatus NOT IN (0,254);
+
+    SELECT
+        @SecurityClassificationId = sc.ID
+    FROM
+        SCore.SecurityClassifications AS sc
+    WHERE
+        sc.Guid = @SecurityClassificationGuid
+        AND sc.RowStatus NOT IN (0,254);
+
+    SET @DataClassificationId = ISNULL(@DataClassificationId, -1);
+    SET @SecurityClassificationId = ISNULL(@SecurityClassificationId, -1);
+
 
     IF (@CreatedOn IS NULL)
       BEGIN
@@ -339,7 +365,9 @@ AS
 				AgentContractID,
 				CompletedForReviewDate,
 				SectorId,
-				MarketId
+				MarketId,
+                DataClassificationID,
+                SecurityClassificationID
               )
         VALUES
                 (
@@ -400,7 +428,9 @@ AS
 				  @AgentContractID,
 				  @CompletedForReviewDateTime,
 				  @SectorId,
-				  @MarketId
+				  @MarketId,
+                  @DataClassificationId,
+                  @SecurityClassificationId
                 );
 
 		DECLARE @DataObjectTransitionGuid UNIQUEIDENTIFIER = NEWID();
@@ -492,7 +522,9 @@ AS
 				AgentContractID = @AgentContractID,
 				CompletedForReviewDate = @CompletedForReviewDateTime,
 				SectorId = @SectorId,
-				MarketId = @MarketId
+				MarketId = @MarketId,
+                DataClassificationID = @DataClassificationId,
+                SecurityClassificationID = @SecurityClassificationId
         WHERE
           (Guid = @Guid);
 

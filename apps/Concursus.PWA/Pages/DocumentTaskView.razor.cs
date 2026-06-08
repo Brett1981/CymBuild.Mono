@@ -83,8 +83,8 @@ public partial class DocumentTaskView
 
         var docBytes = File.ReadAllBytes(path);
 
-        var document = docxProvider.Import(docBytes);
-        var resultBytes = pdfProvider.Export(document);
+        var document = docxProvider.Import(docBytes, TimeSpan.FromSeconds(30));
+        var resultBytes = pdfProvider.Export(document, TimeSpan.FromSeconds(30));
 
         // Generate a temporary file name and path
         tempResultPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".pdf");

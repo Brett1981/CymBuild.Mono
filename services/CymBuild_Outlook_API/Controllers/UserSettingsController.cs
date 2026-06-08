@@ -1,10 +1,14 @@
-﻿using CymBuild_Outlook_API.Services;
+﻿using CymBuild_Outlook_API.Data;
+using CymBuild_Outlook_API.Models;
+using CymBuild_Outlook_API.Services;
 using CymBuild_Outlook_Common.Helpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Graph;
+using Microsoft.Graph.Models;
 using Newtonsoft.Json;
+
 
 namespace CymBuild_Outlook_API.Controllers
 {
@@ -17,20 +21,26 @@ namespace CymBuild_Outlook_API.Controllers
         private readonly IMSGraphBase _graphBaseService;
         private readonly IConfiguration _configuration;
         private readonly LoggingHelper _loggingHelper;
+        private readonly AppDbContext _context;
+      
 
         public UserSettingsController(
             IMSGraphBase graphBaseService,
             IConfiguration configuration,
-            LoggingHelper loggingHelper)
+            LoggingHelper loggingHelper,
+            AppDbContext context
+            )
         {
             _graphBaseService = graphBaseService;
             _configuration = configuration;
             _loggingHelper = loggingHelper;
+            _context = context;
+            
         }
 
         // GET: /api/UserSettings
         [HttpGet]
-        public async Task<ActionResult<Dictionary<string, object>>> Get()
+        public async Task<ActionResult<Models.UserSettings>> Get()
         {
             var corr = Request.Headers.TryGetValue("X-Correlation-Id", out var v) ? v.ToString() : $"settings-{Guid.NewGuid():N}".Substring(0, 18);
             if (User?.Identity?.IsAuthenticated != true)
@@ -42,14 +52,20 @@ namespace CymBuild_Outlook_API.Controllers
             {
                 _loggingHelper.LogInfo($"[{corr}] Get UserSettings START", "UserSettingsController.Get()");
 
-                var settings = await GetUserSettingsFromGraphAsync();
+                var email = Request.Headers["X-User-Email"].ToString();
 
-                _loggingHelper.LogInfo($"[{corr}] Get UserSettings END keys={settings.Count}", "UserSettingsController.Get()");
+                _loggingHelper.LogInfo($"[{corr}] Get UserSettings", $"Extracting email address => {email}");
+
+                var settings = await GetUserSettingsFromGraphAsync(email);
+
+                _loggingHelper.LogInfo($"[{corr}] Settings -> [MoveToCymBuildFiled] : {settings.MoveToCymBuildFiled}, [ExtractAttachments] : {settings.ExtractAttachments} ", "UserSettingsController.Get()");
+
+                _loggingHelper.LogInfo($"[{corr}] Get UserSettings END ", "UserSettingsController.Get()");
                 return Ok(settings);
             }
             catch (ServiceException ex)
             {
-                _loggingHelper.LogError($"[{corr}] Get UserSettings GRAPH ERROR", ex, "UserSettingsController.Get()");
+                _loggingHelper.LogError($"[{corr}] Get UserSettings  ERROR", ex, "UserSettingsController.Get()");
                 return StatusCode(500, ex.Message);
             }
             catch (Exception ex)
@@ -61,7 +77,7 @@ namespace CymBuild_Outlook_API.Controllers
 
         // POST: /api/UserSettings
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] Dictionary<string, object> settings)
+        public async Task<IActionResult> Post([FromBody] UserSettingsRequest settings)
         {
             var corr = Request.Headers.TryGetValue("X-Correlation-Id", out var v) ? v.ToString() : $"settings-{Guid.NewGuid():N}".Substring(0, 18);
             if (User?.Identity?.IsAuthenticated != true)
@@ -71,9 +87,9 @@ namespace CymBuild_Outlook_API.Controllers
             }
             try
             {
-                _loggingHelper.LogInfo($"[{corr}] Save UserSettings START keys={settings?.Count ?? 0}", "UserSettingsController.Post()");
+                _loggingHelper.LogInfo($"[{corr}] Save UserSettings START", "UserSettingsController.Post()");
 
-                await SaveUserSettingsToGraphAsync(settings ?? new Dictionary<string, object>());
+                await SaveUserSettingsToGraphAsync(settings ?? new UserSettingsRequest());
 
                 _loggingHelper.LogInfo($"[{corr}] Save UserSettings END OK", "UserSettingsController.Post()");
                 return Ok();
@@ -94,60 +110,49 @@ namespace CymBuild_Outlook_API.Controllers
         // Shared internal logic
         // -----------------------
 
-        private string GetFiledRecordPropertyValue()
+     
+        private async Task<Models.UserSettings> GetUserSettingsFromGraphAsync(string email)
         {
-            var value = _configuration.GetValue<string>("FiledRecords:PropertyValue");
-            return string.IsNullOrWhiteSpace(value) ? string.Empty : value;
-        }
-
-        private async Task<Dictionary<string, object>> GetUserSettingsFromGraphAsync()
-        {
-            var graphClient = _graphBaseService.GetGraphClient();
-            var user = await graphClient.Me.GetAsync();
-
-            var key = GetFiledRecordPropertyValue();
 
             // default settings if key missing or graph returns nothing
-            var defaults = new Dictionary<string, object>
-            {
-                { "moveToCymBuildFiled", false },
-                { "extractAttachments", false }
-            };
+            var defaults = new Models.UserSettings();
 
-            if (string.IsNullOrWhiteSpace(key) || user?.AdditionalData == null)
-                return defaults;
+            var settings = await _context.GetUserSettings(email);
 
-            if (user.AdditionalData.TryGetValue(key, out var settingsObj) && settingsObj != null)
+            if (settings != null) 
             {
-                var json = settingsObj.ToString();
-                if (!string.IsNullOrWhiteSpace(json))
-                {
-                    var settings = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
-                    if (settings != null)
-                        return settings;
-                }
+                _loggingHelper.LogInfo($"GetUserSettingsFromGraphAsync() => settings: {JsonConvert.SerializeObject(settings)}");
+                return settings;
             }
-
-            return defaults;
+            else
+            {
+                return defaults;
+            }
         }
 
-        private async Task SaveUserSettingsToGraphAsync(Dictionary<string, object> settings)
+
+        private async Task SaveUserSettingsToGraphAsync(UserSettingsRequest settings)
         {
-            var graphClient = _graphBaseService.GetGraphClient();
-            var key = GetFiledRecordPropertyValue();
+            string userEmail = settings.UserId;
 
-            if (string.IsNullOrWhiteSpace(key))
-                throw new InvalidOperationException("FiledRecords:PropertyValue is not configured.");
+            _loggingHelper.LogInfo($"User Email : {userEmail}");
 
-            var json = JsonConvert.SerializeObject(settings);
-            _loggingHelper.LogInfo("Saving user settings to Graph extension property {ExtensionProperty}", key);
-            await graphClient.Me.PatchAsync(new Microsoft.Graph.Models.User
+            if (string.IsNullOrWhiteSpace(userEmail))
+                throw new MissingFieldException("Payload was missing the User ID.");
+
+            var settingsToSave = new
             {
-                AdditionalData = new Dictionary<string, object>
-                {
-                    [key] = json
-                }
-            });
+                settings.MoveToCymBuildFiled,
+                settings.ExtractAttachments
+            };
+
+            var json = JsonConvert.SerializeObject(settingsToSave);
+
+            _loggingHelper.LogInfo($"JSON = {json}");
+
+            int res = await _context.UpsertOutlookSettings(json, userEmail);
+
+            _loggingHelper.LogInfo($"res = {res}");
         }
     }
 }

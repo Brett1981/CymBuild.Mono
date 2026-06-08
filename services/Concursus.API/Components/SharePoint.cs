@@ -416,6 +416,21 @@ public class SharePoint : MSGraphBase, IDisposable
 
         return sharepointDocumentsGetResponse;
     }
+    public async Task RepairSharePointStructureAsync(
+    DataObject dataObject,
+    EF.Core efCore,
+    CancellationToken cancellationToken = default)
+    {
+        if (dataObject == null)
+            throw new ArgumentNullException(nameof(dataObject));
+
+        await GetSharePointLocation(
+                dataObject.EntityTypeGuid.ToString(),
+                dataObject,
+                efCore,
+                serviceBase: null!)
+            .ConfigureAwait(false);
+    }
 
     //CBLD-405: Added param organisationUnit
     public async Task<DataObjectUpsertResponse> GetSharePointLocation(string EntityTypeGuid, DataObject dataObject,
@@ -660,13 +675,9 @@ public class SharePoint : MSGraphBase, IDisposable
         if (dataObject.EntityTypeGuid == JobEntityTypeGuid)
         {
             var effectiveOrganisationalUnitGuid = ResolveJobOrganisationalUnitGuid(dataObject, organisationalUnit);
-
             var directory = BuildJobSharepointDirectory(effectiveOrganisationalUnitGuid);
 
-            var resolvedQuoteLink = await ResolveQuoteLinkForJobAsync(
-                    efCore,
-                    quoteId,
-                    quoteUrl)
+            var jobLinks = await ResolveJobSharePointLinksAsync(efCore, dataObject.Guid)
                 .ConfigureAwait(false);
 
             await sharepointService.EnsureFolderStructureExists(
@@ -677,10 +688,24 @@ public class SharePoint : MSGraphBase, IDisposable
                     drive,
                     folder,
                     dataObject.Label,
-                    resolvedQuoteLink.LinkNumber,
-                    resolvedQuoteLink.LinkUrl,
+                    jobLinks.QuoteNumber,
+                    jobLinks.QuoteUrl,
                     false,
                     directory.SubFoldersToCreate)
+                .ConfigureAwait(false);
+
+            await sharepointService.EnsureFolderStructureExists(
+                    _graphServiceClient,
+                    siteId,
+                    dataObject.SharePointUrl,
+                    new List<string>(),
+                    drive,
+                    folder,
+                    dataObject.Label,
+                    jobLinks.EnquiryNumber,
+                    jobLinks.EnquiryUrl,
+                    true,
+                    new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase))
                 .ConfigureAwait(false);
 
             return;
@@ -769,6 +794,135 @@ public class SharePoint : MSGraphBase, IDisposable
                 false,
                 new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase))
             .ConfigureAwait(false);
+    }
+    private sealed class JobSharePointLinks
+    {
+        public string QuoteNumber { get; set; } = string.Empty;
+        public string QuoteUrl { get; set; } = string.Empty;
+        public string EnquiryNumber { get; set; } = string.Empty;
+        public string EnquiryUrl { get; set; } = string.Empty;
+    }
+
+
+    private sealed class JobSharePointLinkReferences
+    {
+        public Guid QuoteGuid { get; set; } = Guid.Empty;
+        public string QuoteNumber { get; set; } = string.Empty;
+        public Guid EnquiryGuid { get; set; } = Guid.Empty;
+        public string EnquiryNumber { get; set; } = string.Empty;
+    }
+
+    private async Task<JobSharePointLinks> ResolveJobSharePointLinksAsync(EF.Core efCore, Guid jobGuid)
+    {
+        const string sql = @"
+SELECT TOP (1)
+       q.Guid AS QuoteGuid,
+       CONVERT(NVARCHAR(50), q.Number) AS QuoteNumber,
+       e.Guid AS EnquiryGuid,
+       CONVERT(NVARCHAR(50), e.Number) AS EnquiryNumber
+FROM SJob.Jobs AS j
+JOIN SSop.QuoteItems AS qi
+    ON qi.CreatedJobId = j.ID
+JOIN SSop.Quotes AS q
+    ON q.ID = qi.QuoteId
+JOIN SSop.EnquiryServices AS es
+    ON es.ID = q.EnquiryServiceID
+JOIN SSop.Enquiries AS e
+    ON e.ID = es.EnquiryId
+WHERE j.Guid = @Guid
+  AND j.RowStatus NOT IN (0,254)
+  AND qi.RowStatus NOT IN (0,254)
+  AND q.RowStatus NOT IN (0,254)
+  AND es.RowStatus NOT IN (0,254)
+  AND e.RowStatus NOT IN (0,254)
+ORDER BY q.ID DESC;";
+
+        var references = await ResolveJobSharePointLinkReferencesAsync(efCore, sql, jobGuid)
+            .ConfigureAwait(false);
+
+        var result = new JobSharePointLinks
+        {
+            QuoteNumber = references.QuoteNumber,
+            EnquiryNumber = references.EnquiryNumber
+        };
+
+        if (references.QuoteGuid != Guid.Empty)
+        {
+            var quote = await efCore.DataObjectGet(
+                    references.QuoteGuid,
+                    Guid.Empty,
+                    QuoteEntityTypeGuid,
+                    false)
+                .ConfigureAwait(false);
+
+            result.QuoteNumber = !string.IsNullOrWhiteSpace(quote?.Label)
+                ? quote.Label
+                : references.QuoteNumber;
+
+            result.QuoteUrl = quote?.SharePointUrl ?? string.Empty;
+        }
+
+        if (references.EnquiryGuid != Guid.Empty)
+        {
+            var enquiry = await efCore.DataObjectGet(
+                    references.EnquiryGuid,
+                    Guid.Empty,
+                    EnquiryEntityTypeGuid,
+                    false)
+                .ConfigureAwait(false);
+
+            result.EnquiryNumber = !string.IsNullOrWhiteSpace(enquiry?.Label)
+                ? enquiry.Label
+                : references.EnquiryNumber;
+
+            result.EnquiryUrl = enquiry?.SharePointUrl ?? string.Empty;
+        }
+
+        return result;
+    }
+
+    private async Task<JobSharePointLinkReferences> ResolveJobSharePointLinkReferencesAsync(
+        EF.Core efCore,
+        string sql,
+        Guid jobGuid)
+    {
+        var result = new JobSharePointLinkReferences();
+
+        await using var connection = efCore.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.CommandType = System.Data.CommandType.Text;
+
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = "@Guid";
+        parameter.Value = jobGuid;
+        command.Parameters.Add(parameter);
+
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+
+        if (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            result.QuoteGuid = GetReaderGuid(reader, "QuoteGuid");
+            result.QuoteNumber = GetReaderString(reader, "QuoteNumber");
+            result.EnquiryGuid = GetReaderGuid(reader, "EnquiryGuid");
+            result.EnquiryNumber = GetReaderString(reader, "EnquiryNumber");
+        }
+
+        return result;
+    }
+
+    private static Guid GetReaderGuid(System.Data.Common.DbDataReader reader, string columnName)
+    {
+        var ordinal = reader.GetOrdinal(columnName);
+        return reader.IsDBNull(ordinal) ? Guid.Empty : reader.GetGuid(ordinal);
+    }
+
+    private static string GetReaderString(System.Data.Common.DbDataReader reader, string columnName)
+    {
+        var ordinal = reader.GetOrdinal(columnName);
+        return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
     }
 
     private string ResolveJobOrganisationalUnitGuid(
@@ -886,6 +1040,7 @@ public class SharePoint : MSGraphBase, IDisposable
                 case OrganisationalUnitEnum.CDM:
 
                     defaultFolderStruct.Add("Minutes");
+                    defaultFolderStruct.Remove("Certs");
 
                     subFoldersToCreate["Admin"] = new List<string>
                     {
@@ -919,7 +1074,7 @@ public class SharePoint : MSGraphBase, IDisposable
                         "POs",
                         "Correspondence"
                     };
-                   
+
                     subFoldersToCreate["Photos"] = new List<string>
                     {
                         "Initial Visit",
@@ -947,81 +1102,81 @@ public class SharePoint : MSGraphBase, IDisposable
                 case OrganisationalUnitEnum.BuildingControl:
                     subFoldersToCreate["Reports"] = new List<string> { "CPP", "PCI", "OMHS" };
 
-                    subFoldersToCreate["Design Information"] = new List<string>
-                {
-                    "0-0 Reports & Specifications",
-                    "1-0 Sub-structure & Groundworks",
-                    "2-0 Superstructure & Façade",
-                    "3-0 Mechanical, Electrical and Public Health",
-                    "4-0 Landscaping and Civil Engineering",
-                    "X-0 General"
-                };
+                    //subFoldersToCreate["Design Information"] = new List<string>
+                    //{
+                    //    "0-0 Reports & Specifications",
+                    //    "1-0 Sub-structure & Groundworks",
+                    //    "2-0 Superstructure & Façade",
+                    //    "3-0 Mechanical, Electrical and Public Health",
+                    //    "4-0 Landscaping and Civil Engineering",
+                    //    "X-0 General"
+                    //};
 
-                    subFoldersToCreate["Design Information/0-0 Reports & Specifications"] = new List<string>
-                {
-                    "0-1 Geotechnical",
-                    "0-2 Structures",
-                    "0-3 Façade",
-                    "0-4 Architectural",
-                    "0-5 Mechanical, Electrical & Public Health",
-                    "0-6 Fire & Specialist Smoke Control",
-                    "0-7 Acoustics",
-                    "0-8 Air Quality"
-                };
+                    //subFoldersToCreate["Design Information/0-0 Reports & Specifications"] = new List<string>
+                    //{
+                    //    "0-1 Geotechnical",
+                    //    "0-2 Structures",
+                    //    "0-3 Façade",
+                    //    "0-4 Architectural",
+                    //    "0-5 Mechanical, Electrical & Public Health",
+                    //    "0-6 Fire & Specialist Smoke Control",
+                    //    "0-7 Acoustics",
+                    //    "0-8 Air Quality"
+                    //};
 
-                    subFoldersToCreate["Design Information/1-0 Sub-structure & Groundworks"] = new List<string>
-                {
-                    "1-1 Ground Investigation, Earthworks and Remediation",
-                    "1-2 Piling",
-                    "1-3 Sub-structure",
-                    "1-4 Below Ground Drainage and Services"
-                };
+                    //subFoldersToCreate["Design Information/1-0 Sub-structure & Groundworks"] = new List<string>
+                    //{
+                    //    "1-1 Ground Investigation, Earthworks and Remediation",
+                    //    "1-2 Piling",
+                    //    "1-3 Sub-structure",
+                    //    "1-4 Below Ground Drainage and Services"
+                    //};
 
-                    subFoldersToCreate["Design Information/2-0 Superstructure & Façade"] = new List<string>
-                {
-                    "2-1 Plans, Sections & Elevations",
-                    "2-2 Concrete Frame",
-                    "2-3 Roof Coverings",
-                    "2-4 Specialist Roof Systems",
-                    "2-5 Rooflights, AOV & Access Hatches",
-                    "2-6 Stairs and Balustrades",
-                    "2-7 Lifts",
-                    "2-8 External Walls",
-                    "2-9 SFS",
-                    "2-10 Balcony",
-                    "2-11 Metal Cladding - Curtain Walling",
-                    "2-12 External Windows",
-                    "2-13 External Doors & Louvres",
-                    "2-14 Internal Wall, Floor and Ceiling",
-                    "2-15 Internal Doors",
-                    "2-16 Bathroom",
-                    "2-17 Domestic Kitchens"
-                };
+                    //subFoldersToCreate["Design Information/2-0 Superstructure & Façade"] = new List<string>
+                    //{
+                    //    "2-1 Plans, Sections & Elevations",
+                    //    "2-2 Concrete Frame",
+                    //    "2-3 Roof Coverings",
+                    //    "2-4 Specialist Roof Systems",
+                    //    "2-5 Rooflights, AOV & Access Hatches",
+                    //    "2-6 Stairs and Balustrades",
+                    //    "2-7 Lifts",
+                    //    "2-8 External Walls",
+                    //    "2-9 SFS",
+                    //    "2-10 Balcony",
+                    //    "2-11 Metal Cladding - Curtain Walling",
+                    //    "2-12 External Windows",
+                    //    "2-13 External Doors & Louvres",
+                    //    "2-14 Internal Wall, Floor and Ceiling",
+                    //    "2-15 Internal Doors",
+                    //    "2-16 Bathroom",
+                    //    "2-17 Domestic Kitchens"
+                    //};
 
-                    subFoldersToCreate["Design Information/3-0 Mechanical, Electrical and Public Health"] = new List<string>
-                {
-                    "3-1 SAP - Part L Compliance",
-                    "3-2 Electrical Designs",
-                    "3-3 Mechanical and Public Health Designs"
-                };
+                    //subFoldersToCreate["Design Information/3-0 Mechanical, Electrical and Public Health"] = new List<string>
+                    //{
+                    //    "3-1 SAP - Part L Compliance",
+                    //    "3-2 Electrical Designs",
+                    //    "3-3 Mechanical and Public Health Designs"
+                    //};
 
-                    subFoldersToCreate["Design Information/4-0 Landscaping and Civil Engineering"] = new List<string>
-                {
-                    "4-1 Landscaping"
-                };
+                    //subFoldersToCreate["Design Information/4-0 Landscaping and Civil Engineering"] = new List<string>
+                    //{
+                    //    "4-1 Landscaping"
+                    //};
 
-                    subFoldersToCreate["Design Information/X-0 General"] = new List<string>
-                {
-                    "X-01 Documents and Plans",
-                    "X-03 Competency Declaration",
-                    "X-10",
-                    "X-4 Construction Control Plan",
-                    "X-5 Change Control Plan",
-                    "X-6 Building Regulations Compliance Statement",
-                    "X-7 Fire & Emergency File",
-                    "X-8 Mandatory Occurrence Reporting Plan",
-                    "X-9 Staged Work Statement - Partial Completion Strategy"
-                };
+                    //subFoldersToCreate["Design Information/X-0 General"] = new List<string>
+                    //{
+                    //    "X-01 Documents and Plans",
+                    //    "X-03 Competency Declaration",
+                    //    "X-10",
+                    //    "X-4 Construction Control Plan",
+                    //    "X-5 Change Control Plan",
+                    //    "X-6 Building Regulations Compliance Statement",
+                    //    "X-7 Fire & Emergency File",
+                    //    "X-8 Mandatory Occurrence Reporting Plan",
+                    //    "X-9 Staged Work Statement - Partial Completion Strategy"
+                    //};
 
                     return new SharepointDirectory
                     {

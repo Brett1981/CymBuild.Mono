@@ -22,27 +22,7 @@
 }
 
 .dynamic-batch-grid-v2-summary-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.dynamic-batch-grid-v2-summary-green {
-    background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
-    border-color: #bbf7d0;
-}
-
-.dynamic-batch-grid-v2-summary-amber {
-    background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
-    border-color: #fde68a;
-}
-
-.dynamic-batch-grid-v2-summary-red {
-    background: linear-gradient(180deg, #ffffff 0%, #fef2f2 100%);
-    border-color: #fecaca;
-}
-
-.dynamic-batch-grid-v2-summary-blue {
-    background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
-    border-color: #bfdbfe;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .dynamic-batch-grid-v2-search {
@@ -59,13 +39,13 @@
     min-width: 1300px;
 }
 
-.dynamic-batch-grid-v2-grid-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    font-size: 0.88rem;
-    color: #334155;
-}
+    .dynamic-batch-grid-v2-grid-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        font-size: 0.88rem;
+        color: #334155;
+    }
 
 .dynamic-batch-grid-v2-header-cell {
     cursor: pointer;
@@ -73,7 +53,7 @@
 }
 
 .dynamic-batch-grid-v2-sort-indicator {
-    color: #2563eb;
+    color: var(--cb-v2-primary);
     font-size: 0.85rem;
 }
 
@@ -88,69 +68,47 @@
     text-align: center;
 }
 
-.status-badge {
+.dynamic-batch-grid-v2-tabbar {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-width: 128px;
-    border-radius: 999px;
-    padding: 0.28rem 0.7rem;
-    font-size: 0.82rem;
-    font-weight: 700;
+    gap: 0.35rem;
+    width: fit-content;
+    padding: 0.35rem;
+    margin: 0 0 0.25rem 0;
+    border: 1px solid var(--cb-v2-border-soft);
+    border-radius: var(--cb-v2-radius-pill);
+    background: var(--cb-v2-bg-soft);
+    box-shadow: var(--cb-v2-shadow-sm);
+}
+
+.dynamic-batch-grid-v2-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 38px;
+    padding: 0.55rem 0.95rem;
     border: 1px solid transparent;
+    border-radius: var(--cb-v2-radius-pill);
+    background: transparent;
+    color: var(--cb-v2-text-muted);
+    font-weight: 700;
+    transition: all var(--cb-v2-transition-fast);
 }
 
-.status-green {
-    background: #ecfdf5;
-    color: #047857;
-    border-color: #a7f3d0;
-}
+    .dynamic-batch-grid-v2-tab:hover {
+        background: var(--cb-v2-bg);
+        color: var(--cb-v2-primary-dark);
+    }
 
-.status-red {
-    background: #fef2f2;
-    color: #b91c1c;
-    border-color: #fecaca;
-}
+    .dynamic-batch-grid-v2-tab.is-active {
+        background: var(--cb-v2-bg);
+        color: var(--cb-v2-primary-dark);
+        border-color: #dbeafe;
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+    }
 
-.status-amber {
-    background: #fffbeb;
-    color: #b45309;
-    border-color: #fde68a;
-}
-
-.status-blue {
-    background: #eff6ff;
-    color: #1d4ed8;
-    border-color: #bfdbfe;
-}
-
-.status-slate {
-    background: #f8fafc;
-    color: #475569;
-    border-color: #cbd5e1;
-}
-
-.row-accent-green td:first-child,
-.row-accent-red td:first-child,
-.row-accent-amber td:first-child,
-.row-accent-blue td:first-child {
-    border-left: 4px solid transparent;
-}
-
-.row-accent-green td:first-child {
-    border-left-color: #10b981;
-}
-
-.row-accent-red td:first-child {
-    border-left-color: #ef4444;
-}
-
-.row-accent-amber td:first-child {
-    border-left-color: #f59e0b;
-}
-
-.row-accent-blue td:first-child {
-    border-left-color: #3b82f6;
+.dynamic-batch-grid-v2-embedded-panel {
+    width: 100%;
 }
 
 .dynamic-batch-grid-v2-footer {
@@ -164,7 +122,7 @@
 }
 
 .dynamic-batch-grid-v2-footer-left {
-    color: #64748b;
+    color: var(--cb-v2-text-muted);
     font-size: 0.92rem;
 }
 
@@ -175,9 +133,9 @@
 }
 
 .dynamic-batch-grid-v2-page-pill {
-    border-radius: 999px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    border-radius: var(--cb-v2-radius-pill);
+    background: var(--cb-v2-bg-soft);
+    border: 1px solid var(--cb-v2-border-soft);
     padding: 0.35rem 0.75rem;
     font-size: 0.9rem;
 }

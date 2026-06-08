@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SJob].[tvf_CurrentJobs]')
+GO
+
 CREATE FUNCTION [SJob].[tvf_CurrentJobs] 
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+            --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  j.ID,
@@ -33,9 +36,28 @@ JOIN	SJob.Assets prop ON (prop.ID = j.UprnID)
 JOIN	SCrm.Accounts client ON (client.ID = j.ClientAccountID)
 JOIN	SCrm.Accounts agent ON (agent.ID = j.AgentAccountID)
 JOIN    SCore.OrganisationalUnits as org ON (org.ID = j.OrganisationalUnitID)
+OUTER APPLY
+(
+    SELECT TOP (1)
+        ws.IsActiveStatus
+    FROM SCore.DataObjectTransition AS dot
+    JOIN SCore.WorkflowStatus AS ws
+        ON ws.ID = dot.StatusID
+    WHERE dot.DataObjectGuid = j.Guid
+      AND dot.RowStatus NOT IN (0, 254)
+      AND ws.RowStatus NOT IN (0, 254)
+      AND ws.ShowInJobs = 1
+    ORDER BY dot.DateTimeUTC DESC, dot.ID DESC
+) AS latestStatus
 WHERE   (j.RowStatus  NOT IN (0, 254))
 	AND	(j.Id > 0)
-	AND	(j.IsActive = 1)
+	AND
+    (
+        CASE
+            WHEN latestStatus.IsActiveStatus IS NULL THEN ISNULL(j.IsActive, 0)
+            ELSE ISNULL(latestStatus.IsActiveStatus, 0)
+        END
+    ) = 1
 	AND	(EXISTS
 			(				
 	SELECT

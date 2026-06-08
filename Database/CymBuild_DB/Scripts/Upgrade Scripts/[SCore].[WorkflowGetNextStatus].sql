@@ -1,0 +1,387 @@
+USE [CymBuild_Upgrade_Stage]
+GO
+
+/****** Object:  UserDefinedFunction [SCore].[WorkflowGetNextStatus]    Script Date: 01/06/2026 13:56:51 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+/* =============================================================================
+   CYB-101 – WorkflowGetNextStatus (UI next-status dropdown)
+
+   Fixes:
+   - Latest-status-only enforcement (use single latest StatusID for @ParentGuid)
+   - Quote guardrail: hide Sent/Accepted when 0 active QuoteItems exist
+   - Respect IsFinal (no further next statuses)
+   - DEDUPE: remove duplicate options caused by duplicate WorkflowStatus rows
+            (dedupe by Name, prefer IsPredefined/Enabled/SortOrder/lowest ID)
+
+============================================================================= */
+ALTER FUNCTION [SCore].[WorkflowGetNextStatus]
+(
+    @ParentGuid UNIQUEIDENTIFIER,
+    @RecordGuid UNIQUEIDENTIFIER
+)
+RETURNS @WorkflowStatus TABLE
+(
+    Name     NVARCHAR(50),
+    Guid     UNIQUEIDENTIFIER,
+    RowStatus TINYINT
+)
+       --WITH SCHEMABINDING
+AS
+BEGIN
+    DECLARE @EntityTypeGuid UNIQUEIDENTIFIER;
+    DECLARE @EntityTypeID   INT;
+
+    -- Filters
+    DECLARE @ShowInEnquiry BIT = 0;
+    DECLARE @ShowInQuotes  BIT = 0;
+    DECLARE @ShowInJobs    BIT = 0;
+
+    DECLARE @OrgUnitID INT;
+
+    DECLARE @UserID INT = -1;
+    DECLARE @IsSuperUser BIT = 0;
+
+    SELECT
+        @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.UserGroups AS ug
+        JOIN SCore.Groups AS g
+            ON g.ID = ug.GroupID
+        WHERE ug.IdentityID = @UserID
+          AND g.Code = N'SU'
+          AND ug.RowStatus NOT IN (0,254)
+          AND g.RowStatus NOT IN (0,254)
+    )
+    BEGIN
+        SET @IsSuperUser = 1;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Entity type + workflow scope lookup (via DataObjects -> EntityTypes)
+    -------------------------------------------------------------------------
+    SELECT
+        @EntityTypeGuid = et.Guid,
+        @EntityTypeID   = et.ID
+    FROM SCore.DataObjects AS root_hobt
+    JOIN SCore.EntityTypes AS et ON et.ID = root_hobt.EntityTypeId
+    WHERE root_hobt.Guid = @ParentGuid;
+
+    -- Enquiry
+    IF (@EntityTypeGuid = CONVERT(uniqueidentifier, '3B4F2DF9-B6CF-4A49-9EED-2206473867A1'))
+    BEGIN
+        SET @ShowInEnquiry = 1;
+
+        SELECT @OrgUnitID = e.OrganisationalUnitID
+        FROM SSop.Enquiries AS e
+        WHERE e.Guid = @ParentGuid;
+    END
+    -- Quotes
+    ELSE IF (@EntityTypeGuid = CONVERT(uniqueidentifier, '1C4794C1-F956-4C32-B886-5500AC778A56'))
+    BEGIN
+        SET @ShowInQuotes = 1;
+
+        SELECT @OrgUnitID = q.OrganisationalUnitID
+        FROM SSop.Quotes AS q
+        WHERE q.Guid = @ParentGuid;
+    END
+    -- Jobs
+    ELSE IF (@EntityTypeGuid = CONVERT(uniqueidentifier, '63542427-46AB-4078-ABD1-1D583C24315C'))
+    BEGIN
+        SET @ShowInJobs = 1;
+
+        SELECT @OrgUnitID = j.OrganisationalUnitID
+        FROM SJob.Jobs AS j
+        WHERE j.Guid = @ParentGuid;
+    END;
+
+    DECLARE @CurrentStatusID INT = NULL;
+    DECLARE @IsFinal BIT = 0;
+
+    -------------------------------------------------------------------------
+    -- Resolve SINGLE latest workflow status for this record (latest-only)
+    -------------------------------------------------------------------------
+    SELECT TOP (1)
+        @CurrentStatusID = dot.StatusID
+    FROM SCore.DataObjectTransition AS dot
+    WHERE dot.DataObjectGuid = @ParentGuid
+      AND dot.RowStatus NOT IN (0,254)
+    ORDER BY dot.DateTimeUTC DESC, dot.ID DESC;
+
+    -------------------------------------------------------------------------
+    /* SB CYB-347 */
+    -- Fallback only for dropdown display when no transition exists yet.
+    -- This does NOT create/update any DataObjectTransition row.
+    -------------------------------------------------------------------------
+    IF (@CurrentStatusID IS NULL)
+    BEGIN
+        SELECT TOP (1)
+            @CurrentStatusID = wft.FromStatusID
+        FROM SCore.WorkflowTransition AS wft
+        JOIN SCore.Workflow AS wf
+            ON wf.ID = wft.WorkflowID
+        JOIN SCore.WorkflowStatus AS fromStatus
+            ON fromStatus.ID = wft.FromStatusID
+        JOIN SCore.WorkflowStatus AS toStatus
+            ON toStatus.ID = wft.ToStatusID
+        WHERE wft.RowStatus NOT IN (0,254)
+          AND wf.Enabled = 1
+          AND wf.EntityTypeID = @EntityTypeID
+          AND wf.OrganisationalUnitId =
+              CASE
+                  WHEN EXISTS
+                  (
+                      SELECT 1
+                      FROM SCore.Workflow AS wf2
+                      WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                        AND wf2.EntityTypeID = @EntityTypeID
+                        AND wf2.Enabled = 1
+                  )
+                  THEN @OrgUnitID
+                  ELSE -1
+              END
+          AND fromStatus.RowStatus NOT IN (0,254)
+          AND toStatus.RowStatus NOT IN (0,254)
+        ORDER BY
+            CASE WHEN fromStatus.ID = 1 THEN 0 ELSE 1 END,
+            wft.SortOrder,
+            wft.ID;
+    END;
+    -------------------------------------------------------------------------
+    -- Determine if the latest transition is final (keep existing behaviour)
+    -------------------------------------------------------------------------
+    SELECT @IsFinal = wft.IsFinal
+    FROM SCore.DataObjectTransition AS dot1
+    JOIN SCore.WorkflowTransition  AS wft ON wft.ToStatusID = dot1.StatusID
+    WHERE dot1.DataObjectGuid = @ParentGuid
+      AND dot1.RowStatus NOT IN (0,254)
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SCore.DataObjectTransition AS dot2
+          WHERE dot2.DataObjectGuid = @ParentGuid
+            AND dot2.RowStatus NOT IN (0,254)
+            AND
+            (
+                dot2.DateTimeUTC > dot1.DateTimeUTC
+                OR (dot2.DateTimeUTC = dot1.DateTimeUTC AND dot2.ID > dot1.ID)
+            )
+      );
+
+    -------------------------------------------------------------------------
+    -- If viewing an existing transition record, return all statuses (deduped)
+    -------------------------------------------------------------------------
+    IF
+        (
+            @IsSuperUser = 1
+            AND EXISTS
+            (
+                SELECT 1
+                FROM SCore.DataObjectTransition AS d
+                WHERE d.Guid = @RecordGuid
+                  AND d.RowStatus NOT IN (0,254)
+                  AND d.StatusID <> 1
+            )
+        )
+    BEGIN
+        INSERT INTO @WorkflowStatus (Name, Guid, RowStatus)
+        SELECT x.Name, x.Guid, x.RowStatus
+        FROM
+        (
+            SELECT
+                toStatus.Name      AS Name,
+                toStatus.Guid      AS Guid,
+                toStatus.RowStatus AS RowStatus,
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY toStatus.Name
+                    ORDER BY
+                        ISNULL(toStatus.IsPredefined, 0) DESC,
+                        ISNULL(toStatus.Enabled, 1) DESC,
+                        ISNULL(toStatus.SortOrder, 999999) ASC,
+                        toStatus.ID ASC
+                ) AS rn
+            FROM SCore.WorkflowTransition AS wft
+            JOIN SCore.WorkflowStatus    AS fromStatus ON fromStatus.ID = wft.FromStatusID
+            JOIN SCore.WorkflowStatus    AS toStatus   ON toStatus.ID   = wft.ToStatusID
+            JOIN SCore.Workflow          AS wf         ON wf.ID         = wft.WorkflowID
+            WHERE wft.RowStatus NOT IN (0,254)
+              AND wf.Enabled = 1
+              AND wf.EntityTypeID = @EntityTypeID
+              AND wf.OrganisationalUnitId =
+                    CASE
+                        WHEN EXISTS
+                        (
+                            SELECT 1
+                            FROM SCore.Workflow AS wf2
+                            WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                              AND wf2.EntityTypeID = @EntityTypeID
+                              AND wf2.Enabled = 1
+                        )
+                        THEN @OrgUnitID
+                        ELSE -1
+                    END
+              AND fromStatus.RowStatus NOT IN (0,254)
+              AND toStatus.RowStatus   NOT IN (0,254)
+			  AND ISNULL(toStatus.IsAuthStatus, 0) = 0
+              AND
+              (
+                  (@ShowInEnquiry = 0 OR ISNULL(toStatus.ShowInEnquiries,0) = 1) AND
+                  (@ShowInQuotes  = 0 OR ISNULL(toStatus.ShowInQuotes,0)    = 1) AND
+                  (@ShowInJobs    = 0 OR ISNULL(toStatus.ShowInJobs,0)      = 1)
+              )
+              AND toStatus.ID <> 1 -- Exclude "N/A"
+        ) AS x
+        WHERE x.rn = 1;
+
+        RETURN;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Respect IsFinal
+    -------------------------------------------------------------------------
+    DECLARE @HasAvailableNextTransition BIT = 0;
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.WorkflowTransition AS wft
+        JOIN SCore.Workflow AS wf
+            ON wf.ID = wft.WorkflowID
+        JOIN SCore.WorkflowStatus AS toStatus
+            ON toStatus.ID = wft.ToStatusID
+        WHERE wft.RowStatus NOT IN (0,254)
+          AND wf.Enabled = 1
+          AND wf.EntityTypeID = @EntityTypeID
+          AND wf.OrganisationalUnitId =
+            CASE
+                WHEN EXISTS
+                (
+                    SELECT 1
+                    FROM SCore.Workflow AS wf2
+                    WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                        AND wf2.EntityTypeID = @EntityTypeID
+                        AND wf2.Enabled = 1
+                )
+                THEN @OrgUnitID
+                ELSE -1
+            END
+          AND wft.FromStatusID = @CurrentStatusID
+          AND toStatus.RowStatus NOT IN (0,254)
+          AND toStatus.ID <> 1
+          AND ISNULL(toStatus.IsAuthStatus, 0) = 0
+    )
+    BEGIN
+        SET @HasAvailableNextTransition = 1;
+    END;
+
+    IF (ISNULL(@IsFinal, 0) = 1 AND @HasAvailableNextTransition = 0)
+    BEGIN
+        RETURN;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Quote-specific enforcement: hide Sent/Accepted when 0 QuoteItems exist
+    -------------------------------------------------------------------------
+    DECLARE @QuoteHasItems BIT = 1;
+
+    IF (@ShowInQuotes = 1)
+    BEGIN
+        IF NOT EXISTS
+        (
+            SELECT 1
+            FROM SSop.QuoteItems AS qi
+            JOIN SSop.Quotes     AS q  ON q.ID = qi.QuoteId
+            WHERE q.Guid = @ParentGuid
+              AND q.RowStatus  NOT IN (0,254)
+              AND qi.RowStatus NOT IN (0,254)
+        )
+        BEGIN
+            SET @QuoteHasItems = 0;
+        END;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Return next statuses from CURRENT status only (latest-only) + DEDUPE BY NAME
+    -------------------------------------------------------------------------
+    INSERT INTO @WorkflowStatus (Name, Guid, RowStatus)
+    SELECT x.Name, x.Guid, x.RowStatus
+    FROM
+    (
+        SELECT
+            toStatus.Name      AS Name,
+            toStatus.Guid      AS Guid,
+            toStatus.RowStatus AS RowStatus,
+            ROW_NUMBER() OVER
+            (
+                PARTITION BY toStatus.Name
+                ORDER BY
+                    ISNULL(toStatus.IsPredefined, 0) DESC,
+                    ISNULL(toStatus.Enabled, 1) DESC,
+                    ISNULL(toStatus.SortOrder, 999999) ASC,
+                    toStatus.ID ASC
+            ) AS rn
+        FROM SCore.WorkflowTransition AS wft
+        JOIN SCore.WorkflowStatus    AS fromStatus ON fromStatus.ID = wft.FromStatusID
+        JOIN SCore.WorkflowStatus    AS toStatus   ON toStatus.ID   = wft.ToStatusID
+        JOIN SCore.Workflow          AS wf         ON wf.ID         = wft.WorkflowID
+        WHERE wft.RowStatus NOT IN (0,254)
+          AND wf.Enabled = 1
+          AND wf.EntityTypeID = @EntityTypeID
+          AND wf.OrganisationalUnitId =
+                CASE
+                    WHEN EXISTS
+                    (
+                        SELECT 1
+                        FROM SCore.Workflow AS wf2
+                        WHERE wf2.OrganisationalUnitId = @OrgUnitID
+                          AND wf2.EntityTypeID = @EntityTypeID
+                          AND wf2.Enabled = 1
+                    )
+                    THEN @OrgUnitID
+                    ELSE -1
+                END
+          AND fromStatus.RowStatus NOT IN (0,254)
+          AND toStatus.RowStatus   NOT IN (0,254)
+          AND
+          (
+              (@ShowInEnquiry = 0 OR ISNULL(toStatus.ShowInEnquiries,0) = 1) AND
+              (@ShowInQuotes  = 0 OR ISNULL(toStatus.ShowInQuotes,0)    = 1) AND
+              (@ShowInJobs    = 0 OR ISNULL(toStatus.ShowInJobs,0)      = 1)
+          )
+          AND toStatus.ID <> 1
+          AND @CurrentStatusID IS NOT NULL
+          AND wft.FromStatusID = @CurrentStatusID  -- LATEST-STATUS-ONLY enforcement
+          /* SB CYB-347 */
+          --AND toStatus.ID NOT IN
+          --(
+          --    SELECT dot.StatusID
+          --    FROM SCore.DataObjectTransition AS dot
+          --    WHERE dot.DataObjectGuid = @ParentGuid
+          --      AND dot.RowStatus NOT IN (0,254)
+          --)
+          AND
+          (
+              -- CYB-101: Hide Sent/Accepted when quote has 0 items
+              @ShowInQuotes = 0
+              OR @QuoteHasItems = 1
+              OR toStatus.Name NOT IN (N'Sent', N'Accepted', N'Customer Accepted')
+          )
+		  AND ISNULL(toStatus.IsAuthStatus, 0) = 0
+		 
+    ) AS x
+    WHERE x.rn = 1;
+
+    RETURN;
+END;
+GO
+
+

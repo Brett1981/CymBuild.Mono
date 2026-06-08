@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[RecordHistory]')
 GO
+PRINT (N'Create table [SCore].[RecordHistory]')
+GO
 CREATE TABLE [SCore].[RecordHistory] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_RecordHistory_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -27,15 +29,6 @@ ALTER TABLE [SCore].[RecordHistory] WITH NOCHECK
   ADD CONSTRAINT [PK_RecordHistory] PRIMARY KEY CLUSTERED ([ID]) WITH (PAD_INDEX = ON, FILLFACTOR = 80)
 GO
 
-PRINT (N'Create index [IX_RecordHistory_Date] on table [SCore].[RecordHistory]')
-GO
-CREATE INDEX [IX_RecordHistory_Date]
-  ON [SCore].[RecordHistory] ([Datetime])
-  INCLUDE ([RowGuid])
-  WITH (FILLFACTOR = 90, ALLOW_PAGE_LOCKS = OFF)
-  ON [PRIMARY]
-GO
-
 PRINT (N'Create index [IX_RecordHistory_Guid] on table [SCore].[RecordHistory]')
 GO
 CREATE UNIQUE INDEX [IX_RecordHistory_Guid]
@@ -50,15 +43,6 @@ CREATE INDEX [IX_RecordHistory_RowGuid]
   ON [SCore].[RecordHistory] ([RowGuid])
   INCLUDE ([RowStatus], [Datetime])
   WITH (PAD_INDEX = ON, FILLFACTOR = 80)
-  ON [PRIMARY]
-GO
-
-PRINT (N'Create index [IX_RecordHistory_RowStatus] on table [SCore].[RecordHistory]')
-GO
-CREATE INDEX [IX_RecordHistory_RowStatus]
-  ON [SCore].[RecordHistory] ([RowStatus])
-  INCLUDE ([RowGuid], [Datetime])
-  WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO
 
@@ -77,4 +61,7 @@ GO
 PRINT (N'Add extended property [MS_Description] on table [SCore].[RecordHistory]')
 GO
 EXEC sys.sp_addextendedproperty N'MS_Description', N'An audit of all changes made to user data. ', 'SCHEMA', N'SCore', 'TABLE', N'RecordHistory'
+GO
+
+PRINT (N'Add extended property [MS_Description] on table [SCore].[RecordHistory]')
 GO

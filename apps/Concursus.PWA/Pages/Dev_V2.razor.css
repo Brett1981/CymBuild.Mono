@@ -1,0 +1,104 @@
+.dev-v2-page .dev-v2-title-block {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.dev-v2-page .dev-v2-section-header {
+    margin-bottom: 1rem;
+}
+
+.dev-v2-page .dev-v2-tab-scroll {
+    width: 100%;
+    overflow-x: auto;
+    padding-top: 1rem;
+}
+
+.dev-v2-page .dev-v2-tab-actions {
+    flex-wrap: nowrap;
+    min-width: max-content;
+}
+
+.dev-v2-page .dev-v2-component-wrap {
+    margin-top: 1rem;
+    width: 100%;
+    overflow-x: auto;
+}
+
+.dev-v2-page .dev-v2-routine-list {
+    display: grid;
+    gap: 0.9rem;
+    margin-top: 1rem;
+}
+
+.dev-v2-page .dev-v2-routine-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid var(--cb-v2-border);
+    border-radius: var(--cb-v2-radius-md);
+    background: var(--cb-v2-bg);
+    box-shadow: var(--cb-v2-shadow-sm);
+}
+
+.dev-v2-page .dev-v2-routine-title {
+    color: var(--cb-v2-text-strong);
+    font-weight: 800;
+    margin-bottom: 0.35rem;
+}
+
+.dev-v2-page .dev-v2-log-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.dev-v2-page .dev-v2-log-output {
+    width: 100%;
+    min-height: 240px;
+    font-family: Consolas, Monaco, "Courier New", monospace;
+    white-space: pre;
+}
+
+.dev-v2-page .dev-v2-form-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: end;
+    margin-top: 1rem;
+}
+
+.dev-v2-page .dev-v2-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.dev-v2-page .dev-v2-field-action {
+    align-items: flex-start;
+}
+
+.dev-v2-page .dev-v2-input-full {
+    width: 100%;
+}
+
+@media (max-width: 900px) {
+    .dev-v2-page .dev-v2-title-block,
+    .dev-v2-page .dev-v2-routine-card,
+    .dev-v2-page .dev-v2-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .dev-v2-page .dev-v2-routine-card {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .dev-v2-page .dev-v2-field-action {
+        align-items: stretch;
+    }
+}

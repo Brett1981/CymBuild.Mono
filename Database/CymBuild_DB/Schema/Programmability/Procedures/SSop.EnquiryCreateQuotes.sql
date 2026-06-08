@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SSop].[EnquiryCreateQuotes]')
+GO
+
+
 CREATE PROCEDURE [SSop].[EnquiryCreateQuotes]
 	(@Guid UNIQUEIDENTIFIER)
 AS
@@ -749,8 +753,11 @@ BEGIN
 			@EnquiryServiceGuid		UNIQUEIDENTIFIER,
 			@IsSubjectToNDA         BIT,
 			@MarketGuid				UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000',
-			@SectorGuid				UNIQUEIDENTIFIER;
-			
+			@SectorGuid				UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000',
+			@JobTypeGuid			UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000',
+			@DataClassificationGuid UNIQUEIDENTIFIER = '31E24091-52B4-480E-9A85-7052F614567A',
+			@SecurityClassificationGuid UNIQUEIDENTIFIER = 'B4EF7A4D-454B-4C4B-AF3D-5996312FD038';
+
 	SELECT @MarketGuid = Guid FROM SCore.Markets WHERE Name LIKE N'%UK%'
 
 
@@ -762,19 +769,30 @@ BEGIN
 
 	WHILE (@CurrentId < @MaxID)
 	BEGIN
-		SELECT		TOP (1) @CurrentId				= q.ID,
-							@DescriptionOfWorks		= q.JobTypeName + N' -- ' + q.DescriptionOfWorks,
-							@QuoteGuid				= q.Guid,
-							@OrganisationalUnitGuid = q.OrganisationalUnitGuid,
-							@ExternalReference		= q.ExternalReference,
-							@CurrentStageGuid		= q.CurrentStageGuid,
-							@AppointmentStageGuid	= q.AppointmentStageGuid,
-							@EnquiryServiceGuid		= q.EnquiryServiceGuid,
-							@IsSubjectToNDA         = q.IsSubjectToNDA,
-							@JobTypeId = q.JobTypeId
-		FROM		@QuotesToCreate AS q
-		WHERE		(q.ID > @CurrentId)
-		ORDER BY	q.ID;
+		SELECT TOP (1)
+			@CurrentId              = q.ID,
+			@DescriptionOfWorks     = q.JobTypeName + N' -- ' + q.DescriptionOfWorks,
+			@QuoteGuid              = q.Guid,
+			@OrganisationalUnitGuid = q.OrganisationalUnitGuid,
+			@ExternalReference      = q.ExternalReference,
+			@CurrentStageGuid       = q.CurrentStageGuid,
+			@AppointmentStageGuid   = q.AppointmentStageGuid,
+			@EnquiryServiceGuid     = q.EnquiryServiceGuid,
+			@IsSubjectToNDA         = q.IsSubjectToNDA,
+			@JobTypeId              = q.JobTypeId
+		FROM @QuotesToCreate AS q
+		WHERE q.ID > @CurrentId
+		ORDER BY q.ID;
+
+		SELECT @JobTypeGuid = jt.Guid
+		FROM SJob.JobTypes AS jt
+		WHERE jt.ID = @JobTypeId
+		  AND jt.RowStatus NOT IN (0,254);
+
+		IF (@JobTypeGuid IS NULL OR @JobTypeGuid = '00000000-0000-0000-0000-000000000000')
+		BEGIN
+			;THROW 60000, N'Could not resolve Job Type for quote creation.', 1;
+		END;
 
 		EXEC SSop.QuotesUpsert @OrganisationalUnitGuid = @OrganisationalUnitGuid,		-- uniqueidentifier
 							   @QuotingUserGuid = @QuotingUserGuid,						-- uniqueidentifier
@@ -796,14 +814,16 @@ BEGIN
 							   @EnquiryServiceGuid = @EnquiryServiceGuid,
 							   @ProjectGuid = @ProjectGuid,
 							   @Guid = @QuoteGuid,
-							   @JobType = @EnquiryServiceGuid,	
+							   @JobType = @JobTypeGuid,	
 							   @DescriptionOfWorks = @DescriptionOfWorks,
 							   @DeclinedToQuoteReason = N'',
 							   @ExclusionsAndLimitations = N'',
 							   @IsSubjectToNDA = @IsSubjectToNDA,
 							   @AgentContractGuid = @AgentContractGuid,
-							   @SectorGuid = '00000000-0000-0000-0000-000000000000',
-							   @MarketGuid = @MarketGuid;
+							   @SectorGuid = @SectorGuid,
+							   @MarketGuid = @MarketGuid,
+							   @DataClassificationGuid = @DataClassificationGuid,
+							   @SecurityClassificationGuid = @SecurityClassificationGuid;
 							   
 							  
 	END;

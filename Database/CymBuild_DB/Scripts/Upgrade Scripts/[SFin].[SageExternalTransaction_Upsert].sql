@@ -1,4 +1,14 @@
-CREATE OR ALTER PROCEDURE [SFin].[SageExternalTransaction_Upsert]
+USE [CymBuild_Dev]
+GO
+
+/****** Object:  StoredProcedure [SFin].[SageExternalTransaction_Upsert]    Script Date: 07/05/2026 11:21:30 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+ALTER PROCEDURE [SFin].[SageExternalTransaction_Upsert]
 (
     @SageDataset              NVARCHAR(30),
     @SageAccountReference     NVARCHAR(100),
@@ -10,7 +20,12 @@ CREATE OR ALTER PROCEDURE [SFin].[SageExternalTransaction_Upsert]
     @NetAmount                DECIMAL(18,2),
     @TaxAmount                DECIMAL(18,2),
     @GrossAmount              DECIMAL(18,2),
+    @AllocatedValue           DECIMAL(18,2),
     @OutstandingAmount        DECIMAL(18,2),
+    @DocumentDiscountedValue  DECIMAL(18,2),
+    @IsPaid                   BIT,
+    @IsFullyPaid              BIT,
+    @PaymentStateCode         NVARCHAR(30),
     @MatchedTransactionID     BIGINT = -1,
     @MatchedInvoiceRequestID  INT = -1,
     @MatchedJobID             INT = -1,
@@ -28,7 +43,7 @@ BEGIN
     IF EXISTS
     (
         SELECT 1
-        FROM SFin.SageExternalTransactions ext
+        FROM SFin.SageExternalTransactions AS ext
         WHERE ext.SageDataset              = @SageDataset
           AND ext.SageAccountReference     = @SageAccountReference
           AND ext.SageTransactionTypeCode  = @SageTransactionTypeCode
@@ -39,7 +54,7 @@ BEGIN
     BEGIN
         SELECT
             @Guid = ext.Guid
-        FROM SFin.SageExternalTransactions ext
+        FROM SFin.SageExternalTransactions AS ext
         WHERE ext.SageDataset              = @SageDataset
           AND ext.SageAccountReference     = @SageAccountReference
           AND ext.SageTransactionTypeCode  = @SageTransactionTypeCode
@@ -49,21 +64,26 @@ BEGIN
 
         UPDATE ext
         SET
-            SecondReference         = @SecondReference,
-            TransactionDate         = @TransactionDate,
-            NetAmount               = @NetAmount,
-            TaxAmount               = @TaxAmount,
-            GrossAmount             = @GrossAmount,
-            OutstandingAmount       = @OutstandingAmount,
-            MatchedTransactionID    = @MatchedTransactionID,
-            MatchedInvoiceRequestID = @MatchedInvoiceRequestID,
-            MatchedJobID            = @MatchedJobID,
-            SourceHash              = @SourceHash,
-            LastSeenOnUtc           = @NowUtc,
-            RawPayloadJson          = @RawPayloadJson,
-            UpdatedByUserID         = SCore.GetCurrentUserId(),
-            UpdatedDateTimeUTC      = @NowUtc
-        FROM SFin.SageExternalTransactions ext
+            SecondReference          = @SecondReference,
+            TransactionDate          = @TransactionDate,
+            NetAmount                = @NetAmount,
+            TaxAmount                = @TaxAmount,
+            GrossAmount              = @GrossAmount,
+            AllocatedValue           = @AllocatedValue,
+            OutstandingAmount        = @OutstandingAmount,
+            DocumentDiscountedValue  = @DocumentDiscountedValue,
+            IsPaid                   = @IsPaid,
+            IsFullyPaid              = @IsFullyPaid,
+            PaymentStateCode         = @PaymentStateCode,
+            MatchedTransactionID     = @MatchedTransactionID,
+            MatchedInvoiceRequestID  = @MatchedInvoiceRequestID,
+            MatchedJobID             = @MatchedJobID,
+            SourceHash               = @SourceHash,
+            LastSeenOnUtc            = @NowUtc,
+            RawPayloadJson           = @RawPayloadJson,
+            UpdatedByUserID          = SCore.GetCurrentUserId(),
+            UpdatedDateTimeUTC       = @NowUtc
+        FROM SFin.SageExternalTransactions AS ext
         WHERE ext.Guid = @Guid;
 
         RETURN;
@@ -96,7 +116,12 @@ BEGIN
         NetAmount,
         TaxAmount,
         GrossAmount,
+        AllocatedValue,
         OutstandingAmount,
+        DocumentDiscountedValue,
+        IsPaid,
+        IsFullyPaid,
+        PaymentStateCode,
         MatchedTransactionID,
         MatchedInvoiceRequestID,
         MatchedJobID,
@@ -122,7 +147,12 @@ BEGIN
         @NetAmount,
         @TaxAmount,
         @GrossAmount,
+        @AllocatedValue,
         @OutstandingAmount,
+        @DocumentDiscountedValue,
+        @IsPaid,
+        @IsFullyPaid,
+        @PaymentStateCode,
         @MatchedTransactionID,
         @MatchedInvoiceRequestID,
         @MatchedJobID,
@@ -136,3 +166,5 @@ BEGIN
     );
 END;
 GO
+
+

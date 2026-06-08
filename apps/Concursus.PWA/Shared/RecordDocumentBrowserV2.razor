@@ -107,7 +107,19 @@
     @if (!string.IsNullOrWhiteSpace(_message))
     {
         <div class="alert @(_messageIsError ? "alert-danger" : "alert-success") py-2 px-3 mt-2 mb-2 cb-v2-doc-alert">
-            @_message
+            @if (IsResyncing)
+            {
+                <div class="d-flex align-items-center gap-2">
+                    <div class="spinner-grow" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span>@_message</span>
+                </div>
+            }
+            else
+            {
+                @_message
+            }
         </div>
     }
 
@@ -174,6 +186,12 @@
                                                             <span class="badge rounded-pill cb-v2-badge cb-v2-badge-warning v2-nav-doc-badge">
                                                                 Unavailable
                                                             </span>
+
+                                                            <button class="badge rounded-pill btn-warning d-inline-flex align-items-center gap-2" @onclick="async () => await ReSyncLocation(item)">
+                                                                <i class="bi bi-arrow-repeat"></i>
+                                                                Resync
+                                                            </button>
+
                                                         }
                                                         else
                                                         {
@@ -331,7 +349,7 @@
                                         @if (_items.Count == 0)
                                         {
                                             <tr>
-                                                <td colspan="6" class="small cb-v2-empty-state compact p-3">No documents found.</td>
+                                                <td colspan="6" class="empty-tr small compact p-3">No documents found.</td>
                                             </tr>
                                         }
                                         else
@@ -491,6 +509,9 @@
     private string? _lastRecordGuid;
     private string? _lastEntityQueryGuid;
 
+
+    private bool IsResyncing { get; set; } = false;
+
     protected override async Task OnParametersSetAsync()
     {
         var currentRecordGuid = DataObject?.Guid;
@@ -595,6 +616,68 @@
         }
     }
 
+
+    private async Task ReSyncLocation(DocumentsNavigationItem item)
+    {
+        try
+        {
+            if (FormHelper is null)
+                return;
+
+            IsResyncing = true;
+            SetMessage("Please wait, syncing in progress…", false);
+
+            var RecordGuid = item.RecordGuid;
+            var EntityTypeGuid = item.EntityTypeGuid;
+
+            if (RecordGuid != null && EntityTypeGuid != null)
+            {
+                var DataObjectReference = new API.Client.Models.DataObjectReference(RecordGuid, EntityTypeGuid);
+
+                var dataObject = await FormHelper.ReadDataObjectAsync(RecordGuid, DataObjectReference, false, EntityTypeGuid);
+
+                var response = await FormHelper.SharePointCreate(new SharePointCreateRequest()
+                {
+                    DataObject = dataObject,
+                    DataObjectUpsertRequest = new DataObjectUpsertRequest()
+                    {
+                        DataObject = dataObject,
+                        EntityQueryGuid = Guid.Empty.ToString(),
+                        ValidateOnly = true
+                    }
+                });
+
+                if (!string.IsNullOrEmpty(response.ErrorReturned))
+                {
+                    throw new Exception(response.ErrorReturned);
+                }
+
+                dataObject = response.DataObject;
+
+                var (message, updatedDataObject) = await FormHelper.UpsertDataObject(dataObject, null, false, false);
+
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    SetMessage(message, true);
+                    return;
+                }
+
+                SetMessage("Resynced SharePoint location for " + item.RecordTitle, false);
+
+                IsResyncing = false;
+                StateHasChanged();
+
+                await InitialiseAsync();
+
+            }
+        } 
+        catch (Exception ex)
+        {
+            SetMessage("There was an error syncing the record: " + ex.Message, true);
+        }
+
+    }
+
     private async Task SelectNavigationItemAsync(DocumentsNavigationItem item)
     {
         if (FormHelper is null)
@@ -638,6 +721,7 @@
                 return;
             }
 
+
             ClearNavigationWarning(item);
 
             _location = location;
@@ -650,10 +734,17 @@
 
             if (_folderTree.Count > 0)
             {
-                await EnsureChildrenLoadedAsync(_folderTree[0]);
+                await PreloadTreeAsync(_folderTree[0]);
             }
 
+            // if (_folderTree.Count > 0)
+            // {
+            //     await EnsureChildrenLoadedAsync(_folderTree[0]);
+            // }
+
             await LoadFolderAsync(_currentFolderId, true);
+
+            _foldersLoading = false;
         }
         catch (Exception ex)
         {
@@ -716,6 +807,19 @@
             FolderId = _location.RootFolderId,
             Name = string.IsNullOrWhiteSpace(_location.RootFolderName) ? "Documents" : _location.RootFolderName
         });
+    }
+
+    private async Task PreloadTreeAsync(FolderNode node)
+    {
+        await EnsureChildrenLoadedAsync(node);
+
+        foreach (var child in node.Children)
+        {
+            if (child.HasChildren)
+            {
+                await PreloadTreeAsync(child);
+            }
+        }
     }
 
     private async Task EnsureChildrenLoadedAsync(FolderNode node)
@@ -824,6 +928,7 @@
         if (node.IsExpanded)
         {
             await EnsureChildrenLoadedAsync(node);
+            node.ChildrenLoaded = true;
         }
     }
 
@@ -1190,7 +1295,10 @@
         if (item.IsFolder)
             return;
 
-        await CreateEmailAsync([item]);
+        Exception emailNotImplementedException = new Exception("The email function is not yet implemented!");
+        SetMessage(emailNotImplementedException.Message, true);
+
+        //await CreateEmailAsync([item]);
     }
 
     private async Task CreateEmailFromSelectionAsync()
@@ -1668,6 +1776,11 @@
             message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return "This record exists, but its SharePoint document location could not be found.";
+        }
+
+        if (message.Contains("Unavailable due to DataObject.SharePointUrl is empty"))
+        {
+            return "Unavailable due to DataObject.SharePointUrl is empty. Please, try to resync by clicking the resync button.";
         }
 
         return message;

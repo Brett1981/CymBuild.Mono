@@ -1,4 +1,6 @@
-﻿CREATE TABLE [SFin].[TransactionBatchTransitions] (
+﻿PRINT (N'Create table [SFin].[TransactionBatchTransitions]')
+GO
+CREATE TABLE [SFin].[TransactionBatchTransitions] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionBatchTransitions_RowStatus] DEFAULT (1),
   [RowVersion] [timestamp],
@@ -12,22 +14,29 @@
   [SurveyorUserId] [int] NOT NULL CONSTRAINT [DF_TransactionBatchTransitions_SurveyorUserId] DEFAULT (-1),
   [Comment] [nvarchar](max) NULL,
   [IsImported] [bit] NOT NULL CONSTRAINT [DF_TransactionBatchTransitions_IsImported] DEFAULT (0),
-  [SourceTransactionRowVersion] [binary](8) NOT NULL,
-  CONSTRAINT [PK_TransactionBatchTransitions] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80),
-  CONSTRAINT [UQ_TransactionBatchTransitions_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+  [SourceTransactionRowVersion] [binary](8) NOT NULL
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
-CREATE INDEX [IX_TransactionBatchTransitions_TransactionGuid_IdDesc]
-  ON [SFin].[TransactionBatchTransitions] ([TransactionGuid], [ID] DESC)
-  INCLUDE ([OldBatched], [NewBatched], [DateTimeUTC], [Guid])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
+PRINT (N'Create primary key [PK_TransactionBatchTransitions] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
+  ADD CONSTRAINT [PK_TransactionBatchTransitions] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
 GO
 
+PRINT (N'Create unique key [UQ_TransactionBatchTransitions_Guid] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
+  ADD CONSTRAINT [UQ_TransactionBatchTransitions_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [UX_TransactionBatchTransitions_SourceRowVersion] on table [SFin].[TransactionBatchTransitions]')
+GO
 CREATE UNIQUE INDEX [UX_TransactionBatchTransitions_SourceRowVersion]
   ON [SFin].[TransactionBatchTransitions] ([TransactionGuid], [SourceTransactionRowVersion])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
@@ -35,26 +44,38 @@ CREATE UNIQUE INDEX [UX_TransactionBatchTransitions_SourceRowVersion]
   ON [PRIMARY]
 GO
 
-ALTER TABLE [SFin].[TransactionBatchTransitions]
+PRINT (N'Create foreign key [FK_TransactionBatchTransitions_CreatedBy] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionBatchTransitions_CreatedBy] FOREIGN KEY ([CreatedByUserId]) REFERENCES [SCore].[Identities] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionBatchTransitions]
+PRINT (N'Create foreign key [FK_TransactionBatchTransitions_DataObjects] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionBatchTransitions_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
+PRINT (N'Disable foreign key [FK_TransactionBatchTransitions_DataObjects] on table [SFin].[TransactionBatchTransitions]')
+GO
 ALTER TABLE [SFin].[TransactionBatchTransitions]
   NOCHECK CONSTRAINT [FK_TransactionBatchTransitions_DataObjects]
 GO
 
-ALTER TABLE [SFin].[TransactionBatchTransitions]
+PRINT (N'Create foreign key [FK_TransactionBatchTransitions_RowStatus] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionBatchTransitions_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionBatchTransitions]
+PRINT (N'Create foreign key [FK_TransactionBatchTransitions_Surveyor] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionBatchTransitions_Surveyor] FOREIGN KEY ([SurveyorUserId]) REFERENCES [SCore].[Identities] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionBatchTransitions]
+PRINT (N'Create foreign key [FK_TransactionBatchTransitions_Transactions] on table [SFin].[TransactionBatchTransitions]')
+GO
+ALTER TABLE [SFin].[TransactionBatchTransitions] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionBatchTransitions_Transactions] FOREIGN KEY ([TransactionID]) REFERENCES [SFin].[Transactions] ([ID])
 GO

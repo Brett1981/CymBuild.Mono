@@ -115,5 +115,36 @@ AS
         WHERE
           ([Guid] = @Guid)
       END
+
+	/*
+		Apply the schedule to all the other quote items
+		which aren't marked as "Do not consolidate".
+
+		These will be merged into one job, but it looks better on the front-end.
+
+	*/
+	IF(EXISTS
+		(
+			SELECT 1 
+			FROM SSop.QuoteItems as root_hobt
+			WHERE 
+					(root_hobt.QuoteId = @QuoteId)
+				AND (root_hobt.Guid <> @Guid)
+				AND (root_hobt.RowStatus NOT IN (0,254))
+				AND (root_hobt.DoNotConsolidateJob = 0)
+				AND (root_hobt.ProductId = @ProductId)
+		) AND (@DoNotConsolidateJob = 0)
+	)
+	BEGIN
+		UPDATE SSop.QuoteItems
+		SET InvoicingSchedule = @InvoicingScheduleId
+		WHERE 
+				(QuoteId = @QuoteId)
+			AND (Guid <> @Guid)
+			AND (RowStatus NOT IN (0,254))
+			AND (ProductId = @ProductId)
+			AND (DoNotConsolidateJob = 0)
+	END;
+
   END
 GO

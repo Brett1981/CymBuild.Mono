@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceAutomationRunDetails]')
 GO
+PRINT (N'Create table [SFin].[InvoiceAutomationRunDetails]')
+GO
 CREATE TABLE [SFin].[InvoiceAutomationRunDetails] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceAutomationRunDetails_RowStatus] DEFAULT (0),
@@ -26,26 +28,6 @@ PRINT (N'Create primary key [PK_InvoiceAutomationRunDetails] on table [SFin].[In
 GO
 ALTER TABLE [SFin].[InvoiceAutomationRunDetails] WITH NOCHECK
   ADD CONSTRAINT [PK_InvoiceAutomationRunDetails] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_InvoiceAutomationRunDetails_Run] on table [SFin].[InvoiceAutomationRunDetails]')
-GO
-CREATE INDEX [IX_InvoiceAutomationRunDetails_Run]
-  ON [SFin].[InvoiceAutomationRunDetails] ([AutomationRunGuid], [RowStatus])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
-GO
-
-PRINT (N'Create index [IX_UQ_InvoiceAutomationRunDetails_Guid] on table [SFin].[InvoiceAutomationRunDetails]')
-GO
-CREATE UNIQUE INDEX [IX_UQ_InvoiceAutomationRunDetails_Guid]
-  ON [SFin].[InvoiceAutomationRunDetails] ([Guid])
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
 GO
 
 PRINT (N'Create foreign key [FK_InvoiceAutomationRunDetails_DataObjects] on table [SFin].[InvoiceAutomationRunDetails]')

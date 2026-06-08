@@ -1,0 +1,72 @@
+.metadata-migration-page {
+    gap: 1rem;
+}
+
+.metadata-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.metadata-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.metadata-input-full {
+    width: 100%;
+}
+
+.metadata-actions-row {
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.metadata-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.92rem;
+}
+
+.metadata-inline-message {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.metadata-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
+    gap: 1rem;
+}
+
+.metadata-json-panel {
+    border: 1px solid var(--cb-v2-border, #e5e7eb);
+    border-radius: 1rem;
+    padding: 1rem;
+    background: var(--cb-v2-surface-muted, #f8fafc);
+    min-height: 18rem;
+    overflow: auto;
+}
+
+.metadata-json-panel pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.metadata-audit-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 980px) {
+    .metadata-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}

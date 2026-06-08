@@ -28,48 +28,7 @@ BEGIN
 	FROM SSop.Quotes 
 	WHERE Guid = @QuoteGuid;
 
-		/*
-			Safety measure: Make sure that there can only be one schedule set,
-			given that either of the existing quote items have been marked as "Do not consolidate".
-		*/
-		IF(		@InvoicingScheduleGuid <> '00000000-0000-0000-0000-000000000000' 
-			AND (@DoNotConsolidate = 0)
-			AND (EXISTS
-			(
-				SELECT 1
-				FROM SSop.QuoteItems qi
-				WHERE qi.QuoteId = @QuoteId
-				  AND qi.Guid <> @Guid
-				  AND qi.DoNotConsolidateJob = 0
-				  AND qi.InvoicingSchedule <> -1
-				)
-			)
-		)
-		BEGIN
-
-			
-			INSERT @ValidationResult
-						(
-							TargetGuid,
-							TargetType,
-							IsReadOnly,
-							IsHidden,
-							IsInvalid,
-							[Message]
-						)
-				SELECT
-							epfvv.Guid,
-							N'P',
-							0,
-							0,
-							1,
-							N'An invoice schedule has already been set for this quote. Only items marked ‘Do Not Consolidate’ can have additional schedules.'
-				FROM	SCore.EntityPropertiesForValidationV AS epfvv
-				WHERE	([epfvv].[Schema] = N'SSop')
-					AND	(epfvv.Hobt = N'QuoteItems')
-					AND	(epfvv.Name = (N'InvoicingSchedule'))
-
-		END
+	
 
 	--Hide the "Invoicing Schedule field until the record is saved for the first time"
 	IF(NOT EXISTS(SELECT 1 FROM SSop.QuoteItems WHERE Guid = @Guid))

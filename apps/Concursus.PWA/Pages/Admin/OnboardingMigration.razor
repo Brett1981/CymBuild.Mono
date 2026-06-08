@@ -1,0 +1,905 @@
+﻿@page "/admin/onboarding-migration"
+@using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.OnboardingMigration
+@using Concursus.PWA.Classes
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+
+<div class="cb-v2-shell">
+    <div class="cb-v2-page onboarding-migration-page">
+
+        <div class="cb-v2-card">
+            <div class="cb-v2-card-body">
+                <div class="cb-v2-panel-header">
+                    <div>
+                        <h2 class="cb-v2-title">Onboarding Migration</h2>
+                        <div class="cb-v2-description">
+                            Stage, validate, compare and apply onboarding migrations using the SMigration framework.
+                        </div>
+                    </div>
+
+                    <div class="cb-v2-actions">
+                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "setup" ? "selected" : "")" @onclick="@(() => SelectTabAsync("setup"))">Setup</button>
+                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "staged" ? "selected" : "")" @onclick="@(() => SelectTabAsync("staged"))">Staged Data</button>
+                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "diff" ? "selected" : "")" @onclick="@(() => SelectTabAsync("diff"))">Diff</button>
+                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "audit" ? "selected" : "")" @onclick="@(() => SelectTabAsync("audit"))">Audit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body onboarding-inline-message">
+                    <span class="cb-v2-badge cb-v2-badge-info">Info</span>
+                    <span>@Message</span>
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Error))
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body onboarding-inline-message">
+                    <span class="cb-v2-badge cb-v2-badge-danger">Error</span>
+                    <span>@Error</span>
+                </div>
+            </div>
+        }
+
+        @if (SelectedTab == "setup")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-form-grid">
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Source Database</label>
+                            <input class="cb-v2-input onboarding-input-full" @bind="SourceDatabase" />
+                        </div>
+
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Business Unit</label>
+                            <select class="cb-v2-select onboarding-input-full" @bind="BusinessUnitGroupGuidText">
+                                <option value="">Select business unit...</option>
+                                @foreach (var item in BusinessUnitGroups)
+                                {
+                                    <option value="@item.Guid">@item.Description</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Existing Run</label>
+                            <select class="cb-v2-select onboarding-input-full" @bind="RunGuidText">
+                                <option value="">New run...</option>
+                                @foreach (var item in AvailableRuns)
+                                {
+                                    <option value="@item.Guid">@item.Description</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Notes</label>
+                            <input class="cb-v2-input onboarding-input-full" @bind="Notes" />
+                        </div>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row">
+                        <label class="onboarding-check">
+                            <input type="checkbox" @bind="AllowWarnings" />
+                            <span>Allow warnings</span>
+                        </label>
+
+                        <label class="onboarding-check">
+                            <input type="checkbox" @bind="PreviewOnly" />
+                            <span>Preview only</span>
+                        </label>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="LoadLookupsAsync"
+                                disabled="@IsBusy">
+                            Load Lookups
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="StageAsync"
+                                disabled="@(IsBusy || string.IsNullOrWhiteSpace(BusinessUnitGroupGuidText))">
+                            Stage
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="ValidateAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Validate
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="ApplyAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Apply
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => RefreshAllAsync())"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (StageResult is not null)
+            {
+                <div class="cb-v2-summary-grid">
+                    @SummaryCard("Groups", StageResult.GroupCount, "cb-v2-summary-info")
+                    @SummaryCard("Identities", StageResult.IdentityCount, "cb-v2-summary-purple")
+                    @SummaryCard("User Groups", StageResult.UserGroupCount, "cb-v2-summary-info")
+                    @SummaryCard("Workflow Groups", StageResult.WorkflowNotificationGroupCount, "cb-v2-summary-warning")
+                    @SummaryCard("Job Types", StageResult.JobTypeCount, "cb-v2-summary-info")
+                    @SummaryCard("Activities", StageResult.ActivityTypeCount, "cb-v2-summary-success")
+                    @SummaryCard("Milestones", StageResult.MilestoneTypeCount, "cb-v2-summary-purple")
+                    @SummaryCard("Products", StageResult.ProductCount, "cb-v2-summary-success")
+                    @SummaryCard("JT Activities", StageResult.JobTypeActivityTypeCount, "cb-v2-summary-muted")
+                    @SummaryCard("JT Milestones", StageResult.JobTypeMilestoneTemplateCount, "cb-v2-summary-muted")
+                    @SummaryCard("Product Activities", StageResult.ProductJobActivityCount, "cb-v2-summary-info")
+                </div>
+            }
+        }
+
+        @if (SelectedTab == "staged")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-toolbar">
+                    <div class="cb-v2-toolbar-left">
+                        <select class="cb-v2-select" value="@SelectedStagedEntity" @onchange="OnStagedEntityChangedAsync">
+                            @foreach (var entity in Entities)
+                            {
+                                <option value="@entity">@entity</option>
+                            }
+                        </select>
+
+                        <input class="cb-v2-input" placeholder="Search staged values" @bind="StagedSearchText" />
+                    </div>
+                </div>
+
+                <div class="cb-v2-card-body onboarding-detail-grid">
+                    <div>
+                        @if (FilteredStagedRows.Count == 0)
+                        {
+                            <div class="cb-v2-empty-state compact">No staged rows found.</div>
+                        }
+                        else
+                        {
+                            <div class="cb-v2-table-wrap">
+                                <table class="cb-v2-table cb-v2-dashboard-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Guid</th>
+                                            <th>Summary</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in FilteredStagedRows)
+                                        {
+                                            <tr class="cb-v2-clickable-row row-accent-blue @(SelectedStagedRow == row ? "cb-v2-table-row-selected" : "")"
+                                                @onclick="@(() => SelectStagedRow(row))">
+                                                <td class="cb-v2-ellipsis">@row.RowGuid</td>
+                                                <td>@BuildSummary(row.Values)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="cb-v2-card">
+                        <div class="cb-v2-card-body">
+                            <h4 class="cb-v2-title">Row Detail</h4>
+
+                            @if (SelectedStagedRow is null)
+                            {
+                                <div class="cb-v2-empty-state compact">Select a row to inspect its staged values.</div>
+                            }
+                            else
+                            {
+                                <div class="onboarding-value-list">
+                                    @foreach (var item in SelectedStagedRow.Values.OrderBy(x => x.Key))
+                                    {
+                                        <div class="onboarding-value-key">@item.Key</div>
+                                        <div class="onboarding-value-value">@item.Value</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (SelectedTab == "diff")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-toolbar">
+                    <div class="cb-v2-toolbar-left">
+                        <select class="cb-v2-select" value="@SelectedDiffEntity" @onchange="OnDiffEntityChangedAsync">
+                            @foreach (var entity in Entities)
+                            {
+                                <option value="@entity">@entity</option>
+                            }
+                        </select>
+
+                        <select class="cb-v2-select" @bind="SelectedDiffType">
+                            <option value="">All</option>
+                            <option value="MissingInTarget">Missing In Target</option>
+                            <option value="Different">Different</option>
+                            <option value="Same">Same</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="cb-v2-card-body onboarding-detail-grid">
+                    <div>
+                        @if (FilteredDiffRows.Count == 0)
+                        {
+                            <div class="cb-v2-empty-state compact">No diff rows found.</div>
+                        }
+                        else
+                        {
+                            <div class="cb-v2-table-wrap">
+                                <table class="cb-v2-table cb-v2-dashboard-grid">
+                                    <thead>
+                                        <tr>
+                                            <th>Guid</th>
+                                            <th>Status</th>
+                                            <th>Columns</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in FilteredDiffRows)
+                                        {
+                                            <tr class="cb-v2-clickable-row @RowAccentForDiff(row.DiffType) @(SelectedDiffRow == row ? "cb-v2-table-row-selected" : "")"
+                                                @onclick="@(() => SelectDiffRow(row))">
+                                                <td class="cb-v2-ellipsis">@row.RowGuid</td>
+                                                <td>@DiffBadge(row.DiffType)</td>
+                                                <td>@string.Join(", ", row.DifferingColumns)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="cb-v2-card">
+                        <div class="cb-v2-card-body">
+                            <h4 class="cb-v2-title">Compare Values</h4>
+
+                            @if (SelectedDiffRow is null)
+                            {
+                                <div class="cb-v2-empty-state compact">Select a diff row to compare source and target values.</div>
+                            }
+                            else
+                            {
+                                <div class="onboarding-compare-grid">
+                                    <div>
+                                        <div class="cb-v2-strong onboarding-section-label">Source</div>
+                                        <div class="onboarding-value-list">
+                                            @foreach (var item in SelectedDiffRow.SourceValues.OrderBy(x => x.Key))
+                                            {
+                                                <div class="onboarding-value-key">@item.Key</div>
+                                                <div class="onboarding-value-value">@item.Value</div>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div class="cb-v2-strong onboarding-section-label">Target</div>
+                                        <div class="onboarding-value-list">
+                                            @foreach (var item in SelectedDiffRow.TargetValues.OrderBy(x => x.Key))
+                                            {
+                                                <div class="onboarding-value-key">@item.Key</div>
+                                                <div class="onboarding-value-value">@item.Value</div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (SelectedTab == "audit")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-toolbar">
+                    <div class="cb-v2-toolbar-left">
+                        <select class="cb-v2-select onboarding-audit-run-select"
+                                value="@SelectedAuditRunGuidText"
+                                @onchange="OnAuditRunChangedAsync">
+                            <option value="">Select migration run...</option>
+                            @foreach (var item in AllAvailableRuns)
+                            {
+                                <option value="@item.Guid">@item.Description</option>
+                            }
+                        </select>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="LoadAllRunsAsync"
+                                disabled="@IsBusy">
+                            Load All Runs
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="cb-v2-summary-grid">
+                @AuditFilterCard("Entities", AuditDashboard?.StagedEntityCount ?? 0, "cb-v2-summary-info", "", "")
+                @AuditFilterCard("Rows", AuditDashboard?.TotalStagedRows ?? 0, "cb-v2-summary-purple", "", "")
+                @AuditFilterCard("Errors", AuditDashboard?.ValidationErrorCount ?? 0, "cb-v2-summary-danger", "Error", "")
+                @AuditFilterCard("Warnings", AuditDashboard?.ValidationWarningCount ?? 0, "cb-v2-summary-warning", "Warning", "")
+                @AuditFilterCard("Log Rows", AuditDashboard?.ExecutionLogCount ?? 0, "cb-v2-summary-muted", "", "")
+                @AuditFilterCard("Inserted", AuditDashboard?.InsertedRowCount ?? 0, "cb-v2-summary-success", "Insert", "")
+                @AuditFilterCard("Updated", AuditDashboard?.UpdatedRowCount ?? 0, "cb-v2-summary-info", "Update", "")
+            </div>
+
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body">
+                    <h4 class="cb-v2-title">Validation Issues</h4>
+
+                    @if (AuditDashboard is null || FilteredValidationIssues.Count == 0)
+                    {
+                        <div class="cb-v2-empty-state compact">No validation issues recorded.</div>
+                    }
+                    else
+                    {
+                        <div class="cb-v2-table-wrap onboarding-section-block">
+                            <table class="cb-v2-table">
+                                <thead>
+                                    <tr>
+                                        <th>Severity</th>
+                                        <th>Entity</th>
+                                        <th>Code</th>
+                                        <th>Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in FilteredValidationIssues)
+                                    {
+                                        <tr class="@RowAccentForSeverity(item.Severity)">
+                                            <td>@SeverityBadge(item.Severity)</td>
+                                            <td>@item.EntityName</td>
+                                            <td>@item.IssueCode</td>
+                                            <td>@item.IssueMessage</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body">
+                    <h4 class="cb-v2-title">Execution Log</h4>
+                    <div class="cb-v2-toolbar onboarding-audit-toolbar">
+                        <div class="cb-v2-toolbar-left">
+                            <select class="cb-v2-select" @bind="SelectedAuditAction">
+                                <option value="">All actions</option>
+                                @foreach (var action in AuditActions)
+                                {
+                                    <option value="@action">@action</option>
+                                }
+                            </select>
+
+                            <select class="cb-v2-select" @bind="SelectedAuditEntity">
+                                <option value="">All entities</option>
+                                @foreach (var entity in AuditEntities)
+                                {
+                                    <option value="@entity">@entity</option>
+                                }
+                            </select>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearAuditFilters">
+                                Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                    @if (AuditDashboard is null || FilteredExecutionLog.Count == 0)
+                    {
+                        <div class="cb-v2-empty-state compact">No execution log entries recorded.</div>
+                    }
+                    else
+                    {
+                        <div class="cb-v2-table-wrap onboarding-section-block">
+                            <table class="cb-v2-table">
+                                <thead>
+                                    <tr>
+                                        <th>Step</th>
+                                        <th>Entity</th>
+                                        <th>Action</th>
+                                        <th>Affected</th>
+                                        <th>Details</th>
+                                        <th>UTC</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in FilteredExecutionLog)
+                                    {
+                                        <tr class="@RowAccentForAction(item.ActionName)">
+                                            <td>@item.StepName</td>
+                                            <td>@item.EntityName</td>
+                                            <td>@item.ActionName</td>
+                                            <td>@item.AffectedCount</td>
+                                            <td>@item.Details</td>
+                                            <td>@item.LoggedUtcText</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly List<string> Entities = new()
+    {
+        "OrganisationalUnits",
+        "Addresses",
+        "Contacts",
+        "Groups",
+        "Identities",
+        "UserGroups",
+        "WorkflowStatusNotificationGroups",
+        "JobTypes",
+        "ActivityTypes",
+        "MilestoneTypes",
+        "Products",
+        "JobTypeActivityTypes",
+        "JobTypeMilestoneTemplates",
+        "ProductJobActivities"
+    };
+
+    private List<OnboardingMigrationLookupItemModel> BusinessUnitGroups = new();
+    private List<OnboardingMigrationLookupItemModel> AvailableRuns = new();
+    private List<OnboardingMigrationLookupItemModel> AllAvailableRuns = new();
+    private string SelectedAuditRunGuidText = string.Empty;
+
+    private string SelectedTab = "setup";
+    private string SourceDatabase = "CymBuild_UAT";
+    private string BusinessUnitGroupGuidText = string.Empty;
+    private string RunGuidText = string.Empty;
+    private string Notes = string.Empty;
+    private bool AllowWarnings = true;
+    private bool PreviewOnly = true;
+
+    private string SelectedStagedEntity = "Groups";
+    private string SelectedDiffEntity = "Groups";
+    private string SelectedDiffType = string.Empty;
+    private string StagedSearchText = string.Empty;
+
+    private bool IsBusy;
+    private string Message = string.Empty;
+    private string Error = string.Empty;
+
+    private OnboardingMigrationStageResultModel? StageResult;
+    private OnboardingMigrationReportModel? Report;
+    private OnboardingMigrationAuditDashboardModel? AuditDashboard;
+    private List<OnboardingMigrationStagedRowModel> StagedRows = new();
+    private List<OnboardingMigrationDiffRowModel> DiffRows = new();
+    private OnboardingMigrationStagedRowModel? SelectedStagedRow;
+    private OnboardingMigrationDiffRowModel? SelectedDiffRow;
+
+    private bool HasRunGuid => Guid.TryParse(RunGuidText, out _);
+    private string SelectedAuditAction = string.Empty;
+    private string SelectedAuditEntity = string.Empty;
+
+    private List<OnboardingMigrationExecutionLogItemModel> FilteredExecutionLog =>
+        AuditDashboard?.ExecutionLog
+            .Where(x => string.IsNullOrWhiteSpace(SelectedAuditAction)
+                || string.Equals(x.ActionName, SelectedAuditAction, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(x.StepName, SelectedAuditAction, StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(SelectedAuditEntity)
+                || string.Equals(x.EntityName, SelectedAuditEntity, StringComparison.OrdinalIgnoreCase))
+            .ToList()
+        ?? new();
+
+    private List<string> AuditActions =>
+        AuditDashboard?.ExecutionLog
+            .SelectMany(x => new[] { x.StepName, x.ActionName })
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList()
+        ?? new();
+
+    private List<string> AuditEntities =>
+        AuditDashboard?.ExecutionLog
+            .Select(x => x.EntityName)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x)
+            .ToList()
+        ?? new();
+
+    private List<OnboardingMigrationStagedRowModel> FilteredStagedRows =>
+        string.IsNullOrWhiteSpace(StagedSearchText)
+            ? StagedRows
+            : StagedRows.Where(x =>
+                    x.RowGuid.ToString().Contains(StagedSearchText, StringComparison.OrdinalIgnoreCase)
+                 || x.Values.Any(v =>
+                        v.Key.Contains(StagedSearchText, StringComparison.OrdinalIgnoreCase)
+                     || v.Value.Contains(StagedSearchText, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+    private List<OnboardingMigrationDiffRowModel> FilteredDiffRows =>
+        string.IsNullOrWhiteSpace(SelectedDiffType)
+            ? DiffRows
+            : DiffRows.Where(x => string.Equals(x.DiffType, SelectedDiffType, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private string SelectedValidationSeverity = string.Empty;
+
+    private List<OnboardingMigrationValidationIssueModel> FilteredValidationIssues =>
+        AuditDashboard?.ValidationIssues
+            .Where(x => string.IsNullOrWhiteSpace(SelectedValidationSeverity)
+                || string.Equals(x.Severity, SelectedValidationSeverity, StringComparison.OrdinalIgnoreCase))
+            .ToList()
+        ?? new();
+
+    private async Task SelectTabAsync(string tab)
+    {
+        SelectedTab = tab;
+
+        if (tab == "audit" && AllAvailableRuns.Count == 0)
+            await LoadAllRunsAsync();
+    }
+
+    private void SelectStagedRow(OnboardingMigrationStagedRowModel row) => SelectedStagedRow = row;
+
+    private void SelectDiffRow(OnboardingMigrationDiffRowModel row) => SelectedDiffRow = row;
+
+    private API.Client.FormHelper? _formHelper;
+
+    protected override void OnInitialized()
+    {
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            sageIntegrationService,
+            Guid.Empty.ToString(),
+            userService);
+    }
+
+    private async Task LoadAllRunsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            AllAvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(string.Empty);
+            Message = "All migration runs loaded.";
+        }, clearMessage: false);
+    }
+
+    private async Task OnAuditRunChangedAsync(ChangeEventArgs args)
+    {
+        SelectedAuditRunGuidText = Convert.ToString(args.Value) ?? string.Empty;
+
+        if (!Guid.TryParse(SelectedAuditRunGuidText, out var selectedRunGuid))
+            return;
+
+        RunGuidText = SelectedAuditRunGuidText;
+        AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(selectedRunGuid);
+        Report = await FormHelper.OnboardingMigrationReportAsync(selectedRunGuid);
+
+        SelectedAuditAction = string.Empty;
+        SelectedAuditEntity = string.Empty;
+
+        StateHasChanged();
+    }
+
+    private void ApplyAuditCardFilter(string actionFilter, string entityFilter)
+    {
+        SelectedAuditAction = actionFilter ?? string.Empty;
+        SelectedAuditEntity = entityFilter ?? string.Empty;
+
+        SelectedValidationSeverity = actionFilter is "Error" or "Warning"
+            ? actionFilter
+            : string.Empty;
+    }
+
+    private API.Client.FormHelper FormHelper =>
+        _formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
+
+    private async Task StageAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            if (!Guid.TryParse(BusinessUnitGroupGuidText, out var businessUnitGuid))
+                throw new InvalidOperationException("Business Unit Group Guid must be a valid Guid.");
+
+            var runGuid = Guid.TryParse(RunGuidText, out var parsedRunGuid)
+                ? parsedRunGuid
+                : (Guid?)null;
+
+            StageResult = await FormHelper.OnboardingMigrationStageAsync(
+                SourceDatabase,
+                businessUnitGuid,
+                runGuid,
+                Notes);
+
+            RunGuidText = StageResult.RunGuid.ToString();
+            Message = $"Stage completed for run {RunGuidText}.";
+
+            await RefreshAllAsync(clearMessage: false);
+        });
+    }
+
+    private void ClearAuditFilters()
+    {
+        SelectedAuditAction = string.Empty;
+        SelectedAuditEntity = string.Empty;
+    }
+
+    private async Task ValidateAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = GetRequiredRunGuid();
+            var issues = await FormHelper.OnboardingMigrationValidateAsync(runGuid);
+
+            Message = $"Validation completed. Issues found: {issues.Count}.";
+            await RefreshAllAsync(clearMessage: false);
+        });
+    }
+
+    private async Task ApplyAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = GetRequiredRunGuid();
+
+            Message = await FormHelper.OnboardingMigrationApplyAsync(
+                runGuid,
+                AllowWarnings,
+                PreviewOnly);
+
+            await RefreshAllAsync(clearMessage: false);
+        });
+    }
+
+    private async Task LoadLookupsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            BusinessUnitGroups = await FormHelper.OnboardingMigrationBusinessUnitGroupsAsync(SourceDatabase);
+            AvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(SourceDatabase);
+
+            if (BusinessUnitGroups.Count == 1)
+                BusinessUnitGroupGuidText = BusinessUnitGroups[0].Guid.ToString();
+
+            Message = "Lookup data refreshed.";
+        });
+    }
+    private async Task RefreshAllAsync(bool clearMessage = true)
+    {
+        if (!Guid.TryParse(RunGuidText, out var runGuid))
+            return;
+
+        await ExecuteAsync(async () =>
+        {
+            Report = await FormHelper.OnboardingMigrationReportAsync(runGuid);
+            AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(runGuid);
+            SelectedAuditRunGuidText = RunGuidText;
+            StagedRows = await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity);
+            DiffRows = await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity);
+
+            SelectedStagedRow = StagedRows.FirstOrDefault();
+            SelectedDiffRow = DiffRows.FirstOrDefault();
+
+            if (clearMessage)
+                Message = "Migration data refreshed.";
+        }, clearMessage);
+    }
+
+    private async Task OnStagedEntityChangedAsync(ChangeEventArgs args)
+    {
+        SelectedStagedEntity = Convert.ToString(args.Value) ?? "Groups";
+
+        if (!Guid.TryParse(RunGuidText, out var runGuid))
+            return;
+
+        await ExecuteAsync(async () =>
+        {
+            StagedRows = await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity);
+            SelectedStagedRow = StagedRows.FirstOrDefault();
+        }, clearMessage: false);
+    }
+
+    private async Task OnDiffEntityChangedAsync(ChangeEventArgs args)
+    {
+        SelectedDiffEntity = Convert.ToString(args.Value) ?? "Groups";
+
+        if (!Guid.TryParse(RunGuidText, out var runGuid))
+            return;
+
+        await ExecuteAsync(async () =>
+        {
+            DiffRows = await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity);
+            SelectedDiffRow = DiffRows.FirstOrDefault();
+        }, clearMessage: false);
+    }
+
+    private async Task ExecuteAsync(Func<Task> action, bool clearMessage = true)
+    {
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        Error = string.Empty;
+
+        if (clearMessage)
+            Message = string.Empty;
+
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private Guid GetRequiredRunGuid()
+    {
+        if (!Guid.TryParse(RunGuidText, out var runGuid))
+            throw new InvalidOperationException("Run Guid must be a valid Guid.");
+
+        return runGuid;
+    }
+
+    private string BuildSummary(Dictionary<string, string> values)
+    {
+        if (values.Count == 0)
+            return "No values";
+
+        return string.Join(" | ", values.Take(3).Select(x => $"{x.Key}: {x.Value}"));
+    }
+
+    private string RowAccentForDiff(string diffType) =>
+        diffType switch
+        {
+            "MissingInTarget" => "row-accent-red",
+            "Different" => "row-accent-amber",
+            "Same" => "row-accent-green",
+            _ => "row-accent-slate"
+        };
+
+    private string RowAccentForSeverity(string severity) =>
+        severity switch
+        {
+            "Error" => "row-accent-red",
+            "Warning" => "row-accent-amber",
+            _ => "row-accent-blue"
+        };
+
+    private string RowAccentForAction(string actionName) =>
+        actionName switch
+        {
+            "Insert" => "row-accent-green",
+            "Update" => "row-accent-blue",
+            "Preview" => "row-accent-purple",
+            _ => "row-accent-slate"
+        };
+
+    private RenderFragment SummaryCard(string title, int value, string css) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", $"cb-v2-summary-card {css}");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-title");
+        builder.AddContent(seq++, title);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-value");
+        builder.AddContent(seq++, value);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-subtitle");
+        builder.AddContent(seq++, "Staged count");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment AuditFilterCard(
+        string title,
+        int value,
+        string css,
+        string actionFilter,
+        string entityFilter) => builder =>
+    {
+        var isActive =
+            string.Equals(SelectedAuditAction, actionFilter ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(SelectedAuditEntity, entityFilter ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        var seq = 0;
+
+        builder.OpenElement(seq++, "button");
+        builder.AddAttribute(seq++, "type", "button");
+        builder.AddAttribute(seq++, "class", $"cb-v2-summary-card {css} {(isActive ? "active" : string.Empty)}");
+        builder.AddAttribute(seq++, "onclick",
+            EventCallback.Factory.Create(this, () => ApplyAuditCardFilter(actionFilter, entityFilter)));
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-title");
+        builder.AddContent(seq++, title);
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-value");
+        builder.AddContent(seq++, value);
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-subtitle");
+        builder.AddContent(seq++, string.IsNullOrWhiteSpace(actionFilter) ? "Clear filter" : $"Filter: {actionFilter}");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private RenderFragment DiffBadge(string diffType) => builder =>
+    {
+        var css = diffType switch
+        {
+            "MissingInTarget" => "cb-v2-badge cb-v2-badge-danger",
+            "Different" => "cb-v2-badge cb-v2-badge-warning",
+            "Same" => "cb-v2-badge cb-v2-badge-success",
+            _ => "cb-v2-badge cb-v2-badge-muted"
+        };
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", css);
+        builder.AddContent(2, diffType);
+        builder.CloseElement();
+    };
+
+    private RenderFragment SeverityBadge(string severity) => builder =>
+    {
+        var css = severity switch
+        {
+            "Error" => "cb-v2-badge cb-v2-badge-danger",
+            "Warning" => "cb-v2-badge cb-v2-badge-warning",
+            _ => "cb-v2-badge cb-v2-badge-info"
+        };
+
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", css);
+        builder.AddContent(2, severity);
+        builder.CloseElement();
+    };
+}

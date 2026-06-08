@@ -1,6 +1,7 @@
-﻿// ==============================
+// ==============================
 // FILE: CymBuild_Outlook_Addin/Pages/Index.razor.cs
 // ==============================
+using CymBuild_Outlook_Addin.Model;
 using CymBuild_Outlook_Addin.Services;
 using CymBuild_Outlook_Common.Dto;
 using CymBuild_Outlook_Common.Helpers;
@@ -15,8 +16,6 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
 
 namespace CymBuild_Outlook_Addin.Pages
 {
@@ -37,6 +36,7 @@ namespace CymBuild_Outlook_Addin.Pages
 
         private string searchString = string.Empty;
         private string emailDescription = string.Empty;
+        private string? selectedFolderPath;
         private bool isGeneratingDescription = false;
 
         private bool moveToCymBuildFiled = false;
@@ -70,6 +70,49 @@ namespace CymBuild_Outlook_Addin.Pages
         {
             WriteIndented = false
         };
+
+        //Used for the dropdown.
+        private List<SharePointFolderDto> FilingFolders = new();
+
+        private string FilingDirectionLabel => GetFilingDirectionLabel();
+
+        private string FilingDirectionBadgeCss => FilingDirectionLabel switch
+        {
+            "Outgoing" => "cb-v2-badge-purple",
+            "Incoming" => "cb-v2-badge-success",
+            _ => "cb-v2-badge-muted"
+        };
+
+        private string EffectiveFilingFolderPath =>
+            !string.IsNullOrWhiteSpace(selectedFolderPath)
+                ? selectedFolderPath
+                : "Default: Emails folder";
+
+        private string EffectiveFilingFolderName =>
+            !string.IsNullOrWhiteSpace(selectedFolderPath)
+                ? FilingFolders.FirstOrDefault(x => x.Path == selectedFolderPath)?.Name ?? selectedFolderPath
+                : "Emails";
+
+        private string GetFilingDirectionLabel()
+        {
+            var sender = MailReadData?.Sender?.SenderEmail;
+
+            if (string.IsNullOrWhiteSpace(sender))
+                return "Unknown";
+
+            var mailboxCandidates = new[]
+            {
+                userEmail,
+                mailboxOwnerEmail,
+                MailboxInfo?.UserProfile?.EmailAddress
+            }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            return mailboxCandidates.Any(x => string.Equals(x, sender, StringComparison.OrdinalIgnoreCase))
+                ? "Outgoing"
+                : "Incoming";
+        }
 
         protected override void OnInitialized()
         {
@@ -162,20 +205,160 @@ namespace CymBuild_Outlook_Addin.Pages
             LogInfo($"[{corr}] OnAfterRenderAsync END ElapsedMs={sw.ElapsedMilliseconds}", "OnAfterRenderAsync");
         }
 
+        /// <summary>
+        /// Returns the folders available (including nested folders)
+        /// </summary>
+        /// <returns></returns>
+        private async Task GetFoldersForFilingLocation()
+        {
+            var corr = NewCorrelationId("folders");
+            var sw = Stopwatch.StartNew();
+
+            try
+            {
+                LogInfo($"[{corr}] GetFoldersForFilingLocation START",
+                    nameof(GetFoldersForFilingLocation));
+
+                FilingFolders = new();
+
+                var apiToken = await GetApiTokenAsync();
+
+                if (string.IsNullOrWhiteSpace(apiToken))
+                {
+                    LogError($"[{corr}] Missing API token",
+                        new Exception("Missing token"),
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                var selected = selectedRecords.FirstOrDefault();
+
+                if (selected == null)
+                {
+                    LogInfo($"[{corr}] No selected record.",
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                var target = await TargetObjectService.GetTargetObjectAsync(selected.Guid);
+
+                if (target == null)
+                {
+                    LogInfo($"[{corr}] No target object found for selectedGuid={selected.Guid}.",
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(target.FilingLocation))
+                {
+                    LogInfo($"[{corr}] No filing location for targetGuid={target.Guid}.",
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                List<string> values;
+
+                try
+                {
+                    values = StringHelpers.ParseFolderLocation(target.FilingLocation) ?? new List<string>();
+                }
+                catch (Exception exParse)
+                {
+                    LogError(
+                        $"[{corr}] Invalid filing location format for targetGuid={target.Guid}. valueLen={target.FilingLocation.Length}",
+                        exParse,
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                if (values.Count != 2 ||
+                    string.IsNullOrWhiteSpace(values[0]) ||
+                    string.IsNullOrWhiteSpace(values[1]))
+                {
+                    LogInfo(
+                        $"[{corr}] Invalid filing location for targetGuid={target.Guid}. parseCount={values.Count}",
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                var request = new
+                {
+                    SiteId = values[0],
+                    RootFolderPath = values[1]
+                };
+
+                using var req = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    "api/Graph/GetAllFoldersForLocation")
+                {
+                    Content = JsonContent.Create(request)
+                };
+
+                req.Headers.Authorization =
+                    new AuthenticationHeaderValue("Bearer", apiToken);
+
+                req.Headers.TryAddWithoutValidation("X-Correlation-Id", corr);
+
+                var response = await Http.SendAsync(req);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await SafeReadBodySnippetAsync(response, 1000);
+
+                    LogError(
+                        $"[{corr}] Folder API failed status={(int)response.StatusCode} body='{body}'",
+                        new Exception("Folder API failed"),
+                        nameof(GetFoldersForFilingLocation));
+
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                FilingFolders =
+                    await response.Content.ReadFromJsonAsync<List<SharePointFolderDto>>()
+                    ?? new List<SharePointFolderDto>();
+
+                LogInfo(
+                    $"[{corr}] Loaded folders count={FilingFolders.Count} elapsedMs={sw.ElapsedMilliseconds}",
+                    nameof(GetFoldersForFilingLocation));
+
+                foreach (var folder in FilingFolders)
+                {
+                    LogInfo(
+                        $"Folder Name='{folder.Name}' Id='{folder.Id}' ParentId='{folder.ParentId}'",
+                        nameof(GetFoldersForFilingLocation));
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                LogError(
+                    $"[{corr}] GetFoldersForFilingLocation FAILED elapsedMs={sw.ElapsedMilliseconds}",
+                    ex,
+                    nameof(GetFoldersForFilingLocation));
+
+                FilingFolders = new();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
         // ---------------- GRID ----------------
 
         private RecordSearchResult? GetRecordDetails(int recordId)
             => gridData.FirstOrDefault(record => record.ID == recordId);
-
-        private void OnGridStateInit(GridStateEventArgs<RecordSearchResult> args)
-        {
-            args.GridState.GroupDescriptors.Add(new GroupDescriptor
-            {
-                Member = nameof(RecordSearchResult.EntityTypeName),
-                MemberType = typeof(string)
-            });
-        }
-
         private async Task HandleKeyPress(KeyboardEventArgs e)
         {
             if (e.Key == "Enter" || e.Key == "NumpadEnter")
@@ -335,14 +518,18 @@ namespace CymBuild_Outlook_Addin.Pages
             }
         }
 
-        private void OnRowClick(GridRowClickEventArgs args)
+        private async Task OnRecordClick(RecordSearchResult record)
         {
-            if (args.Item is RecordSearchResult record && !selectedRecords.Any(r => r.ID == record.ID))
-                selectedRecords = selectedRecords.Append(record).ToList();
-        }
+            if (record == null || selectedRecords.Any(r => r.ID == record.ID))
+                return;
 
+            selectedRecords = selectedRecords.Append(record).ToList();
+
+            // Get the folders in the background after the record has been selected.
+            await GetFoldersForFilingLocation();
+        }
         private void RemoveSelectedItem(RecordSearchResult record)
-            => selectedRecords = selectedRecords.Where(r => r.ID != record.ID).ToList();
+                    => selectedRecords = selectedRecords.Where(r => r.ID != record.ID).ToList();
 
         private async Task SaveSelectedRecordsToLocalStorage()
         {
@@ -455,6 +642,9 @@ namespace CymBuild_Outlook_Addin.Pages
                     using var req = new HttpRequestMessage(HttpMethod.Get, "api/UserSettings");
                     req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
                     req.Headers.TryAddWithoutValidation("X-Correlation-Id", corr);
+                    req.Headers.Add("X-user-email", userEmail);
+
+
 
                     var res = await Http.SendAsync(req);
 
@@ -468,20 +658,28 @@ namespace CymBuild_Outlook_Addin.Pages
                         continue;
                     }
 
-                    var settings = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>(_jsonOpts);
+                    var settings = await res.Content.ReadFromJsonAsync<UserSettingsDto>(_jsonOpts);
                     if (settings == null)
                     {
                         LogError($"[{corr}] attempt {attempt}: settings JSON null", new Exception("settings==null"), "LoadUserSettingsFromApiAsync");
                         return;
                     }
 
-                    moveToCymBuildFiled =
-                        settings.TryGetValue("moveToCymBuildFiled", out var mvObj) &&
-                        bool.TryParse(mvObj?.ToString(), out var mv) && mv;
+                    LogInfo(
+                            $"LoadUserSettingsFromApiAsync() => Settings: " +
+                            JsonSerializer.Serialize(settings, new JsonSerializerOptions
+                            {
+                                WriteIndented = true
+                            }), "LoadUserSettingsFromApiAsync");
 
-                    extractAttachments =
-                        settings.TryGetValue("extractAttachments", out var exObj) &&
-                        bool.TryParse(exObj?.ToString(), out var exv) && exv;
+
+                    Console.WriteLine("Extracting moveToCymBuildFiled & extractAttachments");
+
+                    moveToCymBuildFiled = settings.MoveToCymBuildFiled;
+                    extractAttachments = settings.ExtractAttachments;
+
+                    Console.WriteLine($"moveToCymBuildFiled = {moveToCymBuildFiled}, extractAttachments = {extractAttachments}");
+
 
                     LogInfo($"[{corr}] Settings applied. moveToCymBuildFiled={moveToCymBuildFiled} extractAttachments={extractAttachments}", "LoadUserSettingsFromApiAsync");
 
@@ -514,7 +712,8 @@ namespace CymBuild_Outlook_Addin.Pages
                 var payload = new Dictionary<string, object>
                 {
                     { "moveToCymBuildFiled", moveToCymBuildFiled },
-                    { "extractAttachments", extractAttachments }
+                    { "extractAttachments", extractAttachments },
+                    { "UserId", userEmail }
                 };
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, "api/UserSettings")
@@ -740,7 +939,6 @@ namespace CymBuild_Outlook_Addin.Pages
 
             try
             {
-                // Guard
                 if (MailReadData == null || string.IsNullOrWhiteSpace(MailReadData.ItemId) || !selectedRecords.Any())
                 {
                     LogError(
@@ -751,10 +949,10 @@ namespace CymBuild_Outlook_Addin.Pages
                     return;
                 }
 
-                LogInfo($"[{corr}] SaveEmailToSharePointAsync START {DescribeMessageForLog(MailReadData.ItemId, MailReadData.Subject)} selectedCount={selectedRecords.Count()}",
+                LogInfo(
+                    $"[{corr}] SaveEmailToSharePointAsync START {DescribeMessageForLog(MailReadData.ItemId, MailReadData.Subject)} selectedCount={selectedRecords.Count()}",
                     "SaveEmailToSharePointAsync");
 
-                // Ensure we have Office context
                 try
                 {
                     await JSRuntime.InvokeVoidAsync("authenticateUser");
@@ -766,25 +964,26 @@ namespace CymBuild_Outlook_Addin.Pages
                     return;
                 }
 
-                // API token
                 var swToken = Stopwatch.StartNew();
                 var apiToken = await GetApiTokenAsync(forceRefresh: false);
                 swToken.Stop();
 
                 if (string.IsNullOrWhiteSpace(apiToken))
                 {
-                    LogError($"[{corr}] Unable to acquire API token during SaveEmailToSharePointAsync. ElapsedMs={swToken.ElapsedMilliseconds}",
+                    LogError(
+                        $"[{corr}] Unable to acquire API token during SaveEmailToSharePointAsync. ElapsedMs={swToken.ElapsedMilliseconds}",
                         new Exception("Missing API token"),
                         "SaveEmailToSharePointAsync");
+
                     return;
                 }
 
-                LogInfo($"[{corr}] API token OK tokenLen={apiToken.Length} ElapsedMs={swToken.ElapsedMilliseconds}", "SaveEmailToSharePointAsync");
+                LogInfo(
+                    $"[{corr}] API token OK tokenLen={apiToken.Length} ElapsedMs={swToken.ElapsedMilliseconds}",
+                    "SaveEmailToSharePointAsync");
 
-                // Shared mailbox detection affects UserId selection
                 await DetectSharedMailbox();
 
-                // Build target objects for each selected record
                 var swTargets = Stopwatch.StartNew();
                 var targetObjects = new List<TargetObject>();
 
@@ -792,20 +991,33 @@ namespace CymBuild_Outlook_Addin.Pages
                 {
                     try
                     {
-                        var t = await TargetObjectService.GetTargetObjectAsync(record.Guid);
-                        if (t != null)
-                            targetObjects.Add(t);
+                        var target = await TargetObjectService.GetTargetObjectAsync(record.Guid);
+
+                        if (target != null)
+                        {
+                            targetObjects.Add(target);
+                        }
                         else
-                            LogInfo($"[{corr}] TargetObjectService returned null for recordGuid={record.Guid}", "SaveEmailToSharePointAsync");
+                        {
+                            LogInfo(
+                                $"[{corr}] TargetObjectService returned null for recordGuid={record.Guid}",
+                                "SaveEmailToSharePointAsync");
+                        }
                     }
-                    catch (Exception exT)
+                    catch (Exception exTarget)
                     {
-                        LogError($"[{corr}] Failed fetching TargetObject for recordGuid={record.Guid}", exT, "SaveEmailToSharePointAsync");
+                        LogError(
+                            $"[{corr}] Failed fetching TargetObject for recordGuid={record.Guid}",
+                            exTarget,
+                            "SaveEmailToSharePointAsync");
                     }
                 }
 
                 swTargets.Stop();
-                LogInfo($"[{corr}] TargetObjects loaded. Count={targetObjects.Count} ElapsedMs={swTargets.ElapsedMilliseconds}", "SaveEmailToSharePointAsync");
+
+                LogInfo(
+                    $"[{corr}] TargetObjects loaded. Count={targetObjects.Count} ElapsedMs={swTargets.ElapsedMilliseconds}",
+                    "SaveEmailToSharePointAsync");
 
                 if (targetObjects.Count == 0)
                 {
@@ -813,49 +1025,85 @@ namespace CymBuild_Outlook_Addin.Pages
                     return;
                 }
 
-                // Entity types lookup once
                 var swTypes = Stopwatch.StartNew();
                 var entityTypes = await EntityTypeService.GetEntityTypesAsync();
                 swTypes.Stop();
 
-                LogInfo($"[{corr}] EntityTypes loaded for mapping. Count={entityTypes?.Count() ?? 0} ElapsedMs={swTypes.ElapsedMilliseconds}", "SaveEmailToSharePointAsync");
+                LogInfo(
+                    $"[{corr}] EntityTypes loaded for mapping. Count={entityTypes?.Count() ?? 0} ElapsedMs={swTypes.ElapsedMilliseconds}",
+                    "SaveEmailToSharePointAsync");
 
                 var requests = new List<SaveToSharePointRequest>();
                 var totalCount = targetObjects.Count;
 
-                // Build requests
                 foreach (var target in targetObjects)
                 {
                     try
                     {
-                        var folderLocationValues = StringHelpers.ParseFolderLocation(target.FilingLocation);
-                        if (folderLocationValues.Count != 2)
+                        if (string.IsNullOrWhiteSpace(target.FilingLocation))
                         {
-                            LogInfo($"[{corr}] Skipping targetGuid={target.Guid} - FilingLocation parse count={folderLocationValues.Count}", "SaveEmailToSharePointAsync");
+                            LogInfo(
+                                $"[{corr}] Skipping targetGuid={target.Guid} - FilingLocation is null or empty.",
+                                "SaveEmailToSharePointAsync");
+
+                            continue;
+                        }
+
+                        List<string> folderLocationValues;
+
+                        try
+                        {
+                            folderLocationValues = StringHelpers.ParseFolderLocation(target.FilingLocation) ?? new List<string>();
+                        }
+                        catch (Exception exParse)
+                        {
+                            LogError(
+                                $"[{corr}] Skipping targetGuid={target.Guid} - FilingLocation parse failed. valueLen={target.FilingLocation.Length}",
+                                exParse,
+                                "SaveEmailToSharePointAsync");
+
+                            continue;
+                        }
+
+                        if (folderLocationValues.Count != 2 ||
+                            string.IsNullOrWhiteSpace(folderLocationValues[0]) ||
+                            string.IsNullOrWhiteSpace(folderLocationValues[1]))
+                        {
+                            LogInfo(
+                                $"[{corr}] Skipping targetGuid={target.Guid} - FilingLocation parse count={folderLocationValues.Count}",
+                                "SaveEmailToSharePointAsync");
+
                             continue;
                         }
 
                         var selectedRecord = selectedRecords.FirstOrDefault(z => z.Guid == target.Guid);
+
                         if (selectedRecord == null)
                         {
-                            LogInfo($"[{corr}] Skipping targetGuid={target.Guid} - selectedRecord not found", "SaveEmailToSharePointAsync");
+                            LogInfo(
+                                $"[{corr}] Skipping targetGuid={target.Guid} - selectedRecord not found.",
+                                "SaveEmailToSharePointAsync");
+
                             continue;
                         }
 
                         var entityType = entityTypes?.FirstOrDefault(x => x.Name == selectedRecord.EntityTypeName);
 
-                        // NOTE: Prefer bearer header; keep payload token blank
                         requests.Add(new SaveToSharePointRequest
                         {
                             AuthToken = string.Empty,
                             MessageId = MailReadData.ItemId,
                             SharePointSiteId = folderLocationValues[0],
-                            SharePointFolderId = folderLocationValues[1],
+                            SharePointFolderId = !string.IsNullOrWhiteSpace(selectedFolderPath)
+                                ? selectedFolderPath
+                                : folderLocationValues[1],
                             UserId = isSharedMailbox ? mailboxOwnerEmail : userEmail,
                             TargetObjectGuid = target.Guid,
                             EntityTypeGuid = entityType?.Guid ?? Guid.Empty,
                             DoNotFile = false,
-                            SubFolder = "Emails",
+                            SubFolder = !string.IsNullOrWhiteSpace(selectedFolderPath)
+                                ? string.Empty
+                                : "Emails",
                             ProcessedCount = requests.Count + 1,
                             TotalCount = totalCount,
                             RecordSearchResults = selectedRecords,
@@ -864,27 +1112,29 @@ namespace CymBuild_Outlook_Addin.Pages
                             Description = emailDescription
                         });
                     }
-                    catch (Exception exReq)
+                    catch (Exception exRequest)
                     {
-                        LogError($"[{corr}] Error building SaveToSharePointRequest for targetGuid={target.Guid}", exReq, "SaveEmailToSharePointAsync");
+                        LogError(
+                            $"[{corr}] Error building SaveToSharePointRequest for targetGuid={target.Guid}",
+                            exRequest,
+                            "SaveEmailToSharePointAsync");
                     }
                 }
 
                 if (requests.Count == 0)
                 {
-                    LogInfo($"[{corr}] No requests built (all targets skipped). EXIT.", "SaveEmailToSharePointAsync");
+                    LogInfo($"[{corr}] No requests built. All targets skipped. EXIT.", "SaveEmailToSharePointAsync");
                     return;
                 }
 
-                // Safe, summarised log (no SharePoint IDs printed fully)
                 LogInfo(
                     $"[{corr}] Built requests. Count={requests.Count} totalCount={totalCount} " +
                     $"userId='{SafeText(isSharedMailbox ? mailboxOwnerEmail : userEmail, 80)}' isShared={isSharedMailbox} " +
-                    $"moveToFiled={moveToCymBuildFiled} extractAttachments={extractAttachments} subFolder='Emails'",
+                    $"moveToFiled={moveToCymBuildFiled} extractAttachments={extractAttachments} selectedFolderPath='{SafeText(selectedFolderPath, 220)}'",
                     "SaveEmailToSharePointAsync");
 
-                // Call API via GraphService
                 var swCall = Stopwatch.StartNew();
+
                 try
                 {
                     await GraphService.SaveMultipleToSharePointAsync(requests, apiToken, corr);
@@ -892,25 +1142,39 @@ namespace CymBuild_Outlook_Addin.Pages
                 catch (Exception exCall)
                 {
                     swCall.Stop();
-                    LogError($"[{corr}] GraphService.SaveMultipleToSharePointAsync FAILED ElapsedMs={swCall.ElapsedMilliseconds}", exCall, "SaveEmailToSharePointAsync");
+
+                    LogError(
+                        $"[{corr}] GraphService.SaveMultipleToSharePointAsync FAILED ElapsedMs={swCall.ElapsedMilliseconds}",
+                        exCall,
+                        "SaveEmailToSharePointAsync");
+
                     return;
                 }
+
                 swCall.Stop();
 
-                LogInfo($"[{corr}] GraphService.SaveMultipleToSharePointAsync OK ElapsedMs={swCall.ElapsedMilliseconds}", "SaveEmailToSharePointAsync");
+                LogInfo(
+                    $"[{corr}] GraphService.SaveMultipleToSharePointAsync OK ElapsedMs={swCall.ElapsedMilliseconds}",
+                    "SaveEmailToSharePointAsync");
 
-                await JSRuntime.InvokeVoidAsync("showNotification", "The Emails selected are preparing to be filed. You may now continue.");
+                await JSRuntime.InvokeVoidAsync(
+                    "showNotification",
+                    "The Emails selected are preparing to be filed. You may now continue.");
 
                 emailDescription = string.Empty;
 
-                // Persist selected records for FileWithPrevious
                 _ = SaveSelectedRecordsToLocalStorage();
 
-                LogInfo($"[{corr}] SaveEmailToSharePointAsync END ElapsedMs={sw.ElapsedMilliseconds}", "SaveEmailToSharePointAsync");
+                LogInfo(
+                    $"[{corr}] SaveEmailToSharePointAsync END ElapsedMs={sw.ElapsedMilliseconds}",
+                    "SaveEmailToSharePointAsync");
             }
             catch (Exception ex)
             {
-                LogError($"[{corr}] An unexpected error occurred ElapsedMs={sw.ElapsedMilliseconds}", ex, "SaveEmailToSharePointAsync");
+                LogError(
+                    $"[{corr}] An unexpected error occurred ElapsedMs={sw.ElapsedMilliseconds}",
+                    ex,
+                    "SaveEmailToSharePointAsync");
             }
         }
 

@@ -5,6 +5,7 @@
 
 .invoice-page {
     width: 210mm;
+    height: 297mm;
     min-height: 297mm;
     margin: 0 auto 12mm auto;
     background: #fff;
@@ -14,11 +15,20 @@
     font-family: Arial, Helvetica, sans-serif;
 }
 
+.invoice-page__inner {
+    padding: 8mm 10mm 8mm 10mm;
+    display: grid;
+    grid-template-rows: auto auto auto 1fr auto auto;
+    height: 297mm;
+    min-height: 297mm;
+    box-sizing: border-box;
+}
+
     .invoice-page:last-child {
         page-break-after: auto;
     }
 
-.invoice-page__inner {
+/*.invoice-page__inner {
     --col-desc: 57%;
     --col-qty: 6%;
     --col-unit: 8%;
@@ -30,7 +40,7 @@
     grid-template-rows: auto auto auto 1fr auto auto;
     min-height: 297mm;
     box-sizing: border-box;
-}
+}*/
 
 .invoice-header {
     display: grid;

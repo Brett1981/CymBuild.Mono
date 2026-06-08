@@ -12,423 +12,469 @@
 
 <div class="quote-dashboard-v2 cb-v2-page">
     <div id="quote-dashboard-export">
-    <section class="dashboard-hero">
-        <div>
-            <div class="dashboard-eyebrow">Commercial Insights</div>
-            <h2>Quote Dashboard</h2>
-            <p class="dashboard-subtitle">
-                Track quoting performance, monitor status movement, and understand value distribution across the selected period.
-            </p>
-        </div>
-
-        <div class="dashboard-hero-summary">
-            <div class="hero-summary-pill">
-                <span>Grouping</span>
-                <strong>@Grouping</strong>
-            </div>
-            <div class="hero-summary-pill">
-                <span>Date Range</span>
-                <strong>@StartDate.ToString("dd MMM yyyy") - @EndDate.ToString("dd MMM yyyy")</strong>
-            </div>
-            <div class="hero-summary-pill">
-                <span>Value Threshold</span>
-                <strong>@FormatThresholdLabel(ValueFilter)</strong>
-            </div>
-        </div>
-    </section>
-
-    <section class="filters-panel cb-v2-panel">
-        <div class="filters-header-row cb-v2-panel-header">
+        <section class="quote-dashboard-v2-hero cb-v2-card">
             <div>
-                <h3>Filters</h3>
-                <p>Adjust the date range, grouping, and quote value threshold.</p>
+                <div class="dashboard-eyebrow cb-v2-pill">Commercial Insights</div>
+                <h2 class="cb-v2-title">Quote Dashboard</h2>
+                <p class="dashboard-subtitle cb-v2-subtitle">
+                    Track quoting performance, monitor status movement, and understand value distribution across the selected period.
+                </p>
             </div>
 
-            <div class="filters-actions cb-v2-actions">
-                <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToCsv">Export CSV</button>
-                <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToPdf">Export PDF</button>
-            </div>
-        </div>
-
-        <div class="filters-grid">
-            <div class="filter-field">
-                <label for="time-grouping">Time frame</label>
-                <select id="time-grouping" class="dashboard-input cb-v2-select" value="@Grouping" @onchange="OnGroupingChanged">
-                    @foreach (TimeGrouping g in Enum.GetValues(typeof(TimeGrouping)))
-                    {
-                        <option value="@g">@g</option>
-                    }
-                </select>
-            </div>
-
-            <div class="filter-field">
-                <label for="start-date">Start date</label>
-                <input id="start-date" class="dashboard-input cb-v2-input" type="date" value="@StartDate.ToString("yyyy-MM-dd")" @onchange="OnStartDateChanged" />
-            </div>
-
-            <div class="filter-field">
-                <label for="end-date">End date</label>
-                <input id="end-date" class="dashboard-input cb-v2-input" type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
-            </div>
-
-            <div class="filter-field filter-field-wide">
-                <label for="value-filter">Value threshold</label>
-                <div class="range-row">
-                    <input id="value-filter"
-                           class="range-input"
-                           type="range"
-                           min="0"
-                           max="100000"
-                           step="1000"
-                           value="@GetSliderValue()"
-                           @oninput="OnValueFilterChanged" />
-                    <div class="range-value cb-v2-strong">@FormatThresholdLabel(ValueFilter)</div>
+            <div class="dashboard-hero-summary">
+                <div class="hero-summary-pill cb-v2-summary-card">
+                    <span>Grouping</span>
+                    <strong>@Grouping</strong>
                 </div>
-                <div class="preset-buttons">
-                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 25000 ? "active" : null)" @onclick="() => SetValueFilter(25000)">£25K</button>
-                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 50000 ? "active" : null)" @onclick="() => SetValueFilter(50000)">£50K</button>
-                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 75000 ? "active" : null)" @onclick="() => SetValueFilter(75000)">£75K</button>
-                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 100000 ? "active" : null)" @onclick="() => SetValueFilter(100000)">£100K</button>
-                    <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == BeyondThresholdValue ? "active" : null)" @onclick="() => SetValueFilter(BeyondThresholdValue)">Beyond £100K</button>
+                <div class="hero-summary-pill cb-v2-summary-card">
+                    <span>Date Range</span>
+                    <strong>@StartDate.ToString("dd MMM yyyy") - @EndDate.ToString("dd MMM yyyy")</strong>
+                </div>
+                <div class="hero-summary-pill cb-v2-summary-card">
+                    <span>Value Threshold</span>
+                    <strong>@FormatThresholdLabel(ValueFilter)</strong>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="chip-section">
-            <div class="chip-group-header">
-                <label>Job types</label>
-                <div class="chip-actions cb-v2-actions">
-                    <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllJobTypes">All</button>
-                    <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearJobTypes">Clear</button>
+        <section class="filters-panel cb-v2-panel">
+            <div class="filters-header-row cb-v2-panel-header">
+                <div>
+                    <h3 class="cb-v2-title">Filters</h3>
+                    <p class="cb-v2-subtitle">Adjust the date range, grouping, and quote value threshold.</p>
+                </div>
+
+                <div class="filters-actions cb-v2-actions">
+                    <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToCsv">Export CSV</button>
+                    <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ExportToPdf">Export PDF</button>
                 </div>
             </div>
 
-            @if (GroupedJobTypes.Count == 0)
-            {
-                <div class="empty-state compact cb-v2-empty-state">
-                    <strong>No job types available.</strong>
+            <div class="filters-grid">
+                <div class="filter-field">
+                    <label for="time-grouping">Time frame</label>
+                    <select id="time-grouping" class="dashboard-input cb-v2-select" value="@Grouping" @onchange="OnGroupingChanged">
+                        @foreach (TimeGrouping g in Enum.GetValues(typeof(TimeGrouping)))
+                        {
+                            <option value="@g">@g</option>
+                        }
+                    </select>
                 </div>
-            }
-            else
-            {
-                @foreach (var orgUnitGroup in GroupedJobTypes)
+
+                <div class="filter-field">
+                    <label for="start-date">Start date</label>
+                    <input id="start-date" class="dashboard-input cb-v2-input" type="date" value="@StartDate.ToString("yyyy-MM-dd")" @onchange="OnStartDateChanged" />
+                </div>
+
+                <div class="filter-field">
+                    <label for="end-date">End date</label>
+                    <input id="end-date" class="dashboard-input cb-v2-input" type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
+                </div>
+
+                <div class="filter-field filter-field-wide">
+                    <label for="value-filter">Value threshold</label>
+                    <div class="range-row">
+                        <input id="value-filter"
+                               class="range-input"
+                               type="range"
+                               min="0"
+                               max="100000"
+                               step="1000"
+                               value="@GetSliderValue()"
+                               @oninput="OnValueFilterChanged" />
+                        <div class="range-value cb-v2-strong">@FormatThresholdLabel(ValueFilter)</div>
+                    </div>
+                    <div class="preset-buttons">
+                        <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 25000 ? "active" : null)" @onclick="() => SetValueFilter(25000)">£25K</button>
+                        <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 50000 ? "active" : null)" @onclick="() => SetValueFilter(50000)">£50K</button>
+                        <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 75000 ? "active" : null)" @onclick="() => SetValueFilter(75000)">£75K</button>
+                        <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == 100000 ? "active" : null)" @onclick="() => SetValueFilter(100000)">£100K</button>
+                        <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == BeyondThresholdValue ? "active" : null)" @onclick="() => SetValueFilter(BeyondThresholdValue)">Beyond £100K</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chip-section job-types-collapsible-section">
+                <div class="chip-group-header job-types-collapsible-header">
+                    <button type="button"
+                            class="job-types-toggle cb-v2-btn-chip"
+                            aria-expanded="@IsJobTypesExpanded"
+                            aria-controls="quote-dashboard-job-types-panel"
+                            @onclick="ToggleJobTypesExpanded">
+                        <i class="bi @(IsJobTypesExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                        <span>Job types</span>
+                        <span class="job-types-toggle-count">@JobTypeSelectionSummary</span>
+                    </button>
+
+                    <div class="chip-actions cb-v2-actions">
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllJobTypes">All</button>
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearJobTypes">Clear</button>
+                    </div>
+                </div>
+
+                @if (IsJobTypesExpanded)
                 {
-                    <div class="job-type-group-block">
-                        <div class="job-type-group-header">
-                            <div>
-                                <strong>@orgUnitGroup.Key</strong>
-                                <span>@orgUnitGroup.Value.Count job type(s)</span>
+                    <div id="quote-dashboard-job-types-panel" class="job-types-collapsible-body">
+                        @if (GroupedJobTypes.Count == 0)
+                        {
+                            <div class="empty-state compact cb-v2-empty-state">
+                                <strong>No job types available.</strong>
                             </div>
-                            <div class="chip-actions cb-v2-actions">
-                                <button type="button" class="link-button cb-v2-btn-link" @onclick="() => SelectJobTypeGroup(orgUnitGroup.Key)">All in group</button>
-                                <button type="button" class="link-button cb-v2-btn-link" @onclick="() => ClearJobTypeGroup(orgUnitGroup.Key)">Clear group</button>
-                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var orgUnitGroup in GroupedJobTypes)
+                            {
+                                <div class="job-type-group-block">
+                                    <div class="job-type-group-header">
+                                        <div>
+                                            <strong>@orgUnitGroup.Key</strong>
+                                            <span>@orgUnitGroup.Value.Count job type(s)</span>
+                                        </div>
+                                        <div class="chip-actions cb-v2-actions">
+                                            <button type="button" class="link-button cb-v2-btn-link" @onclick="() => SelectJobTypeGroup(orgUnitGroup.Key)">All in group</button>
+                                            <button type="button" class="link-button cb-v2-btn-link" @onclick="() => ClearJobTypeGroup(orgUnitGroup.Key)">Clear group</button>
+                                        </div>
+                                    </div>
+                                    <div class="chip-list">
+                                        @foreach (var jobType in orgUnitGroup.Value)
+                                        {
+                                            <button type="button"
+                                                    class="chip-button cb-v2-btn-chip @(SelectedJobType.Contains(jobType) ? "selected" : null)"
+                                                    @onclick="() => ToggleJobType(jobType)">
+                                                @jobType
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="chip-section">
+                <div class="chip-group-header">
+                    <label>Status</label>
+                    <div class="chip-actions cb-v2-actions">
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllStatuses">All</button>
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearStatuses">Clear</button>
+                    </div>
+                </div>
+                <div class="chip-list">
+                    @foreach (var status in JobStatuses)
+                    {
+                        <button type="button"
+                                class="chip-button cb-v2-btn-chip @(SelectedJobStatus.Contains(status) ? "selected" : null)"
+                                @onclick="() => ToggleStatus(status)">
+                            @status
+                        </button>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <section class="quote-dashboard-v2-kpi-grid cb-v2-summary-grid">
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-info @GetKpiCardActiveClass(QuoteDashboardKpiCard.TotalQuoteValue)"
+                    title="Sort the displayed records by total quote value"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.TotalQuoteValue)">
+                <div class="cb-v2-summary-title">Total Quote Value</div>
+                <div class="cb-v2-summary-value">@FormatCurrency(TotalQuoteValue)</div>
+                <div class="cb-v2-summary-subtitle">Across @VisibleQuoteCount quote(s) in the selected view</div>
+            </button>
+
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-muted @GetKpiCardActiveClass(QuoteDashboardKpiCard.AverageQuoteValue)"
+                    title="Sort the displayed records by average quote value"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.AverageQuoteValue)">
+                <div class="cb-v2-summary-title">Average Quote Value</div>
+                <div class="cb-v2-summary-value">@FormatCurrency(AverageQuoteValue)</div>
+                <div class="cb-v2-summary-subtitle">Based on currently filtered records</div>
+            </button>
+
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-success @GetKpiCardActiveClass(QuoteDashboardKpiCard.QuotesAboveThreshold)"
+                    title="Show quotes above the selected threshold first"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.QuotesAboveThreshold)">
+                <div class="cb-v2-summary-title">Quotes Above Threshold</div>
+                <div class="cb-v2-summary-value">@QuotesAboveThresholdCount</div>
+                <div class="cb-v2-summary-subtitle">@PercentageAboveThreshold% of visible quotes</div>
+            </button>
+
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-info @GetKpiCardActiveClass(QuoteDashboardKpiCard.Sent)"
+                    title="Filter the displayed records to Sent quotes"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.Sent)">
+                <div class="cb-v2-summary-title">Sent</div>
+                <div class="cb-v2-summary-value">@QuotesSent</div>
+                <div class="cb-v2-summary-subtitle">Current filtered status count</div>
+            </button>
+
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-success @GetKpiCardActiveClass(QuoteDashboardKpiCard.Accepted)"
+                    title="Filter the displayed records to Accepted quotes"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.Accepted)">
+                <div class="cb-v2-summary-title">Accepted</div>
+                <div class="cb-v2-summary-value">@QuotesAccepted</div>
+                <div class="cb-v2-summary-subtitle">Accepted quote count</div>
+            </button>
+
+            <button type="button"
+                    class="quote-dashboard-v2-kpi-button cb-v2-summary-card cb-v2-summary-danger @GetKpiCardActiveClass(QuoteDashboardKpiCard.Rejected)"
+                    title="Filter the displayed records to Rejected quotes"
+                    @onclick="() => ApplyKpiCardAsync(QuoteDashboardKpiCard.Rejected)">
+                <div class="cb-v2-summary-title">Rejected</div>
+                <div class="cb-v2-summary-value">@QuotesRejected</div>
+                <div class="cb-v2-summary-subtitle">Rejected quote count</div>
+            </button>
+        </section>
+
+        <section class="dashboard-main-grid">
+            <article class="panel panel-large cb-v2-panel">
+                <div class="panel-header cb-v2-panel-header">
+                    <div>
+                        <h3 class="cb-v2-title">Status Trend</h3>
+                        <p class="cb-v2-subtitle">Quote count by @Grouping.ToString().ToLowerInvariant() period, stacked by status.</p>
+                    </div>
+                </div>
+
+                @if (TimelineGroups.Count == 0)
+                {
+                    <div class="empty-state cb-v2-empty-state">
+                        <strong>No chart data available</strong>
+                        <span>Try widening the date range or changing the selected filters.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="chart-surface">
+                        <div class="chart-grid-lines">
+                            @foreach (var line in ChartGridLines)
+                            {
+                                <div class="chart-grid-line" style="bottom:@line.Position%;">
+                                    <span>@line.Label</span>
+                                </div>
+                            }
                         </div>
-                        <div class="chip-list">
-                            @foreach (var jobType in orgUnitGroup.Value)
+
+                        <div class="chart-columns">
+                            @foreach (var group in TimelineGroups)
                             {
                                 <button type="button"
-                                        class="chip-button cb-v2-btn-chip @(SelectedJobType.Contains(jobType) ? "selected" : null)"
-                                        @onclick="() => ToggleJobType(jobType)">
-                                    @jobType
+                                        class="chart-column-wrapper @(SelectedTimelineLabel == group.Label ? "active" : null)"
+                                        title="@BuildColumnTooltip(group)"
+                                        @onclick="() => ToggleTimelineSelection(group.Label)">
+                                    <div class="chart-column">
+                                        @foreach (var segment in group.Segments)
+                                        {
+                                            <div class="chart-segment"
+                                                 style="height:@segment.HeightPercent%; background:@segment.Color;"
+                                                 title="@segment.Status: @segment.Count">
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="chart-column-label">@group.Label</div>
+                                    <div class="chart-column-total">@group.Total</div>
                                 </button>
                             }
                         </div>
                     </div>
+
+                    <div class="chart-legend">
+                        @foreach (var item in StatusLegend)
+                        {
+                            <div class="legend-item">
+                                <span class="legend-dot" style="background:@item.Color;"></span>
+                                <span>@item.Label</span>
+                            </div>
+                        }
+                    </div>
                 }
-            }
-        </div>
+            </article>
 
-        <div class="chip-section">
-            <div class="chip-group-header">
-                <label>Status</label>
-                <div class="chip-actions cb-v2-actions">
-                    <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllStatuses">All</button>
-                    <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearStatuses">Clear</button>
-                </div>
+            <div class="side-panels">
+                <article class="panel cb-v2-panel">
+                    <div class="panel-header cb-v2-panel-header">
+                        <div>
+                            <h3 class="cb-v2-title">Status Breakdown</h3>
+                            <p class="cb-v2-subtitle">Current filtered status mix.</p>
+                        </div>
+                    </div>
+
+                    @if (StatusBreakdown.Count == 0)
+                    {
+                        <div class="empty-state compact cb-v2-empty-state">
+                            <strong>No status data available.</strong>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="status-breakdown-scroll">
+                            <div class="breakdown-list">
+                                @foreach (var item in StatusBreakdown)
+                                {
+                                    <button type="button"
+                                            class="breakdown-row breakdown-clickable @GetStatusBreakdownActiveClass(item.Label)"
+                                            title="Filter displayed data to @item.Label quotes"
+                                            @onclick="() => ApplyStatusBreakdownFilterAsync(item.Label)">
+                                        <div class="breakdown-row-top">
+                                            <div class="breakdown-label-wrap">
+                                                <span class="legend-dot" style="background:@item.Color;"></span>
+                                                <span class="breakdown-label">@item.Label</span>
+                                            </div>
+                                            <span class="breakdown-value">@item.Count (@item.Percentage%)</span>
+                                        </div>
+                                        <div class="progress-track">
+                                            <div class="progress-fill" style="width:@item.Percentage%; background:@item.Color;"></div>
+                                        </div>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </article>
+
+                <article class="panel quote-type-panel cb-v2-panel">
+                    <div class="panel-header cb-v2-panel-header">
+                        <div>
+                            <h3 class="cb-v2-title">Quote Type Breakdown</h3>
+                            <p class="cb-v2-subtitle">Most active quote types within the selection.</p>
+                        </div>
+                    </div>
+
+                    @if (QuoteTypeBreakdown.Count == 0)
+                    {
+                        <div class="empty-state compact cb-v2-empty-state">
+                            <strong>No quote type data available.</strong>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="quote-type-list quote-type-scroll">
+                            @foreach (var item in QuoteTypeBreakdown)
+                            {
+                                <button type="button"
+                                        class="quote-type-row quote-type-clickable @GetQuoteTypeBreakdownActiveClass(item.Label)"
+                                        title="Filter displayed data to @item.Label"
+                                        @onclick="() => ApplyQuoteTypeBreakdownFilterAsync(item.Label)">
+                                    <div>
+                                        <strong>@item.Label</strong>
+                                        <span>@item.Count quote(s)</span>
+                                    </div>
+                                    <div class="quote-type-pill">@item.Percentage%</div>
+                                </button>
+                            }
+                        </div>
+                    }
+                </article>
             </div>
-            <div class="chip-list">
-                @foreach (var status in JobStatuses)
-                {
-                    <button type="button"
-                            class="chip-button cb-v2-btn-chip @(SelectedJobStatus.Contains(status) ? "selected" : null)"
-                            @onclick="() => ToggleStatus(status)">
-                        @status
-                    </button>
-                }
-            </div>
-        </div>
-    </section>
+        </section>
 
-    <section class="kpi-grid">
-        <article class="kpi-card cb-v2-card primary">
-            <span class="kpi-label">Total Quote Value</span>
-            <strong class="kpi-value">@FormatCurrency(TotalQuoteValue)</strong>
-            <span class="kpi-meta">Across @VisibleQuoteCount quote(s) in the selected view</span>
-        </article>
-
-        <article class="kpi-card cb-v2-card">
-            <span class="kpi-label">Average Quote Value</span>
-            <strong class="kpi-value">@FormatCurrency(AverageQuoteValue)</strong>
-            <span class="kpi-meta">Based on currently filtered records</span>
-        </article>
-
-        <article class="kpi-card cb-v2-card accent-green">
-            <span class="kpi-label">Quotes Above Threshold</span>
-            <strong class="kpi-value">@QuotesAboveThresholdCount</strong>
-            <span class="kpi-meta">@PercentageAboveThreshold% of visible quotes</span>
-        </article>
-
-        <article class="kpi-card cb-v2-card accent-blue">
-            <span class="kpi-label">Sent</span>
-            <strong class="kpi-value">@QuotesSent</strong>
-            <span class="kpi-meta">Current filtered status count</span>
-        </article>
-
-        <article class="kpi-card cb-v2-card accent-green-soft">
-            <span class="kpi-label">Accepted</span>
-            <strong class="kpi-value">@QuotesAccepted</strong>
-            <span class="kpi-meta">Accepted quote count</span>
-        </article>
-
-        <article class="kpi-card cb-v2-card accent-red">
-            <span class="kpi-label">Rejected</span>
-            <strong class="kpi-value">@QuotesRejected</strong>
-            <span class="kpi-meta">Rejected quote count</span>
-        </article>
-    </section>
-
-    <section class="dashboard-main-grid">
-        <article class="panel panel-large cb-v2-panel">
-            <div class="panel-header cb-v2-panel-header">
+        <section class="panel panel-table cb-v2-panel">
+            <div class="panel-header panel-header-stack-on-mobile cb-v2-panel-header">
                 <div>
-                    <h3>Status Trend</h3>
-                    <p>Quote count by @Grouping.ToString().ToLowerInvariant() period, stacked by status.</p>
+                    <h3 class="cb-v2-title">Filtered Quote Records</h3>
+                    <p class="cb-v2-subtitle">Underlying records used to calculate the visible dashboard metrics.</p>
+                </div>
+                <div class="filters-actions cb-v2-actions">
+                    @if (!string.IsNullOrWhiteSpace(SelectedTimelineLabel))
+                    {
+                        <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ClearTimelineSelection">Clear period selection</button>
+                    }
+                    @if (ActiveKpiCard is not null)
+                    {
+                        <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ClearKpiCardAsync">Clear card selection</button>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(ActiveStatusBreakdownFilter) || !string.IsNullOrWhiteSpace(ActiveQuoteTypeBreakdownFilter))
+                    {
+                        <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ClearBreakdownFiltersAsync">Clear breakdown filter</button>
+                    }
+                    @if (FilteredChartData.Count > 0)
+                    {
+                        <div class="page-size-picker">
+                            <label for="page-size">Rows</label>
+                            <select id="page-size" class="dashboard-input page-size-select cb-v2-select" value="@PageSize" @onchange="OnPageSizeChanged">
+                                @foreach (var option in PageSizeOptions)
+                                {
+                                    <option value="@option">@option</option>
+                                }
+                            </select>
+                        </div>
+                    }
                 </div>
             </div>
 
-            @if (TimelineGroups.Count == 0)
+            @if (FilteredChartData.Count == 0)
             {
-                <div class="empty-state cb-v2-empty-state">
-                    <strong>No chart data available</strong>
-                    <span>Try widening the date range or changing the selected filters.</span>
+                <div class="empty-state compact cb-v2-empty-state">
+                    <strong>No records match the current filters.</strong>
                 </div>
             }
             else
             {
-                <div class="chart-surface">
-                    <div class="chart-grid-lines">
-                        @foreach (var line in ChartGridLines)
-                        {
-                            <div class="chart-grid-line" style="bottom:@line.Position%;">
-                                <span>@line.Label</span>
-                            </div>
-                        }
-                    </div>
+                <div class="table-wrap cb-v2-table-wrap">
+                    <table class="dashboard-table cb-v2-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Period</th>
+                                <th>Status</th>
+                                <th>Quote Type</th>
+                                <th>Client</th>
+                                <th>Value Range</th>
+                                <th>Count</th>
+                                <th>Estimated Total</th>
+                                <th>Quotes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in PagedFilteredRows)
+                            {
+                                <tr>
+                                    <td>@row.Date.ToString("dd MMM yyyy")</td>
+                                    <td>@row.Label</td>
+                                    <td>
+                                        <span class="@GetQuoteStatusBadgeClass(row.Status)">@row.Status</span>
+                                    </td>
+                                    <td>@row.QuoteType</td>
+                                    <td>@row.Client</td>
+                                    <td>@GetValueRangeLabel(row)</td>
+                                    <td>@row.Value</td>
+                                    <td>@FormatCurrency((decimal)row.QuoteValue)</td>
+                                    <td>
+                                        <div class="quote-links">
+                                            @foreach (var quote in row.Quotes.OrderBy(q => q.QuoteNumber))
+                                            {
+                                                <a class="quote-link" href="@BuildQuoteDetailUrl(quote.Guid)" target="_blank">@quote.QuoteNumber</a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
 
-                    <div class="chart-columns">
-                        @foreach (var group in TimelineGroups)
+                <div class="pagination-bar">
+                    <div class="pagination-summary cb-v2-muted">
+                        Showing @PageStartRecord - @PageEndRecord of @FilteredChartData.Count grouped row(s)
+                    </div>
+                    <div class="pagination-actions cb-v2-actions">
+                        <button type="button" class="cb-v2-btn-secondary pagination-button" disabled="@(CurrentPage <= 1)" @onclick="PreviousPage">Previous</button>
+                        @foreach (var pageNumber in VisiblePageNumbers)
                         {
                             <button type="button"
-                                    class="chart-column-wrapper @(SelectedTimelineLabel == group.Label ? "active" : null)"
-                                    title="@BuildColumnTooltip(group)"
-                                    @onclick="() => ToggleTimelineSelection(group.Label)">
-                                <div class="chart-column">
-                                    @foreach (var segment in group.Segments)
-                                    {
-                                        <div class="chart-segment"
-                                             style="height:@segment.HeightPercent%; background:@segment.Color;"
-                                             title="@segment.Status: @segment.Count">
-                                        </div>
-                                    }
-                                </div>
-                                <div class="chart-column-label">@group.Label</div>
-                                <div class="chart-column-total">@group.Total</div>
+                                    class="cb-v2-btn-secondary pagination-button @(pageNumber == CurrentPage ? "active" : null)"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
                             </button>
                         }
+                        <button type="button" class="cb-v2-btn-secondary pagination-button" disabled="@(CurrentPage >= TotalPages)" @onclick="NextPage">Next</button>
                     </div>
-                </div>
-
-                <div class="chart-legend">
-                    @foreach (var item in StatusLegend)
-                    {
-                        <div class="legend-item">
-                            <span class="legend-dot" style="background:@item.Color;"></span>
-                            <span>@item.Label</span>
-                        </div>
-                    }
                 </div>
             }
-        </article>
-
-        <div class="side-panels">
-            <article class="panel cb-v2-panel">
-                <div class="panel-header cb-v2-panel-header">
-                    <div>
-                        <h3>Status Breakdown</h3>
-                        <p>Current filtered status mix.</p>
-                    </div>
-                </div>
-
-                @if (StatusBreakdown.Count == 0)
-                {
-                    <div class="empty-state compact cb-v2-empty-state">
-                        <strong>No status data available.</strong>
-                    </div>
-                }
-                else
-                {
-                    <div class="status-breakdown-scroll">
-                    <div class="breakdown-list">
-                        @foreach (var item in StatusBreakdown)
-                        {
-                            <div class="breakdown-row">
-                                <div class="breakdown-row-top">
-                                    <div class="breakdown-label-wrap">
-                                        <span class="legend-dot" style="background:@item.Color;"></span>
-                                        <span class="breakdown-label">@item.Label</span>
-                                    </div>
-                                    <span class="breakdown-value">@item.Count (@item.Percentage%)</span>
-                                </div>
-                                <div class="progress-track">
-                                    <div class="progress-fill" style="width:@item.Percentage%; background:@item.Color;"></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    </div>
-                }
-            </article>
-
-            <article class="panel quote-type-panel cb-v2-panel">
-                <div class="panel-header cb-v2-panel-header">
-                    <div>
-                        <h3>Quote Type Breakdown</h3>
-                        <p>Most active quote types within the selection.</p>
-                    </div>
-                </div>
-
-                @if (QuoteTypeBreakdown.Count == 0)
-                {
-                    <div class="empty-state compact cb-v2-empty-state">
-                        <strong>No quote type data available.</strong>
-                    </div>
-                }
-                else
-                {
-                    <div class="quote-type-list quote-type-scroll">
-                        @foreach (var item in QuoteTypeBreakdown)
-                        {
-                            <div class="quote-type-row">
-                                <div>
-                                    <strong>@item.Label</strong>
-                                    <span>@item.Count quote(s)</span>
-                                </div>
-                                <div class="quote-type-pill">@item.Percentage%</div>
-                            </div>
-                        }
-                    </div>
-                }
-            </article>
-        </div>
-    </section>
-
-    <section class="panel panel-table cb-v2-panel">
-        <div class="panel-header panel-header-stack-on-mobile cb-v2-panel-header">
-            <div>
-                <h3>Filtered Quote Records</h3>
-                <p>Underlying records used to calculate the visible dashboard metrics.</p>
-            </div>
-            <div class="filters-actions cb-v2-actions">
-                @if (!string.IsNullOrWhiteSpace(SelectedTimelineLabel))
-                {
-                    <button type="button" class="secondary-button cb-v2-btn-secondary" @onclick="ClearTimelineSelection">Clear period selection</button>
-                }
-                @if (FilteredChartData.Count > 0)
-                {
-                    <div class="page-size-picker">
-                        <label for="page-size">Rows</label>
-                        <select id="page-size" class="dashboard-input page-size-select cb-v2-select" value="@PageSize" @onchange="OnPageSizeChanged">
-                            @foreach (var option in PageSizeOptions)
-                            {
-                                <option value="@option">@option</option>
-                            }
-                        </select>
-                    </div>
-                }
-            </div>
-        </div>
-
-        @if (FilteredChartData.Count == 0)
-        {
-            <div class="empty-state compact cb-v2-empty-state">
-                <strong>No records match the current filters.</strong>
-            </div>
-        }
-        else
-        {
-            <div class="table-wrap cb-v2-table-wrap">
-                <table class="dashboard-table cb-v2-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Period</th>
-                            <th>Status</th>
-                            <th>Quote Type</th>
-                            <th>Client</th>
-                            <th>Value Range</th>
-                            <th>Count</th>
-                            <th>Estimated Total</th>
-                            <th>Quotes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in PagedFilteredRows)
-                        {
-                            <tr>
-                                <td>@row.Date.ToString("dd MMM yyyy")</td>
-                                <td>@row.Label</td>
-                                <td>
-                                    <span class="status-badge" style="background:@GetStatusColor(row.Status);">@row.Status</span>
-                                </td>
-                                <td>@row.QuoteType</td>
-                                <td>@row.Client</td>
-                                <td>@GetValueRangeLabel(row)</td>
-                                <td>@row.Value</td>
-                                <td>@FormatCurrency((decimal)row.QuoteValue)</td>
-                                <td>
-                                    <div class="quote-links">
-                                        @foreach (var quote in row.Quotes.OrderBy(q => q.QuoteNumber))
-                                        {
-                                            <a class="quote-link" href="@BuildQuoteDetailUrl(quote.Guid)" target="_blank">@quote.QuoteNumber</a>
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="pagination-bar">
-                <div class="pagination-summary cb-v2-muted">
-                    Showing @PageStartRecord - @PageEndRecord of @FilteredChartData.Count grouped row(s)
-                </div>
-                <div class="pagination-actions cb-v2-actions">
-                    <button type="button" class="secondary-button pagination-button" disabled="@(CurrentPage <= 1)" @onclick="PreviousPage">Previous</button>
-                    @foreach (var pageNumber in VisiblePageNumbers)
-                    {
-                        <button type="button"
-                                class="secondary-button pagination-button @(pageNumber == CurrentPage ? "active" : null)"
-                                @onclick="() => GoToPage(pageNumber)">
-                            @pageNumber
-                        </button>
-                    }
-                    <button type="button" class="secondary-button pagination-button" disabled="@(CurrentPage >= TotalPages)" @onclick="NextPage">Next</button>
-                </div>
-            </div>
-        }
-    </section>
+        </section>
     </div>
 </div>
 
@@ -484,8 +530,56 @@
     private int PageSize { get; set; } = 20;
     private int CurrentPage { get; set; } = 1;
     private string? SelectedTimelineLabel { get; set; }
+    private string? ActiveStatusBreakdownFilter { get; set; }
+    private string? ActiveQuoteTypeBreakdownFilter { get; set; }
+    private bool IsJobTypesExpanded { get; set; } = false;
+
+    private string JobTypeSelectionSummary
+    {
+        get
+        {
+            if (JobTypes.Count == 0)
+            {
+                return "None available";
+            }
+
+            if (SelectedJobType.Count == 0)
+            {
+                return "None selected";
+            }
+
+            if (SelectedJobType.Count == JobTypes.Count)
+            {
+                return $"All {JobTypes.Count} selected";
+            }
+
+            return $"{SelectedJobType.Count} of {JobTypes.Count} selected";
+        }
+    }
 
     public enum TimeGrouping { Daily, Weekly, Monthly }
+
+    private enum QuoteDashboardKpiCard
+    {
+        TotalQuoteValue,
+        AverageQuoteValue,
+        QuotesAboveThreshold,
+        Sent,
+        Accepted,
+        Rejected
+    }
+
+    private enum QuoteDashboardTableSortMode
+    {
+        Default,
+        QuoteValueDescending,
+        QuoteValueAscending,
+        CountDescending,
+        StatusThenDate
+    }
+
+    private QuoteDashboardKpiCard? ActiveKpiCard { get; set; }
+    private QuoteDashboardTableSortMode ActiveTableSortMode { get; set; } = QuoteDashboardTableSortMode.Default;
 
     private TimeGrouping grouping = TimeGrouping.Weekly;
     private DateTime startDate = DateTime.Today.AddDays(-30);
@@ -493,10 +587,7 @@
 
     private HashSet<string> UserOrgUnits = new();
 
-    private IEnumerable<FilteredQuoteChartData> PagedFilteredRows => FilteredChartData
-        .OrderByDescending(x => x.Date)
-        .ThenBy(x => x.Status)
-        .ThenBy(x => x.QuoteType)
+    private IEnumerable<FilteredQuoteChartData> PagedFilteredRows => GetSortedFilteredRows()
         .Skip((CurrentPage - 1) * PageSize)
         .Take(PageSize);
 
@@ -689,6 +780,10 @@
             .Where(d => d.Date.Date >= StartDate.Date && d.Date.Date <= EndDate.Date)
             .Where(d => SelectedJobType.Count == 0 || SelectedJobType.Contains(d.QuoteType))
             .Where(d => SelectedJobStatus.Count == 0 || SelectedJobStatus.Contains(d.Status))
+            .Where(d => string.IsNullOrWhiteSpace(ActiveStatusBreakdownFilter)
+                        || IsStatus(d.Status, ActiveStatusBreakdownFilter))
+            .Where(d => string.IsNullOrWhiteSpace(ActiveQuoteTypeBreakdownFilter)
+                        || string.Equals(d.QuoteType, ActiveQuoteTypeBreakdownFilter, StringComparison.OrdinalIgnoreCase))
             .OrderBy(d => d.Date)
             .ToList();
 
@@ -698,6 +793,8 @@
                 .Where(x => string.Equals(GetTimeGroupLabel(x.Date), SelectedTimelineLabel, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
+
+        VisibleSourceData = ApplyActiveKpiFilter(VisibleSourceData).ToList();
 
         FilteredChartData = VisibleSourceData
             .GroupBy(r => new
@@ -863,6 +960,139 @@
             var value = (int)Math.Round(i * (max / (decimal)numberOfLines), MidpointRounding.AwayFromZero);
             ChartGridLines.Add(new ChartGridLine(value.ToString(GbpCulture), position));
         }
+    }
+
+    private IEnumerable<QuoteChartData> ApplyActiveKpiFilter(IEnumerable<QuoteChartData> source)
+    {
+        if (ActiveKpiCard is null)
+        {
+            return source;
+        }
+
+        return ActiveKpiCard.Value switch
+        {
+            QuoteDashboardKpiCard.QuotesAboveThreshold => source.Where(x => x.QuoteValue > GetThresholdComparisonValue()),
+            QuoteDashboardKpiCard.Sent => source.Where(x => IsStatus(x.Status, "Sent")),
+            QuoteDashboardKpiCard.Accepted => source.Where(x => IsStatus(x.Status, "Accepted")),
+            QuoteDashboardKpiCard.Rejected => source.Where(x => IsStatus(x.Status, "Rejected")),
+            _ => source
+        };
+    }
+
+    private IEnumerable<FilteredQuoteChartData> GetSortedFilteredRows()
+    {
+        return ActiveTableSortMode switch
+        {
+            QuoteDashboardTableSortMode.QuoteValueDescending => FilteredChartData
+                .OrderByDescending(x => x.QuoteValue)
+                .ThenByDescending(x => x.Date)
+                .ThenBy(x => x.Status)
+                .ThenBy(x => x.QuoteType),
+
+            QuoteDashboardTableSortMode.QuoteValueAscending => FilteredChartData
+                .OrderBy(x => x.QuoteValue)
+                .ThenByDescending(x => x.Date)
+                .ThenBy(x => x.Status)
+                .ThenBy(x => x.QuoteType),
+
+            QuoteDashboardTableSortMode.CountDescending => FilteredChartData
+                .OrderByDescending(x => x.Value)
+                .ThenByDescending(x => x.QuoteValue)
+                .ThenByDescending(x => x.Date),
+
+            QuoteDashboardTableSortMode.StatusThenDate => FilteredChartData
+                .OrderBy(x => x.Status)
+                .ThenByDescending(x => x.Date)
+                .ThenByDescending(x => x.QuoteValue),
+
+            _ => FilteredChartData
+                .OrderByDescending(x => x.Date)
+                .ThenBy(x => x.Status)
+                .ThenBy(x => x.QuoteType)
+        };
+    }
+
+    private async Task ApplyKpiCardAsync(QuoteDashboardKpiCard card)
+    {
+        if (ActiveKpiCard == card)
+        {
+            ActiveKpiCard = null;
+            ActiveTableSortMode = QuoteDashboardTableSortMode.Default;
+        }
+        else
+        {
+            ActiveKpiCard = card;
+            ActiveTableSortMode = card switch
+            {
+                QuoteDashboardKpiCard.TotalQuoteValue => QuoteDashboardTableSortMode.QuoteValueDescending,
+                QuoteDashboardKpiCard.AverageQuoteValue => QuoteDashboardTableSortMode.QuoteValueAscending,
+                QuoteDashboardKpiCard.QuotesAboveThreshold => QuoteDashboardTableSortMode.QuoteValueDescending,
+                QuoteDashboardKpiCard.Sent => QuoteDashboardTableSortMode.StatusThenDate,
+                QuoteDashboardKpiCard.Accepted => QuoteDashboardTableSortMode.StatusThenDate,
+                QuoteDashboardKpiCard.Rejected => QuoteDashboardTableSortMode.StatusThenDate,
+                _ => QuoteDashboardTableSortMode.Default
+            };
+        }
+
+        ResetToFirstPage();
+        RebindChart();
+        await Task.CompletedTask;
+    }
+
+    private async Task ClearKpiCardAsync()
+    {
+        ActiveKpiCard = null;
+        ActiveTableSortMode = QuoteDashboardTableSortMode.Default;
+        ResetToFirstPage();
+        RebindChart();
+        await Task.CompletedTask;
+    }
+
+    private string GetKpiCardActiveClass(QuoteDashboardKpiCard card)
+        => ActiveKpiCard == card ? "active" : string.Empty;
+
+    private async Task ApplyStatusBreakdownFilterAsync(string status)
+    {
+        ActiveStatusBreakdownFilter = string.Equals(ActiveStatusBreakdownFilter, status, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : status;
+
+        ActiveQuoteTypeBreakdownFilter = null;
+        ResetToFirstPage();
+        RebindChart();
+        await Task.CompletedTask;
+    }
+
+    private async Task ApplyQuoteTypeBreakdownFilterAsync(string quoteType)
+    {
+        ActiveQuoteTypeBreakdownFilter = string.Equals(ActiveQuoteTypeBreakdownFilter, quoteType, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : quoteType;
+
+        ActiveStatusBreakdownFilter = null;
+        ResetToFirstPage();
+        RebindChart();
+        await Task.CompletedTask;
+    }
+
+    private async Task ClearBreakdownFiltersAsync()
+    {
+        ActiveStatusBreakdownFilter = null;
+        ActiveQuoteTypeBreakdownFilter = null;
+        ResetToFirstPage();
+        RebindChart();
+        await Task.CompletedTask;
+    }
+
+    private string GetStatusBreakdownActiveClass(string status)
+        => string.Equals(ActiveStatusBreakdownFilter, status, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private string GetQuoteTypeBreakdownActiveClass(string quoteType)
+        => string.Equals(ActiveQuoteTypeBreakdownFilter, quoteType, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private void ToggleJobTypesExpanded()
+    {
+        IsJobTypesExpanded = !IsJobTypesExpanded;
     }
 
     private void ToggleJobType(string jobType)
@@ -1162,6 +1392,22 @@
 
     private static bool IsStatus(string? status, string expected)
         => string.Equals(NormaliseStatus(status), expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string GetQuoteStatusBadgeClass(string? status)
+    {
+        var normalisedStatus = NormaliseStatus(status);
+
+        return normalisedStatus switch
+        {
+            "Accepted" or "Part Complete" => "status-badge status-green",
+            "Rejected" => "status-badge status-red",
+            "Complete" or "Completed" or "Expired" => "status-badge status-amber",
+            "Sent" or "Quoting" or "1st Chase" or "2nd Chase" => "status-badge status-blue",
+            "Ready to Send" => "status-badge status-purple",
+            "Dead" or "Other" => "status-badge status-slate",
+            _ => "status-badge status-slate"
+        };
+    }
 
     private string GetStatusColor(string? status)
     {

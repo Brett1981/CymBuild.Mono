@@ -27,6 +27,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DriveItem = Microsoft.Graph.Models.DriveItem;
 using Message = Microsoft.Graph.Models.Message;
 
 namespace CymBuild_Outlook_API.Controllers
@@ -299,6 +300,284 @@ namespace CymBuild_Outlook_API.Controllers
             public List<string> InputIds { get; set; } = new();
             public string SourceIdType { get; set; } = "restId";
             public string TargetIdType { get; set; } = "restImmutableEntryId";
+        }
+
+        public sealed class GetSharePointLocationFoldersReq
+        {
+            public string SiteId { get; set; } = string.Empty;
+            public string? DriveId { get; set; }
+
+            // Backwards compatible: this may currently contain either an item ID or a path.
+            public string? RootFolderId { get; set; }
+
+            // Preferred going forward when the client has a path.
+            public string? RootFolderPath { get; set; }
+        }
+
+
+        [HttpPost("GetAllFoldersForLocation")]
+        public async Task<IActionResult> GetAllFoldersForLocation(
+    [FromBody] GetSharePointLocationFoldersReq req)
+        {
+            var corr = GetCorrelationId("GetAllFoldersForLocation");
+            var sw = Stopwatch.StartNew();
+
+            try
+            {
+                var graphClient = _graphBaseService.GetGraphClient();
+
+                if (string.IsNullOrWhiteSpace(req.SiteId))
+                    return BadRequest("SiteId required.");
+
+                var resolved = await ResolveRootFolderAsync(
+                    graphClient,
+                    req.SiteId,
+                    req.DriveId,
+                    req.RootFolderId,
+                    req.RootFolderPath,
+                    corr);
+
+                var driveId = resolved.DriveId;
+                var rootFolder = resolved.RootFolder;
+
+                if (rootFolder == null || string.IsNullOrWhiteSpace(rootFolder.Id))
+                    return BadRequest("Unable to resolve root folder.");
+
+                var rootPath = NormaliseSharePointFolderPath(req.RootFolderPath ?? req.RootFolderId ?? string.Empty);
+
+                var folders = await GetFoldersRecursive(
+                    graphClient,
+                    driveId,
+                    rootFolder.Id,
+                    rootPath);
+
+                return Ok(folders);
+            }
+            catch (ServiceException ex)
+            {
+                LogError(
+                    corr,
+                    nameof(GetAllFoldersForLocation),
+                    "GRAPH_ERR",
+                    $"Graph error totalElapsedMs={sw.ElapsedMilliseconds} {DescribeGraphServiceException(ex)}",
+                    ex);
+
+                return StatusCode((int)ex.ResponseStatusCode, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                LogError(
+                    corr,
+                    nameof(GetAllFoldersForLocation),
+                    "ERR",
+                    $"Unexpected error totalElapsedMs={sw.ElapsedMilliseconds}",
+                    ex);
+
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        private async Task<(string DriveId, DriveItem RootFolder)> ResolveRootFolderAsync(
+    GraphServiceClient graphClient,
+    string siteId,
+    string? suppliedDriveId,
+    string? rootFolderId,
+    string? rootFolderPath,
+    string corr)
+        {
+            var driveId = suppliedDriveId;
+
+            if (!string.IsNullOrWhiteSpace(rootFolderPath))
+            {
+                var cleanPath = NormaliseSharePointFolderPath(rootFolderPath);
+                var parts = cleanPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+                if (parts.Length > 1)
+                {
+                    var libraryName = parts[0];
+                    var folderPath = string.Join("/", parts.Skip(1));
+
+                    var drives = await graphClient
+                        .Sites[siteId]
+                        .Drives
+                        .GetAsync();
+
+                    var matchedDrive = drives?.Value?.FirstOrDefault(d =>
+                        string.Equals(d.Name, libraryName, StringComparison.OrdinalIgnoreCase) ||
+                        (d.WebUrl?.EndsWith("/" + libraryName, StringComparison.OrdinalIgnoreCase) ?? false));
+
+                    if (matchedDrive != null && !string.IsNullOrWhiteSpace(matchedDrive.Id))
+                    {
+                        LogInfo(
+                            corr,
+                            nameof(ResolveRootFolderAsync),
+                            "DRIVE_PATH",
+                            $"Matched library='{libraryName}'. Resolving folderPath='{folderPath}'");
+
+                        var folder = await graphClient
+                            .Drives[matchedDrive.Id]
+                            .Root
+                            .ItemWithPath(folderPath)
+                            .GetAsync();
+
+                        if (folder == null || string.IsNullOrWhiteSpace(folder.Id))
+                            throw new InvalidOperationException($"Resolved folder was null for path '{cleanPath}'.");
+
+                        return (matchedDrive.Id, folder);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(driveId))
+                {
+                    var defaultDrive = await graphClient
+                        .Sites[siteId]
+                        .Drive
+                        .GetAsync();
+
+                    driveId = defaultDrive?.Id;
+                }
+
+                if (string.IsNullOrWhiteSpace(driveId))
+                    throw new InvalidOperationException("Unable to resolve SharePoint drive.");
+
+                var rootByPath = await graphClient
+                    .Drives[driveId]
+                    .Root
+                    .ItemWithPath(cleanPath)
+                    .GetAsync();
+
+                if (rootByPath == null || string.IsNullOrWhiteSpace(rootByPath.Id))
+                    throw new InvalidOperationException($"Resolved folder was null for path '{cleanPath}'.");
+
+                return (driveId, rootByPath);
+            }
+
+            if (string.IsNullOrWhiteSpace(driveId))
+            {
+                var defaultDrive = await graphClient
+                    .Sites[siteId]
+                    .Drive
+                    .GetAsync();
+
+                driveId = defaultDrive?.Id;
+            }
+
+            if (string.IsNullOrWhiteSpace(driveId))
+                throw new InvalidOperationException("Unable to resolve SharePoint drive.");
+
+            if (!string.IsNullOrWhiteSpace(rootFolderId))
+            {
+                var folder = await graphClient
+                    .Drives[driveId]
+                    .Items[rootFolderId.Trim()]
+                    .GetAsync();
+
+                if (folder == null || string.IsNullOrWhiteSpace(folder.Id))
+                    throw new InvalidOperationException("Resolved folder was null.");
+
+                return (driveId, folder);
+            }
+
+            var root = await graphClient
+                .Drives[driveId]
+                .Root
+                .GetAsync();
+
+            if (root == null || string.IsNullOrWhiteSpace(root.Id))
+                throw new InvalidOperationException("Resolved drive root was null.");
+
+            return (driveId, root);
+        }
+
+        private static bool LooksLikeSharePointPath(string value)
+        {
+            return value.Contains('/') ||
+                   value.Contains('\\') ||
+                   value.StartsWith("Shared Documents", StringComparison.OrdinalIgnoreCase) ||
+                   value.StartsWith("Documents", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormaliseSharePointFolderPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            var value = path
+                .Replace("\\", "/")
+                .Trim()
+                .Trim('/');
+
+            if (value.StartsWith("Shared Documents/", StringComparison.OrdinalIgnoreCase))
+                value = value["Shared Documents/".Length..];
+
+            if (value.Equals("Shared Documents", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            if (value.StartsWith("Documents/", StringComparison.OrdinalIgnoreCase))
+                value = value["Documents/".Length..];
+
+            if (value.Equals("Documents", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+
+            return value;
+        }
+
+        private async Task<List<SharePointFolderDto>> GetFoldersRecursive(
+            GraphServiceClient graphClient,
+            string driveId,
+            string folderId,
+            string currentPath)
+        {
+            var results = new List<SharePointFolderDto>();
+
+            var response = await graphClient
+                .Drives[driveId]
+                .Items[folderId]
+                .Children
+                .GetAsync();
+
+            while (response != null)
+            {
+                foreach (var item in response.Value ?? new List<DriveItem>())
+                {
+                    if (item.Folder == null || string.IsNullOrWhiteSpace(item.Id))
+                        continue;
+
+                    var itemPath = string.IsNullOrWhiteSpace(currentPath)
+                        ? item.Name ?? string.Empty
+                        : $"{currentPath}/{item.Name}";
+
+                    results.Add(new SharePointFolderDto
+                    {
+                        Id = item.Id,
+                        Name = item.Name ?? string.Empty,
+                        WebUrl = item.WebUrl ?? string.Empty,
+                        ParentId = item.ParentReference?.Id ?? string.Empty,
+                        DriveId = item.ParentReference?.DriveId ?? driveId,
+                        Path = itemPath
+                    });
+
+                    var children = await GetFoldersRecursive(
+                        graphClient,
+                        driveId,
+                        item.Id,
+                        itemPath);
+
+                    results.AddRange(children);
+                }
+
+                if (string.IsNullOrWhiteSpace(response.OdataNextLink))
+                    break;
+
+                response = await graphClient
+                    .Drives[driveId]
+                    .Items[folderId]
+                    .Children
+                    .WithUrl(response.OdataNextLink)
+                    .GetAsync();
+            }
+
+            return results;
         }
 
         [HttpPost("TranslateExchangeIds")]
@@ -771,6 +1050,16 @@ namespace CymBuild_Outlook_API.Controllers
                 var folderPath = dataObject.SharePointFolderPath;
                 var subFolderPath = request.SubFolder;
 
+                if (!string.IsNullOrWhiteSpace(request.SharePointFolderId) &&
+                    !string.Equals(request.SharePointFolderId, dataObject.SharePointFolderPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    folderPath = request.SharePointFolderId;
+                    subFolderPath = string.Empty;
+
+                    LogInfo(corr, nameof(SaveToSharePointInternal), "SP_PATH_OVERRIDE",
+                        $"Using selected folder override. folderPath='{SafeText(folderPath, 220)}'");
+                }
+
                 LogInfo(corr, nameof(SaveToSharePointInternal), "SP_PATH",
                     $"Resolved SP path for upload. siteId='{SafeText(siteId, 120)}' folderPath='{SafeText(folderPath, 220)}' subFolder='{SafeText(subFolderPath, 120)}' " +
                     $"browserUrl='{SafeText(dataObject.SharePointUrl, 220)}'");
@@ -820,6 +1109,32 @@ namespace CymBuild_Outlook_API.Controllers
                     // Return diagnostics to the UI
                     return uploadResult;
                 }
+
+                // ---------------------------------------------------------------------
+                // ATTACHMENT UPLOAD (best effort)
+
+                if (request.ExtractAttachments)
+                {
+                    try
+                    {
+                        await _graphHelper.UploadEmailAttachmentsToSharePoint(
+                        graphClient,
+                        siteId,
+                        uploadResult.DriveId,   // OR better: driveId if you still have it in scope
+                        folderPath,
+                        subFolderPath,
+                        request,
+                        message.Id,
+                        corr);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError(corr, nameof(SaveToSharePointInternal), "UPLOAD_ERR",
+                              $"Attachments could not be saved.", ex);
+                    }
+                }
+
+
 
                 // -----------------------------
                 // PERMISSIONS (best-effort)

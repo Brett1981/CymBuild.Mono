@@ -1,19 +1,27 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create procedure [SJob].[usp_JobClosureDecision]')
+GO
+
 
 /* =============================================================================
    Proc: SJob.usp_JobClosureDecision
+
+   PURPOSE
    - Hard gate: latest workflow status MUST be Closure Request
    - Approve:
        * optional comment; default "Closure Approved by {USER}"
        * add Approve Closure transition
        * add Completed transition
-       * update legacy completion fields (read-only behavior)
    - Reject:
        * comment mandatory
        * add Closure Rejected transition
-       * do NOT complete
-   - Writes outbox record for Kafka publishing later (out-of-scope)
+   - Writes a dedicated JobClosureDecision outbox payload for Kafka publishing
+
+   NOTES
+   - Does NOT alter the existing WorkflowStatusNotification pipeline
+   - Keeps transition behaviour unchanged
+   - Payload is aligned to JobClosureDecisionOutboxPayload in API code
 ============================================================================= */
 CREATE PROCEDURE [SJob].[usp_JobClosureDecision]
 (
@@ -48,35 +56,49 @@ BEGIN
     IF (@Decision = 2 AND NULLIF(LTRIM(RTRIM(@Comment)), N'') IS NULL)
         THROW 51002, 'Rejection requires a comment.', 1;
 
-    IF NOT EXISTS (SELECT 1 FROM SJob.Jobs WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254))
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM SJob.Jobs j
+        WHERE j.Guid = @JobGuid
+          AND j.RowStatus NOT IN (0,254)
+    )
         THROW 51003, 'Job not found (or invalid RowStatus).', 1;
 
-    -- Resolve identity GUID for authoriser
     DECLARE @CreatedByUserGuid UNIQUEIDENTIFIER;
     SELECT @CreatedByUserGuid = i.Guid
     FROM SCore.Identities i
-    WHERE i.ID = @AuthoriserUserId;
+    WHERE i.ID = @AuthoriserUserId
+      AND i.RowStatus NOT IN (0,254);
 
     IF (@CreatedByUserGuid IS NULL)
         THROW 51004, 'Authoriser identity not found.', 1;
 
-    -- Resolve surveyor identity GUID from job
     DECLARE @SurveyorUserGuid UNIQUEIDENTIFIER;
     SELECT @SurveyorUserGuid = si.Guid
     FROM SJob.Jobs j
-    JOIN SCore.Identities si ON si.ID = j.SurveyorID
-    WHERE j.Guid = @JobGuid;
+    JOIN SCore.Identities si
+      ON si.ID = j.SurveyorID
+     AND si.RowStatus NOT IN (0,254)
+    WHERE j.Guid = @JobGuid
+      AND j.RowStatus NOT IN (0,254);
 
     IF (@SurveyorUserGuid IS NULL)
         THROW 51005, 'Job surveyor identity not found.', 1;
 
-    -- Latest workflow status = OldStatusGuid (must be Closure Request)
-    DECLARE @OldStatusGuid UNIQUEIDENTIFIER;
+    DECLARE
+        @OldStatusGuid UNIQUEIDENTIFIER,
+        @OldStatusId INT,
+        @OldStatusName NVARCHAR(250);
 
     SELECT TOP (1)
-        @OldStatusGuid = wfs.Guid
+        @OldStatusGuid = wfs.Guid,
+        @OldStatusId = wfs.ID,
+        @OldStatusName = wfs.Name
     FROM SCore.DataObjectTransition dot
-    JOIN SCore.WorkflowStatus wfs ON wfs.ID = dot.StatusID
+    JOIN SCore.WorkflowStatus wfs
+      ON wfs.ID = dot.StatusID
+     AND wfs.RowStatus NOT IN (0,254)
     WHERE dot.RowStatus NOT IN (0,254)
       AND dot.DataObjectGuid = @JobGuid
     ORDER BY dot.ID DESC;
@@ -87,11 +109,13 @@ BEGIN
     IF (@OldStatusGuid <> @Status_ClosureRequest)
         THROW 51007, 'Job is no longer in Closure Request state (latest status mismatch).', 1;
 
-    -- Default approval comment if empty
     IF (@Decision = 1 AND NULLIF(LTRIM(RTRIM(@Comment)), N'') IS NULL)
     BEGIN
         DECLARE @AuthoriserName NVARCHAR(250);
-        SELECT @AuthoriserName = FullName FROM SCore.Identities WHERE ID = @AuthoriserUserId;
+        SELECT @AuthoriserName = i.FullName
+        FROM SCore.Identities i
+        WHERE i.ID = @AuthoriserUserId
+          AND i.RowStatus NOT IN (0,254);
 
         SET @Comment = CONCAT(N'Closure Approved by ', ISNULL(@AuthoriserName, CONCAT(N'UserId ', @AuthoriserUserId)));
     END
@@ -105,6 +129,11 @@ BEGIN
             @TransitionGuid UNIQUEIDENTIFIER,
             @IsImported BIT = 0,
             @DataObjectGuid UNIQUEIDENTIFIER = @JobGuid;
+
+        DECLARE
+            @NewStatusGuid UNIQUEIDENTIFIER,
+            @NewStatusId INT,
+            @NewStatusName NVARCHAR(250);
 
         IF (@Decision = 1)
         BEGIN
@@ -140,14 +169,13 @@ BEGIN
             IF (@RC <> 0)
                 THROW 51009, 'DataObjectTransitionUpsert failed for Completed.', 1;
 
-            --/* 3) Legacy completion fields to enforce read-only behavior */
-            --UPDATE j
-            --SET
-            --    j.IsComplete = 1,
-            --    j.JobCompleted = @NowUtc,
-            --    j.IsCompleteForReview = 0
-            --FROM SJob.Jobs j
-            --WHERE j.Guid = @JobGuid;
+            SELECT
+                @NewStatusGuid = ws.Guid,
+                @NewStatusId = ws.ID,
+                @NewStatusName = ws.Name
+            FROM SCore.WorkflowStatus ws
+            WHERE ws.Guid = @Status_Completed
+              AND ws.RowStatus NOT IN (0,254);
         END
         ELSE
         BEGIN
@@ -166,37 +194,198 @@ BEGIN
 
             IF (@RC <> 0)
                 THROW 51010, 'DataObjectTransitionUpsert failed for Closure Rejected.', 1;
+
+            SELECT
+                @NewStatusGuid = ws.Guid,
+                @NewStatusId = ws.ID,
+                @NewStatusName = ws.Name
+            FROM SCore.WorkflowStatus ws
+            WHERE ws.Guid = @Status_ClosureRejected
+              AND ws.RowStatus NOT IN (0,254);
         END
 
-        /* Outbox record (Kafka-ready; worker will publish later) */
+        /* Resolve job / actor / OU / workflow values for dedicated notification payload */
         DECLARE
             @OutboxGuid UNIQUEIDENTIFIER = NEWID(),
             @EventType NVARCHAR(200) = N'JobClosureDecision',
-            @TargetGroupCode NVARCHAR(100) = N'AUTHORISER_CLOSURE_NOTIFICATIONS',
-            @TargetUserGroupGuid UNIQUEIDENTIFIER = NULL; -- optional
+            @JobNumber NVARCHAR(100) = NULL,
+            @JobTitle NVARCHAR(500) = NULL,
+            @BillingInstruction NVARCHAR(500) = NULL,
+            @OrganisationalUnitId INT = NULL,
+            @OrganisationalUnitName NVARCHAR(250) = NULL,
+            @WorkflowId INT = NULL,
+            @WorkflowName NVARCHAR(250) = NULL,
+            @ActorFullName NVARCHAR(250) = NULL,
+            @ActorEmailAddress NVARCHAR(320) = NULL;
 
-        DECLARE @Payload NVARCHAR(MAX) =
+        SELECT
+            @JobNumber = j.Number,
+            @JobTitle = j.JobDescription,
+            @BillingInstruction = j.BillingInstruction,
+            @OrganisationalUnitId = j.OrganisationalUnitId
+        FROM SJob.Jobs j
+        WHERE j.Guid = @JobGuid
+          AND j.RowStatus NOT IN (0,254);
+
+        IF (@OrganisationalUnitId IS NOT NULL)
+        BEGIN
+            SELECT TOP (1)
+                @OrganisationalUnitName = ou.Name
+            FROM SCore.OrganisationalUnits ou
+            WHERE ou.ID = @OrganisationalUnitId
+              AND ou.RowStatus NOT IN (0,254);
+        END
+
+        SELECT
+            @ActorFullName = i.FullName,
+            @ActorEmailAddress = i.EmailAddress
+        FROM SCore.Identities i
+        WHERE i.ID = @AuthoriserUserId
+          AND i.RowStatus NOT IN (0,254);
+
+        /*
+           Resolve workflow using the same pattern as
+           SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification:
+           - route by entity type + OU
+           - match workflow by resulting status
+           - prefer exact OU over OU = -1 fallback
+        */
+        DECLARE @EntityTypeId INT = NULL;
+
+        SELECT TOP (1)
+            @EntityTypeId = dob.EntityTypeId
+        FROM SCore.DataObjects dob
+        WHERE dob.Guid = @JobGuid
+          AND dob.RowStatus NOT IN (0,254);
+
+        IF (@EntityTypeId IS NOT NULL AND @NewStatusId IS NOT NULL)
+        BEGIN
+            SELECT TOP (1)
+                @WorkflowId = wf.ID,
+                @WorkflowName = wf.Name
+            FROM SCore.Workflow wf
+            JOIN SCore.WorkflowTransition wft
+              ON wft.WorkflowID = wf.ID
+            WHERE wf.RowStatus NOT IN (0,254)
+              AND wft.RowStatus NOT IN (0,254)
+              AND ISNULL(wf.Enabled, 1) = 1
+              AND ISNULL(wft.Enabled, 1) = 1
+              AND wf.EntityTypeID = @EntityTypeId
+              AND wf.OrganisationalUnitId IN (@OrganisationalUnitId, -1)
+              AND wft.ToStatusID = @NewStatusId
+            ORDER BY
+                CASE WHEN wf.OrganisationalUnitId = @OrganisationalUnitId THEN 0 ELSE 1 END,
+                wf.ID DESC;
+        END
+
+        /*
+           Recipients
+           ---------
+           For now, align to the new dedicated-notification pattern:
+           include recipients directly in payload JSON.
+
+           This example uses the job surveyor and the acting authoriser when email exists.
+           Extend here later if you want broader routing.
+        */
+        DECLARE @RecipientsJson NVARCHAR(MAX);
+
+        ;WITH Recipients AS
+        (
+            SELECT DISTINCT EmailAddress
+            FROM
+            (
+                SELECT ai.EmailAddress
+                FROM SCore.Identities ai
+                WHERE ai.ID = @AuthoriserUserId
+                  AND ai.RowStatus NOT IN (0,254)
+
+                UNION ALL
+
+                SELECT si.EmailAddress
+                FROM SJob.Jobs j
+                JOIN SCore.Identities si
+                  ON si.ID = j.SurveyorID
+                 AND si.RowStatus NOT IN (0,254)
+                WHERE j.Guid = @JobGuid
+                  AND j.RowStatus NOT IN (0,254)
+            ) x
+            WHERE x.EmailAddress IS NOT NULL
+              AND LTRIM(RTRIM(x.EmailAddress)) <> N''
+        )
+        SELECT @RecipientsJson =
+        (
+            SELECT r.EmailAddress
+            FROM Recipients r
+            FOR JSON PATH
+        );
+
+        IF (@RecipientsJson IS NULL OR @RecipientsJson = N'')
+            SET @RecipientsJson = N'[]';
+
+        DECLARE @Payload NVARCHAR(MAX);
+
+        SET @Payload =
         (
             SELECT
-                @JobGuid AS JobGuid,
-                @Decision AS DecisionCode,
-                CASE WHEN @Decision = 1 THEN N'Approve' ELSE N'Reject' END AS Decision,
-                @StoredComment AS Comment,
-                @CreatedByUserGuid AS ActorUserGuid,
-                @AuthoriserUserId AS ActorUserId,
-                @NowUtc AS DecisionDateTimeUtc,
-                @TargetGroupCode AS TargetGroupCode,
-                @TargetUserGroupGuid AS TargetUserGroupGuid
+                @OutboxGuid AS eventGuid,
+                @EventType AS eventType,
+                @NowUtc AS occurredOnUtc,
+
+                @JobGuid AS dataObjectGuid,
+                @JobGuid AS jobGuid,
+                @JobNumber AS jobNumber,
+                @JobTitle AS jobTitle,
+                @BillingInstruction AS description,
+
+                @OrganisationalUnitId AS organisationalUnitId,
+                @OrganisationalUnitName AS organisationalUnitName,
+
+                @WorkflowId AS workflowId,
+                @WorkflowName AS workflowName,
+
+                @NewStatusId AS statusId,
+                @NewStatusGuid AS statusGuid,
+                @NewStatusName AS statusName,
+
+                @OldStatusId AS oldStatusId,
+                @OldStatusGuid AS oldStatusGuid,
+                @OldStatusName AS oldStatusName,
+
+                @StoredComment AS comment,
+
+                JSON_QUERY
+                (
+                    (
+                        SELECT
+                            @AuthoriserUserId AS identityId,
+                            @ActorFullName AS fullName,
+                            @ActorEmailAddress AS emailAddress
+                        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+                    )
+                ) AS actor,
+
+                JSON_QUERY(@RecipientsJson) AS recipients
             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
         );
 
-        INSERT INTO SCore.IntegrationOutbox(Guid, EventType, PayloadJson)
-        VALUES (@OutboxGuid, @EventType, @Payload);
+        INSERT INTO SCore.IntegrationOutbox
+        (
+            Guid,
+            EventType,
+            PayloadJson
+        )
+        VALUES
+        (
+            @OutboxGuid,
+            @EventType,
+            @Payload
+        );
 
         COMMIT;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
+        IF @@TRANCOUNT > 0
+            ROLLBACK;
         THROW;
     END CATCH
 END

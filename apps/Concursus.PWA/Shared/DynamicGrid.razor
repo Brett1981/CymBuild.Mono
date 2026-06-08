@@ -26,7 +26,6 @@
 
                     <TelerikDrawer @ref="@Drawer"
                                    Data="@Data"
-                                   
                                    MiniMode="true"
                                    Mode="@DrawerMode.Push"
                                    SelectedItem="@selectedItem"
@@ -101,7 +100,7 @@
                                             else if (selectedItem?.ViewDefinition?.GridViewTypeId == 7)
                                             {
                                                 <FilteredDynamicGridViewV2 @ref="@Dgv"
-                                                                           @key="@($"Tree-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                           @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                            OnActionCompleted="HandleActionCompleted"
                                                                            Disabled="@Disabled"
                                                                            DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
@@ -114,6 +113,7 @@
                                             else if (GridCode == "FILTEREDQUOTES")
                                             {
                                                 <FilteredDynamicGridView @ref="@Dgv"
+                                                                         @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                          OnActionCompleted="HandleActionCompleted"
                                                                          Disabled="@Disabled"
                                                                          DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
@@ -127,6 +127,7 @@
                                             {
                                                 @* CBLD-393 *@
                                                 <DynamicGridView @ref="@Dgv"
+                                                                 @key="@($"Grid-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                  ResyncDataObject="@ResyncDataObject"
                                                                  OnActionCompleted="HandleActionCompleted"
                                                                  Disabled="@Disabled"
@@ -158,18 +159,21 @@
 
                                                 @if (selectedItem?.ViewDefinition?.Code == "ALLSAGESUBMON")
                                                 {
-                                                    <DynamicBatchGridViewV2 @ref="@Dgv"
-                                                    OnActionCompleted="HandleActionCompleted"
-                                                    ViewDefinition="@selectedItem?.ViewDefinition"
-                                                    GridCode="@GridCode"
-                                                    ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                    ParentDataObjectReference="@ParentDataObjectReference"
-                                                    ParentGuid="@ParentGuid"
-                                                    FullGrid="@FullGrid" />
+                                                    <DynamicBatchGridViewV2 
+                                                        @ref="@Dgv"
+                                                        @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                        OnActionCompleted="HandleActionCompleted"
+                                                        ViewDefinition="@selectedItem?.ViewDefinition"
+                                                        GridCode="@GridCode"
+                                                        ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                        ParentDataObjectReference="@ParentDataObjectReference"
+                                                        ParentGuid="@ParentGuid"
+                                                        FullGrid="@FullGrid" />
                                                 }
                                                 else
                                                 {
                                                     <DynamicBatchGridView @ref="@Dgv"
+                                                                           @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                                             OnActionCompleted="HandleActionCompleted"
                                                                             ViewDefinition="@selectedItem?.ViewDefinition"
                                                                             GridCode="@GridCode"

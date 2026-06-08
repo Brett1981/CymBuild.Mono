@@ -1,9 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 CREATE VIEW [SSop].[Quotes_DWETL]
-    --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
-SELECT
+SELECT 
     q.ID,
     q.QuotingConsultantId,
     e.ClientAccountId,
@@ -31,16 +31,17 @@ JOIN SCore.OrganisationalUnits ou
 JOIN SCrm.Counties c
     ON c.ID = uprn.CountyId
 
--- Net: aggregate section totals WITHOUT joining to items
+-- Net: aggregate section totals  joining to items (Quote Sections not used)
 OUTER APPLY
 (
     SELECT
-        SUM(qst.Net) AS Net
-    FROM SSop.QuoteSections qs
-    JOIN SSop.QuoteSectionTotals qst
+        SUM(qst.LineNet) AS Net
+    FROM SSop.QuoteItems qs
+    JOIN SSop.QuoteItemTotals qst
         ON qst.ID = qs.ID
     WHERE qs.QuoteId = q.ID
-      AND qs.RowStatus NOT IN (0,254)
+      AND 
+      qs.RowStatus NOT IN (0,254)      
 ) sn
 
 -- JobType: look for any created job types on items for this quote
@@ -48,15 +49,12 @@ OUTER APPLY
 (
     SELECT
         MAX(jt.Name) AS JobTypeName
-    FROM SSop.QuoteSections qs2
-    JOIN SSop.QuoteItems qi
-        ON qi.QuoteSectionId = qs2.ID
+    FROM SSop.QuoteItems qi
     JOIN SJob.Jobs j
         ON j.ID = qi.CreatedJobId
     JOIN SJob.JobTypes jt
         ON jt.ID = j.JobTypeID
-    WHERE qs2.QuoteId = q.ID
-      AND qs2.RowStatus NOT IN (0,254)
+    WHERE qi.QuoteId = q.ID
       AND qi.RowStatus  NOT IN (0,254)
       AND j.RowStatus   NOT IN (0,254)
       AND jt.RowStatus  NOT IN (0,254)
@@ -142,4 +140,6 @@ GROUP BY
     eff.EffectiveDateSent,
     eff.EffectiveDateAccepted,
     eff.EffectiveDateRejected
+
+
 GO

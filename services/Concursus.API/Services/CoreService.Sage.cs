@@ -19,6 +19,37 @@ public partial class CoreService
         WriteIndented = true
     };
 
+    public override async Task<SageInboundReceiptMaterialisationAutoCorrectReply> SageInboundReceiptMaterialisationAutoCorrect(
+    SageInboundReceiptMaterialisationAutoCorrectRequest request,
+    ServerCallContext context)
+    {
+        var result = await _sageInboundDiagnosticsRepository.AutoCorrectReceiptMaterialisationAsync(
+            request.HasExternalTransactionId ? request.ExternalTransactionId : null,
+            request.BatchSize <= 0 ? 100 : request.BatchSize,
+            request.DryRun,
+            context.CancellationToken).ConfigureAwait(false);
+
+        var reply = new SageInboundReceiptMaterialisationAutoCorrectReply
+        {
+            ProcessedCount = result.ProcessedCount,
+            CorrectedCount = result.CorrectedCount,
+            SkippedCount = result.SkippedCount,
+            FailedCount = result.FailedCount
+        };
+
+        reply.Items.AddRange(result.Items.Select(x => new Core.SageInboundReceiptMaterialisationAutoCorrectResultItem
+        {
+            ExternalTransactionId = x.ExternalTransactionId,
+            Outcome = x.Outcome,
+            Message = x.Message,
+            MatchedTransactionId = x.MatchedTransactionId,
+            MaterialisedReceiptTransactionId = x.MaterialisedReceiptTransactionId,
+            MaterialisedAllocationId = x.MaterialisedAllocationId
+        }));
+
+        return reply;
+    }
+
     public override async Task<SageInboundPaymentSyncReply> SageInboundPaymentSync(
      SageInboundPaymentSyncRequestMessage request,
      ServerCallContext context)
@@ -136,7 +167,7 @@ public partial class CoreService
         try
         {
             var rows = await _sageInboundDiagnosticsRepository
-                .GetAsync(_serviceBase._entityFramework, model, context.CancellationToken)
+                .GetAsync(model, context.CancellationToken)
                 .ConfigureAwait(false);
 
             var reply = new SageInboundDiagnosticsGetReply();
@@ -192,7 +223,19 @@ public partial class CoreService
                     LastSageTransactionTypeCode = row.LastSageTransactionTypeCode,
                     NextPollDueOnUtc = ToTimestamp(row.NextPollDueOnUtc),
                     PollAttemptCount = row.PollAttemptCount,
-                    IsTerminalState = row.IsTerminalState
+                    IsTerminalState = row.IsTerminalState,
+                    TransactionGuid = row.TransactionGuid?.ToString() ?? string.Empty,
+                    TransactionNumber = row.TransactionNumber ?? string.Empty,
+                    TransactionIsBatched = row.TransactionIsBatched ?? false,
+
+                    MatchedTransactionGuid = row.MatchedTransactionGuid?.ToString() ?? string.Empty,
+                    MatchedTransactionNumber = row.MatchedTransactionNumber ?? string.Empty,
+
+                    MaterialisedReceiptTransactionGuid = row.MaterialisedReceiptTransactionGuid?.ToString() ?? string.Empty,
+                    MaterialisedReceiptTransactionNumber = row.MaterialisedReceiptTransactionNumber ?? string.Empty,
+
+                    MaterialisedAllocationGuid = row.MaterialisedAllocationGuid?.ToString() ?? string.Empty,
+                    MaterialisedAllocationId = row.MaterialisedAllocationId ?? 0
                 });
             }
 
@@ -286,6 +329,7 @@ public partial class CoreService
 
         var result = await _transactionSageSubmissionAdminService.RequeueAsync(
             parsedGuids,
+            request.IncludeNonRetryableFailures,
             context.CancellationToken);
 
         var reply = new TransactionSageSubmissionRequeueReply

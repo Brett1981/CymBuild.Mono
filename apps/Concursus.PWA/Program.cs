@@ -1,4 +1,4 @@
-using Blazored.Modal;
+
 using Concursus.API.Client.Models;
 using Concursus.API.Client.Services;
 using Concursus.Components.Shared.Services;
@@ -15,6 +15,8 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
 using System.Net.Http.Headers;
 using System.Threading.Channels;
+using Concursus.Components.Shared.Modals;
+
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -32,7 +34,8 @@ builder.Services.AddScoped(sp =>
 
 // Register the Telerik services.
 builder.Services.AddTelerikBlazor();
-builder.Services.AddBlazoredModal();
+builder.Services.AddScoped<CymBuildModalService>();
+builder.Services.AddScoped<Concursus.Components.Shared.Modals.CymBuildModalService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<StateService>();
 builder.Services.AddSingleton<ModalService>();

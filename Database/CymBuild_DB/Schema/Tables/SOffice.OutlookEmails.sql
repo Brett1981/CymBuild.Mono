@@ -10,6 +10,11 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SOffice].[OutlookEmails]')
+GO
 CREATE TABLE [SOffice].[OutlookEmails] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_OutlookEmails_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -33,12 +38,22 @@ CREATE TABLE [SOffice].[OutlookEmails] (
   [IsFiled] AS (case when [FiledDateTime] IS NOT NULL then (1) else (0) end) PERSISTED NOT NULL,
   [FilingLocationUrl] [nvarchar](500) NOT NULL DEFAULT (''),
   [SearchSubject] AS (CONVERT([nvarchar](2000),replace([Subject],N'RE: ',N''))) PERSISTED,
-  [Description] [nvarchar](4000) NULL CONSTRAINT [DF_OutlookEmails_Description] DEFAULT (''),
-  CONSTRAINT [PK_OutlookEmails] PRIMARY KEY CLUSTERED ([ID])
+  [Description] [nvarchar](4000) NULL CONSTRAINT [DF_OutlookEmails_Description] DEFAULT ('')
 )
 ON [PRIMARY]
 GO
 
+PRINT (N'Create primary key [PK_OutlookEmails] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
+  ADD CONSTRAINT [PK_OutlookEmails] PRIMARY KEY CLUSTERED ([ID])
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_OutlookEmails_IsFiled_Subject] on table [SOffice].[OutlookEmails]')
+GO
 CREATE INDEX [IX_OutlookEmails_IsFiled_Subject]
   ON [SOffice].[OutlookEmails] ([IsFiled], [SearchSubject])
   INCLUDE ([ToAddresses], [OutlookEmailFromAddressID], [TargetObjectID])
@@ -46,26 +61,47 @@ CREATE INDEX [IX_OutlookEmails_IsFiled_Subject]
   ON [PRIMARY]
 GO
 
-ALTER TABLE [SOffice].[OutlookEmails]
+PRINT (N'Create index [IX_SOffice_OutlookEmails_144059650] on table [SOffice].[OutlookEmails]')
+GO
+CREATE INDEX [IX_SOffice_OutlookEmails_144059650]
+  ON [SOffice].[OutlookEmails] ([RowStatus], [SentDateTime])
+  INCLUDE ([TargetObjectID], [MessageID], [OutlookEmailConversationId], [FiledDateTime], [FilingLocationUrl])
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
+GO
+
+PRINT (N'Create foreign key [FK_OutlookEmails_OutlookEmailConversations] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
   ADD CONSTRAINT [FK_OutlookEmails_OutlookEmailConversations] FOREIGN KEY ([OutlookEmailConversationId]) REFERENCES [SOffice].[OutlookEmailConversations] ([ID])
 GO
 
-ALTER TABLE [SOffice].[OutlookEmails]
+PRINT (N'Create foreign key [FK_OutlookEmails_OutlookEmailFromAddresses] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
   ADD CONSTRAINT [FK_OutlookEmails_OutlookEmailFromAddresses] FOREIGN KEY ([OutlookEmailFromAddressID]) REFERENCES [SOffice].[OutlookEmailFromAddresses] ([ID])
 GO
 
-ALTER TABLE [SOffice].[OutlookEmails]
+PRINT (N'Create foreign key [FK_OutlookEmails_OutlookEmails] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
   ADD CONSTRAINT [FK_OutlookEmails_OutlookEmails] FOREIGN KEY ([OutlookEmailMailboxID]) REFERENCES [SOffice].[OutlookEmailMailboxes] ([ID])
 GO
 
-ALTER TABLE [SOffice].[OutlookEmails]
+PRINT (N'Create foreign key [FK_OutlookEmails_RowStatus] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
   ADD CONSTRAINT [FK_OutlookEmails_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
-ALTER TABLE [SOffice].[OutlookEmails]
+PRINT (N'Create foreign key [FK_OutlookEmails_TargetObjects] on table [SOffice].[OutlookEmails]')
+GO
+ALTER TABLE [SOffice].[OutlookEmails] WITH NOCHECK
   ADD CONSTRAINT [FK_OutlookEmails_TargetObjects] FOREIGN KEY ([TargetObjectID]) REFERENCES [SOffice].[TargetObjects] ([ID])
 GO
 
+PRINT (N'Create full-text index on table [SOffice].[OutlookEmails]')
+GO
 CREATE FULLTEXT INDEX
   ON [SOffice].[OutlookEmails]([ToAddresses] LANGUAGE 1033)
   KEY INDEX [PK_OutlookEmails]

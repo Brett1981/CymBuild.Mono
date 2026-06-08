@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceAutomationNudgeQueue]')
 GO
+PRINT (N'Create table [SFin].[InvoiceAutomationNudgeQueue]')
+GO
 CREATE TABLE [SFin].[InvoiceAutomationNudgeQueue] (
   [ID] [int] IDENTITY,
   [CreatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_InvoiceAutomationNudgeQueue_Created] DEFAULT (sysutcdatetime()),
@@ -20,10 +22,4 @@ ALTER TABLE [SFin].[InvoiceAutomationNudgeQueue] WITH NOCHECK
 GO
 
 PRINT (N'Create index [IX_InvoiceAutomationNudgeQueue_Unprocessed] on table [SFin].[InvoiceAutomationNudgeQueue]')
-GO
-CREATE INDEX [IX_InvoiceAutomationNudgeQueue_Unprocessed]
-  ON [SFin].[InvoiceAutomationNudgeQueue] ([ProcessedDateTimeUTC], [CreatedDateTimeUTC])
-  INCLUDE ([Source], [EntityId], [EntityGuid])
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
 GO

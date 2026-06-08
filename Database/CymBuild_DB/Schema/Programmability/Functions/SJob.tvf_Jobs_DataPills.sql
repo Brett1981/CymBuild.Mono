@@ -6,6 +6,11 @@ PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
 GO
 PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
 GO
+PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
+GO
+
+
+
 CREATE FUNCTION [SJob].[tvf_Jobs_DataPills]
 (
     @Guid                      UNIQUEIDENTIFIER,
@@ -486,7 +491,7 @@ BEGIN
 	JOIN SJob.Jobs AS j ON (j.ID = root_hobt.CreatedJobId)
 	JOIN SFin.InvoiceSchedules AS invsch ON (root_hobt.InvoicingSchedule = invsch.ID)
 	JOIN SFin.InvoiceScheduleTrigger AS invtr ON (invtr.ID = invsch.TriggerId)
-	WHERE j.Guid = @Guid
+	WHERE j.Guid = @Guid AND ISNULL(invtr.Name,'')<> ''
 
 	IF(@ScheduledInvoicingTypeName <> N'')
 	BEGIN 
@@ -495,16 +500,20 @@ BEGIN
 	END;
 
 	DECLARE 
-		@NotInvoicedAmount	DECIMAL(18,2) = 0.0,
-		@OutStandingAmount	DECIMAL(18,2) = 0.0,
-		@Overdue_1_30		DECIMAL(18,2) = 0.0,
-		@Overdue_31_60		DECIMAL(18,2) = 0.0,
-		@Overdue_61_90		DECIMAL(18,2) = 0.0,
-		@Overdue_90Plus		DECIMAL(18,2) = 0.0;
+		@NotInvoicedAmount				DECIMAL(18,2) = 0.0,
+		@RemainingFee					DECIMAL(18,2) = 0.0,
+		@OutStandingAmount				DECIMAL(18,2) = 0.0,
+		@OutStandingAmountWithoutVAT	DECIMAL(18,2) = 0.0,
+		@Overdue_1_30					DECIMAL(18,2) = 0.0,
+		@Overdue_31_60					DECIMAL(18,2) = 0.0,
+		@Overdue_61_90					DECIMAL(18,2) = 0.0,
+		@Overdue_90Plus					DECIMAL(18,2) = 0.0;
 
 		SELECT 
+		@RemainingFee	   = ISNULL(root_hobt.RemainingAmount, 0),
 		@NotInvoicedAmount = ISNULL(root_hobt.NotInvoicedAmount, 0),
 		@OutStandingAmount = ISNULL(root_hobt.OutStandingAmount, 0),
+		@OutStandingAmountWithoutVAT = ISNULL(root_hobt.OutstandingAmountWithoutVAT, 0),
 		@Overdue_1_30      = ISNULL(root_hobt.Overdue_1_30, 0),
 		@Overdue_31_60     = ISNULL(root_hobt.Overdue_31_60, 0),
 		@Overdue_61_90     = ISNULL(root_hobt.Overdue_61_90, 0),
@@ -512,8 +521,10 @@ BEGIN
 	FROM [SFin].[tvf_OverdueInvoicesForJob](@Guid) AS root_hobt;
 
 	INSERT @DataPills (Label, Class, SortOrder)
-	VALUES  (N'Amount not invoiced: £' + CONVERT(NVARCHAR(50), @NotInvoicedAmount), N'financial-data', 0),
+	VALUES  (N'Remaining Fees: £' + CONVERT(NVARCHAR(50), @RemainingFee), N'financial-data', 0),
+			(N'Amount not invoiced: £' + CONVERT(NVARCHAR(50), @NotInvoicedAmount), N'financial-data', 0),
 	        (N'Outstanding amount: £' + CONVERT(NVARCHAR(50), @OutStandingAmount), N'financial-data', 0),
+			(N'Outstanding amount without VAT: £' + CONVERT(NVARCHAR(50), @OutStandingAmountWithoutVAT), N'financial-data', 0),
 	        (N'Overdue_1_30: £' + CONVERT(NVARCHAR(50), @Overdue_1_30), N'financial-data', 0),
 	        (N'Overdue_31_60: £' + CONVERT(NVARCHAR(50), @Overdue_31_60), N'financial-data', 0),
 	        (N'Overdue_61_90: £' + CONVERT(NVARCHAR(50), @Overdue_61_90), N'financial-data', 0),

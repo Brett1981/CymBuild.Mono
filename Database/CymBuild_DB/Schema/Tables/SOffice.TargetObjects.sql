@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SOffice].[TargetObjects]')
 GO
+PRINT (N'Create table [SOffice].[TargetObjects]')
+GO
 CREATE TABLE [SOffice].[TargetObjects] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_TargetObjects_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -18,15 +20,6 @@ PRINT (N'Create primary key [PK_TargetObjects] on table [SOffice].[TargetObjects
 GO
 ALTER TABLE [SOffice].[TargetObjects] WITH NOCHECK
   ADD CONSTRAINT [PK_TargetObjects] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
-GO
-
-PRINT (N'Create index [IX_TargetObjects_EntityType] on table [SOffice].[TargetObjects]')
-GO
-CREATE INDEX [IX_TargetObjects_EntityType]
-  ON [SOffice].[TargetObjects] ([EntityTypeId])
-  INCLUDE ([Guid], [Name], [Number])
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
 GO
 
 PRINT (N'Create index [IX_UQ_TargetObjects_Guid] on table [SOffice].[TargetObjects]')
