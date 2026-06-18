@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_TransactionDetails]')
+GO
 CREATE FUNCTION [SFin].[tvf_TransactionDetails] 
 (
     @UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  td.ID,

@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[ValuesOfWorkUpsert]')
+GO
+
 CREATE PROCEDURE [SJob].[ValuesOfWorkUpsert] 
 								@Name NVARCHAR(100),
 								@SortOrder INT,

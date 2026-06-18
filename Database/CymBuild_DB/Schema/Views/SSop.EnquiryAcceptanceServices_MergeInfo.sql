@@ -1,5 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[EnquiryAcceptanceServices_MergeInfo]')
+GO
+
+
+
+
+
+
+
 CREATE VIEW [SSop].[EnquiryAcceptanceServices_MergeInfo]
 AS
 SELECT		es.ID,

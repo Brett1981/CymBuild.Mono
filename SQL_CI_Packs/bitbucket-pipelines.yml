@@ -1,0 +1,76 @@
+image: mcr.microsoft.com/mssql-tools
+
+options:
+  max-time: 30
+
+definitions:
+  steps:
+    - step: &smigration-schema-deploy
+        name: Deploy SMigration schema
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/deploy-smigration-schema.sh
+        artifacts:
+          - artifacts/**
+
+    - step: &onboarding-preview
+        name: Onboarding migration preview
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/run-onboarding-preview.sh
+        artifacts:
+          - artifacts/**
+
+    - step: &onboarding-apply
+        name: Onboarding migration apply
+        trigger: manual
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/run-onboarding-apply.sh
+        artifacts:
+          - artifacts/**
+
+pipelines:
+  custom:
+    onboarding-dev:
+      - variables:
+          - name: SOURCE_DATABASE
+            default: "CymBuild_QA"
+          - name: BUSINESS_UNIT_GROUP_GUID
+          - name: ALLOW_WARNINGS
+            default: "1"
+      - step:
+          <<: *smigration-schema-deploy
+          deployment: DEV
+      - step:
+          <<: *onboarding-preview
+          deployment: DEV
+      - step:
+          <<: *onboarding-apply
+          deployment: DEV
+
+    onboarding-uat:
+      - variables:
+          - name: SOURCE_DATABASE
+            default: "CymBuild_UAT"
+          - name: BUSINESS_UNIT_GROUP_GUID
+          - name: ALLOW_WARNINGS
+            default: "1"
+      - step:
+          <<: *smigration-schema-deploy
+          deployment: UAT
+      - step:
+          <<: *onboarding-preview
+          deployment: UAT
+      - step:
+          <<: *onboarding-apply
+          deployment: UAT
+
+    onboarding-apply-existing-run:
+      - variables:
+          - name: RUN_GUID
+          - name: ALLOW_WARNINGS
+            default: "1"
+      - step:
+          <<: *onboarding-apply
+          deployment: UAT

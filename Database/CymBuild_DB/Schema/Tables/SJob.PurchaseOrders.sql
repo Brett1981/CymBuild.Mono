@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SJob].[PurchaseOrders]')
 GO
-PRINT (N'Create table [SJob].[PurchaseOrders]')
-GO
 CREATE TABLE [SJob].[PurchaseOrders] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_PurchaseOrders_RowStatus] DEFAULT (0),

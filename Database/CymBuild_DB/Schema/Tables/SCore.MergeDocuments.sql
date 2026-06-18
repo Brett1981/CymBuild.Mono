@@ -324,8 +324,3 @@ GO
 ALTER TABLE [SCore].[MergeDocuments] WITH NOCHECK
   ADD CONSTRAINT [FK_MergeDocuments_SharepointSites] FOREIGN KEY ([SharepointSiteId]) REFERENCES [SCore].[SharepointSites] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[MergeDocuments]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definitions of Merge Documents ', 'SCHEMA', N'SCore', 'TABLE', N'MergeDocuments'
-GO

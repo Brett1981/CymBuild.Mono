@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[InvoicePaymentStatusUpsert]')
+GO
+
 CREATE PROCEDURE [SFin].[InvoicePaymentStatusUpsert] 
 								@Name NVARCHAR(100),
 								@Guid UNIQUEIDENTIFIER OUT

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SAlert].[CreateNotification]')
+GO
+
 CREATE PROCEDURE [SAlert].[CreateNotification]	
 (
 	@Recipients NVARCHAR(MAX),

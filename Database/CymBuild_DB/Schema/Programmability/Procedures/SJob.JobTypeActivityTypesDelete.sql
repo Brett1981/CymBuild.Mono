@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[JobTypeActivityTypesDelete]')
+GO
 CREATE PROCEDURE [SJob].[JobTypeActivityTypesDelete]
 								@Guid UNIQUEIDENTIFIER 
 AS

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_EntityTypes]')
+GO
 CREATE FUNCTION [SCore].[tvf_EntityTypes]
   (
     @Guid   UNIQUEIDENTIFIER,

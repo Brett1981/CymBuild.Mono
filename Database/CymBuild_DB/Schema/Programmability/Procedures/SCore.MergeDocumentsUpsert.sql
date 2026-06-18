@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[MergeDocumentsUpsert]')
+GO
 CREATE PROCEDURE [SCore].[MergeDocumentsUpsert] @Name NVARCHAR(250),
 										   @FilenameTemplate NVARCHAR(250),
 										   @EntityTypeGuid UNIQUEIDENTIFIER,

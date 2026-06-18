@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-CREATE	FUNCTION [SCore].[tvf_MergeDocumentItemIncludes]
+
+PRINT (N'Create function [SCore].[tvf_MergeDocumentItemIncludes]')
+GO
+CREATE FUNCTION [SCore].[tvf_MergeDocumentItemIncludes]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER

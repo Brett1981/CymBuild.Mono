@@ -1,5 +1,11 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[ObjectSecurityUpsert]')
+GO
+
+
+
 CREATE PROCEDURE [SCore].[ObjectSecurityUpsert]
 	(	@ObjectGuid UNIQUEIDENTIFIER,
 		@UserGuid UNIQUEIDENTIFIER,

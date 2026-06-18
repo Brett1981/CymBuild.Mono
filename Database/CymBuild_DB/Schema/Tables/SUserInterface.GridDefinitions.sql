@@ -51,8 +51,3 @@ GO
 ALTER TABLE [SUserInterface].[GridDefinitions] WITH NOCHECK
   ADD CONSTRAINT [FK_GridDefinitions_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridDefinitions]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of Grid layouts that are the parent container of GridViewDefinitions', 'SCHEMA', N'SUserInterface', 'TABLE', N'GridDefinitions'
-GO

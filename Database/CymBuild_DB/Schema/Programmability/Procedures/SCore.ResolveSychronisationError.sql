@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[ResolveSychronisationError]')
+GO
 CREATE PROCEDURE [SCore].[ResolveSychronisationError]
 (
     @Guid UNIQUEIDENTIFIER,

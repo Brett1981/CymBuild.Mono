@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[JSON_UpdateDataProperties]')
+GO
 CREATE FUNCTION [SCore].[JSON_UpdateDataProperties]
 	(
 		@Json			NVARCHAR(MAX),

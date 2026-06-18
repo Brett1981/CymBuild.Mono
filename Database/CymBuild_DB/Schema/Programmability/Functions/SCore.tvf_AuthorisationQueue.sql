@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_AuthorisationQueue]')
+GO
 /* =============================================================================
    Task 3 — Canonical Authorisation Queue
    Function: SCore.tvf_AuthorisationQueue(@UserId)
@@ -16,7 +19,7 @@ CREATE FUNCTION [SCore].[tvf_AuthorisationQueue]
     @UserId INT
 )
 RETURNS TABLE
---WITH SCHEMABINDING
+    --WITH SCHEMABINDING
 AS
 RETURN
 (

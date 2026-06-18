@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuoteMemos]')
+GO
 CREATE FUNCTION [SSop].[tvf_QuoteMemos]
   (
     @UserId     INT,
     @ParentGuid UNIQUEIDENTIFIER
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN SELECT
           qm.ID,

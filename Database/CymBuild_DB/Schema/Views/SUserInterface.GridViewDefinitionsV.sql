@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SUserInterface].[GridViewDefinitionsV]')
+GO
+
+
 CREATE VIEW [SUserInterface].[GridViewDefinitionsV] 
 AS SELECT
         gvd.ID,

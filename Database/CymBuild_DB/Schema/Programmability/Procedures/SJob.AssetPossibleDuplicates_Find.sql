@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[AssetPossibleDuplicates_Find]')
+GO
 CREATE PROCEDURE [SJob].[AssetPossibleDuplicates_Find]
 AS
 BEGIN

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
+GO
+
 CREATE PROCEDURE [SFin].[TransactionBatchTransition_EnqueueOutbox]
 (
     @TransactionBatchTransitionGuid UNIQUEIDENTIFIER

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_WorkflowStatusValidate]')
+GO
 CREATE FUNCTION [SCore].[tvf_WorkflowStatusValidate]
 (
     @Guid UNIQUEIDENTIFIER,
@@ -16,7 +19,7 @@ RETURNS @ValidationResult TABLE
     IsInformationOnly BIT NOT NULL DEFAULT ((0)),
     Message NVARCHAR(2000) NOT NULL DEFAULT ('')
 )
-    --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
 BEGIN
     DECLARE @UserID INT = -1;

@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[SystemUsageStatistics]')
+GO
+
+
 CREATE VIEW [SCore].[SystemUsageStatistics]
 AS
 SELECT		i.FullName		   AS Username,
@@ -55,4 +60,7 @@ GROUP BY	i.FullName,
 			LastUsage.Accessed,
 			FirstUsage.Accessed,
 			et.Name;
+
+
+
 GO

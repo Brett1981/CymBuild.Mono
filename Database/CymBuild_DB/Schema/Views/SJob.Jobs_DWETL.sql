@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[Jobs_DWETL]')
+GO
 CREATE VIEW [SJob].[Jobs_DWETL]
 
 AS

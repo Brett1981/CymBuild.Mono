@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_Enquiries]')
+GO
 CREATE FUNCTION [SSop].[tvf_Enquiries]
 (
     @UserId INT
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (

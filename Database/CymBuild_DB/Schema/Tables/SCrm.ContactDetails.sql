@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCrm].[ContactDetails]')
 GO
-PRINT (N'Create table [SCrm].[ContactDetails]')
-GO
 CREATE TABLE [SCrm].[ContactDetails] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ContactDetails_RowStatus] DEFAULT (1),

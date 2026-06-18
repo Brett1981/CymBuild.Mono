@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_Quotes]')
+GO
+
+
 CREATE FUNCTION [SSop].[tvf_Quotes]
 (
     @UserId INT
@@ -19,8 +24,8 @@ SELECT
             THEN LEFT(q.DescriptionOfWorks, 200)
         ELSE LEFT(q.Overview, 200)
     END AS Details,
-	LatestTransitionComment.Comment,	
-    acc.Name + N' / ' + agent.Name AS Account,
+	LatestTransitionComment.Comment,
+	CONCAT(COALESCE(NULLIF(LTRIM(RTRIM(acc.Name)), ''), 'Client Not set'), ' / ', COALESCE(NULLIF(LTRIM(RTRIM(agent.Name)), ''), 'Agent Not set')) AS Account,
     uprn.FormattedAddressComma,
     qcf.QuoteStatus AS QuoteStatus,
     i.FullName AS QuotingConsultant,
@@ -53,7 +58,8 @@ SELECT
                 THEN ISNULL(qw.ChaseTwoDate, q.ChaseDate2)
             ELSE ISNULL(qw.ChaseTwoDate, ISNULL(ew.ChaseTwoDate, ISNULL(q.ChaseDate2, e.ChaseDate2)))
         END
-    ) AS QuoteChaseDateTwo
+    ) AS QuoteChaseDateTwo,
+	LastStatusComment.Comment AS LastComment
 
 FROM SSop.Quotes q
 JOIN SSop.Quote_CalculatedFields qcf
@@ -73,7 +79,7 @@ JOIN SCore.Identities i
 JOIN SCore.OrganisationalUnits ou
     ON q.OrganisationalUnitID = ou.ID
 JOIN SJob.JobTypes AS jt
-    ON jt.ID = es.JobTypeId
+    ON jt.ID = q.JobTypeId
 OUTER APPLY 
 (
 	SELECT TOP (1)
@@ -116,6 +122,29 @@ OUTER APPLY
       AND dot.RowStatus NOT IN (0,254)
       AND ws.RowStatus NOT IN (0,254)
 ) AS ew
+
+OUTER APPLY
+(
+    SELECT
+		CONCAT(CONVERT(DATE, dot.DateTimeUTC), N' - ', dot.Comment) AS Comment
+    FROM SCore.DataObjectTransition dot
+    JOIN SCore.WorkflowStatus ws
+        ON ws.ID = dot.StatusID
+    WHERE dot.DataObjectGuid = q.Guid
+      AND dot.RowStatus NOT IN (0,254)
+      AND ws.RowStatus NOT IN (0,254)
+	  AND NOT EXISTS
+			(
+				SELECT 1
+				FROM SCore.DataObjectTransition AS dot2
+				JOIN SCore.WorkflowStatus ws2
+					ON ws2.ID = dot2.StatusID
+				WHERE dot2.DataObjectGuid = q.Guid
+				  AND dot2.RowStatus NOT IN (0,254)
+				  AND ws2.RowStatus NOT IN (0,254)
+				  AND dot2.ID > dot.ID
+			)
+) AS LastStatusComment
 
 WHERE q.ID > 0
   AND EXISTS

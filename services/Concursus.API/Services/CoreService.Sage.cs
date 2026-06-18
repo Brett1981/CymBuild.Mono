@@ -71,6 +71,7 @@ public partial class CoreService
             request.Force,
             context.CancellationToken);
 
+
         var reply = new SageInboundPaymentSyncReply
         {
             CymBuildDocumentGuid = result.CymBuildDocumentGuid.ToString(),
@@ -158,6 +159,7 @@ public partial class CoreService
             StatusCode = request.StatusCode ?? string.Empty,
             SageAccountReference = request.SageAccountReference ?? string.Empty,
             SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            TransactionNumber = request.TransactionNumber ?? string.Empty,
             OnlyRetryableFailures = request.IncludeOnlyRetryableFailuresSpecified ? request.IncludeOnlyRetryableFailures : null,
             InvoiceRequestId = request.InvoiceRequestIdSpecified ? request.InvoiceRequestId : null,
             TransactionId = request.TransactionIdSpecified ? request.TransactionId : null,
@@ -230,6 +232,8 @@ public partial class CoreService
 
                     MatchedTransactionGuid = row.MatchedTransactionGuid?.ToString() ?? string.Empty,
                     MatchedTransactionNumber = row.MatchedTransactionNumber ?? string.Empty,
+                    MatchedTransactionSageTransactionReference = row.MatchedTransactionSageTransactionReference ?? string.Empty,
+                    TransactionSageTransactionReference = row.TransactionSageTransactionReference ?? string.Empty,
 
                     MaterialisedReceiptTransactionGuid = row.MaterialisedReceiptTransactionGuid?.ToString() ?? string.Empty,
                     MaterialisedReceiptTransactionNumber = row.MaterialisedReceiptTransactionNumber ?? string.Empty,
@@ -461,6 +465,48 @@ public partial class CoreService
             response.Detail = result?.Detail ?? string.Empty;
             response.RawJson = JsonSerializer.Serialize(result, SageJsonOptions); // legacy/debug
             response.Success = string.Equals(result?.Status, "Ok", StringComparison.OrdinalIgnoreCase);
+
+            var sageTransactionReference = result?.SageTransactionReference ?? string.Empty;
+
+            /*
+                Some Sage create responses may not include transactionReference immediately.
+                If it is missing, read it back using the CymBuild document number / Sage secondReference.
+            */
+            if (response.Success &&
+                string.IsNullOrWhiteSpace(sageTransactionReference) &&
+                !string.IsNullOrWhiteSpace(request.AccountReference) &&
+                !string.IsNullOrWhiteSpace(request.CustomerOrderNo))
+            {
+                var transactionLookup = await _sageApiClient.FetchCustomerTransactionsAsync(
+                    System.Enum.Parse<SageDataset>(request.Dataset, true),
+                    request.AccountReference,
+                    request.CustomerOrderNo,
+                    4,
+                    true,
+                    context.CancellationToken).ConfigureAwait(false);
+
+                var matchedTransaction = transactionLookup?.Transactions?.FirstOrDefault();
+
+                if (matchedTransaction != null)
+                {
+                    sageTransactionReference = GetString(matchedTransaction, "transactionReference");
+                }
+            }
+
+            response.SageTransactionReference = sageTransactionReference ?? string.Empty;
+
+            if (response.Success &&
+                request.HasTransactionId &&
+                request.TransactionId > 0 &&
+                !string.IsNullOrWhiteSpace(sageTransactionReference))
+            {
+                await _sageInboundDiagnosticsRepository
+                    .SetTransactionSageReferenceIfMissingAsync(
+                        request.TransactionId,
+                        sageTransactionReference,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
@@ -469,6 +515,76 @@ public partial class CoreService
         }
 
         return response;
+    }
+
+    public override async Task<SageInboundDiagnosticsApplyTransactionReferencesReply> SageInboundDiagnosticsApplyTransactionReferences(
+    SageInboundDiagnosticsApplyTransactionReferencesRequest request,
+    ServerCallContext context)
+    {
+        if (request == null)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Request cannot be null."));
+        }
+
+        Guid? statusGuid = null;
+
+        if (!string.IsNullOrWhiteSpace(request.StatusGuid))
+        {
+            if (!Guid.TryParse(request.StatusGuid, out var parsedStatusGuid))
+            {
+                throw new RpcException(
+                    new Status(StatusCode.InvalidArgument, $"Invalid status guid: {request.StatusGuid}"));
+            }
+
+            statusGuid = parsedStatusGuid;
+        }
+
+        long? transactionId = request.HasTransactionId
+            ? request.TransactionId
+            : null;
+
+        if (transactionId.HasValue && transactionId.Value <= 0)
+        {
+            throw new RpcException(
+                new Status(StatusCode.InvalidArgument, "Transaction id must be greater than zero when supplied."));
+        }
+
+        try
+        {
+            var appliedCount = await _sageInboundDiagnosticsRepository
+                .ApplyTransactionReferencesAsync(
+                    statusGuid,
+                    transactionId,
+                    request.DryRun,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new SageInboundDiagnosticsApplyTransactionReferencesReply
+            {
+                Success = true,
+                AppliedCount = appliedCount,
+                DryRun = request.DryRun,
+                Message = request.DryRun
+                    ? $"{appliedCount} transaction reference row(s) would be applied."
+                    : $"{appliedCount} transaction reference row(s) applied.",
+                ErrorReturned = string.Empty
+            };
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new SageInboundDiagnosticsApplyTransactionReferencesReply
+            {
+                Success = false,
+                AppliedCount = 0,
+                DryRun = request.DryRun,
+                Message = "Failed to apply Sage transaction references.",
+                ErrorReturned = ex.Message
+            };
+        }
     }
 
     private static Core.SageSalesOrder MapSalesOrder(IDictionary<string, object?> source)

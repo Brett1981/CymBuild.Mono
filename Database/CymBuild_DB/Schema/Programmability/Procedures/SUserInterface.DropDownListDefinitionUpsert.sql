@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SUserInterface].[DropDownListDefinitionUpsert]')
+GO
 CREATE PROCEDURE [SUserInterface].[DropDownListDefinitionUpsert]
   (
     @Code                  NVARCHAR(20),

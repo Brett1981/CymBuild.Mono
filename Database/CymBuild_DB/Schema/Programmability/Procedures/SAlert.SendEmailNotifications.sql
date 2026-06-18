@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SAlert].[SendEmailNotifications]')
+GO
+
 CREATE PROCEDURE [SAlert].[SendEmailNotifications]	
 AS
 BEGIN

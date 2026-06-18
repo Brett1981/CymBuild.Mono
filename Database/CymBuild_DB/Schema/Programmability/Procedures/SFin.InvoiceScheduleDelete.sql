@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SFin].[InvoiceScheduleDelete]')
+GO
+
+
 CREATE PROCEDURE [SFin].[InvoiceScheduleDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SSop].[tvf_ScheduleOfClientInformation]')
+GO
+
 
 
 
@@ -12,7 +15,7 @@ CREATE FUNCTION [SSop].[tvf_ScheduleOfClientInformation]
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN	
 SELECT  soci.ID,
         soci.RowStatus,

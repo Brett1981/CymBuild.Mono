@@ -149,8 +149,3 @@ GO
 ALTER TABLE [SUserInterface].[Icons] WITH NOCHECK
   ADD CONSTRAINT [FK_Icons_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[Icons]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The types of gauges that can be shown on the dashboard.', 'SCHEMA', N'SUserInterface', 'TABLE', N'Icons'
-GO

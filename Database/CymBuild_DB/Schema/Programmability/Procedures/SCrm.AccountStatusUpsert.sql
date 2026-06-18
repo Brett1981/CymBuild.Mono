@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SCrm].[AccountStatusUpsert]')
+GO
+
 CREATE PROCEDURE [SCrm].[AccountStatusUpsert] 
 								@Name NVARCHAR(100),
 								@IsHold BIT,

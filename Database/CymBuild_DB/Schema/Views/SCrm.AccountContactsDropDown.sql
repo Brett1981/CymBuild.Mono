@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[AccountContactsDropDown]')
+GO
 CREATE VIEW	[SCrm].[AccountContactsDropDown]
-           --WITH SCHEMABINDING 
+                --WITH SCHEMABINDING 
 AS 
 SELECT	ac.Guid,
 		ac.RowStatus,

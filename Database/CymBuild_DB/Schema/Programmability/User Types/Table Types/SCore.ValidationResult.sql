@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[ValidationResult] AS TABLE (
+﻿PRINT (N'Create type [SCore].[ValidationResult]')
+GO
+CREATE TYPE [SCore].[ValidationResult] AS TABLE (
   [ID] [int] IDENTITY,
   [TargetGuid] [uniqueidentifier] NOT NULL DEFAULT ('00000000-0000-0000-0000-000000000000'),
   [TargetType] [char](1) NOT NULL DEFAULT (''),

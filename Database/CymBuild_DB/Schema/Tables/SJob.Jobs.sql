@@ -1,49 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER ON
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create table [SJob].[Jobs]')
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create table [SJob].[Jobs]')
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
 PRINT (N'Create table [SJob].[Jobs]')
 GO
 CREATE TABLE [SJob].[Jobs] (
@@ -1599,17 +1556,4 @@ PRINT (N'Create foreign key [FK_Jobs_Versioning] on table [SJob].[Jobs]')
 GO
 ALTER TABLE [SJob].[Jobs] WITH NOCHECK
   ADD CONSTRAINT [FK_Jobs_Versioning] FOREIGN KEY ([VersionID]) REFERENCES [SCore].[Versioning] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on column [SJob].[Jobs].[JobTypeID]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Job Type', 'SCHEMA', N'SJob', 'TABLE', N'Jobs', 'COLUMN', N'JobTypeID'
-GO
-
-PRINT (N'Add extended property [MS_Description] on column [SJob].[Jobs].[JobTypeID]')
-GO
-
-
-
-PRINT (N'Add extended property [MS_Description] on column [SJob].[Jobs].[JobTypeID]')
 GO

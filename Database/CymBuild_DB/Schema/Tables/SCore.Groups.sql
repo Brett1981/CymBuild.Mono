@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[Groups]')
 GO
-PRINT (N'Create table [SCore].[Groups]')
-GO
 CREATE TABLE [SCore].[Groups] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Groups_RowStatus] DEFAULT (1),
@@ -234,21 +232,4 @@ PRINT (N'Create foreign key [FK_Groups_RowStatus] on table [SCore].[Groups]')
 GO
 ALTER TABLE [SCore].[Groups] WITH NOCHECK
   ADD CONSTRAINT [FK_Groups_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[Groups]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Groups of Users', 'SCHEMA', N'SCore', 'TABLE', N'Groups'
-GO
-
-PRINT (N'Add extended property [MS_Description] on column [SCore].[Groups].[Source]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Kafka notification source identifier (e.g. cymbuild-fireengineering-authorisation)', 'SCHEMA', N'SCore', 'TABLE', N'Groups', 'COLUMN', N'Source'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[Groups]')
-GO
-
-
-PRINT (N'Add extended property [MS_Description] on column [SCore].[Groups].[Source]')
 GO

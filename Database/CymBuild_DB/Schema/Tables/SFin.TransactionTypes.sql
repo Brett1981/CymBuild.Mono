@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[TransactionTypes]')
 GO
-PRINT (N'Create table [SFin].[TransactionTypes]')
-GO
 CREATE TABLE [SFin].[TransactionTypes] (
   [ID] [smallint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionTypes_RowStatus] DEFAULT (1),

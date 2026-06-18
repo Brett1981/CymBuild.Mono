@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_Jobs_ClosureRequestedForAuthoriserQueue]')
+GO
 /* =============================================================================
    Task 1 — Refactor SJob.tvf_Jobs_ClosureRequestedForAuthoriserQueue(@UserId)
 
@@ -19,7 +22,7 @@ CREATE FUNCTION [SJob].[tvf_Jobs_ClosureRequestedForAuthoriserQueue]
     @UserId INT
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (

@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_MyInvoicing]')
+GO
 CREATE FUNCTION [SFin].[tvf_MyInvoicing]
 	(
 		@UserId INT
 	)
 RETURNS TABLE
-     --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN SELECT
     YEAR(t.Date) AS Year,

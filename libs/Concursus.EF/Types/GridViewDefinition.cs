@@ -49,6 +49,8 @@ public class GridViewDefinition : IntTypeBase
     public string FilteredListOrangeStatusIndicatorTxt { get; set; }
     public string FilteredListGreenStatusIndicatorTxt { get; set; }
 
+    public bool IsHidden { get; set; }
+
 
 
 

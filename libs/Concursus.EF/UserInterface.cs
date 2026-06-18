@@ -1339,7 +1339,8 @@ namespace Concursus.EF
                                 FilteredListGroupBy = reader.GetString(reader.GetOrdinal("FilteredListGroupBy")),
                                 FilteredListRedStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListRedStatusIndicatorTxt")),
                                 FilteredListOrangeStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListOrangeStatusIndicatorTxt")),
-                                FilteredListGreenStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListGreenStatusIndicatorTxt"))
+                                FilteredListGreenStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListGreenStatusIndicatorTxt")),
+                                IsHidden = reader.GetBoolean(reader.GetOrdinal("IsHidden"))
                             };
                             if (forExport)
                             {

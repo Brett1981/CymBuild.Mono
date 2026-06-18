@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityPropertiesForValidationV]')
+GO
 CREATE VIEW	[SCore].[EntityPropertiesForValidationV]
-              --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 SELECT	ep.Guid,
 		ep.Name,
@@ -12,4 +15,5 @@ FROM	Score.[EntityProperties] ep
 JOIN	SCore.EntityHobts eh ON ep.EntityHoBTID = eh.ID
 WHERE	(ep.[RowStatus] NOT IN (0, 254))
 	AND	(eh.RowStatus NOT IN (0, 254))
+
 GO

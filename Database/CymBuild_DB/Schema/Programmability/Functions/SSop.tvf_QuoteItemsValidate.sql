@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuoteItemsValidate]')
+GO
 CREATE FUNCTION [SSop].[tvf_QuoteItemsValidate]
 	(
 		@CreatedJobGuid			UNIQUEIDENTIFIER,
@@ -28,7 +31,73 @@ BEGIN
 	FROM SSop.Quotes 
 	WHERE Guid = @QuoteGuid;
 
+	DECLARE @ReopenedStatus UNIQUEIDENTIFIER = '34EF363A-C8F7-4BA8-A2C6-067EBAEF12FD';
+	DECLARE @CompletedStatus UNIQUEIDENTIFIER = '6042639D-EF8A-4B6F-9182-A69A7119C117';
+	DECLARE @PartCompletedStatus UNIQUEIDENTIFIER = '286A39A3-E965-4C54-926C-3B272E6D8165';
+
+	DECLARE @CurrentQuoteStatus UNIQUEIDENTIFIER;
+	DECLARE @IsQuoteReopened BIT = 0;
+
+
+	SELECT TOP(1) @CurrentQuoteStatus = wfs.Guid
+	FROM SCore.DataObjectTransition dot
+	JOIN SCore.WorkflowStatus AS wfs ON (wfs.ID = dot.StatusID)
+	WHERE 
+			(dot.DataObjectGuid = @QuoteGuid)
+		AND (dot.RowStatus NOT IN (0,254))
+	ORDER BY dot.ID DESC;
+
+
+	IF(@CreatedJobGuid <> N'00000000-0000-0000-0000-000000000000' AND @CurrentQuoteStatus = @CompletedStatus )
+	BEGIN
+			INSERT @ValidationResult
+						(
+							TargetGuid,
+							TargetType,
+							IsReadOnly,
+							IsHidden,
+							IsInvalid,
+							[Message]
+						)
+				SELECT
+							epfvv.Guid,
+							N'P',
+							1,
+							0,
+							0,
+							N''
+				FROM	SCore.EntityPropertiesForValidationV AS epfvv
+				WHERE	([epfvv].[Schema] = N'SSop')
+					AND	(epfvv.Hobt = N'QuoteItems')
+					
+
+	END;
 	
+	--Only allow certain fields to be edited for quote items where: there is a job & quote has been reopened. 
+	IF(@CreatedJobGuid <> '00000000-0000-0000-0000-000000000000' AND @CurrentQuoteStatus = @ReopenedStatus)
+	BEGIN
+			INSERT @ValidationResult
+						(
+							TargetGuid,
+							TargetType,
+							IsReadOnly,
+							IsHidden,
+							IsInvalid,
+							[Message]
+						)
+				SELECT
+							epfvv.Guid,
+							N'P',
+							1,
+							0,
+							0,
+							N''
+				FROM	SCore.EntityPropertiesForValidationV AS epfvv
+				WHERE	([epfvv].[Schema] = N'SSop')
+					AND	(epfvv.Hobt = N'QuoteItems')
+					AND	(epfvv.Name NOT IN (N'SortOrder', N'Details'))
+
+	END;
 
 	--Hide the "Invoicing Schedule field until the record is saved for the first time"
 	IF(NOT EXISTS(SELECT 1 FROM SSop.QuoteItems WHERE Guid = @Guid))
@@ -87,9 +156,6 @@ BEGIN
 		RETURN;
 	END;
 
-
-
-	
 
 
     IF (EXISTS 

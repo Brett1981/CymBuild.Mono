@@ -15,12 +15,19 @@ CREATE TABLE [SCore].[EntityTypes] (
   [DetailPageUrl] [nvarchar](250) NOT NULL CONSTRAINT [DF_EntityTypes_DetailPageUrl] DEFAULT (''),
   [IconId] [int] NOT NULL CONSTRAINT [DF__EntityTyp__IconI__10CA0B99] DEFAULT (-1),
   [IsMetaData] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsMetaData] DEFAULT (0),
-  [IsDeletable] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsDeletable] DEFAULT (1),
-  CONSTRAINT [PK_EntityTypes] PRIMARY KEY CLUSTERED ([ID]) ON [METADATA]
+  [IsDeletable] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsDeletable] DEFAULT (1)
 )
 ON [METADATA]
 GO
 
+PRINT (N'Create primary key [PK_EntityTypes] on table [SCore].[EntityTypes]')
+GO
+ALTER TABLE [SCore].[EntityTypes] WITH NOCHECK
+  ADD CONSTRAINT [PK_EntityTypes] PRIMARY KEY CLUSTERED ([ID]) ON [METADATA]
+GO
+
+PRINT (N'Create index [IX_EntityTypes_Get] on table [SCore].[EntityTypes]')
+GO
 CREATE INDEX [IX_EntityTypes_Get]
   ON [SCore].[EntityTypes] ([Guid])
   INCLUDE ([RowStatus], [RowVersion], [Name], [HasDocuments], [LanguageLabelID], [IconId])
@@ -28,12 +35,19 @@ CREATE INDEX [IX_EntityTypes_Get]
   ON [METADATA]
 GO
 
+PRINT (N'Create index [IX_UQ_EntityTypes_Guid] on table [SCore].[EntityTypes]')
+GO
 CREATE UNIQUE INDEX [IX_UQ_EntityTypes_Guid]
   ON [SCore].[EntityTypes] ([Guid])
   WITH (FILLFACTOR = 100)
   ON [METADATA]
 GO
 
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_UQ_EntityTypes_Name] on table [SCore].[EntityTypes]')
+GO
 CREATE UNIQUE INDEX [IX_UQ_EntityTypes_Name]
   ON [SCore].[EntityTypes] ([Name], [RowStatus])
   WHERE ([RowStatus]<>(0))
@@ -41,20 +55,20 @@ CREATE UNIQUE INDEX [IX_UQ_EntityTypes_Name]
   ON [PRIMARY]
 GO
 
+PRINT (N'Create foreign key [FK_EntityTypes_IconId] on table [SCore].[EntityTypes]')
+GO
 ALTER TABLE [SCore].[EntityTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityTypes_IconId] FOREIGN KEY ([IconId]) REFERENCES [SUserInterface].[Icons] ([ID])
 GO
 
+PRINT (N'Create foreign key [FK_EntityTypes_LanguageLabels] on table [SCore].[EntityTypes]')
+GO
 ALTER TABLE [SCore].[EntityTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityTypes_LanguageLabels] FOREIGN KEY ([LanguageLabelID]) REFERENCES [SCore].[LanguageLabels] ([ID])
 GO
 
+PRINT (N'Create foreign key [FK_EntityTypes_RowStatus] on table [SCore].[EntityTypes]')
+GO
 ALTER TABLE [SCore].[EntityTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityTypes_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of a thing in the system e.g. Job or Quote.', 'SCHEMA', N'SCore', 'TABLE', N'EntityTypes'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityTypes]')
 GO

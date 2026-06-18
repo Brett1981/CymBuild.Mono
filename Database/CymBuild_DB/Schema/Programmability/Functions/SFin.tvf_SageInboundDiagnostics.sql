@@ -3,6 +3,7 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_SageInboundDiagnostics]')
 GO
+
 CREATE FUNCTION [SFin].[tvf_SageInboundDiagnostics]
 (
     @StatusCode NVARCHAR(30) = NULL,
@@ -100,10 +101,12 @@ RETURN
 
         srcTran.Guid AS TransactionGuid,
         ISNULL(srcTran.Number, N'') AS TransactionNumber,
+        srcTran.SageTransactionReference AS TransactionSageTransactionReference,
         CAST(ISNULL(srcTran.Batched, 0) AS BIT) AS TransactionIsBatched,
 
         matchedTran.Guid AS MatchedTransactionGuid,
         ISNULL(matchedTran.Number, N'') AS MatchedTransactionNumber,
+        matchedTran.SageTransactionReference AS MatchedTransactionSageTransactionReference,
 
         receiptTran.Guid AS MaterialisedReceiptTransactionGuid,
         ISNULL(receiptTran.Number, N'') AS MaterialisedReceiptTransactionNumber,

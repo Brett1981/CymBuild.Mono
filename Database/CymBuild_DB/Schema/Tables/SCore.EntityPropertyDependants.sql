@@ -183,8 +183,3 @@ GO
 ALTER TABLE [SCore].[EntityPropertyDependants] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityPropertyDependants_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityPropertyDependants]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'When the parent property changes, which properties should be rebound?', 'SCHEMA', N'SCore', 'TABLE', N'EntityPropertyDependants'
-GO

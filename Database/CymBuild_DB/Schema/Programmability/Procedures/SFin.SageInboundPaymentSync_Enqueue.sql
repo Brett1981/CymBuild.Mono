@@ -7,7 +7,7 @@ GO
 CREATE PROCEDURE [SFin].[SageInboundPaymentSync_Enqueue]
 (
     @CymBuildEntityTypeID   INT = NULL,
-    @CymBuildDocumentGuid   UNIQUEIDENTIFIER,
+    @CymBuildDocumentGuid   UNIQUEIDENTIFIER = NULL,
     @CymBuildDocumentID     BIGINT = NULL,
     @InvoiceRequestID       INT = NULL,
     @TransactionID          BIGINT = NULL,
@@ -27,63 +27,106 @@ BEGIN
         @ExistingID BIGINT = NULL,
         @EnsureGuid UNIQUEIDENTIFIER = NULL;
 
-    IF @CymBuildDocumentGuid IS NULL
-    BEGIN
-        ;THROW 60100, 'CymBuildDocumentGuid is required.', 1;
-    END;
-
-    SELECT
+    -------------------------------------------------------------------------
+    -- Resolve an existing status row first, if either Guid or TransactionID
+    -- was supplied.
+    -------------------------------------------------------------------------
+    SELECT TOP (1)
         @ExistingID = s.ID,
         @CymBuildEntityTypeID = COALESCE(@CymBuildEntityTypeID, s.CymBuildEntityTypeID),
+        @CymBuildDocumentGuid = COALESCE(@CymBuildDocumentGuid, s.CymBuildDocumentGuid),
         @CymBuildDocumentID = COALESCE(@CymBuildDocumentID, s.CymBuildDocumentID),
-        @InvoiceRequestID = COALESCE(@InvoiceRequestID, s.InvoiceRequestID),
-        @TransactionID = COALESCE(@TransactionID, s.TransactionID),
-        @JobID = COALESCE(@JobID, s.JobID),
-        @SageDataset = COALESCE(NULLIF(@SageDataset, N''), s.SageDataset),
-        @SageAccountReference = COALESCE(NULLIF(@SageAccountReference, N''), s.SageAccountReference),
-        @SageDocumentNo = COALESCE(NULLIF(@SageDocumentNo, N''), s.SageDocumentNo)
+        @InvoiceRequestID = COALESCE(@InvoiceRequestID, NULLIF(s.InvoiceRequestID, -1)),
+        @TransactionID = COALESCE(@TransactionID, NULLIF(s.TransactionID, -1)),
+        @JobID = COALESCE(NULLIF(@JobID, -1), NULLIF(s.JobID, -1)),
+        @SageDataset = COALESCE(NULLIF(@SageDataset, N''), NULLIF(s.SageDataset, N'')),
+        @SageAccountReference = COALESCE(NULLIF(@SageAccountReference, N''), NULLIF(s.SageAccountReference, N'')),
+        @SageDocumentNo = COALESCE(NULLIF(@SageDocumentNo, N''), NULLIF(s.SageDocumentNo, N''))
     FROM SFin.SageInboundDocumentStatus AS s
-    WHERE s.CymBuildDocumentGuid = @CymBuildDocumentGuid
-      AND s.RowStatus NOT IN (0, 254);
+    WHERE s.RowStatus NOT IN (0, 254)
+      AND
+      (
+            (@CymBuildDocumentGuid IS NOT NULL AND s.CymBuildDocumentGuid = @CymBuildDocumentGuid)
+         OR (@TransactionID IS NOT NULL AND s.TransactionID = @TransactionID)
+      )
+    ORDER BY s.ID DESC;
+
+    -------------------------------------------------------------------------
+    -- Resolve from SFin.Transactions.
+    -- Do not reference InvoiceRequestId here; it does not exist on this table.
+    -------------------------------------------------------------------------
+    SELECT TOP (1)
+        @TransactionID = COALESCE(@TransactionID, t.ID),
+        @CymBuildDocumentGuid = COALESCE(@CymBuildDocumentGuid, t.Guid),
+        @CymBuildDocumentID = COALESCE(@CymBuildDocumentID, t.ID),
+        @JobID = COALESCE(NULLIF(@JobID, -1), NULLIF(t.JobID, -1)),
+        @SageDocumentNo =
+            COALESCE
+            (
+                NULLIF(@SageDocumentNo, N''),
+                NULLIF(t.SageSalesOrderNumber, N''),
+                NULLIF(t.SageInvoiceNumber, N''),
+                NULLIF(t.ReservedInvoiceNumber, N''),
+                NULLIF(t.Number, N'')
+            )
+    FROM SFin.Transactions AS t
+    WHERE t.RowStatus NOT IN (0, 254)
+      AND
+      (
+            (@CymBuildDocumentGuid IS NOT NULL AND t.Guid = @CymBuildDocumentGuid)
+         OR (@TransactionID IS NOT NULL AND t.ID = @TransactionID)
+      )
+    ORDER BY t.ID DESC;
+
+    IF @CymBuildDocumentGuid IS NULL
+    BEGIN
+        ;THROW 60100, 'CymBuildDocumentGuid could not be resolved for Sage inbound status enqueue.', 1;
+    END;
+
+    IF @TransactionID IS NULL
+    BEGIN
+        ;THROW 60101, 'No active transaction exists for the supplied Sage inbound enqueue target.', 1;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Resolve EntityTypeID for finance transactions.
+    -------------------------------------------------------------------------
+    IF @CymBuildEntityTypeID IS NULL
+    BEGIN
+        SELECT TOP (1)
+            @CymBuildEntityTypeID = et.ID
+        FROM SCore.EntityTypes AS et
+        WHERE et.Name IN (N'Transactions', N'Finance Transactions', N'Transaction')
+          AND et.RowStatus NOT IN (0, 254)
+        ORDER BY
+            CASE et.Name
+                WHEN N'Transactions' THEN 1
+                WHEN N'Finance Transactions' THEN 2
+                WHEN N'Transaction' THEN 3
+                ELSE 4
+            END,
+            et.ID;
+    END;
+
+    IF @CymBuildEntityTypeID IS NULL
+    BEGIN
+        ;THROW 60102, 'Could not resolve EntityTypeID for SFin.Transactions.', 1;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Create the status row if it does not already exist.
+    -- SageInboundDocumentStatus_Ensure must handle the DataObjects-compliant
+    -- insert path.
+    -------------------------------------------------------------------------
+    SET @InvoiceRequestID = ISNULL(@InvoiceRequestID, -1);
+    SET @CymBuildDocumentID = ISNULL(@CymBuildDocumentID, @TransactionID);
+    SET @JobID = ISNULL(@JobID, -1);
+    SET @SageDataset = ISNULL(@SageDataset, N'');
+    SET @SageAccountReference = ISNULL(@SageAccountReference, N'');
+    SET @SageDocumentNo = ISNULL(@SageDocumentNo, N'');
 
     IF @ExistingID IS NULL
     BEGIN
-        SELECT TOP (1)
-            @TransactionID = COALESCE(@TransactionID, t.ID),
-            @CymBuildDocumentID = COALESCE(@CymBuildDocumentID, t.ID),
-            @JobID = COALESCE(NULLIF(@JobID, -1), t.JobID),
-            @SageDocumentNo = COALESCE(NULLIF(@SageDocumentNo, N''), t.SageSalesOrderNumber, t.SageInvoiceNumber, t.Number)
-        FROM SFin.Transactions AS t
-        WHERE t.Guid = @CymBuildDocumentGuid
-          AND t.RowStatus NOT IN (0, 254);
-
-        IF @TransactionID IS NULL
-        BEGIN
-            ;THROW 60101, 'No active transaction exists for the supplied CymBuildDocumentGuid, so Sage inbound status cannot be created.', 1;
-        END;
-
-        IF @CymBuildEntityTypeID IS NULL
-        BEGIN
-            SELECT TOP (1)
-                @CymBuildEntityTypeID = et.ID
-            FROM SCore.EntityTypes AS et
-            WHERE et.Name IN (N'Transactions', N'Finance Transactions', N'Transaction')
-              AND et.RowStatus NOT IN (0, 254)
-            ORDER BY
-                CASE et.Name
-                    WHEN N'Transactions' THEN 1
-                    WHEN N'Finance Transactions' THEN 2
-                    WHEN N'Transaction' THEN 3
-                    ELSE 4
-                END,
-                et.ID;
-        END;
-
-        IF @CymBuildEntityTypeID IS NULL
-        BEGIN
-            ;THROW 60102, 'Could not resolve EntityTypeID for SFin.Transactions.', 1;
-        END;
-
         EXEC SFin.SageInboundDocumentStatus_Ensure
              @CymBuildEntityTypeID = @CymBuildEntityTypeID,
              @CymBuildDocumentGuid = @CymBuildDocumentGuid,
@@ -96,16 +139,26 @@ BEGIN
              @SageDocumentNo = @SageDocumentNo,
              @Guid = @EnsureGuid OUTPUT;
 
-        SELECT
+        SELECT TOP (1)
             @ExistingID = s.ID
         FROM SFin.SageInboundDocumentStatus AS s
         WHERE s.Guid = @EnsureGuid
-          AND s.RowStatus NOT IN (0, 254);
+          AND s.RowStatus NOT IN (0, 254)
+        ORDER BY s.ID DESC;
     END;
 
+    IF @ExistingID IS NULL
+    BEGIN
+        ;THROW 60103, 'Sage inbound status row could not be created or resolved.', 1;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Requeue for inbound payment/status sync.
+    -------------------------------------------------------------------------
     UPDATE SFin.SageInboundDocumentStatus
     SET
         CymBuildEntityTypeID      = @CymBuildEntityTypeID,
+        CymBuildDocumentGuid      = @CymBuildDocumentGuid,
         CymBuildDocumentID        = ISNULL(@CymBuildDocumentID, -1),
         InvoiceRequestID          = ISNULL(@InvoiceRequestID, -1),
         TransactionID             = ISNULL(@TransactionID, -1),
@@ -118,7 +171,7 @@ BEGIN
         IsInProgress              = 0,
         InProgressClaimedOnUtc    = NULL,
         LastError                 = CASE WHEN @ForceRequeue = 1 THEN N'' ELSE LastError END,
-        LastErrorIsRetryable      = CASE WHEN @ForceRequeue = 1 THEN 0 ELSE LastErrorIsRetryable END,
+        LastErrorIsRetryable      = CASE WHEN @ForceRequeue = 1 THEN CONVERT(BIT, 0) ELSE LastErrorIsRetryable END,
         NextPollDueOnUtc          = @NowUtc,
         PollAttemptCount          = CASE WHEN @ForceRequeue = 1 THEN 0 ELSE PollAttemptCount END,
         IsTerminalState           = 0,

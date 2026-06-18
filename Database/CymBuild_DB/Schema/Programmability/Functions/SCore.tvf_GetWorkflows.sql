@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_GetWorkflows]')
+GO
 CREATE FUNCTION [SCore].[tvf_GetWorkflows] 
 (
 	@UserID INT

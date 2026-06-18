@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create view [SCore].[MissingSchemaProperties]')
+GO
+
 CREATE VIEW	[SCore].[MissingSchemaProperties]
 AS
 SELECT	p.guid, h.SchemaName, h.ObjectName, p.Name 

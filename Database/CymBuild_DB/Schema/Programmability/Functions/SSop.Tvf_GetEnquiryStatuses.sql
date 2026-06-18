@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[Tvf_GetEnquiryStatuses]')
+GO
 /* =============================================================================
    CYB-101 – Enquiry QuotingStatus (TVF) alignment fixes
    (NO workflow process changes – calculation / sync logic only)
@@ -25,7 +28,7 @@ GO
 ============================================================================= */
 CREATE FUNCTION [SSop].[Tvf_GetEnquiryStatuses](@id INT)
 RETURNS TABLE
---WITH SCHEMABINDING
+    --WITH SCHEMABINDING
 AS
 RETURN
 (

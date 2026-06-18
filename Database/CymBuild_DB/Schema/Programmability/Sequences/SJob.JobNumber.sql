@@ -1,6 +1,7 @@
-﻿CREATE SEQUENCE [SJob].[JobNumber]
+﻿PRINT (N'Create sequence [SJob].[JobNumber]')
+GO
+CREATE SEQUENCE [SJob].[JobNumber]
   AS int
-  START WITH 8343
   INCREMENT BY 1
   MINVALUE 0
   NO CYCLE

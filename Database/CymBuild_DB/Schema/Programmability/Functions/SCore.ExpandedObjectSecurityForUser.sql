@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[ExpandedObjectSecurityForUser]')
+GO
 CREATE FUNCTION [SCore].[ExpandedObjectSecurityForUser]
 	(
 		@ObjectGuid UNIQUEIDENTIFIER,
 		@UserId		INT
 	)
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 	RETURN
 

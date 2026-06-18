@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[PriceListsUpsert]')
+GO
+
 CREATE PROCEDURE [SSop].[PriceListsUpsert] 
 								@Name NVARCHAR(100),
 								@IsActive BIT,

@@ -13,5 +13,8 @@
         public string? AnalysisCode02Value { get; set; }
         public string? AnalysisCode03Value { get; set; }
         public List<SageSalesOrderLine> Lines { get; set; } = new();
+        public Int64? TransactionId { get; set; }
+        public bool? HasTransactionId => TransactionId.HasValue;
+
     }
 }

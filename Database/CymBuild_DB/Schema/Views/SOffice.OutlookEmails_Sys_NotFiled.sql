@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create view [SOffice].[OutlookEmails_Sys_NotFiled]')
+GO
+
 
 CREATE VIEW [SOffice].[OutlookEmails_Sys_NotFiled]
 	--WITH SCHEMABINDIGN

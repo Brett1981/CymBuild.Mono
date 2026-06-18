@@ -1,5 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create function [SUserInterface].[tvf_GridViewDefinitions]')
 GO
 CREATE FUNCTION [SUserInterface].[tvf_GridViewDefinitions]

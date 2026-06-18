@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SCore].[tvf_ActionsForEntityProperty]')
+GO
+
 CREATE FUNCTION [SCore].[tvf_ActionsForEntityProperty]
 	(
 		@Guid UNIQUEIDENTIFIER

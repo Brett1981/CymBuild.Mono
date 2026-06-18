@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuotesValidate]')
+GO
+
 CREATE FUNCTION [SSop].[tvf_QuotesValidate]
 (
     @Guid UNIQUEIDENTIFIER,
@@ -88,6 +92,59 @@ DECLARE
     -------------------------------------------------------------------------
     -- Prevent changing Quote if Enquiry not ready for quote review
     -------------------------------------------------------------------------
+
+	/*
+		Additional check for reopened status. 
+
+		=======================================================================================
+		= SET @IsReopened = CASE WHEN @LatestWorkflowStatusGuid = @Reopenen THEN 1 ELSE 0 END =
+		=======================================================================================
+
+		The above is based on the last available status. Currently, if we reopen a quote,
+		it first assigns "Reopened" and then immediately after that "Quoting". Aka, it would fail.
+
+
+	*/
+	IF(@IsReopened = 0)
+	BEGIN
+
+		IF(EXISTS
+				(
+					SELECT 1  
+					FROM SCore.DataObjectTransition AS Dob
+					JOIN SCore.WorkflowStatus AS wfs ON (Dob.StatusID = wfs.ID)
+					WHERE 
+								(Dob.RowStatus NOT IN (0, 254))
+							AND (wfs.RowStatus NOT IN (0,254))
+							AND (Dob.DataObjectGuid = @Guid)
+							AND (
+										wfs.Guid = '9A60F983-24BA-4733-907E-C5CCE0B691CB' --Quoting
+									OR  wfs.Guid = '34EF363A-C8F7-4BA8-A2C6-067EBAEF12FD' --Reopened
+								)
+							AND (
+										dob.Comment LIKE N'%Reopened quote returned to quoting.%'
+									OR  dob.Comment LIKE N'%System Imported%'
+								)
+							AND NOT EXISTS
+								(
+									SELECT 1  
+									FROM SCore.DataObjectTransition AS Dob2
+									JOIN SCore.WorkflowStatus AS wfs2 ON (Dob2.StatusID = wfs2.ID)
+									WHERE 
+											(Dob2.RowStatus NOT IN (0, 254))
+										AND (wfs2.RowStatus NOT IN (0, 254))
+										AND (Dob2.DataObjectGuid = @Guid )
+										AND (Dob2.ID > Dob.ID)
+								)
+				)
+		  )
+
+		  SET @IsReopened = 1
+		
+	 END;
+
+
+
     IF EXISTS
     (
         SELECT 1
@@ -116,6 +173,52 @@ DECLARE
         WHERE et.Name = N'Quotes';
         RETURN;
     END;
+
+    -------------------------------------------------------------------------
+    -- CYB-317
+    -- Lock superseded quote revisions.
+    -- Only the latest active revision in a quote chain remains editable.
+    -------------------------------------------------------------------------
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SSop.Quotes AS qCurrent
+        JOIN SSop.Quotes AS qOther
+            ON qOther.RowStatus NOT IN (0,254)
+           AND qOther.Number = qCurrent.Number
+           AND ISNULL(qOther.OriginalQuoteId, -1) =
+               CASE
+                   WHEN qCurrent.OriginalQuoteId = -1 THEN qCurrent.ID
+                   ELSE qCurrent.OriginalQuoteId
+               END
+           AND qOther.RevisionNumber > qCurrent.RevisionNumber
+        WHERE qCurrent.Guid = @Guid
+          AND qCurrent.RowStatus NOT IN (0,254)
+    )
+    BEGIN
+        INSERT @ValidationResult
+        (
+            TargetGuid,
+            TargetType,
+            IsReadOnly,
+            IsHidden,
+            IsInvalid,
+            Message
+        )
+        SELECT
+            epfvv.Guid,
+            N'P',
+            1,
+            0,
+            0,
+            N''
+        FROM SCore.EntityPropertiesForValidationV AS epfvv
+        WHERE epfvv.[Schema] = N'SSop'
+          AND epfvv.Hobt IN (N'Quotes', N'Quote_ExtendedInfo');
+
+        RETURN;
+    END;
+
     -------------------------------------------------------------------------
     -- Lock quote when jobs exist or dead
     -------------------------------------------------------------------------
@@ -127,32 +230,38 @@ DECLARE
         WHERE q.Guid = @Guid
           AND qi.RowStatus NOT IN (0,254)
           AND qi.CreatedJobId > 0
-    )
-    OR (@IsDead = 1 OR @DeadDate IS NOT NULL AND @IsReopened = 0)
+		  AND @IsReopened = 0
+		  
+    ) 
+    OR ((@IsDead = 1 OR @DeadDate IS NOT NULL) AND @IsReopened = 0)
     BEGIN
         INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
         VALUES (@EntityTypeGuid, N'E', 1, 0, 0, N'');
         RETURN;
     END;
+
     -------------------------------------------------------------------------
     -- CDM FeeCap hide
     -------------------------------------------------------------------------
-    IF EXISTS
-    (
-        SELECT 1
-        FROM SCore.OrganisationalUnits ou
-        WHERE ou.Guid = @OrganisationalUnitGuid
-          AND ou.Name LIKE N'CDM%'
-          AND ou.RowStatus NOT IN (0,254)
-    )
-    BEGIN
-        INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-        SELECT epfvv.Guid, N'P', 0, 1, 0, N''
-        FROM SCore.EntityPropertiesForValidationV epfvv
-        WHERE epfvv.[Schema] = N'SSop'
-          AND epfvv.Hobt = N'Quotes'
-          AND epfvv.Name = N'FeeCap';
-    END;
+	IF(@IsReopened = 0)
+	BEGIN
+		IF EXISTS
+		(
+			SELECT 1
+			FROM SCore.OrganisationalUnits ou
+			WHERE ou.Guid = @OrganisationalUnitGuid
+			  AND ou.Name LIKE N'CDM%'
+			  AND ou.RowStatus NOT IN (0,254)
+		)
+		BEGIN
+			INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			SELECT epfvv.Guid, N'P', 0, 1, 0, N''
+			FROM SCore.EntityPropertiesForValidationV epfvv
+			WHERE epfvv.[Schema] = N'SSop'
+			  AND epfvv.Hobt = N'Quotes'
+			  AND epfvv.Name = N'FeeCap';
+		END;
+	END;
     -------------------------------------------------------------------------
     -- RevisionNumber rule
     -------------------------------------------------------------------------
@@ -270,7 +379,7 @@ DECLARE
     -------------------------------------------------------------------------
     -- Complete-status lock (latest-only)
     -------------------------------------------------------------------------
-    IF (@LatestIsCompleteStatus = 1 AND @IsReopened = 1 )
+    IF (@LatestIsCompleteStatus = 1 AND @IsReopened = 0 )
     BEGIN
         INSERT @ValidationResult (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
         SELECT epfvv.Guid, N'P', 1, 0, 0, N''
@@ -280,4 +389,5 @@ DECLARE
     END;
     RETURN;
 END;
+
 GO

@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SUserInterface].[tvf_ActionMenuItems]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_ActionMenuItems]
   (
     @UserId INT,
     @Guid   UNIQUEIDENTIFIER
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN SELECT
           ami.ID,

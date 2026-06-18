@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCrm].[tvf_ContactJobHistory]')
+GO
 CREATE FUNCTION [SCrm].[tvf_ContactJobHistory]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN	
 SELECT  j.ID,
         j.RowStatus,

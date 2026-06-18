@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[GroupUpsert]')
+GO
 CREATE PROCEDURE [SCore].[GroupUpsert]
 (
     @Name        NVARCHAR(250),

@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_TeamsMyInvoicing]')
+GO
 CREATE FUNCTION [SFin].[tvf_TeamsMyInvoicing]
 	(
 		@UserId INT
 	)
 RETURNS TABLE
-     --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN SELECT
 	i.FullName AS Consultant,

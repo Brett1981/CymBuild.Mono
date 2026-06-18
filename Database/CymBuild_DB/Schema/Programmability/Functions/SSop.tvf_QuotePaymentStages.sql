@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuotePaymentStages]')
+GO
 CREATE FUNCTION [SSop].[tvf_QuotePaymentStages]
 	(
 		@UserId INT,
 		@ParentGuid UNIQUEIDENTIFIER
 	)
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN SELECT		qps.ID,
 					qps.RowStatus,

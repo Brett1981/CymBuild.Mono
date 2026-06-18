@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SUserInterface].[GridViewColumnDefinitionsV]')
+GO
 CREATE VIEW [SUserInterface].[GridViewColumnDefinitionsV]
-   --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
   SELECT
           gvcd.ID,
@@ -25,5 +28,6 @@ AS
   JOIN SCore.LanguageLabels ll ON (ll.ID = gvcd.LanguageLabelId)
   WHERE
           (gvcd.RowStatus NOT IN (0, 254))
+
 
 GO

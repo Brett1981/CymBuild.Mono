@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[TwoStringBitIndexedList] AS TABLE (
+﻿PRINT (N'Create type [SCore].[TwoStringBitIndexedList]')
+GO
+CREATE TYPE [SCore].[TwoStringBitIndexedList] AS TABLE (
   [ID] [bigint] IDENTITY,
   [StringValue1] [nvarchar](400) NOT NULL DEFAULT (''),
   [StringValue2] [nvarchar](400) NOT NULL DEFAULT (''),

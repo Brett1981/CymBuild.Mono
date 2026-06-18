@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SUserInterface].[ActionMenuItemsUpsert]')
+GO
+
 CREATE PROCEDURE [SUserInterface].[ActionMenuItemsUpsert]
   (
     @LanguageLabelGuid UNIQUEIDENTIFIER,

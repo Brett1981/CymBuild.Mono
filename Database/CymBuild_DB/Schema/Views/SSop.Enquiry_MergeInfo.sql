@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[Enquiry_MergeInfo]')
+GO
 CREATE VIEW [SSop].[Enquiry_MergeInfo]
-	--WITH SCHEMABINDING
+	    --WITH SCHEMABINDING
 AS
 SELECT		e.ID,
 			e.RowStatus,
@@ -224,7 +227,4 @@ OUTER APPLY (
 		
 		
 
-GO
-
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Enquiry Merge Fields', 'SCHEMA', N'SSop', 'VIEW', N'Enquiry_MergeInfo'
 GO

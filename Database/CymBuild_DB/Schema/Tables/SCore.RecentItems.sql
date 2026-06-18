@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[RecentItems]')
 GO
-PRINT (N'Create table [SCore].[RecentItems]')
-GO
 CREATE TABLE [SCore].[RecentItems] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_RecentItems_RowStatus] DEFAULT (0),
@@ -225,12 +223,4 @@ PRINT (N'Create foreign key [FK_RecentItems_Identities] on table [SCore].[Recent
 GO
 ALTER TABLE [SCore].[RecentItems] WITH NOCHECK
   ADD CONSTRAINT [FK_RecentItems_Identities] FOREIGN KEY ([UserID]) REFERENCES [SCore].[Identities] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[RecentItems]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'A log of which items each user has opened. ', 'SCHEMA', N'SCore', 'TABLE', N'RecentItems'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[RecentItems]')
 GO

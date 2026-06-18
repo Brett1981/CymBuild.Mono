@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[EnquiryServicesExtUpsert]')
+GO
 CREATE PROCEDURE [SSop].[EnquiryServicesExtUpsert]
 	(	@DateSent DATE,
 		@DateAccepted DATE,

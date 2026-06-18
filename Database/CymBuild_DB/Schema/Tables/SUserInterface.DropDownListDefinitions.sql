@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SUserInterface].[DropDownListDefinitions]')
 GO
-PRINT (N'Create table [SUserInterface].[DropDownListDefinitions]')
-GO
 CREATE TABLE [SUserInterface].[DropDownListDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_DropDownListDefinition_RowStatus] DEFAULT (0),
@@ -366,12 +364,4 @@ PRINT (N'Create foreign key [FK_DropDownListDefinitions_RowStatus] on table [SUs
 GO
 ALTER TABLE [SUserInterface].[DropDownListDefinitions] WITH NOCHECK
   ADD CONSTRAINT [FK_DropDownListDefinitions_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[DropDownListDefinitions]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of how to display a drop down list. ', 'SCHEMA', N'SUserInterface', 'TABLE', N'DropDownListDefinitions'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[DropDownListDefinitions]')
 GO

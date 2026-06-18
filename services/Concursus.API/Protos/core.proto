@@ -74,9 +74,12 @@ service Core {
   rpc GridViewDefinitions (GridViewDefinitionsRequest) returns (GridViewDefinitionsReply);
   rpc GridViewDefinitionUpsert (GridViewDefinitionUpsertRequest) returns (GridViewDefinitionUpsertReply);
   rpc ImportLegacyStatuses(ImportLegacyStatusesReq) returns (ImportLegacyStatusesRes);
+  rpc InvoiceScheduleConfigurationTotalsGet (InvoiceScheduleConfigurationTotalsGetRequest) returns (InvoiceScheduleConfigurationTotalsGetResponse);
   rpc JobClosureDecision (JobClosureDecisionRequest) returns (JobClosureDecisionResponse);
   rpc JobInvoiceGenerateFromPendingTriggers (JobInvoiceGenerateFromPendingTriggersRequest) returns (google.protobuf.Empty);
   rpc JobInvoicePendingTriggerCountGet (JobInvoicePendingTriggerCountGetRequest) returns (JobInvoicePendingTriggerCountGetResponse);
+  rpc InvoiceScheduleDrawdownsBulkUpdate (InvoiceScheduleDrawdownsBulkUpdateRequest) returns (InvoiceScheduleDrawdownsBulkUpdateResponse);
+  rpc InvoiceScheduleDrawdownStageLookupGet (InvoiceScheduleDrawdownStageLookupGetRequest) returns (InvoiceScheduleDrawdownStageLookupGetResponse);
   // CYB-43 Invoice Processing Mode (Automated/Manual/Paused)
   rpc JobInvoiceProcessingModeGet (JobInvoiceProcessingModeGetRequest) returns (JobInvoiceProcessingModeGetResponse);
   rpc JobInvoiceProcessingModeSet (JobInvoiceProcessingModeSetRequest) returns (JobInvoiceProcessingModeSetResponse);
@@ -120,6 +123,7 @@ service Core {
   rpc SageFetchSalesOrders (SageFetchSalesOrdersRequest) returns (SageFetchSalesOrdersResponse);
 
   rpc SageHealthGet (SageHealthGetRequest) returns (SageHealthGetResponse);
+  rpc SageInboundDiagnosticsApplyTransactionReferences (SageInboundDiagnosticsApplyTransactionReferencesRequest) returns (SageInboundDiagnosticsApplyTransactionReferencesReply);
   rpc SageInboundDiagnosticsGet (SageInboundDiagnosticsGetRequest) returns (SageInboundDiagnosticsGetReply);
   rpc SageInboundPaymentSync (SageInboundPaymentSyncRequestMessage) returns (SageInboundPaymentSyncReply);
   rpc SageInboundPaymentSyncEnqueue (SageInboundPaymentSyncEnqueueRequestMessage) returns (SageInboundPaymentSyncEnqueueReply);
@@ -1476,6 +1480,57 @@ message ImportLegacyStatusesRes {
     string errorReturned = 2;
 }
 
+message InvoiceScheduleConfigurationTotalsGetRequest {
+  int32 userId = 1;
+  string invoiceScheduleGuid = 2;
+}
+
+message InvoiceScheduleConfigurationTotalsGetResponse {
+  double monthlyTotalAmount = 1;
+  double percentageTotalPercentage = 2;
+  double percentageTotalAmount = 3;
+  double scheduleAmount = 4;
+  string errorReturned = 99;
+}
+
+message InvoiceScheduleDrawdownsBulkUpdateRequest {
+  string invoiceScheduleGuid = 1;
+  string gridCode = 2;
+  repeated InvoiceScheduleDrawdownBulkUpdateRow rows = 3;
+}
+
+message InvoiceScheduleDrawdownBulkUpdateRow {
+  string guid = 1;
+  int32 periodNumber = 2;
+  double amount = 3;
+  double percentage = 4;
+  string onDayOfMonth = 5;
+  string description = 6;
+  string ribaStageGuid = 7;
+}
+
+message InvoiceScheduleDrawdownsBulkUpdateResponse {
+  bool success = 1;
+  int32 updatedCount = 2;
+  string message = 3;
+  string errorReturned = 99;
+}
+
+message InvoiceScheduleDrawdownStageLookupGetRequest {
+  int32 userId = 1;
+  string invoiceScheduleGuid = 2;
+}
+
+message InvoiceScheduleDrawdownStageLookupRow {
+  string guid = 1;
+  string name = 2;
+}
+
+message InvoiceScheduleDrawdownStageLookupGetResponse {
+  repeated InvoiceScheduleDrawdownStageLookupRow rows = 1;
+  string errorReturned = 99;
+}
+
 message JobClosureDecisionRequest {
   int32 userId = 1;        // Authoriser identity ID (INT)
   string jobGuid = 2;      // Job GUID
@@ -2317,6 +2372,8 @@ message SageCreateSalesOrderRequest {
   string analysis_code02_value = 12;
   string analysis_code03_value = 13;
   repeated SageCreateSalesOrderLine lines = 14;
+  int64 transaction_id = 15;
+  bool has_transaction_id = 16;
 }
 
 message SageCreateSalesOrderResponse {
@@ -2325,8 +2382,8 @@ message SageCreateSalesOrderResponse {
   string detail = 3;
   string raw_json = 4;       // legacy/debug
   string error_returned = 5;
-
-  bool success = 6;
+  string sage_transaction_reference = 6;
+  bool success = 7;
 }
 
 message SageCustomerTransaction {
@@ -2389,6 +2446,21 @@ message SageHealthGetResponse {
 
   bool is_healthy = 4;
   google.protobuf.StringValue detail = 5;
+}
+
+message SageInboundDiagnosticsApplyTransactionReferencesRequest {
+  string status_guid = 1;
+  int64 transaction_id = 2;
+  bool has_transaction_id = 3;
+  bool dry_run = 4;
+}
+
+message SageInboundDiagnosticsApplyTransactionReferencesReply {
+  bool success = 1;
+  int32 applied_count = 2;
+  bool dry_run = 3;
+  string message = 4;
+  string error_returned = 5;
 }
 
 message SageInboundDiagnosticsGetReply {
@@ -2471,6 +2543,8 @@ message SageInboundDiagnosticsRow {
 
   string materialisedAllocationGuid = 55;
   int64 materialisedAllocationId = 56;
+  string transactionSageTransactionReference = 57;
+  string matchedTransactionSageTransactionReference = 58;
 }
 
 message SageInboundPaymentSyncEnqueueReply {

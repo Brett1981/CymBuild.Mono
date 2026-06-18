@@ -69,14 +69,6 @@ public partial class DynamicGrid
                 InteractionTracker.Log(NavManager.Uri ?? "Drawer Selection", $"User changed Grid Draw - '{gridViewCode}'");
             }
         }
-
-        if (item.ViewDefinition?.Code == "ALLTRANSACTIONS")
-        {
-            await LoadBatchedTransactionsAsync();
-        }
-
-        await InvokeAsync(StateHasChanged);
-
     }
 
     public async Task ToggleDrawer()
@@ -156,8 +148,6 @@ public partial class DynamicGrid
                         selectedItem = Data.FirstOrDefault(x => x.ViewDefinition?.Code == isSelectedItemInSession) ?? Data.First();
                     }
 
-                    //Keep this in here (on load, the selectedItemsHandler will not necesserily run - this will ensure the gvd is loaded)
-                    //LoadBatchedTransactionsAsync will act a safety net when clicking between items.
                     if (selectedItem.ViewDefinition.Code == "ALLTRANSACTIONS")
                     {
                         var BatchedTransactionGridViewReply = await coreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
@@ -172,7 +162,7 @@ public partial class DynamicGrid
                             .Where(x => x.Code == "BATCHEDTRANSACTIONS")
                             .FirstOrDefault();
 
-                        StateHasChanged();
+                        Console.WriteLine(BatchedTransactionsGvd);
                     }
                 }
             }
@@ -201,23 +191,19 @@ public partial class DynamicGrid
         _ = OnActionCompleted.InvokeAsync();
     }
 
-    //Loads the batched transaction grid. 
-    private async Task LoadBatchedTransactionsAsync()
-    {
-        if (BatchedTransactionsGvd != null)
-            return;
+    //private async Task SelectedItemChangedHandler(DrawerItem item)
+    //{
+    //    selectedItem = item;
 
-        var reply = await coreClient.GridDefinitionListAsync(
-            new GridDefinitionListRequest
-            {
-                Code = "BATCHEDTRANSACTIONS",
-                ForUi = true
-            });
+    // if (selectedItem.ViewDefinition.GridViewTypeId == 1) { Dgv = new DynamicGridView(); } else {
+    // Dgv = new DynamicBatchGridView(); }
 
-        BatchedTransactionsGvd = reply.Grids[0]
-            .Views
-            .FirstOrDefault(x => x.Code == "BATCHEDTRANSACTIONS");
-    }
+    // refreshService.RequestGridRefresh(selectedItem.Text ?? ""); // if you don't update the
+    // view-model, the event will effectively be cancelled
+
+    //    Console.WriteLine($"The user selected {item.Text}");
+    //    // Drawer?.SelectedItemChanged.InvokeAsync(selectedItem);
+    //}
 
     public void RefreshGrid()
     {

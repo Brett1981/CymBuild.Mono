@@ -140,9 +140,10 @@
                             </div>
 
                             <div class="mt-3 d-flex gap-2">
-                                <TelerikButton OnClick="@PromptModeChangeAsync" Enabled="@(_selectedMode != _currentMode)">
+                                <button class="btn btn-primary" onclick="@PromptModeChangeAsync" disabled="@(_selectedMode != _currentMode)">
                                     Apply mode change
-                                </TelerikButton>
+                                </button>
+                             
 
                                 <div class="text-muted small align-self-center">
                                     Changing mode is logged and auditable.

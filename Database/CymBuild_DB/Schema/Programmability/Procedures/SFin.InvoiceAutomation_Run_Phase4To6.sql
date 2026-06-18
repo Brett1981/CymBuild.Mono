@@ -3,8 +3,7 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_Run_Phase4To6]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_Run_Phase4To6]')
-GO
+
 /* =============================================================================
    SFin.InvoiceAutomation_Run_Phase4To6 (REPLACEMENT - hardened + DataObject-safe)
 

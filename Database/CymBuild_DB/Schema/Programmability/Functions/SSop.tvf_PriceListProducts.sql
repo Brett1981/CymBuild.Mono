@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_PriceListProducts]')
+GO
 CREATE FUNCTION [SSop].[tvf_PriceListProducts]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN	
 SELECT  plp.ID,
         plp.RowStatus,

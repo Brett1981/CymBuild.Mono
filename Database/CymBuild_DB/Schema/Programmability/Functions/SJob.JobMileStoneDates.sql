@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[JobMileStoneDates]')
+GO
 CREATE FUNCTION [SJob].[JobMileStoneDates]
 (	
 	@JobTypeCode NVARCHAR(20),
 	@JobId INT	
 )
 RETURNS TABLE 
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN 
 (

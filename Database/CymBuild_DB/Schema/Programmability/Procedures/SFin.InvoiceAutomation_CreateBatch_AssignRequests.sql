@@ -3,8 +3,6 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateBatch_AssignRequests]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateBatch_AssignRequests]')
-GO
 
 CREATE PROCEDURE [SFin].[InvoiceAutomation_CreateBatch_AssignRequests]
 (

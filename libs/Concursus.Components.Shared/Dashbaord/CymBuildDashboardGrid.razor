@@ -1,0 +1,218 @@
+﻿@using Concursus.API.Client.Classes
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Newtonsoft.Json
+@using System.Web
+
+@inject Core.CoreClient CoreClient
+@inject NavigationManager Navigation
+
+<div class="cb-v2-table-wrap">
+    <table class="cb-v2-table cb-v2-dashboard-grid">
+        <thead>
+            <tr>
+                @foreach (var column in VisibleColumns)
+                {
+                    <th>@column.Title</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (_isLoading)
+            {
+                <tr>
+                    <td colspan="@VisibleColumns.Count">
+                        <div class="cb-v2-muted">Loading...</div>
+                    </td>
+                </tr>
+            }
+            else if (_rows.Count == 0)
+            {
+                <tr>
+                    <td colspan="@VisibleColumns.Count">
+                        <div class="cb-v2-muted">No records found.</div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var row in PagedRows)
+                {
+                    <tr class="cb-v2-clickable-row"
+                        title="Double click to open"
+                        @ondblclick="() => OpenRowAsync(row)">
+                        @foreach (var column in VisibleColumns)
+                        {
+                            <td>
+                                <div class="cb-v2-ellipsis" title="@GetValue(row, column.Name)">
+                                    @GetValue(row, column.Name)
+                                </div>
+                            </td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    @if (!_isLoading && _rows.Count > PageSize)
+    {
+        <div class="cb-v2-table-footer">
+            <button type="button"
+                    class="cb-v2-btn-secondary"
+                    disabled="@(_pageNumber <= 1)"
+                    @onclick="PreviousPage">
+                Previous
+            </button>
+
+            <span class="cb-v2-muted">
+                Page @_pageNumber of @TotalPages
+            </span>
+
+            <button type="button"
+                    class="cb-v2-btn-secondary"
+                    disabled="@(_pageNumber >= TotalPages)"
+                    @onclick="NextPage">
+                Next
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string GridCode { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public GridViewDefinition ViewDefinition { get; set; } = new();
+    [Parameter] public bool FullGrid { get; set; }
+    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+
+    private readonly List<Dictionary<string, string>> _rows = new();
+    private bool _isLoading;
+    private int _pageNumber = 1;
+
+    private List<GridViewColumnDefinition> VisibleColumns =>
+        ViewDefinition.Columns
+            .Where(x => !x.IsHidden)
+            .OrderBy(x => x.ColumnOrder)
+            .ToList();
+
+    private IEnumerable<Dictionary<string, string>> PagedRows =>
+        _rows
+            .Skip((_pageNumber - 1) * PageSize)
+            .Take(PageSize);
+
+    private int TotalPages =>
+        Math.Max(1, (int)Math.Ceiling(_rows.Count / (double)PageSize));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(GridCode) || string.IsNullOrWhiteSpace(ViewDefinition.Code))
+        {
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var reply = await CoreClient.GridDataListAsync(new GridDataListRequest
+            {
+                GridCode = GridCode,
+                GridViewCode = ViewDefinition.Code,
+                Page = 1,
+                PageSize = 100
+            });
+
+            _rows.Clear();
+
+            foreach (var dataRow in reply.DataTable)
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var column in dataRow.Columns)
+                {
+                    row[column.Name] = column.Value ?? string.Empty;
+                }
+
+                _rows.Add(row);
+            }
+
+            _pageNumber = 1;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenRowAsync(Dictionary<string, string> row)
+    {
+        if (string.IsNullOrWhiteSpace(ViewDefinition.DetailPageUri))
+        {
+            return;
+        }
+
+        var recordGuid = GetFirstValue(row, "RecordGuid", "Guid", "DataObjectGuid");
+        var entityTypeGuid = GetFirstValue(row, "EntityTypeGuid");
+
+        if (string.IsNullOrWhiteSpace(recordGuid))
+        {
+            return;
+        }
+
+        var parentReference = ParentDataObjectReference ?? new DataObjectReference("", "");
+        var serializedParentReference = HttpUtility.UrlEncode(JsonConvert.SerializeObject(parentReference));
+
+        if (ViewDefinition.DetailPageUri == "DynamicEdit")
+        {
+            Navigation.NavigateTo(
+                $"{ViewDefinition.DetailPageUri}/{ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityTypeGuid)}/{Guid.Empty}/{serializedParentReference}/{HttpUtility.UrlEncode(Navigation.Uri)}");
+        }
+        else
+        {
+            Navigation.NavigateTo(
+                $"{ViewDefinition.DetailPageUri}/{ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(recordGuid)}/{serializedParentReference}/{HttpUtility.UrlEncode(Navigation.Uri)}");
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private string GetValue(Dictionary<string, string> row, string columnName)
+    {
+        return row.TryGetValue(columnName, out var value) ? value : string.Empty;
+    }
+
+    private static string GetFirstValue(Dictionary<string, string> row, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (row.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private void PreviousPage()
+    {
+        if (_pageNumber > 1)
+        {
+            _pageNumber--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (_pageNumber < TotalPages)
+        {
+            _pageNumber++;
+        }
+    }
+}

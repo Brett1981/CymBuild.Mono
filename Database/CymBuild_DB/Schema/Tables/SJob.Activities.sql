@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SJob].[Activities]')
 GO
-PRINT (N'Create table [SJob].[Activities]')
-GO
 CREATE TABLE [SJob].[Activities] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_Activity_RowStatus] DEFAULT (0),
@@ -92,100 +90,6 @@ CREATE UNIQUE INDEX [IX_UQ_Activities_Guid]
   ON [SJob].[Activities] ([Guid])
   WITH (FILLFACTOR = 90)
   ON [PRIMARY]
-GO
-
-SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tr_Activities_InvoiceAutomation_Completion] on table [SJob].[Activities]')
-GO
-/* =============================================================================
-   SJob.tr_Activities_InvoiceAutomation_Completion
-
-   Recommended approach:
-   - DO NOT call heavy procs from within the trigger.
-   - Instead, enqueue a lightweight “nudge” row into SFin.InvoiceAutomationNudgeQueue.
-   - A background worker (or scheduled job) processes the queue and runs:
-       SFin.InvoiceScheduleTriggerInstances_Materialise
-     (and optionally Phase4–6 runner / consistency sweep).
-
-   This avoids:
-   - long-running locks on core tables
-   - trigger-induced rollbacks / unexpected latency
-   - re-entrancy / deadlocks under load
-
-   Notes:
-   - We only enqueue when the row transitions into “complete”, OR becomes “complete + EndDate set”,
-     OR CompletedDateTimeUTC becomes set.
-   - We keep this trigger non-blocking: any enqueue failure is swallowed.
-============================================================================= */
-
-CREATE TRIGGER [SJob].[tr_Activities_InvoiceAutomation_Completion]
-ON [SJob].[Activities]
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Guard: allow disabling during bulk loads / scripts
-    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
-        RETURN;
-
-    /* Only proceed if at least one row “became complete” (or got completion timestamp/end date) */
-    IF NOT EXISTS
-    (
-        SELECT 1
-        FROM inserted i
-        LEFT JOIN deleted d ON d.ID = i.ID
-        JOIN SJob.ActivityStatus sNew ON sNew.ID = i.ActivityStatusID
-        LEFT JOIN SJob.ActivityStatus sOld ON sOld.ID = d.ActivityStatusID
-        WHERE
-            i.RowStatus NOT IN (0, 254)
-            AND sNew.IsCompleteStatus = 1
-            AND
-            (
-                   ISNULL(sOld.IsCompleteStatus, 0) = 0
-                OR (ISNULL(d.EndDate, '19000101') <> ISNULL(i.EndDate, '19000101') AND i.EndDate IS NOT NULL)
-                OR (d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
-            )
-    )
-        RETURN;
-
-    BEGIN TRY
-        /* Lightweight enqueue: one row per changed Activity ID (deduping left to worker if desired) */
-        INSERT INTO SFin.InvoiceAutomationNudgeQueue
-        (
-              [Source]
-            , [EntityId]
-            , [EntityGuid]
-        )
-        SELECT DISTINCT
-              [Source]   = N'Activity'
-            , [EntityId] = i.ID
-            , [EntityGuid] =
-                CASE
-                    WHEN COL_LENGTH(N'SJob.Activities', N'Guid') IS NOT NULL THEN i.Guid
-                    ELSE NULL
-                END
-        FROM inserted i
-        LEFT JOIN deleted d ON d.ID = i.ID
-        JOIN SJob.ActivityStatus sNew ON sNew.ID = i.ActivityStatusID
-        LEFT JOIN SJob.ActivityStatus sOld ON sOld.ID = d.ActivityStatusID
-        WHERE
-            i.RowStatus NOT IN (0, 254)
-            AND sNew.IsCompleteStatus = 1
-            AND
-            (
-                   ISNULL(sOld.IsCompleteStatus, 0) = 0
-                OR (ISNULL(d.EndDate, '19000101') <> ISNULL(i.EndDate, '19000101') AND i.EndDate IS NOT NULL)
-                OR (d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
-            );
-    END TRY
-    BEGIN CATCH
-        -- Never block the core business update path.
-        RETURN;
-    END CATCH
-END;
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
@@ -625,6 +529,100 @@ BEGIN
 		END
 		
 		
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tr_Activities_InvoiceAutomation_Completion] on table [SJob].[Activities]')
+GO
+/* =============================================================================
+   SJob.tr_Activities_InvoiceAutomation_Completion
+
+   Recommended approach:
+   - DO NOT call heavy procs from within the trigger.
+   - Instead, enqueue a lightweight “nudge” row into SFin.InvoiceAutomationNudgeQueue.
+   - A background worker (or scheduled job) processes the queue and runs:
+       SFin.InvoiceScheduleTriggerInstances_Materialise
+     (and optionally Phase4–6 runner / consistency sweep).
+
+   This avoids:
+   - long-running locks on core tables
+   - trigger-induced rollbacks / unexpected latency
+   - re-entrancy / deadlocks under load
+
+   Notes:
+   - We only enqueue when the row transitions into “complete”, OR becomes “complete + EndDate set”,
+     OR CompletedDateTimeUTC becomes set.
+   - We keep this trigger non-blocking: any enqueue failure is swallowed.
+============================================================================= */
+
+CREATE TRIGGER [SJob].[tr_Activities_InvoiceAutomation_Completion]
+ON [SJob].[Activities]
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Guard: allow disabling during bulk loads / scripts
+    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+        RETURN;
+
+    /* Only proceed if at least one row “became complete” (or got completion timestamp/end date) */
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM inserted i
+        LEFT JOIN deleted d ON d.ID = i.ID
+        JOIN SJob.ActivityStatus sNew ON sNew.ID = i.ActivityStatusID
+        LEFT JOIN SJob.ActivityStatus sOld ON sOld.ID = d.ActivityStatusID
+        WHERE
+            i.RowStatus NOT IN (0, 254)
+            AND sNew.IsCompleteStatus = 1
+            AND
+            (
+                   ISNULL(sOld.IsCompleteStatus, 0) = 0
+                OR (ISNULL(d.EndDate, '19000101') <> ISNULL(i.EndDate, '19000101') AND i.EndDate IS NOT NULL)
+                OR (d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
+            )
+    )
+        RETURN;
+
+    BEGIN TRY
+        /* Lightweight enqueue: one row per changed Activity ID (deduping left to worker if desired) */
+        INSERT INTO SFin.InvoiceAutomationNudgeQueue
+        (
+              [Source]
+            , [EntityId]
+            , [EntityGuid]
+        )
+        SELECT DISTINCT
+              [Source]   = N'Activity'
+            , [EntityId] = i.ID
+            , [EntityGuid] =
+                CASE
+                    WHEN COL_LENGTH(N'SJob.Activities', N'Guid') IS NOT NULL THEN i.Guid
+                    ELSE NULL
+                END
+        FROM inserted i
+        LEFT JOIN deleted d ON d.ID = i.ID
+        JOIN SJob.ActivityStatus sNew ON sNew.ID = i.ActivityStatusID
+        LEFT JOIN SJob.ActivityStatus sOld ON sOld.ID = d.ActivityStatusID
+        WHERE
+            i.RowStatus NOT IN (0, 254)
+            AND sNew.IsCompleteStatus = 1
+            AND
+            (
+                   ISNULL(sOld.IsCompleteStatus, 0) = 0
+                OR (ISNULL(d.EndDate, '19000101') <> ISNULL(i.EndDate, '19000101') AND i.EndDate IS NOT NULL)
+                OR (d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
+            );
+    END TRY
+    BEGIN CATCH
+        -- Never block the core business update path.
+        RETURN;
+    END CATCH
+END;
 GO
 
 PRINT (N'Create foreign key [FK_Activities_ActivityStatus] on table [SJob].[Activities]')

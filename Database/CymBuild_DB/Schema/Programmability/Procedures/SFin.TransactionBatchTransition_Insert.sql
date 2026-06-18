@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[TransactionBatchTransition_Insert]')
+GO
+
 CREATE PROCEDURE [SFin].[TransactionBatchTransition_Insert]
 (
     @TransactionID               BIGINT,

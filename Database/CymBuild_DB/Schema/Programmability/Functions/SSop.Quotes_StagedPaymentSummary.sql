@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[Quotes_StagedPaymentSummary]')
+GO
 CREATE FUNCTION [SSop].[Quotes_StagedPaymentSummary]
 	(
 		@Guid UNIQUEIDENTIFIER

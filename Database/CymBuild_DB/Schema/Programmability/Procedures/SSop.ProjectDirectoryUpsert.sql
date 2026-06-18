@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SSop].[ProjectDirectoryUpsert]')
+GO
+
 CREATE PROCEDURE [SSop].[ProjectDirectoryUpsert]
 (
     @JobGuid UNIQUEIDENTIFIER,

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SOffice].[tvf_FiledRecordSearch]')
+GO
+
 
 CREATE FUNCTION [SOffice].[tvf_FiledRecordSearch]
 	(

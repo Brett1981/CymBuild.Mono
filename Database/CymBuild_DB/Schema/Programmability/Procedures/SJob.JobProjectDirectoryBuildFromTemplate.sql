@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[JobProjectDirectoryBuildFromTemplate]')
+GO
 CREATE PROCEDURE [SJob].[JobProjectDirectoryBuildFromTemplate]
   (
     @JobID INT

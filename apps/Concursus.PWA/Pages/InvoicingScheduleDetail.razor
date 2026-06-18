@@ -1,8 +1,14 @@
 ﻿@page "/InvoicingScheduleDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @using System.Web
+@using Concursus.API.Client
 @using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.Finance
 @using Google.Protobuf.WellKnownTypes
 @using Newtonsoft.Json
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inherits EditPageBase
 
 @inject IConfiguration configuration
@@ -48,22 +54,67 @@
 
         @if (ShowMonthBreakDownGrid)
         {
+            <div class="invoice-schedule-total-panel">
+                <div class="invoice-schedule-total-title">Monthly Drawdowns</div>
+
+                @if (_totalsLoading)
+                {
+                    <div class="invoice-schedule-total-muted">Refreshing totals...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_totalsError))
+                {
+                    <div class="invoice-schedule-total-error">@_totalsError</div>
+                }
+                else
+                {
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Amount</span>
+                        <strong>@FormatCurrency(_totals?.MonthlyTotalAmount ?? 0m)</strong>
+                    </div>
+                }
+            </div>
             <DynamicGrid GridCode="INVSCEDMONTHLY"
                          @bind-Disabled="@DisableNewButton"
                          ParentGuid="@GetCurrentInvoiceScheduleGuid()"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
                          ParentRowStatus="@editPage.dataObject.RowStatus"
                          ResyncDataObject="@editPage.ReSyncDataObject"
+                         OnActionCompleted="@RefreshInvoiceScheduleTotalsForcedAsync"
                          TransientVirtualProperties="@BuildTransientVirtualProperties()" />
         }
         else if (ShowPercentageBreakDownGrid)
         {
+            <div class="invoice-schedule-total-panel">
+                <div class="invoice-schedule-total-title">Percentage Drawdowns</div>
+
+                @if (_totalsLoading)
+                {
+                    <div class="invoice-schedule-total-muted">Refreshing totals...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_totalsError))
+                {
+                    <div class="invoice-schedule-total-error">@_totalsError</div>
+                }
+                else
+                {
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Percentage</span>
+                        <strong>@FormatPercentage(_totals?.PercentageTotalPercentage ?? 0m)</strong>
+                    </div>
+
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Amount</span>
+                        <strong>@FormatCurrency(_totals?.PercentageTotalAmount ?? 0m)</strong>
+                    </div>
+                }
+            </div>
             <DynamicGrid GridCode="INVSCEDULEPERCENTAGE"
                          @bind-Disabled="@DisableNewButton"
-                         ParentGuid="@RecordGuid"
+                         ParentGuid="@GetCurrentInvoiceScheduleGuid()"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
                          ParentRowStatus="@editPage.dataObject.RowStatus"
                          ResyncDataObject="@editPage.ReSyncDataObject"
+                         OnActionCompleted="@RefreshInvoiceScheduleTotalsForcedAsync"
                          TransientVirtualProperties="@BuildTransientVirtualProperties()" />
         }
 
@@ -86,6 +137,12 @@
     private bool ShowMonthBreakDownGrid { get; set; } = false;
     private bool ShowPercentageBreakDownGrid { get; set; } = false;
     private bool DisableNewButton { get; set;  } = false;
+    private API.Client.FormHelper? _formHelper;
+    private InvoiceScheduleConfigurationTotalsModel? _totals;
+    private bool _totalsLoading;
+    private string? _totalsError;
+    private string? _lastTotalsInvoiceScheduleGuid;
+    private bool _totalsRefreshQueued;
 
     private Dictionary<string, Any> BuildTransientVirtualProperties()
     {
@@ -115,6 +172,99 @@
             Any.Pack(new BoolValue { Value = BypassReadOnlyForAutomationReenable });
 
         return result;
+    }
+
+    protected override void OnInitialized()
+    {
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            sageIntegrationService,
+            "81fcacdb-0446-443e-9263-7992a33c160f",
+            userService);
+    }
+
+    private async Task RefreshInvoiceScheduleTotalsForcedAsync()
+    {
+        _lastTotalsInvoiceScheduleGuid = null;
+        await RefreshInvoiceScheduleTotalsAsync();
+    }
+
+    private async Task RefreshInvoiceScheduleTotalsAsync()
+    {
+        try
+        {
+            _totalsError = null;
+
+            var invoiceScheduleGuidText = GetCurrentInvoiceScheduleGuid();
+
+            if (!Guid.TryParse(invoiceScheduleGuidText, out var invoiceScheduleGuid) ||
+                invoiceScheduleGuid == Guid.Empty)
+            {
+                _totals = new InvoiceScheduleConfigurationTotalsModel();
+                _lastTotalsInvoiceScheduleGuid = null;
+                return;
+            }
+
+            _totalsLoading = true;
+            StateHasChanged();
+
+            _totals = await _formHelper.InvoiceScheduleConfigurationTotalsGetAsync(invoiceScheduleGuid);
+            _lastTotalsInvoiceScheduleGuid = invoiceScheduleGuid.ToString();
+        }
+        catch (Exception ex)
+        {
+            _totalsError = $"Totals could not be refreshed: {ex.Message}";
+        }
+        finally
+        {
+            _totalsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void QueueTotalsRefreshIfNeeded()
+    {
+        var invoiceScheduleGuid = GetCurrentInvoiceScheduleGuid();
+
+        if (string.IsNullOrWhiteSpace(invoiceScheduleGuid) ||
+            invoiceScheduleGuid == Guid.Empty.ToString())
+        {
+            return;
+        }
+
+        if (_totalsRefreshQueued)
+        {
+            return;
+        }
+
+        if (string.Equals(_lastTotalsInvoiceScheduleGuid, invoiceScheduleGuid, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _totalsRefreshQueued = true;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await RefreshInvoiceScheduleTotalsAsync();
+            }
+            finally
+            {
+                _totalsRefreshQueued = false;
+            }
+        });
+    }
+
+    private static string FormatCurrency(decimal value)
+    {
+        return value.ToString("C2", System.Globalization.CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatPercentage(decimal value)
+    {
+        return $"{value:N2}%";
     }
 
     private bool GetTransientBool(string key, bool defaultValue = false)
@@ -193,10 +343,10 @@
             ShowCorrectInvoiceSchedulingGrid();
             ShouldDisableNewButton();
 
-            // if (ScheduleReenabled)
-            // {
-            //     ScheduleHasBeenReenabled();
-            // }
+            if (ShowMonthBreakDownGrid || ShowPercentageBreakDownGrid)
+            {
+                QueueTotalsRefreshIfNeeded();
+            }
         }
 
         base.OnAfterRender(firstRender);
@@ -281,7 +431,7 @@
             if (IsNameFieldDisabled == true)
             {
                 DisableNewButton = true;
-                
+
             }
         }
     }

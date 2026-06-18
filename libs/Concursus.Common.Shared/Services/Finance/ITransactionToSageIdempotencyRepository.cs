@@ -27,6 +27,7 @@ namespace Concursus.Common.Shared.Services.Finance
             Guid transitionGuid,
             string sageOrderId,
             string sageOrderNumber,
+            string sageTransactionReference,
             string sageDataSet,
             string responseStatus,
             string responseDetail,

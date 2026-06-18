@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[MergeDocumentItemTypesUpsert]')
+GO
+
 CREATE PROCEDURE [SCore].[MergeDocumentItemTypesUpsert] 
 										   @Name NVARCHAR(250),
 										   @IsImageType BIT,

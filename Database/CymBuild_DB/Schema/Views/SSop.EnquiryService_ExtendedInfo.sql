@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[EnquiryService_ExtendedInfo]')
+GO
 CREATE VIEW	[SSop].[EnquiryService_ExtendedInfo]
-    --WITH SCHEMABINDING
+         --WITH SCHEMABINDING
 AS
 SELECT	es.Id,
 		es.RowStatus,

@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[Quotes_DWETL]')
+GO
+
+
 CREATE VIEW [SSop].[Quotes_DWETL]
        --WITH SCHEMABINDING
 AS

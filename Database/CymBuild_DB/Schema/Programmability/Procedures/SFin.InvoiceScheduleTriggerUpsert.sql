@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[InvoiceScheduleTriggerUpsert]')
+GO
+
 
 CREATE PROCEDURE [SFin].[InvoiceScheduleTriggerUpsert]
 (

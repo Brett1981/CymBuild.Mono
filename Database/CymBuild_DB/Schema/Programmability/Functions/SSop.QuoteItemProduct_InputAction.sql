@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[QuoteItemProduct_InputAction]')
+GO
 CREATE FUNCTION [SSop].[QuoteItemProduct_InputAction]
 (
     @DataObject NVARCHAR(MAX)

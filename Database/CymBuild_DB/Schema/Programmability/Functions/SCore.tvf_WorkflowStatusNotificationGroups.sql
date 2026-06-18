@@ -1,13 +1,16 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SCore].[tvf_WorkflowStatusNotificationGroups]')
+GO
+
 CREATE FUNCTION [SCore].[tvf_WorkflowStatusNotificationGroups]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+           --WITH SCHEMABINDING
 AS RETURN	
 SELECT  
 		root_hobt.ID,

@@ -102,8 +102,11 @@ namespace Concursus.Common.Shared.Models.Finance
         [JsonPropertyName("orderId")]
         public string OrderId { get; set; } = string.Empty;
 
+        [JsonPropertyName("transactionReference")]
+        public string SageTransactionReference { get; set; } = string.Empty;
+
         [JsonPropertyName("detail")]
-        public string Detail { get; set; } = string.Empty;
+        public string? Detail { get; set; }
 
         [JsonIgnore]
         public bool IsOk =>

@@ -1,2 +1,4 @@
-﻿CREATE SCHEMA [SJob] AUTHORIZATION [dbo]
+﻿PRINT (N'Create schema [SJob]')
+GO
+CREATE SCHEMA [SJob] AUTHORIZATION [dbo]
 GO

@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuoteTemplates]')
+GO
 CREATE FUNCTION [SSop].[tvf_QuoteTemplates]
 (
 	@UserId INT
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN	
 SELECT  qt.ID,
         qt.RowStatus,

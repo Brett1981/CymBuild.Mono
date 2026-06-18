@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityHobtsV]')
+GO
 CREATE VIEW	[SCore].[EntityHobtsV]
-              --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 SELECT	eh.ID,
 		eh.RowStatus,
@@ -15,4 +18,5 @@ SELECT	eh.ID,
 		eh.IsReadOnlyOffline
 FROM	Score.[EntityHobts] eh
 WHERE	(eh.[RowStatus] NOT IN (0, 254))
+
 GO

@@ -1,13 +1,16 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SJob].[tvf_Assets]')
+GO
+
 
 CREATE FUNCTION [SJob].[tvf_Assets]
 	(
 		@UserId INT
 	)
 RETURNS TABLE
-       --WITH SCHEMABINDING
+            --WITH SCHEMABINDING
 AS
 RETURN SELECT		prop.ID,
 					prop.RowStatus,

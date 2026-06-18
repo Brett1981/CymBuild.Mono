@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SSop].[Projects]')
 GO
-PRINT (N'Create table [SSop].[Projects]')
-GO
 CREATE TABLE [SSop].[Projects] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Projects_RowStatus] DEFAULT (1),

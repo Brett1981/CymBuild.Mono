@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[DataProperties] AS TABLE (
+﻿PRINT (N'Create type [SCore].[DataProperties]')
+GO
+CREATE TYPE [SCore].[DataProperties] AS TABLE (
   [EntityPropertyGuid] [uniqueidentifier] NOT NULL,
   [IsInvalid] [bit] NOT NULL DEFAULT (0),
   [IsEnabled] [bit] NOT NULL DEFAULT (0),

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[LiveSageColourAccounts]')
+GO
 CREATE VIEW [SCrm].[LiveSageColourAccounts]
---WITH SCHEMABINDING
+     --WITH SCHEMABINDING
 AS 
 SELECT
     root_hobt.Guid,

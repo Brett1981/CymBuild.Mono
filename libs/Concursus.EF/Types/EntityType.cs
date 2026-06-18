@@ -24,6 +24,7 @@ namespace Concursus.EF.Types
         public string Label { get; set; } = "";
         public Guid LanguageLabelGuid { get; set; }
         public string Name { get; set; } = "";
+        public bool IsDeletable { get; set; }
 
         #endregion Public Properties
     }

@@ -107,9 +107,9 @@
         <EditForm EditContext="@_editContext">
             <div class="d-flex flex-wrap justify-content-between">
 
-                <div class="p-2">
-                    <h4>
-                        <i class="@EntityTypeIcon"></i> @EntityTypeLabel :- <small class="text-muted">@ObjectLabel</small>
+                <div class="p-2 flex-grow-1">
+                    <h4 class="mb-0 text-break" title="@EnhancedObjectLabel">
+                        <i class="@EntityTypeIcon"></i> @EntityTypeLabel :- <small class="text-muted">@EnhancedObjectLabel</small>
                     </h4>
                 </div>
                 <div class="p-2 form-buttons d-flex align-items-center">
@@ -187,7 +187,7 @@
                                                         ReSyncDataObject="@ReSyncDataObject"
                                                         SaveDataObject="@SaveDataObject"
                                                         DeleteOperationPerformed="@DeleteOperationPerformed"
-                                                        DeleteOperationPerformedChanged="@((value) => DeleteOperationPerformed = value)" 
+                                                        DeleteOperationPerformedChanged="@((value) => DeleteOperationPerformed = value)"
                                                         @bind-HasChanges="@HasChanges"/>
                                         </div>
                                     }
@@ -276,7 +276,9 @@
                 {
                     <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 1000; background-color: rgba(255, 255, 255, 0.5);"></div>
                 }
-                @FormBody
+                <CascadingValue Value="this" IsFixed="false">
+                    @FormBody
+                </CascadingValue>
                 @if (!@Windowed)
                 {
                     <div class="back-to-top-button">

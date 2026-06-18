@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SSop].[EnquiryCreateJobs]')
+GO
+
 CREATE PROCEDURE [SSop].[EnquiryCreateJobs]
 	(@Guid UNIQUEIDENTIFIER)
 AS

@@ -433,219 +433,220 @@ public class SharePoint : MSGraphBase, IDisposable
     }
 
     //CBLD-405: Added param organisationUnit
-    public async Task<DataObjectUpsertResponse> GetSharePointLocation(string EntityTypeGuid, DataObject dataObject,
-        EF.Core _efCore, ServiceBase serviceBase, Core.DataObjectUpsertRequest? request = null, API.Core.OrganisationalUnit? organisationalUnit = null)
+    public async Task<DataObjectUpsertResponse> GetSharePointLocation(
+    string EntityTypeGuid,
+    DataObject dataObject,
+    EF.Core _efCore,
+    ServiceBase serviceBase,
+    Core.DataObjectUpsertRequest? request = null,
+    API.Core.OrganisationalUnit? organisationalUnit = null)
     {
-        var siteUrl = "";
-        var siteId = "";
+        if (dataObject == null)
+        {
+            return new DataObjectUpsertResponse { DataObject = new DataObject() };
+        }
+
+        var siteId = string.Empty;
         var useLibraryPerSplit = false;
         var primaryKeySplitInterval = 0;
-        var name = "";
         var parentUseLibraryPerSplit = false;
         var parentPrimaryKeySplitInterval = 0;
-        var parentName = "";
         var parentStructureId = -1;
-        var quoteId = "";
-        var quoteURL = "";
+        var quoteId = string.Empty;
+        var quoteURL = string.Empty;
         long parentObjectId = -1;
 
-        var _ListOfSharepointDetail = await _efCore.GetSharePointDetailsForObject(dataObject);
-        //if (_ListOfSharepointDetail.Count == 0) SharePointDocumentDetailsGet;
-        if (_ListOfSharepointDetail.Count == 0) return new DataObjectUpsertResponse { DataObject = dataObject };
-        drive = new Drive();
-        DriveItem folder;
+        var shouldPersistSharePointLocation = request is { ValidateOnly: false };
 
-        var Quotedrive = new Drive();
-        DriveItem Quotefolder = new DriveItem();
-        //Find the value of the dataObject.DataProperties where the EntityPropertyGuid = "b5d2e1d9-6133-4ab2-b28a-827ab24103cf"
-        //if found return the first result and unpack the value into the quoteId
-        var result = dataObject.DataProperties.Where(d =>
-                d.EntityPropertyGuid ==
-                Functions.ParseAndReturnEmptyGuidIfInvalid("b5d2e1d9-6133-4ab2-b28a-827ab24103cf"))
-            .FirstOrDefault();
-
-        if (result != null)
+        var sharePointDetails = await _efCore.GetSharePointDetailsForObject(dataObject);
+        if (sharePointDetails.Count == 0)
         {
-            quoteId = result.Value.Unpack<StringValue>().ToString(); //Guid of the Quote - we should be able to get the number and link from here onwards.
+            return new DataObjectUpsertResponse { DataObject = dataObject };
         }
-        var _AppConfig = new AppConfiguration(_config);
 
-        foreach (var sharePointDetail in _ListOfSharepointDetail)
+        drive = new Drive();
+
+        var quoteProperty = dataObject.DataProperties
+            .FirstOrDefault(d =>
+                d.EntityPropertyGuid ==
+                Functions.ParseAndReturnEmptyGuidIfInvalid("b5d2e1d9-6133-4ab2-b28a-827ab24103cf"));
+
+        if (quoteProperty != null)
         {
-            switch (_AppConfig.EnvironmentType)
+            quoteId = quoteProperty.Value.Unpack<StringValue>().ToString();
+        }
+
+        var appConfig = new AppConfiguration(_config);
+
+        foreach (var sharePointDetail in sharePointDetails)
+        {
+            switch (appConfig.EnvironmentType)
             {
                 case "DEV":
-                    siteId = _AppConfig.DevSharepointIdentifier;
-                    break;
-
                 case "TEST":
-                    siteId = _AppConfig.DevSharepointIdentifier;
+                    siteId = appConfig.DevSharepointIdentifier;
                     break;
 
                 default:
                     siteId = sharePointDetail.SiteIdentifier;
                     break;
             }
+
             useLibraryPerSplit = sharePointDetail.UseLibraryPerSplit;
             primaryKeySplitInterval = sharePointDetail.PrimaryKeySplitInterval;
-            name = sharePointDetail.Name;
             parentUseLibraryPerSplit = sharePointDetail.ParentUseLibraryPerSplit;
             parentPrimaryKeySplitInterval = sharePointDetail.ParentPrimaryKeySplitInterval;
-            parentName = sharePointDetail.ParentName;
             parentStructureId = sharePointDetail.ParentStructureId;
             parentObjectId = sharePointDetail.ParentObjectId;
 
-            if (siteId != "")//&& dataObject.SharePointSiteIdentifier == "")
+            if (!string.IsNullOrWhiteSpace(siteId))
             {
                 if (parentStructureId > -1)
-                    drive = await GetCreateLibrary(siteId, parentUseLibraryPerSplit, parentObjectId,
-                        parentPrimaryKeySplitInterval, dataObject, sharePointDetail);
+                {
+                    drive = await GetCreateLibrary(
+                        siteId,
+                        parentUseLibraryPerSplit,
+                        parentObjectId,
+                        parentPrimaryKeySplitInterval,
+                        dataObject,
+                        sharePointDetail);
+                }
                 else if (parentStructureId == -1 && useLibraryPerSplit)
-                    drive = await GetCreateLibrary(siteId, useLibraryPerSplit, dataObject.DatabaseId,
-                        primaryKeySplitInterval, dataObject, sharePointDetail);
+                {
+                    drive = await GetCreateLibrary(
+                        siteId,
+                        useLibraryPerSplit,
+                        dataObject.DatabaseId,
+                        primaryKeySplitInterval,
+                        dataObject,
+                        sharePointDetail);
+                }
                 else
+                {
                     drive = await _graphServiceClient
                         .Sites[siteId]
                         .Drive
-                        .GetAsync(
-                            requestConfiguration =>
-                            {
-                                requestConfiguration.QueryParameters.Expand = new[] { "list($select=id)" };
-                            });
+                        .GetAsync(requestConfiguration =>
+                        {
+                            requestConfiguration.QueryParameters.Expand = new[] { "list($select=id)" };
+                        });
+                }
             }
 
-            if (dataObject.SharePointSiteIdentifier != "")
+            if (drive == null)
             {
-                //Check for dev site and set siteId to the dev site
-                switch (_AppConfig.EnvironmentType)
+                continue;
+            }
+
+            DriveItem folder;
+
+            if (!string.IsNullOrWhiteSpace(dataObject.SharePointSiteIdentifier))
+            {
+                switch (appConfig.EnvironmentType)
                 {
                     case "DEV":
-                        dataObject.SharePointSiteIdentifier = _AppConfig.DevSharepointIdentifier;
-                        break;
-
                     case "TEST":
-                        dataObject.SharePointSiteIdentifier = _AppConfig.DevSharepointIdentifier;
-                        break;
-
-                    default:
-                        dataObject.SharePointSiteIdentifier = dataObject.SharePointSiteIdentifier;
+                        dataObject.SharePointSiteIdentifier = appConfig.DevSharepointIdentifier;
                         break;
                 }
+
                 siteId = dataObject.SharePointSiteIdentifier;
-                var NewFolderStructure = Functions.GetSeparatedNumberValues(dataObject.SharePointFolderPath);
-                drive = await GetCreateLibrary(siteId, useLibraryPerSplit, NewFolderStructure,
-                    primaryKeySplitInterval, drive);
 
-                if (drive != null)
+                var newFolderStructure = Functions.GetSeparatedNumberValues(dataObject.SharePointFolderPath);
+
+                drive = await GetCreateLibrary(
+                    siteId,
+                    useLibraryPerSplit,
+                    newFolderStructure,
+                    primaryKeySplitInterval,
+                    drive);
+
+                if (drive == null)
                 {
-                    if (parentStructureId > -1)
-                    {
-                        folder = await GetCreateFolder(siteId, dataObject.Label, parentObjectId,
-                        parentStructureId > -1 ? primaryKeySplitInterval : 0, drive, dataObject, sharePointDetail);
-                    }
-                    else
-                    {
-                        folder = await GetCreateFolder(siteId, dataObject.Label, Convert.ToInt64(NewFolderStructure[1]),
-                                                parentStructureId > -1 ? primaryKeySplitInterval : 0, drive);
-                    }
+                    continue;
+                }
 
-                    dataObject.SharePointUrl = folder.WebUrl ?? "";
-                    if (!string.IsNullOrEmpty(dataObject.SharePointUrl))
-                    {
-                        var response = await Functions.PrepareUpdateToEfDataObjectSharePoint(
-                            dataObject,
-                            _efCore,
-                            siteId,
-                            dataObject.SharePointUrl,
-                            Functions.ParseAndReturnEmptyGuidIfInvalid(request?.EntityQueryGuid).ToString(),
-                            request?.ValidateOnly);
-
-                        response.DataObject.SharePointUrl = dataObject.SharePointUrl;
-                        dataObject = response.DataObject;
-
-                        SetSharePointPermission(siteId, dataObject, drive.Id, folder.Id ?? "");
-
-                        await EnsureRecordFolderStructureAsync(
-                                dataObject,
-                                _efCore,
-                                siteId,
-                                drive,
-                                folder,
-                                organisationalUnit,
-                                quoteId,
-                                quoteURL)
-                            .ConfigureAwait(false);
-
-                        return response;
-                    }
+                if (parentStructureId > -1)
+                {
+                    folder = await GetCreateFolder(
+                        siteId,
+                        dataObject.Label,
+                        parentObjectId,
+                        parentStructureId > -1 ? primaryKeySplitInterval : 0,
+                        drive,
+                        dataObject,
+                        sharePointDetail);
+                }
+                else
+                {
+                    folder = await GetCreateFolder(
+                        siteId,
+                        dataObject.Label,
+                        Convert.ToInt64(newFolderStructure[1]),
+                        parentStructureId > -1 ? primaryKeySplitInterval : 0,
+                        drive);
                 }
             }
             else
             {
-                if (drive != null)
-                {
-                    folder = await GetCreateFolder(siteId, dataObject.Label, dataObject.DatabaseId,
-                        parentStructureId > -1 ? primaryKeySplitInterval : 0, drive, dataObject, sharePointDetail);
-
-                    //// After creating or retrieving the folder
-                    //if (folder != null && folder.WebUrl != null)
-                    //{
-                    //    // Step 1: Get the ListItem associated with the folder to retrieve ContentType
-                    //    var listItem = await _graphServiceClient
-                    //        .Drives[dataObject.DatabaseId]
-                    //        .Items[folder.Id]
-                    //        .ListItem
-                    //        .GetAsync();
-
-                    // // Step 2: Extract the FolderCTID if it exists string? folderCTID = listItem?.ContentType?.Id;
-
-                    // if (string.IsNullOrEmpty(folderCTID)) { throw new Exception("Failed to
-                    // retrieve FolderCTID for the specified folder."); }
-
-                    // // Step 3: Extract the folder path from the folder's WebUrl string folderPath
-                    // = folder.WebUrl.Split(new[] { "/sites/" }, StringSplitOptions.None)[1];
-
-                    // // Step 4: Build the full navigation URL with the dynamically obtained
-                    // FolderCTID string navigationUrl = $"{sharepointBaseUrl}/62/Forms/AllItems.aspx?FolderCTID={folderCTID}&id=%2Fsites%2F{Uri.EscapeDataString(folderPath)}";
-
-                    //    // Step 5: Set the SharePoint URL with the navigation format
-                    //    dataObject.SharePointUrl = navigationUrl;
-                    //}
-
-                    dataObject.SharePointUrl = folder.WebUrl ?? "";
-                    if (!string.IsNullOrEmpty(dataObject.SharePointUrl))
-                    {
-                        var response = await Functions.PrepareUpdateToEfDataObjectSharePoint(
-                            dataObject,
-                            _efCore,
-                            siteId,
-                            dataObject.SharePointUrl,
-                            Functions.ParseAndReturnEmptyGuidIfInvalid(request?.EntityQueryGuid).ToString(),
-                            request?.ValidateOnly);
-
-                        response.DataObject.SharePointUrl = dataObject.SharePointUrl;
-                        dataObject = response.DataObject;
-
-                        SetSharePointPermission(siteId, dataObject, drive.Id, folder.Id ?? "");
-
-                        await EnsureRecordFolderStructureAsync(
-                                dataObject,
-                                _efCore,
-                                siteId,
-                                drive,
-                                folder,
-                                organisationalUnit,
-                                quoteId,
-                                quoteURL)
-                            .ConfigureAwait(false);
-
-                        return response;
-                    }
-                }
+                folder = await GetCreateFolder(
+                    siteId,
+                    dataObject.Label,
+                    dataObject.DatabaseId,
+                    parentStructureId > -1 ? primaryKeySplitInterval : 0,
+                    drive,
+                    dataObject,
+                    sharePointDetail);
             }
+
+            dataObject.SharePointUrl = folder.WebUrl ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(dataObject.SharePointUrl))
+            {
+                continue;
+            }
+
+            SetSharePointPermission(
+                siteId,
+                dataObject,
+                drive.Id,
+                folder.Id ?? string.Empty);
+
+            await EnsureRecordFolderStructureAsync(
+                    dataObject,
+                    _efCore,
+                    siteId,
+                    drive,
+                    folder,
+                    organisationalUnit,
+                    quoteId,
+                    quoteURL)
+                .ConfigureAwait(false);
+
+            if (!shouldPersistSharePointLocation)
+            {
+                return new DataObjectUpsertResponse
+                {
+                    DataObject = dataObject
+                };
+            }
+
+            var response = await Functions.PrepareUpdateToEfDataObjectSharePoint(
+                dataObject,
+                _efCore,
+                siteId,
+                dataObject.SharePointUrl,
+                Functions.ParseAndReturnEmptyGuidIfInvalid(request?.EntityQueryGuid).ToString(),
+                request?.ValidateOnly);
+
+            response.DataObject.SharePointUrl = dataObject.SharePointUrl;
+            return response;
         }
 
-        return new DataObjectUpsertResponse() { DataObject = dataObject };
+        return new DataObjectUpsertResponse
+        {
+            DataObject = dataObject
+        };
     }
 
     private static readonly Guid JobEntityTypeGuid =

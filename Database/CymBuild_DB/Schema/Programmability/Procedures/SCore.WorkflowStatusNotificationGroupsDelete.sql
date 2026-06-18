@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[WorkflowStatusNotificationGroupsDelete]')
+GO
 CREATE PROCEDURE [SCore].[WorkflowStatusNotificationGroupsDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

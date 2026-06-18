@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_AccountTurnover]')
+GO
 CREATE FUNCTION [SFin].[tvf_AccountTurnover] 
 (
     @UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-            --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 RETURN
 SELECT	TransactionYear, 

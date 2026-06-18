@@ -1,0 +1,7 @@
+EntityType,DuplicateID,DuplicateGUID,DuplicateName,RetainedID,RetainedGUID,RetainedName,TransitionStatusRefs,TransitionOldRefs,CurrentLatestRefs,TotalExportedRefs,Reason
+WorkflowStatus,37,b9ba4510-6358-4c0a-bba1-5feb33c54f84,Declined,3,708c00e6-f45f-4cb2-8e91-a80b8b8e802e,Declined,85,10,74,101,Duplicate active status name; retained canonical predefined Declined status.
+WorkflowStatus,53,85b522aa-134c-4e6c-884a-ff7264d7dd2e,Rejected,8,0a6a71f7-b39f-4213-997e-2b3a13b6144c,Rejected,1301,634,671,1974,Duplicate active status name; retained canonical Rejected status and expanded ShowInEnquiries.
+WorkflowStatus,52,5c9cd674-7520-44d2-9464-2a681f2f2ba4,Ready to Send,14,02a2237f-2ae7-4e05-926f-38e8b7d050a0,Ready to Send,1150,939,214,2212,Duplicate active Ready to Send; retained canonical GUID used by DataObjectTransitionUpsert validation.
+WorkflowStatus,29,b88f95c2-41c9-4cc6-ad9f-d9223c4e852a,Quoting,50,9a60f983-24ba-4733-907e-c5cce0b691cb,Quoting,4728,5185,0,9952,Duplicate active Quoting; retained status has both enquiry and quote visibility.
+WorkflowStatus,33,9e0a10c7-94a0-4e25-afb1-14240d906c12,New,48,3dab4339-a1c0-4abe-860a-4915a6cf94b6,New,746,751,0,1534,"Duplicate active New; retained status has enquiry, quote and job visibility."
+WorkflowStatus,41,6ed4279a-e299-4d33-8ed5-cb8b78b3f13d,Ready to Send,14,02a2237f-2ae7-4e05-926f-38e8b7d050a0,Ready to Send,0,0,0,0,Hidden duplicate Ready to Send with no exported runtime usage.

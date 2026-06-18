@@ -36,13 +36,42 @@ namespace CymBuild_Outlook_Common.Helpers
 
         public static List<string> ParseFolderLocation(string jsonString)
         {
-            var folderLocations = JsonConvert.DeserializeObject<List<FolderLocation>>(jsonString);
             var results = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(jsonString))
+                return results;
+
+            List<FolderLocation>? folderLocations;
+
+            try
+            {
+                folderLocations = JsonConvert.DeserializeObject<List<FolderLocation>>(jsonString);
+            }
+            catch
+            {
+                return results;
+            }
+
+            if (folderLocations == null || folderLocations.Count == 0)
+                return results;
 
             foreach (var location in folderLocations)
             {
-                results.Add(location.SiteIdentifier);
-                results.Add(location.FolderPath);
+                if (location == null)
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(location.SiteIdentifier))
+                    results.Add(location.SiteIdentifier.Trim());
+
+                if (!string.IsNullOrWhiteSpace(location.FolderPath))
+                {
+                    var cleanPath = location.FolderPath
+                        .Replace("\\", "/")
+                        .Trim()
+                        .Trim('/');
+
+                    results.Add(cleanPath);
+                }
             }
 
             return results;

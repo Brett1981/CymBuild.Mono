@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[NonActivityEventsUpsert]')
+GO
 CREATE PROCEDURE [SCore].[NonActivityEventsUpsert]
 (
 	@AbsenceTypeGuid UNIQUEIDENTIFIER,

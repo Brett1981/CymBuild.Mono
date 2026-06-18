@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[PreDeploymentScript]')
+GO
+
 CREATE PROCEDURE [SCore].[PreDeploymentScript]
 AS 
 BEGIN 

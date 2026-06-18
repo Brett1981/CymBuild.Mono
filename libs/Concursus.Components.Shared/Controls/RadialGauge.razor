@@ -1,83 +1,85 @@
 ﻿@inject Core.CoreClient CoreClient
 @inject NavigationManager Navigation
+@namespace Concursus.Components.Shared.Controls
+@using Concursus.API.Core
 
-@* <div class="card shadow-sm p-2 m-2 align-items-center transition-fade-in" style="min-width:240px">
-    <div class="card-body">
-        <div class="card-title d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@Metric.Label</h5>
-            <btn class="btn btn-default" @onclick="@((e) => HandleClickOnMetric(Metric?.Guid, Metric?.PageUri))">
-                <i class="bi bi-eye-fill"></i>
-            </btn>
+<div class="cb-modern-metric cb-modern-metric-radial @(CanOpenMetric ? "cb-modern-metric-clickable" : "")"
+     role="@(CanOpenMetric ? "button" : null)"
+     tabindex="@(CanOpenMetric ? "0" : null)"
+     @onclick="HandleClickOnMetric">
+    <div class="cb-modern-metric-top">
+        <div>
+            <div class="cb-modern-metric-label">@Metric?.Label</div>
+            <div class="cb-modern-metric-subtitle">Radial gauge</div>
         </div>
-        @if (Metric.Values.Count > 0)
-        {
-            <div class="gauge-container" style="width: 200px; height: 200px;">
-                <!-- Adjust the height as needed -->
-                <TelerikRadialGauge Width="100%">
-                    <RadialGaugeScales>
-                        <RadialGaugeScale Min="@Metric.Min" Max="@Metric.Max" MajorUnit="@Metric.MajorUnit" MinorUnit="@Metric.MinorUnit" StartAngle="@Metric.StartAngle" EndAngle="@Metric.EndAngle">
-                            <RadialGaugeScaleRanges>
-                                @foreach (var r in Metric.Ranges)
-                                {
-                                    <RadialGaugeScaleRange From="r.MinValue" To="r.MaxValue" Color="@r.ColourHex"></RadialGaugeScaleRange>
-                                }
-                            </RadialGaugeScaleRanges>
-                        </RadialGaugeScale>
-                    </RadialGaugeScales>
-                    <RadialGaugePointers>
-                        @foreach (var v in Metric.Values)
-                        {
-                            <RadialGaugePointer Value="@v.Value" Color="@v.ColourHex">
-                            </RadialGaugePointer>
-                        }
-                    </RadialGaugePointers>
-                </TelerikRadialGauge>
-            </div>
-        }
+        <div class="cb-modern-metric-pill">@ProgressPercent.ToString("N0")%</div>
     </div>
-</div> *@
 
-<div class="gauge-container">
-    <!-- Adjust the height as needed -->
-    <TelerikRadialGauge>
-        <RadialGaugeScales>
-            <RadialGaugeScale Min="@Metric.Min" Max="@Metric.Max" MajorUnit="@Metric.MajorUnit" MinorUnit="@Metric.MinorUnit" StartAngle="@Metric.StartAngle" EndAngle="@Metric.EndAngle">
-                <RadialGaugeScaleRanges>
-                    @foreach (var r in Metric.Ranges)
-                    {
-                        <RadialGaugeScaleRange From="r.MinValue" To="r.MaxValue" Color="@r.ColourHex"></RadialGaugeScaleRange>
-                    }
-                </RadialGaugeScaleRanges>
-            </RadialGaugeScale>
-        </RadialGaugeScales>
-        <RadialGaugePointers>
-            @foreach (var v in Metric.Values)
-            {
-                <RadialGaugePointer Value="@v.Value" Color="@v.ColourHex">
-                </RadialGaugePointer>
-            }
-        </RadialGaugePointers>
-    </TelerikRadialGauge>
+    <div class="cb-modern-radial-wrap">
+        <svg viewBox="0 0 120 120" class="cb-modern-radial">
+            <circle cx="60"
+                    cy="60"
+                    r="48"
+                    class="cb-modern-radial-track" />
+
+            <circle cx="60"
+                    cy="60"
+                    r="48"
+                    class="cb-modern-radial-value"
+                    style="stroke-dasharray:@RadialDashArray;" />
+        </svg>
+
+        <div class="cb-modern-radial-value-text">
+            <strong>@DisplayValue</strong>
+            <span>@ProgressPercent.ToString("N0")%</span>
+        </div>
+    </div>
+
+    <div class="cb-modern-metric-footer">
+        <span>@FormatNumber(Min)</span>
+        <span>@FormatNumber(Max)</span>
+    </div>
 </div>
 
-<style>
-    .gauge-container {
-        position: relative;
-        width: 100%;
-        height: 100%; /* Adjust if necessary */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden; /* Avoid scrollbars */
+@code {
+    [Parameter] public DashboardMetric? Metric { get; set; }
+
+    private double Value => Metric?.Values.FirstOrDefault()?.Value ?? 0;
+    private double Min => Metric?.Min ?? 0;
+    private double Max => Metric?.Max > Min ? Metric.Max : 100;
+
+    private string DisplayValue => FormatNumber(Value);
+
+    private double ProgressPercent
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0)
+            {
+                return 0;
+            }
+
+            var percentage = ((Value - Min) / range) * 100;
+            return Math.Clamp(percentage, 0, 100);
+        }
     }
 
-    @@media (max-width: 1200px) {
-        .gauge-container {
-            transform: scale(0.6); /* Zoom out slightly */
+    private string RadialDashArray
+    {
+        get
+        {
+            const double circumference = 301.59;
+            var filled = circumference * (ProgressPercent / 100.0);
+            var empty = circumference - filled;
+            return $"{filled:N2} {empty:N2}";
         }
+    }
 
-    @@media (max-width: 768px) {
-        .gauge-container {
-            transform: scale(1); /* Zoom out slightly */
-        }
-</style>
+    private static string FormatNumber(double value)
+    {
+        return value % 1 == 0
+            ? value.ToString("N0")
+            : value.ToString("N2");
+    }
+}

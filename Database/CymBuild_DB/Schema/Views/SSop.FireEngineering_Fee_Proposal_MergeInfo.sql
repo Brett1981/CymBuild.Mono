@@ -1,7 +1,12 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[FireEngineering_Fee_Proposal_MergeInfo]')
+GO
+
+
 CREATE VIEW [SSop].[FireEngineering_Fee_Proposal_MergeInfo]
-    --WITH SCHEMABINDING
+      --WITH SCHEMABINDING
 AS
 SELECT
     /* QUOTE */
@@ -221,4 +226,5 @@ OUTER APPLY
       AND wfs.RowStatus NOT IN (0,254)
     ORDER BY dot.DateTimeUTC DESC, dot.ID DESC
 ) AS LatestWorkflowStatus;
+
 GO

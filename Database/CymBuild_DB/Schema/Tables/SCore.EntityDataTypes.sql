@@ -169,8 +169,3 @@ GO
 ALTER TABLE [SCore].[EntityDataTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityDataTypes_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityDataTypes]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Describes the type of data stored in an Entity Property', 'SCHEMA', N'SCore', 'TABLE', N'EntityDataTypes'
-GO

@@ -1,9 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SFin].[InvoiceRequestItemsUpsert]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceRequestItemsUpsert]')
-GO
+
 CREATE PROCEDURE [SFin].[InvoiceRequestItemsUpsert]
 (
       @InvoiceRequestGuid UNIQUEIDENTIFIER

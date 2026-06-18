@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[ScheduleItemStatus]')
+GO
 CREATE VIEW [SCore].[ScheduleItemStatus]
-                --WITH SCHEMABINDING
+                     --WITH SCHEMABINDING
 AS
 SELECT  [ID],
         [Name],

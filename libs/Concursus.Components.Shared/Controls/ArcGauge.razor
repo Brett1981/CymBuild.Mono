@@ -1,94 +1,80 @@
 ﻿@inject Core.CoreClient CoreClient
 @inject NavigationManager Navigation
+@namespace Concursus.Components.Shared.Controls
+@using Concursus.API.Core
 
-@* <div class="card shadow-sm p-2 m-2 align-items-center transition-fade-in" style="min-width:240px">
-    <div class="card-body">
-         <div class="card-title d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">@Metric?.Label</h5>
-            <btn class="btn btn-default" @onclick="@((e) => HandleClickOnMetric(Metric?.Guid, Metric?.PageUri))">
-                <i class="bi bi-eye-fill"></i>
-            </btn>
-        </div> 
+<div class="cb-modern-metric cb-modern-metric-gauge @(CanOpenMetric ? "cb-modern-metric-clickable" : "")"
+     role="@(CanOpenMetric ? "button" : null)"
+     tabindex="@(CanOpenMetric ? "0" : null)"
+     @onclick="HandleClickOnMetric">
+    <div class="cb-modern-metric-top">
+        <div>
+            <div class="cb-modern-metric-label">@Metric?.Label</div>
+            <div class="cb-modern-metric-subtitle">Arc gauge</div>
+        </div>
+        <div class="cb-modern-metric-pill">@ProgressPercent.ToString("N0")%</div>
+    </div>
 
-        <div class="gauge-container" style="width: 200px; height: 200px;">
-            <!-- Adjust the height as needed -->
-            <TelerikArcGauge Width="100%">
-                <ArcGaugeCenterLabel>
-                    <Template>
-                        @{
-                            var pointer = Metric?.Values.FirstOrDefault();
+    <div class="cb-modern-arc-wrap">
+        <svg viewBox="0 0 120 70" class="cb-modern-arc">
+            <path d="M 15 60 A 45 45 0 0 1 105 60"
+                  class="cb-modern-arc-track" />
 
-                            <div style="font-weight: bold">@pointer?.Value</div>
-                        }
-                    </Template>
-                </ArcGaugeCenterLabel>
-                <ArcGaugeScales>
-                    <ArcGaugeScale Min="@Metric?.Min" Max="@Metric?.Max" MajorUnit="@Metric?.MajorUnit" MinorUnit="@Metric?.MinorUnit" StartAngle="@Metric?.StartAngle" EndAngle="@Metric?.EndAngle">
-                        <ArcGaugeScaleLabels Visible="true" />
-                    </ArcGaugeScale>
-                </ArcGaugeScales>
-                <ArcGaugePointers>
-                    @if (Metric is not null)
-                    {
-                        @foreach (var v in Metric.Values)
-                        {
-                            <ArcGaugePointer Value="@v.Value" Color="@v.ColourHex">
-                            </ArcGaugePointer>
-                        }
-                    }
-                </ArcGaugePointers>
-            </TelerikArcGauge>
+            <path d="M 15 60 A 45 45 0 0 1 105 60"
+                  class="cb-modern-arc-value"
+                  style="stroke-dasharray:@ArcDashArray;" />
+        </svg>
+
+        <div class="cb-modern-arc-value-text">
+            @DisplayValue
         </div>
     </div>
-</div> *@
-<div class="gauge-container">
-            <!-- Adjust the height as needed -->
-            <TelerikArcGauge >
-                <ArcGaugeCenterLabel>
-                    <Template>
-                        @{
-                            var pointer = Metric?.Values.FirstOrDefault();
 
-                            <div style="font-weight: bold">@pointer?.Value</div>
-                        }
-                    </Template>
-                </ArcGaugeCenterLabel>
-                <ArcGaugeScales>
-                    <ArcGaugeScale Min="@Metric?.Min" Max="@Metric?.Max" MajorUnit="@Metric?.MajorUnit" MinorUnit="@Metric?.MinorUnit" StartAngle="@Metric?.StartAngle" EndAngle="@Metric?.EndAngle">
-                        <ArcGaugeScaleLabels Visible="true" />
-                    </ArcGaugeScale>
-                </ArcGaugeScales>
-                <ArcGaugePointers>
-                    @if (Metric is not null)
-                    {
-                        @foreach (var v in Metric.Values)
-                        {
-                            <ArcGaugePointer Value="@v.Value" Color="@v.ColourHex">
-                            </ArcGaugePointer>
-                        }
-                    }
-                </ArcGaugePointers>
-            </TelerikArcGauge>
-  </div>
+    <div class="cb-modern-metric-footer">
+        <span>@FormatNumber(Min)</span>
+        <span>@FormatNumber(Max)</span>
+    </div>
+</div>
 
-<style>
-    .gauge-container {
-        position: relative;
-        width: 100%;
-        height: 100%; /* Adjust if necessary */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden; /* Avoid scrollbars */
+@code {
+    [Parameter] public DashboardMetric? Metric { get; set; }
+
+    private double Value => Metric?.Values.FirstOrDefault()?.Value ?? 0;
+    private double Min => Metric?.Min ?? 0;
+    private double Max => Metric?.Max > Min ? Metric.Max : 100;
+
+    private string DisplayValue => FormatNumber(Value);
+
+    private double ProgressPercent
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0)
+            {
+                return 0;
+            }
+
+            var percentage = ((Value - Min) / range) * 100;
+            return Math.Clamp(percentage, 0, 100);
+        }
     }
 
-    @@media (max-width: 1200px) {
-        .gauge-container {
-            transform: scale(0.6); /* Zoom out slightly */
+    private string ArcDashArray
+    {
+        get
+        {
+            const double pathLength = 141.4;
+            var filled = pathLength * (ProgressPercent / 100.0);
+            var empty = pathLength - filled;
+            return $"{filled:N2} {empty:N2}";
+        }
     }
 
-    @@media (max-width: 768px) {
-        .gauge-container {
-            transform: scale(1); /* Zoom out slightly */
+    private static string FormatNumber(double value)
+    {
+        return value % 1 == 0
+            ? value.ToString("N0")
+            : value.ToString("N2");
     }
-</style>
+}

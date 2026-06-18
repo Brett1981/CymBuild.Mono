@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SJob].[JobPurposeGroupsDelete]')
+GO
+
 
 
 CREATE PROCEDURE [SJob].[JobPurposeGroupsDelete]

@@ -10,6 +10,7 @@ namespace Concursus.Common.Shared.Services.Finance
     {
         Task<TransactionSageSubmissionRequeueResult> RequeueAsync(
             IReadOnlyCollection<Guid> transactionGuids,
+            bool includeNonRetryableFailures = false,
             CancellationToken cancellationToken = default);
     }
 }

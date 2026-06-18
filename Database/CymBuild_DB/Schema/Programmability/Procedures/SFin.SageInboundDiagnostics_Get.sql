@@ -4,6 +4,7 @@ GO
 PRINT (N'Create procedure [SFin].[SageInboundDiagnostics_Get]')
 GO
 
+
 CREATE PROCEDURE [SFin].[SageInboundDiagnostics_Get]
 (
     @StatusCode NVARCHAR(30) = NULL,
@@ -76,7 +77,9 @@ BEGIN
         d.MaterialisedReceiptTransactionGuid,
         d.MaterialisedReceiptTransactionNumber,
         d.MaterialisedAllocationGuid,
-        d.MaterialisedAllocationID
+        d.MaterialisedAllocationID,
+        d.TransactionSageTransactionReference,
+        d.MatchedTransactionSageTransactionReference
     FROM SFin.tvf_SageInboundDiagnostics
     (
         @StatusCode,

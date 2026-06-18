@@ -1,11 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
-GO
-PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
-GO
-PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
-GO
+
 PRINT (N'Create function [SJob].[tvf_Jobs_DataPills]')
 GO
 

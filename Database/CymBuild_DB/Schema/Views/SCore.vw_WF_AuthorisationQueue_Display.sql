@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[vw_WF_AuthorisationQueue_Display]')
+GO
 CREATE VIEW [SCore].[vw_WF_AuthorisationQueue_Display]
-    --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 WITH Ctx AS
 (
@@ -146,4 +149,6 @@ OUTER APPLY
       AND jfd.StageId = -3
 ) JobFeeInc
 ;
+
+
 GO

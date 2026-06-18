@@ -1,5 +1,13 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[EnquiryServicesDelete]')
+GO
+
+
+
+
+
 CREATE PROCEDURE [SSop].[EnquiryServicesDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

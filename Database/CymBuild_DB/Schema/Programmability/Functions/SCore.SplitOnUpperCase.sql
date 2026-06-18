@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[SplitOnUpperCase]')
+GO
 Create Function [SCore].[SplitOnUpperCase](@Temp VarChar(1000))
 Returns VarChar(1000)
 AS

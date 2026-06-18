@@ -287,8 +287,3 @@ GO
 ALTER TABLE [SUserInterface].[ActionMenuItems] WITH NOCHECK
   ADD CONSTRAINT [FK_ActionMenuItems_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[ActionMenuItems]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Definition of actions to display in the Tasks Menu for an Entity Type', 'SCHEMA', N'SUserInterface', 'TABLE', N'ActionMenuItems'
-GO

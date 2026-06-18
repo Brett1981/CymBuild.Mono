@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SJob].[tvf_Assets_DataPills]')
+GO
+
 
 
 

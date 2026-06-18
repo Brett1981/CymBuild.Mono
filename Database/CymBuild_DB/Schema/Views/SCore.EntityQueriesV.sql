@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityQueriesV]')
+GO
 CREATE VIEW	[SCore].[EntityQueriesV]
-              --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 SELECT	eq.ID,
 		eq.RowStatus,
@@ -26,4 +29,5 @@ SELECT	eq.ID,
 		eq.IsManualStatement
 FROM	Score.[EntityQueries] eq
 WHERE	(eq.[RowStatus] NOT IN (0, 254))
+
 GO

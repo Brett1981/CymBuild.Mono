@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SSop].[QuoteItems]')
 GO
-PRINT (N'Create table [SSop].[QuoteItems]')
-GO
 CREATE TABLE [SSop].[QuoteItems] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_QuoteItems_RowStatus] DEFAULT (1),
@@ -80,77 +78,6 @@ CREATE INDEX [IX_QuoteItems_QuoteId_CreatedJobId]
   ON [SSop].[QuoteItems] ([QuoteId], [CreatedJobId])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
-GO
-
-SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tr_QuoteItems_EnqueueJobCreatedFromProposal] on table [SSop].[QuoteItems]')
-GO
-/* ---------------------------------------------------------------------------------------
-   Trigger: SSop.QuoteItems AFTER UPDATE
-   Fires when CreatedJobId changes from (<0 or NULL) to (>0)
-   DEDUPES so you get 1 enqueue per JobId, even if multiple quoteitems consolidated.
---------------------------------------------------------------------------------------- */
-CREATE TRIGGER [SSop].[tr_QuoteItems_EnqueueJobCreatedFromProposal]
-ON [SSop].[QuoteItems]
-AFTER UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NOT (UPDATE(CreatedJobId))
-        RETURN;
-
-    BEGIN TRY
-        ;WITH Changed AS
-        (
-            SELECT
-                  i.QuoteId
-                , i.CreatedJobId
-            FROM inserted i
-            JOIN deleted d
-              ON d.ID = i.ID
-            WHERE ISNULL(d.CreatedJobId, -1) < 0
-              AND ISNULL(i.CreatedJobId, -1) > 0
-              AND i.RowStatus NOT IN (0,254)
-        ),
-        Dedup AS
-        (
-            SELECT DISTINCT
-                  c.QuoteId
-                , c.CreatedJobId
-            FROM Changed c
-            WHERE c.CreatedJobId > 0
-              AND c.QuoteId > 0
-        )
-        SELECT *
-        INTO #ToEnqueue
-        FROM Dedup;
-
-        DECLARE @JobId INT, @QuoteId INT;
-
-        WHILE EXISTS (SELECT 1 FROM #ToEnqueue)
-        BEGIN
-            SELECT TOP (1)
-                  @JobId = CreatedJobId
-                , @QuoteId = QuoteId
-            FROM #ToEnqueue
-            ORDER BY CreatedJobId, QuoteId;
-
-            EXEC SCore.IntegrationOutbox_EnqueueJobCreatedFromProposal
-                 @JobId   = @JobId,
-                 @QuoteId = @QuoteId;
-
-            DELETE TOP (1)
-            FROM #ToEnqueue;
-        END
-    END TRY
-    BEGIN CATCH
-        -- best-effort: never block quote/job pipeline
-        RETURN;
-    END CATCH
-END;
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
@@ -536,6 +463,77 @@ BEGIN
 		END
 		
 		
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tr_QuoteItems_EnqueueJobCreatedFromProposal] on table [SSop].[QuoteItems]')
+GO
+/* ---------------------------------------------------------------------------------------
+   Trigger: SSop.QuoteItems AFTER UPDATE
+   Fires when CreatedJobId changes from (<0 or NULL) to (>0)
+   DEDUPES so you get 1 enqueue per JobId, even if multiple quoteitems consolidated.
+--------------------------------------------------------------------------------------- */
+CREATE TRIGGER [SSop].[tr_QuoteItems_EnqueueJobCreatedFromProposal]
+ON [SSop].[QuoteItems]
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT (UPDATE(CreatedJobId))
+        RETURN;
+
+    BEGIN TRY
+        ;WITH Changed AS
+        (
+            SELECT
+                  i.QuoteId
+                , i.CreatedJobId
+            FROM inserted i
+            JOIN deleted d
+              ON d.ID = i.ID
+            WHERE ISNULL(d.CreatedJobId, -1) < 0
+              AND ISNULL(i.CreatedJobId, -1) > 0
+              AND i.RowStatus NOT IN (0,254)
+        ),
+        Dedup AS
+        (
+            SELECT DISTINCT
+                  c.QuoteId
+                , c.CreatedJobId
+            FROM Changed c
+            WHERE c.CreatedJobId > 0
+              AND c.QuoteId > 0
+        )
+        SELECT *
+        INTO #ToEnqueue
+        FROM Dedup;
+
+        DECLARE @JobId INT, @QuoteId INT;
+
+        WHILE EXISTS (SELECT 1 FROM #ToEnqueue)
+        BEGIN
+            SELECT TOP (1)
+                  @JobId = CreatedJobId
+                , @QuoteId = QuoteId
+            FROM #ToEnqueue
+            ORDER BY CreatedJobId, QuoteId;
+
+            EXEC SCore.IntegrationOutbox_EnqueueJobCreatedFromProposal
+                 @JobId   = @JobId,
+                 @QuoteId = @QuoteId;
+
+            DELETE TOP (1)
+            FROM #ToEnqueue;
+        END
+    END TRY
+    BEGIN CATCH
+        -- best-effort: never block quote/job pipeline
+        RETURN;
+    END CATCH
+END;
 GO
 
 PRINT (N'Create foreign key [FK_QuoteItems_DataObjects] on table [SSop].[QuoteItems]')

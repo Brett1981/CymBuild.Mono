@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SCrm].[tvf_AccountMergeBatchValidate]')
+GO
+
 
 
 CREATE FUNCTION [SCrm].[tvf_AccountMergeBatchValidate]

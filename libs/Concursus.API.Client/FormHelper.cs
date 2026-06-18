@@ -61,6 +61,74 @@ public partial class FormHelper
 
     #region Public Methods
 
+    public async Task<SageInboundReceiptMaterialisationAutoCorrectResult> SageInboundReceiptMaterialisationAutoCorrectAsync(
+    long? externalTransactionId = null,
+    int batchSize = 100,
+    bool dryRun = false)
+    {
+        var request = new SageInboundReceiptMaterialisationAutoCorrectRequest
+        {
+            ExternalTransactionId = externalTransactionId ?? 0,
+            HasExternalTransactionId = externalTransactionId.HasValue,
+            BatchSize = batchSize <= 0 ? 100 : batchSize,
+            DryRun = dryRun
+        };
+
+        var reply = await _coreClient.SageInboundReceiptMaterialisationAutoCorrectAsync(request);
+
+        var result = new SageInboundReceiptMaterialisationAutoCorrectResult
+        {
+            ProcessedCount = reply.ProcessedCount,
+            CorrectedCount = reply.CorrectedCount,
+            SkippedCount = reply.SkippedCount,
+            FailedCount = reply.FailedCount
+        };
+
+        foreach (var item in reply.Items)
+        {
+            result.Items.Add(new Concursus.Common.Shared.Models.Finance.SageInboundReceiptMaterialisationAutoCorrectResultItem
+            {
+                ExternalTransactionId = item.ExternalTransactionId,
+                Outcome = item.Outcome,
+                Message = item.Message,
+                MatchedTransactionId = item.MatchedTransactionId,
+                MaterialisedReceiptTransactionId = item.MaterialisedReceiptTransactionId,
+                MaterialisedAllocationId = item.MaterialisedAllocationId
+            });
+        }
+
+        return result;
+    }
+
+    public async Task<int> SageInboundDiagnosticsApplyTransactionReferencesAsync(
+    Guid? statusGuid = null,
+    long? transactionId = null,
+    bool dryRun = true,
+    CancellationToken cancellationToken = default)
+    {
+        var request = new SageInboundDiagnosticsApplyTransactionReferencesRequest
+        {
+            StatusGuid = statusGuid?.ToString() ?? string.Empty,
+            TransactionId = transactionId ?? 0,
+            HasTransactionId = transactionId.HasValue,
+            DryRun = dryRun
+        };
+
+        var reply = await _coreClient.SageInboundDiagnosticsApplyTransactionReferencesAsync(
+            request,
+            cancellationToken: cancellationToken);
+
+        if (!reply.Success || !string.IsNullOrWhiteSpace(reply.ErrorReturned))
+        {
+            throw new Exception(
+                string.IsNullOrWhiteSpace(reply.ErrorReturned)
+                    ? reply.Message
+                    : reply.ErrorReturned);
+        }
+
+        return reply.AppliedCount;
+    }
+
     public async Task<TransactionInvoicePrintModel?> TransactionInvoicePrintModelGetAsync(
     Guid transactionGuid,
     TransactionInvoiceRenderMode renderMode = TransactionInvoiceRenderMode.Preview,
@@ -227,12 +295,17 @@ public partial class FormHelper
             StatusCode = request.StatusCode ?? string.Empty,
             SageAccountReference = request.SageAccountReference ?? string.Empty,
             SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            TransactionNumber = request.TransactionNumber ?? string.Empty,
+
             IncludeOnlyRetryableFailures = request.OnlyRetryableFailures ?? false,
             IncludeOnlyRetryableFailuresSpecified = request.OnlyRetryableFailures.HasValue,
+
             InvoiceRequestId = request.InvoiceRequestId ?? 0,
             InvoiceRequestIdSpecified = request.InvoiceRequestId.HasValue,
+
             TransactionId = request.TransactionId ?? 0,
             TransactionIdSpecified = request.TransactionId.HasValue,
+
             JobId = request.JobId ?? 0,
             JobIdSpecified = request.JobId.HasValue
         };
@@ -288,7 +361,37 @@ public partial class FormHelper
                 LastSageTransactionTypeCode = row.LastSageTransactionTypeCode,
                 NextPollDueOnUtc = FromTimestamp(row.NextPollDueOnUtc),
                 PollAttemptCount = row.PollAttemptCount,
-                IsTerminalState = row.IsTerminalState
+                IsTerminalState = row.IsTerminalState,
+
+                TransactionGuid = Guid.TryParse(row.TransactionGuid, out var transactionGuid)
+                    ? transactionGuid
+                    : null,
+
+                TransactionNumber = row.TransactionNumber ?? string.Empty,
+                TransactionIsBatched = row.TransactionIsBatched,
+
+                MatchedTransactionGuid = Guid.TryParse(row.MatchedTransactionGuid, out var matchedTransactionGuid)
+                    ? matchedTransactionGuid
+                    : null,
+
+                MatchedTransactionNumber = row.MatchedTransactionNumber ?? string.Empty,
+                TransactionSageTransactionReference = row.TransactionSageTransactionReference ?? string.Empty,
+                MatchedTransactionSageTransactionReference = row.MatchedTransactionSageTransactionReference ?? string.Empty,
+
+
+                MaterialisedReceiptTransactionGuid = Guid.TryParse(row.MaterialisedReceiptTransactionGuid, out var receiptGuid)
+                    ? receiptGuid
+                    : null,
+
+                MaterialisedReceiptTransactionNumber = row.MaterialisedReceiptTransactionNumber ?? string.Empty,
+
+                MaterialisedAllocationGuid = Guid.TryParse(row.MaterialisedAllocationGuid, out var allocationGuid)
+                    ? allocationGuid
+                    : null,
+
+                MaterialisedAllocationId = row.MaterialisedAllocationId > 0
+                    ? row.MaterialisedAllocationId
+                    : null
             });
         }
 
@@ -554,6 +657,123 @@ public partial class FormHelper
         return false;
     }
 
+    public async Task<InvoiceScheduleConfigurationTotalsModel> InvoiceScheduleConfigurationTotalsGetAsync(
+    Guid invoiceScheduleGuid,
+    CancellationToken ct = default)
+    {
+        if (invoiceScheduleGuid == Guid.Empty)
+        {
+            return new InvoiceScheduleConfigurationTotalsModel();
+        }
+
+        var response = await _coreClient.InvoiceScheduleConfigurationTotalsGetAsync(
+            new InvoiceScheduleConfigurationTotalsGetRequest
+            {
+                UserId = UserService.UserId,
+                InvoiceScheduleGuid = invoiceScheduleGuid.ToString()
+            },
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        return new InvoiceScheduleConfigurationTotalsModel
+        {
+            MonthlyTotalAmount = Convert.ToDecimal(response.MonthlyTotalAmount),
+            PercentageTotalPercentage = Convert.ToDecimal(response.PercentageTotalPercentage),
+            PercentageTotalAmount = Convert.ToDecimal(response.PercentageTotalAmount),
+            ScheduleAmount = Convert.ToDecimal(response.ScheduleAmount)
+        };
+    }
+
+    public async Task<List<InvoiceScheduleDrawdownStageLookupModel>> InvoiceScheduleDrawdownStageLookupGetAsync(
+    Guid invoiceScheduleGuid,
+    CancellationToken ct = default)
+    {
+        var response = await _coreClient.InvoiceScheduleDrawdownStageLookupGetAsync(
+            new InvoiceScheduleDrawdownStageLookupGetRequest
+            {
+                UserId = UserService.UserId,
+                InvoiceScheduleGuid = invoiceScheduleGuid == Guid.Empty
+                    ? string.Empty
+                    : invoiceScheduleGuid.ToString()
+            },
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        return response.Rows
+            .Select(x => new InvoiceScheduleDrawdownStageLookupModel
+            {
+                Guid = Guid.TryParse(x.Guid, out var guid) ? guid : Guid.Empty,
+                Name = x.Name ?? string.Empty
+            })
+            .Where(x => x.Guid != Guid.Empty)
+            .OrderBy(x => x.Name)
+            .ToList();
+    }
+
+    public async Task<int> InvoiceScheduleDrawdownsBulkUpdateAsync(
+        Guid invoiceScheduleGuid,
+        string gridCode,
+        IEnumerable<InvoiceScheduleDrawdownBulkEditRowModel> rows,
+        CancellationToken ct = default)
+    {
+        if (invoiceScheduleGuid == Guid.Empty)
+        {
+            throw new ArgumentException("Invoice schedule guid is required.", nameof(invoiceScheduleGuid));
+        }
+
+        if (string.IsNullOrWhiteSpace(gridCode))
+        {
+            throw new ArgumentException("Grid code is required.", nameof(gridCode));
+        }
+
+        var request = new InvoiceScheduleDrawdownsBulkUpdateRequest
+        {
+            InvoiceScheduleGuid = invoiceScheduleGuid.ToString(),
+            GridCode = gridCode
+        };
+
+        foreach (var row in rows.Where(x => x.Guid != Guid.Empty))
+        {
+            request.Rows.Add(new InvoiceScheduleDrawdownBulkUpdateRow
+            {
+                Guid = row.Guid.ToString(),
+                PeriodNumber = row.PeriodNumber,
+                Amount = Convert.ToDouble(row.Amount),
+                Percentage = Convert.ToDouble(row.Percentage),
+                OnDayOfMonth = row.OnDayOfMonth?.ToString("yyyy-MM-dd") ?? string.Empty,
+                Description = row.Description ?? string.Empty,
+                RibaStageGuid = row.RibaStageGuid.HasValue && row.RibaStageGuid.Value != Guid.Empty
+                    ? row.RibaStageGuid.Value.ToString()
+                    : string.Empty
+            });
+        }
+
+        var response = await _coreClient.InvoiceScheduleDrawdownsBulkUpdateAsync(
+            request,
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        if (!response.Success)
+        {
+            throw new Exception(string.IsNullOrWhiteSpace(response.Message)
+                ? "Invoice schedule drawdowns were not saved."
+                : response.Message);
+        }
+
+        return response.UpdatedCount;
+    }
 
     public async Task<Guid> JobInvoiceScheduleGuidGetAsync(Guid jobGuid, CancellationToken ct = default)
     {
@@ -1349,47 +1569,111 @@ public partial class FormHelper
 
 
 
-    public async Task<(string, DataObject)> UpsertDataObject(DataObject dataObject, Guid? entityQueryGuid,
-        bool validateOnly = true, bool IsBulkUpdate = false, ModalService? modalService = null, DataObject DeltaDataObject = null)
+    public async Task<(string, DataObject)> UpsertDataObject(
+        DataObject dataObject,
+        Guid? entityQueryGuid,
+        bool validateOnly = true,
+        bool IsBulkUpdate = false,
+        ModalService? modalService = null,
+        DataObject? DeltaDataObject = null)
     {
-        //try
-        //{
-        // Below added to stop error Sequence contains no elements when null is passed in.
-        if (DeltaDataObject == null) { DeltaDataObject = new(); }
+        if (dataObject == null)
+        {
+            return ("Error: Cannot upsert a null DataObject.", new DataObject());
+        }
+
+        DeltaDataObject ??= new DataObject();
+
         Console.WriteLine($"Upserting data object. RowVersion {dataObject.RowVersion}");
-        var dataObjectUpsertResponse = await _coreClient.DataObjectUpsertAsync(new DataObjectUpsertRequest()
+
+        var originalDataObject = dataObject;
+
+        var request = new DataObjectUpsertRequest
         {
             DataObject = dataObject,
-            DeltaDataObject = DeltaDataObject, //OE - CBLD-436.
+            DeltaDataObject = DeltaDataObject,
             ValidateOnly = validateOnly,
-            EntityQueryGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityQueryGuid.ToString()).ToString(),
+            EntityQueryGuid = ClientFunctions
+                .ParseAndReturnEmptyGuidIfInvalid(entityQueryGuid?.ToString())
+                .ToString(),
             SkipValidation = IsBulkUpdate
-        });
-        Console.WriteLine($"finished Upsert New DataObject.RowVersion {dataObjectUpsertResponse.DataObject.RowVersion}");
-        if (!string.IsNullOrEmpty(dataObjectUpsertResponse.ErrorReturned))
+        };
+
+        var dataObjectUpsertResponse = await _coreClient.DataObjectUpsertAsync(request);
+
+        if (dataObjectUpsertResponse == null)
         {
-            return ("Error" + dataObjectUpsertResponse.ErrorReturned, dataObject);
+            return ("Error: DataObjectUpsertAsync returned no response.", dataObject);
         }
-        dataObject = dataObjectUpsertResponse.DataObject;
 
-        PrepareDecodedDataObject(dataObject);
+        if (!string.IsNullOrWhiteSpace(dataObjectUpsertResponse.ErrorReturned))
+        {
+            return ("Error: " + dataObjectUpsertResponse.ErrorReturned, dataObject);
+        }
 
-        if (!validateOnly && dataObject.RowStatus == 0)
+        if (dataObjectUpsertResponse.DataObject == null)
+        {
+            return ("Error: DataObjectUpsertAsync returned no DataObject.", dataObject);
+        }
+
+        var returnedDataObject = dataObjectUpsertResponse.DataObject;
+
+        Console.WriteLine($"finished Upsert New DataObject.RowVersion {returnedDataObject.RowVersion}");
+
+        PrepareDecodedDataObject(returnedDataObject);
+
+        if (validateOnly)
+        {
+            originalDataObject.RowVersion = returnedDataObject.RowVersion;
+            originalDataObject.ValidationResults.Clear();
+            originalDataObject.ValidationResults.AddRange(returnedDataObject.ValidationResults);
+            originalDataObject.HasValidationMessages = returnedDataObject.HasValidationMessages;
+            originalDataObject.SaveButtonDisabled = returnedDataObject.SaveButtonDisabled;
+            originalDataObject.DataPills.Clear();
+            originalDataObject.DataPills.AddRange(returnedDataObject.DataPills);
+            originalDataObject.DataProperties.Clear();
+            originalDataObject.DataProperties.AddRange(returnedDataObject.DataProperties);
+
+            Console.WriteLine($"updated validate-only data object. RowVersion {originalDataObject.RowVersion}");
+
+            return (string.Empty, originalDataObject);
+        }
+
+        dataObject = returnedDataObject;
+
+        if (dataObject.ValidationResults.Count > 0 || dataObject.HasValidationMessages)
+        {
+            dataObject.HasValidationMessages = true;
+
+            var message = string.Join(
+                "\r\n",
+                dataObject.ValidationResults
+                    .Where(vr => vr.IsInvalid && !string.IsNullOrWhiteSpace(vr.Message))
+                    .Select(vr => vr.Message));
+
+            return (message, dataObject);
+        }
+
+        if (dataObject.RowStatus == 0)
         {
             _ = Task.Run(async () =>
             {
-                // Check to ensure only the Parent record is added to the Recent Items and not child records
                 var modalResults = modalService?.GetLatestModal();
 
-                // If modalResults is null or the EntityTypeGuids do not match, proceed. Otherwise,
-                // return immediately.
-                if (modalResults != null && modalResults.Value.DataObjectReference.EntityTypeGuid == ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.EntityTypeGuid))
+                if (modalResults != null &&
+                    modalResults.Value.DataObjectReference.EntityTypeGuid ==
+                    ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.EntityTypeGuid))
                 {
                     return;
                 }
 
-                var label = UserService.UserId != -1 ? dataObject?.Label ?? "" : "Unknown";
-                var userGuid = UserService.UserId != -1 ? ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(UserService?.Guid).ToString() : Guid.Empty.ToString();
+                var label = UserService.UserId != -1
+                    ? dataObject?.Label ?? string.Empty
+                    : "Unknown";
+
+                var userGuid = UserService.UserId != -1
+                    ? ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(UserService?.Guid).ToString()
+                    : Guid.Empty.ToString();
 
                 var recentItem = new RecentItem
                 {
@@ -1403,19 +1687,10 @@ public partial class FormHelper
                 await _coreClient.RecentItemsCreateAsync(recentItem);
             });
         }
+
         Console.WriteLine($"updated data object. RowVersion {dataObject.RowVersion}");
-        if (dataObject.ValidationResults.Count > 0)
-        {
-            var message = string.Join("\r\n", dataObject.ValidationResults.Select(vr => vr.Message));
-            return (message, dataObject);
-        }
-        else { return ("", dataObject); }
-        //}
-        //catch (Exception ex)
-        //{
-        //    Console.WriteLine("ERRORRAISED! \"PageMethod\", \"FormHelper/UpsertDataObject()\" \r\n" + ex.Message);
-        //    return (ex.Message, dataObject);
-        //}
+
+        return (string.Empty, dataObject);
     }
 
     public static void PrepareDecodedDataObject(DataObject dataObject)
@@ -1659,6 +1934,7 @@ public partial class FormHelper
         string? analysisCode02Value,
         string? analysisCode03Value,
         IEnumerable<SageCreateSalesOrderLine>? lines,
+        long? transactionId = null,
         CancellationToken ct = default)
     {
         var request = new Core.SageCreateSalesOrderRequest
@@ -1675,7 +1951,9 @@ public partial class FormHelper
             AllowCreditLimitException = allowCreditLimitException.GetValueOrDefault(),
             AnalysisCode01Value = analysisCode01Value ?? string.Empty,
             AnalysisCode02Value = analysisCode02Value ?? string.Empty,
-            AnalysisCode03Value = analysisCode03Value ?? string.Empty
+            AnalysisCode03Value = analysisCode03Value ?? string.Empty,
+            TransactionId = transactionId ?? 0,
+            HasTransactionId = transactionId.HasValue && transactionId.Value > 0
         };
 
         if (lines != null)

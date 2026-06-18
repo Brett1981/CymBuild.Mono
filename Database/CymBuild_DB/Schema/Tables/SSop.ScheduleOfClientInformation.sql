@@ -149,8 +149,3 @@ GO
 ALTER TABLE [SSop].[ScheduleOfClientInformation] WITH NOCHECK
   ADD CONSTRAINT [FK_ScheduleOfClientInformation_Enquiries] FOREIGN KEY ([EnquiryId]) REFERENCES [SSop].[Enquiries] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SSop].[ScheduleOfClientInformation]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Schedule of Information recieved from the client that allowed us to prepare this fee proposal. ', 'SCHEMA', N'SSop', 'TABLE', N'ScheduleOfClientInformation'
-GO

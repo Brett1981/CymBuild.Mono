@@ -1,11 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceRequestItems]')
 GO
-PRINT (N'Create table [SFin].[InvoiceRequestItems]')
-GO
-PRINT (N'Create table [SFin].[InvoiceRequestItems]')
-GO
-PRINT (N'Create table [SFin].[InvoiceRequestItems]')
-GO
 CREATE TABLE [SFin].[InvoiceRequestItems] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_InvoiceRequestItems_RowStatus] DEFAULT (0),
@@ -48,71 +42,6 @@ CREATE UNIQUE INDEX [IX_UQ_InvoiceRequestItems_Guid]
   ON [SFin].[InvoiceRequestItems] ([Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
-GO
-
-SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tr_InvoiceRequestItems_RecalcPlaceholder] on table [SFin].[InvoiceRequestItems]')
-GO
-/* =============================================================================
-   SFin.tr_InvoiceRequestItems_RecalcPlaceholder
-
-   Purpose:
-   - Keep InvoiceRequests.IsZeroValuePlaceholder in sync with the SUM(Net) of its
-     active (non-deleted) InvoiceRequestItems.
-
-   Key behaviours:
-   - Supports bulk/script guard via SESSION_CONTEXT('S_disable_triggers')
-   - Handles INSERT/UPDATE/DELETE
-   - Ignores RowStatus = 254 items (deleted)
-   - Only updates affected InvoiceRequests
-   - Avoids unnecessary writes (only updates when value would change)
-============================================================================= */
-
-CREATE TRIGGER [SFin].[tr_InvoiceRequestItems_RecalcPlaceholder]
-ON [SFin].[InvoiceRequestItems]
-AFTER INSERT, UPDATE, DELETE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Guard: allow disabling during bulk loads / scripts
-    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
-        RETURN;
-
-    ;WITH Changed AS
-    (
-        SELECT DISTINCT InvoiceRequestId
-        FROM
-        (
-            SELECT InvoiceRequestId FROM inserted
-            UNION ALL
-            SELECT InvoiceRequestId FROM deleted
-        ) x
-        WHERE InvoiceRequestId IS NOT NULL
-          AND InvoiceRequestId > 0
-    ),
-    Totals AS
-    (
-        SELECT
-              c.InvoiceRequestId
-            , TotalNet = CAST(SUM(CASE WHEN iri.RowStatus = 254 THEN 0 ELSE ISNULL(iri.Net, 0) END) AS DECIMAL(19,2))
-        FROM Changed c
-        LEFT JOIN SFin.InvoiceRequestItems iri
-            ON iri.InvoiceRequestId = c.InvoiceRequestId
-        GROUP BY c.InvoiceRequestId
-    )
-    UPDATE ir
-        SET ir.IsZeroValuePlaceholder =
-                CASE WHEN ISNULL(t.TotalNet, 0) = 0 THEN 1 ELSE 0 END
-    FROM SFin.InvoiceRequests ir
-    JOIN Totals t
-        ON t.InvoiceRequestId = ir.ID
-    WHERE ir.RowStatus NOT IN (254)  -- keep consistent with your "deleted" sentinel
-      AND ir.IsZeroValuePlaceholder <>
-            CASE WHEN ISNULL(t.TotalNet, 0) = 0 THEN 1 ELSE 0 END;
-END;
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
@@ -300,6 +229,71 @@ BEGIN
 		END
 		
 		
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tr_InvoiceRequestItems_RecalcPlaceholder] on table [SFin].[InvoiceRequestItems]')
+GO
+/* =============================================================================
+   SFin.tr_InvoiceRequestItems_RecalcPlaceholder
+
+   Purpose:
+   - Keep InvoiceRequests.IsZeroValuePlaceholder in sync with the SUM(Net) of its
+     active (non-deleted) InvoiceRequestItems.
+
+   Key behaviours:
+   - Supports bulk/script guard via SESSION_CONTEXT('S_disable_triggers')
+   - Handles INSERT/UPDATE/DELETE
+   - Ignores RowStatus = 254 items (deleted)
+   - Only updates affected InvoiceRequests
+   - Avoids unnecessary writes (only updates when value would change)
+============================================================================= */
+
+CREATE TRIGGER [SFin].[tr_InvoiceRequestItems_RecalcPlaceholder]
+ON [SFin].[InvoiceRequestItems]
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Guard: allow disabling during bulk loads / scripts
+    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+        RETURN;
+
+    ;WITH Changed AS
+    (
+        SELECT DISTINCT InvoiceRequestId
+        FROM
+        (
+            SELECT InvoiceRequestId FROM inserted
+            UNION ALL
+            SELECT InvoiceRequestId FROM deleted
+        ) x
+        WHERE InvoiceRequestId IS NOT NULL
+          AND InvoiceRequestId > 0
+    ),
+    Totals AS
+    (
+        SELECT
+              c.InvoiceRequestId
+            , TotalNet = CAST(SUM(CASE WHEN iri.RowStatus = 254 THEN 0 ELSE ISNULL(iri.Net, 0) END) AS DECIMAL(19,2))
+        FROM Changed c
+        LEFT JOIN SFin.InvoiceRequestItems iri
+            ON iri.InvoiceRequestId = c.InvoiceRequestId
+        GROUP BY c.InvoiceRequestId
+    )
+    UPDATE ir
+        SET ir.IsZeroValuePlaceholder =
+                CASE WHEN ISNULL(t.TotalNet, 0) = 0 THEN 1 ELSE 0 END
+    FROM SFin.InvoiceRequests ir
+    JOIN Totals t
+        ON t.InvoiceRequestId = ir.ID
+    WHERE ir.RowStatus NOT IN (254)  -- keep consistent with your "deleted" sentinel
+      AND ir.IsZeroValuePlaceholder <>
+            CASE WHEN ISNULL(t.TotalNet, 0) = 0 THEN 1 ELSE 0 END;
+END;
 GO
 
 PRINT (N'Create foreign key [FK_InvoiceRequestItems_Activities] on table [SFin].[InvoiceRequestItems]')

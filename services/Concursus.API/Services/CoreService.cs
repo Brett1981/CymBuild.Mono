@@ -460,6 +460,180 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
 
+    public override async Task<InvoiceScheduleDrawdownStageLookupGetResponse> InvoiceScheduleDrawdownStageLookupGet(
+    InvoiceScheduleDrawdownStageLookupGetRequest request,
+    ServerCallContext context)
+    {
+        try
+        {
+            Guid invoiceScheduleGuid = Guid.Empty;
+
+            if (!string.IsNullOrWhiteSpace(request.InvoiceScheduleGuid) &&
+                Guid.TryParse(request.InvoiceScheduleGuid, out var parsedInvoiceScheduleGuid))
+            {
+                invoiceScheduleGuid = parsedInvoiceScheduleGuid;
+            }
+
+            var userId = request.UserId > 0
+                ? request.UserId
+                : _serviceBase._userId;
+
+            var rows = await _serviceBase._entityFramework
+                .InvoiceScheduleDrawdownStageLookupGetAsync(
+                    userId,
+                    invoiceScheduleGuid,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            var response = new InvoiceScheduleDrawdownStageLookupGetResponse();
+
+            foreach (var row in rows)
+            {
+                response.Rows.Add(new InvoiceScheduleDrawdownStageLookupRow
+                {
+                    Guid = row.Guid.ToString(),
+                    Name = row.Name ?? string.Empty
+                });
+            }
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "InvoiceScheduleDrawdownStageLookupGet failed.");
+
+            return new InvoiceScheduleDrawdownStageLookupGetResponse
+            {
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
+    public override async Task<InvoiceScheduleDrawdownsBulkUpdateResponse> InvoiceScheduleDrawdownsBulkUpdate(
+    InvoiceScheduleDrawdownsBulkUpdateRequest request,
+    ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.InvoiceScheduleGuid, out var invoiceScheduleGuid) ||
+                invoiceScheduleGuid == Guid.Empty)
+            {
+                return new InvoiceScheduleDrawdownsBulkUpdateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "Invoice schedule guid is required."
+                };
+            }
+
+            var rows = new List<Concursus.EF.Core.InvoiceScheduleDrawdownBulkUpdateRow>();
+
+            foreach (var row in request.Rows)
+            {
+                if (!Guid.TryParse(row.Guid, out var rowGuid) || rowGuid == Guid.Empty)
+                {
+                    continue;
+                }
+
+                Guid? ribaStageGuid = null;
+
+                if (Guid.TryParse(row.RibaStageGuid, out var parsedRibaStageGuid) &&
+                    parsedRibaStageGuid != Guid.Empty)
+                {
+                    ribaStageGuid = parsedRibaStageGuid;
+                }
+
+                DateTime? onDayOfMonth = null;
+
+                if (DateTime.TryParse(row.OnDayOfMonth, out var parsedDate))
+                {
+                    onDayOfMonth = parsedDate.Date;
+                }
+
+                rows.Add(new Concursus.EF.Core.InvoiceScheduleDrawdownBulkUpdateRow
+                {
+                    Guid = rowGuid,
+                    PeriodNumber = row.PeriodNumber,
+                    Amount = Convert.ToDecimal(row.Amount),
+                    Percentage = Convert.ToDecimal(row.Percentage),
+                    OnDayOfMonth = onDayOfMonth,
+                    Description = row.Description ?? string.Empty,
+                    RibaStageGuid = ribaStageGuid
+                });
+            }
+
+            var updatedCount = await _serviceBase._entityFramework
+                .InvoiceScheduleDrawdownsBulkUpdateAsync(
+                    invoiceScheduleGuid,
+                    request.GridCode,
+                    rows,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new InvoiceScheduleDrawdownsBulkUpdateResponse
+            {
+                Success = true,
+                UpdatedCount = updatedCount,
+                Message = $"Saved {updatedCount} drawdown row(s)."
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "InvoiceScheduleDrawdownsBulkUpdate failed.");
+
+            return new InvoiceScheduleDrawdownsBulkUpdateResponse
+            {
+                Success = false,
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
+    public override async Task<InvoiceScheduleConfigurationTotalsGetResponse> InvoiceScheduleConfigurationTotalsGet(
+    InvoiceScheduleConfigurationTotalsGetRequest request,
+    ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.InvoiceScheduleGuid, out var invoiceScheduleGuid) ||
+                invoiceScheduleGuid == Guid.Empty)
+            {
+                return new InvoiceScheduleConfigurationTotalsGetResponse
+                {
+                    ErrorReturned = "invoiceScheduleGuid must be a valid GUID."
+                };
+            }
+
+            var userId = request.UserId > 0
+                ? request.UserId
+                : _serviceBase._userId;
+
+            var totals = await _serviceBase._entityFramework
+                .GetInvoiceScheduleConfigurationTotalsAsync(
+                    userId,
+                    invoiceScheduleGuid,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new InvoiceScheduleConfigurationTotalsGetResponse
+            {
+                MonthlyTotalAmount = Convert.ToDouble(totals.MonthlyTotalAmount),
+                PercentageTotalPercentage = Convert.ToDouble(totals.PercentageTotalPercentage),
+                PercentageTotalAmount = Convert.ToDouble(totals.PercentageTotalAmount),
+                ScheduleAmount = Convert.ToDouble(totals.ScheduleAmount),
+                ErrorReturned = string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "InvoiceScheduleConfigurationTotalsGet failed.");
+
+            return new InvoiceScheduleConfigurationTotalsGetResponse
+            {
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
     public override async Task<JobInvoiceSchedulesGetResponse> JobInvoiceSchedulesGet(
     JobInvoiceSchedulesGetRequest request,
     ServerCallContext context)
@@ -2188,17 +2362,13 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
 
 
     private static bool ShouldQueueSharePointStructureRepair(
-    DataObject dataObject,
-    Guid entityTypeGuid)
+        DataObject dataObject,
+        Guid entityTypeGuid)
     {
         if (dataObject == null || !dataObject.HasDocuments)
+        {
             return false;
-
-        if (entityTypeGuid == JobEntityTypeGuid)
-            return true;
-
-        if (entityTypeGuid == QuoteEntityTypeGuid)
-            return true;
+        }
 
         return string.IsNullOrWhiteSpace(dataObject.SharePointUrl)
             || string.IsNullOrWhiteSpace(dataObject.SharePointFolderPath);

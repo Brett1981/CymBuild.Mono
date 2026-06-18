@@ -1,20 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER ON
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create table [SCore].[OrganisationalUnits]')
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-
 PRINT (N'Create table [SCore].[OrganisationalUnits]')
 GO
 CREATE TABLE [SCore].[OrganisationalUnits] (

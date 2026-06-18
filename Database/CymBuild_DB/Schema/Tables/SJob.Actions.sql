@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SJob].[Actions]')
 GO
-PRINT (N'Create table [SJob].[Actions]')
-GO
 CREATE TABLE [SJob].[Actions] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_Actions_RowStatus] DEFAULT (0),

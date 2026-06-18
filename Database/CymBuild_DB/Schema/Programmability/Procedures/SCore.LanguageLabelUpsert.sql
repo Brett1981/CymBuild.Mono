@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SCore].[LanguageLabelUpsert]')
+GO
+
 CREATE PROCEDURE [SCore].[LanguageLabelUpsert]
 	(	@Name NVARCHAR(250),
 		@Guid UNIQUEIDENTIFIER OUT

@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[DataPills] AS TABLE (
+﻿PRINT (N'Create type [SCore].[DataPills]')
+GO
+CREATE TYPE [SCore].[DataPills] AS TABLE (
   [ID] [int] IDENTITY,
   [Label] [nvarchar](50) NOT NULL DEFAULT (''),
   [Class] [nvarchar](50) NOT NULL DEFAULT (''),

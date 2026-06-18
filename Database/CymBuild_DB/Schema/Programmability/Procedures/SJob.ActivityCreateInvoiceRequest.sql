@@ -1,7 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SJob].[ActivityCreateInvoiceRequest]')
 GO
+
+
+
+
+
+
 CREATE PROCEDURE [SJob].[ActivityCreateInvoiceRequest]
 	(
 		@Guid UNIQUEIDENTIFIER
@@ -15,7 +22,8 @@ AS
 				@CreatedByUserGuid UNIQUEIDENTIFIER,
 				@InvoiceRequestGuid UNIQUEIDENTIFIER = NEWID(),
 				@InvoiceRequestItemGuid UNIQUEIDENTIFIER = NEWID(),
-				@Net DECIMAL(19,2)
+				@Net DECIMAL(19,2),
+				@FinanceAccountGuid UNIQUEIDENTIFIER
 
 		IF (
 			(EXISTS
@@ -62,7 +70,8 @@ AS
 		-- Get the details to create the invoice.
 		SELECT	@JobGuid = j.Guid,
 				@MilestoneGuid = m.Guid,
-				@Net = CASE WHEN a.InvoicingValue > 0 THEN a.InvoicingValue ELSE (i.BillableRate * a.InvoicingQuantity) END
+				@Net = CASE WHEN a.InvoicingValue > 0 THEN a.InvoicingValue ELSE (i.BillableRate * a.InvoicingQuantity) END,
+				@FinanceAccountGuid = fa.Guid
 		FROM	SJob.Activities a
 		JOIN	SJob.Jobs j ON (j.ID = a.JobId)
 		JOIN	SCore.Identities i ON (i.ID = j.SurveyorID)
@@ -77,7 +86,8 @@ AS
 									   @InvoicingType = N'',
 									   @ExpectedDate = NULL,
 									   @ManualStatus = 0,
-									   @PaymentStatusGuid = '00000000-0000-0000-0000-000000000000'
+									   @PaymentStatusGuid = '00000000-0000-0000-0000-000000000000',
+									   @FinanceAccountGuid  = @FinanceAccountGuid
 				
 		EXEC sFin.InvoiceRequestItemsUpsert @InvoiceRequestGuid = @InvoiceRequestGuid, -- uniqueidentifier
 											@MilestoneGuid = @MilestoneGuid,		-- uniqueidentifier

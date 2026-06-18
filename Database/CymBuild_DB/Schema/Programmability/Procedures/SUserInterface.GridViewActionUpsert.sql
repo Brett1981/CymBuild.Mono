@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SUserInterface].[GridViewActionUpsert]')
+GO
+
+
 CREATE PROCEDURE [SUserInterface].[GridViewActionUpsert]
   (
     @GridViewDefinitionGuid UNIQUEIDENTIFIER,

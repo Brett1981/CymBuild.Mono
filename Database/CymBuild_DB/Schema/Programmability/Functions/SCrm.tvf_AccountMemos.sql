@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCrm].[tvf_AccountMemos]')
+GO
 CREATE FUNCTION [SCrm].[tvf_AccountMemos]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN
 SELECT
 		am.ID,

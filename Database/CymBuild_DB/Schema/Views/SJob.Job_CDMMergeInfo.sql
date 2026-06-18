@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[Job_CDMMergeInfo]')
+GO
+
+
 CREATE VIEW [SJob].[Job_CDMMergeInfo] 
 AS SELECT		mi.ID,
 			mi.RowStatus,
@@ -137,10 +142,4 @@ OUTER APPLY SJob.JobMileStoneDates (   N'SITEWORK',
 OUTER APPLY SJob.JobMileStoneDates (   N'CDMSTRATEGY',
 									   mi.ID
 								   ) AS CDMSTRATEGY
-GO
-
-EXEC sys.sp_addextendedproperty N'MS_Description', N'CDM Document Merge Fields', 'SCHEMA', N'SJob', 'VIEW', N'Job_CDMMergeInfo'
-GO
-
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Job ID: {Job Number}', 'SCHEMA', N'SJob', 'VIEW', N'Job_CDMMergeInfo', 'COLUMN', N'JobIDString'
 GO

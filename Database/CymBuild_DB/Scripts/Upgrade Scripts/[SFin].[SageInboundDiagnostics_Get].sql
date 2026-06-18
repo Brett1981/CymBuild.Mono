@@ -1,10 +1,12 @@
-﻿
+/****** Object:  StoredProcedure [SFin].[SageInboundDiagnostics_Get]    Script Date: 10/06/2026 15:28:38 ******/
 SET ANSI_NULLS ON
 GO
+
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE OR ALTER PROCEDURE [SFin].[SageInboundDiagnostics_Get]
+
+ALTER   PROCEDURE [SFin].[SageInboundDiagnostics_Get]
 (
     @StatusCode NVARCHAR(30) = NULL,
     @SageAccountReference NVARCHAR(100) = NULL,
@@ -76,7 +78,9 @@ BEGIN
         d.MaterialisedReceiptTransactionGuid,
         d.MaterialisedReceiptTransactionNumber,
         d.MaterialisedAllocationGuid,
-        d.MaterialisedAllocationID
+        d.MaterialisedAllocationID,
+        d.TransactionSageTransactionReference,
+        d.MatchedTransactionSageTransactionReference
     FROM SFin.tvf_SageInboundDiagnostics
     (
         @StatusCode,
@@ -91,3 +95,5 @@ BEGIN
     ORDER BY d.UpdatedDateTimeUTC DESC, d.ID DESC;
 END
 GO
+
+

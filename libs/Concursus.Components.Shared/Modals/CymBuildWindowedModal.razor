@@ -1,0 +1,136 @@
+﻿@using System.Web
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Classes
+@using Microsoft.AspNetCore.Components
+@using Newtonsoft.Json
+
+@inject NavigationManager NavManager
+@inject ModalService modalService
+
+@if (_isVisible && _componentType is not null)
+{
+    <div class="cb-v2-modal-backdrop">
+        <div class="cb-v2-modal-shell @SizeCssClass">
+            <div class="cb-v2-modal-header">
+                <div class="cb-v2-title mb-0">@_title</div>
+
+                <button type="button"
+                        class="cb-v2-btn-secondary"
+                        @onclick="CloseAsync">
+                    Close
+                </button>
+            </div>
+
+            <div class="cb-v2-modal-body">
+                <DynamicComponent Type="@_componentType"
+                                  Parameters="@_parameters" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string SizeCssClass { get; set; } = "cb-v2-modal-lg";
+
+    private bool _isVisible;
+    private string _title = string.Empty;
+    private string _modalId = Guid.Empty.ToString();
+    private Type? _componentType;
+    private readonly Dictionary<string, object> _parameters = new();
+
+    public Task OpenWindowedEntityAsync<TComponent>(
+        Guid recordGuid,
+        Guid entityTypeGuid,
+        string title,
+        bool isInformationPage = false,
+        bool isMainRecordContext = true)
+        where TComponent : IComponent
+    {
+        return OpenWindowedEntityAsync(
+            componentType: typeof(TComponent),
+            recordGuid: recordGuid,
+            entityTypeGuid: entityTypeGuid,
+            title: title,
+            isInformationPage: isInformationPage,
+            isMainRecordContext: isMainRecordContext);
+    }
+
+    public Task OpenWindowedEntityAsync(
+        Type componentType,
+        Guid recordGuid,
+        Guid entityTypeGuid,
+        string title,
+        bool isInformationPage = false,
+        bool isMainRecordContext = true)
+    {
+        if (_isVisible)
+            return Task.CompletedTask;
+
+        if (componentType is null)
+            throw new ArgumentNullException(nameof(componentType));
+
+        if (recordGuid == Guid.Empty)
+            throw new ArgumentException("Record guid is required.", nameof(recordGuid));
+
+        if (entityTypeGuid == Guid.Empty)
+            throw new ArgumentException("Entity type guid is required.", nameof(entityTypeGuid));
+
+        var parentDataObjectReference = new DataObjectReference(
+            recordGuid.ToString(),
+            entityTypeGuid.ToString());
+
+        var serializedDataObjectReference = HttpUtility.UrlEncode(
+            JsonConvert.SerializeObject(parentDataObjectReference));
+
+        _modalId = Guid.NewGuid().ToString();
+
+        _parameters.Clear();
+        _parameters.Add("EntityTypeGuid", entityTypeGuid.ToString());
+        _parameters.Add("Windowed", true);
+        _parameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseAsync));
+        _parameters.Add("RecordGuid", recordGuid.ToString());
+        _parameters.Add("SerializedDataObjectReference", serializedDataObjectReference);
+        _parameters.Add("ParentDataObjectReference", parentDataObjectReference);
+        _parameters.Add("ReturnUrl", NavManager.Uri);
+        _parameters.Add("ModalId", _modalId);
+
+        if (isInformationPage)
+            _parameters.Add("IsInformationPage", true);
+
+        if (!isMainRecordContext)
+            _parameters.Add("IsMainRecordContext", false);
+
+        modalService.RegisterModal(_modalId, parentDataObjectReference);
+
+        _componentType = componentType;
+        _title = title;
+        _isVisible = true;
+
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public Task CloseAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_modalId) &&
+                _modalId != Guid.Empty.ToString())
+            {
+                modalService.UnregisterModal(_modalId);
+            }
+        }
+        catch
+        {
+        }
+
+        _isVisible = false;
+        _title = string.Empty;
+        _modalId = Guid.Empty.ToString();
+        _componentType = null;
+        _parameters.Clear();
+
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}

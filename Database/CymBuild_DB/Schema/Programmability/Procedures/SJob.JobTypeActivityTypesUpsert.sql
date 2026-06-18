@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SJob].[JobTypeActivityTypesUpsert]')
+GO
+
 
 CREATE PROCEDURE [SJob].[JobTypeActivityTypesUpsert] 
 								@JobTypeGuid UNIQUEIDENTIFIER,

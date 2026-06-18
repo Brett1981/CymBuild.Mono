@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[Accounts_CalculatedFields]')
+GO
 CREATE VIEW [SCrm].[Accounts_CalculatedFields]
-	    --WITH SCHEMABINDING
+	         --WITH SCHEMABINDING
 AS
 SELECT	a.ID,
 		a.Guid,

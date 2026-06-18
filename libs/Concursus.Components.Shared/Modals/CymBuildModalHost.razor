@@ -1,0 +1,52 @@
+﻿@using Microsoft.AspNetCore.Components
+@inject Concursus.Components.Shared.Modals.CymBuildModalService ModalService
+
+@implements IDisposable
+
+@if (ModalService.IsVisible && ModalService.ComponentType is not null)
+{
+    <div class="cb-v2-modal-backdrop" @onclick="CancelAsync">
+        <div class="cb-v2-modal-shell @ModalService.SizeCssClass"
+             role="dialog"
+             aria-modal="true"
+             @onclick:stopPropagation="true">
+
+            <div class="cb-v2-modal-header">
+                <div class="cb-v2-title mb-0">@ModalService.Title</div>
+
+                <button type="button"
+                        class="cb-v2-btn-secondary"
+                        @onclick="CancelAsync">
+                    Close
+                </button>
+            </div>
+
+            <div class="cb-v2-modal-body">
+                <DynamicComponent Type="@ModalService.ComponentType"
+                                  Parameters="@ModalService.Parameters" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        ModalService.OnChanged += OnModalChangedAsync;
+    }
+
+    private Task OnModalChangedAsync()
+    {
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task CancelAsync()
+    {
+        return ModalService.CancelAsync();
+    }
+
+    public void Dispose()
+    {
+        ModalService.OnChanged -= OnModalChangedAsync;
+    }
+}

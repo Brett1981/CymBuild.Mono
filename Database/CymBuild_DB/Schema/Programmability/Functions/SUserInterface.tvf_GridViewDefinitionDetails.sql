@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SUserInterface].[tvf_GridViewDefinitionDetails]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_GridViewDefinitionDetails]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-     --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
   RETURN SELECT
 			root_hobt.ID					AS ID,

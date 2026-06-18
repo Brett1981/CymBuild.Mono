@@ -1,12 +1,16 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SFin].[tvf_InvoiceScheduleTriggers]')
+GO
+
+
 CREATE FUNCTION [SFin].[tvf_InvoiceScheduleTriggers]
   (
     @UserId INT
   )
 RETURNS TABLE
-      --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
   RETURN
   SELECT

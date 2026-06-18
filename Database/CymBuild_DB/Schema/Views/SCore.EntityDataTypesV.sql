@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityDataTypesV]')
+GO
 CREATE VIEW [SCore].[EntityDataTypesV]
-              --WITH SCHEMABINDING
+                   --WITH SCHEMABINDING
 AS
 SELECT	edt.ID,
 		edt.RowStatus,

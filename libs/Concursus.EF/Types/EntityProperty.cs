@@ -56,6 +56,8 @@ namespace Concursus.EF.Types
         public bool IsAlwaysVisibleInGroup_Mobile { get; set; }
         public string ExternalSearchPageUrl { get; set; }
 
+        public string HelpText { get; set; }
+
         #endregion Public Properties
     }
 }

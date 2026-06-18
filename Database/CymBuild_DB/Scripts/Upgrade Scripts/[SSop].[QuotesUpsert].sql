@@ -1,15 +1,12 @@
-USE [CymBuild_Upgrade_Stage]
+USE [CymBuild_Upgrade_Stage];
 GO
 
-/****** Object:  StoredProcedure [SSop].[QuotesUpsert]    Script Date: 01/06/2026 14:59:00 ******/
-SET ANSI_NULLS ON
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-
-CREATE OR ALTER   PROCEDURE [SSop].[QuotesUpsert]
+CREATE OR ALTER PROCEDURE [SSop].[QuotesUpsert]
 (
     @OrganisationalUnitGuid UNIQUEIDENTIFIER,
     @QuotingUserGuid UNIQUEIDENTIFIER,
@@ -44,6 +41,8 @@ CREATE OR ALTER   PROCEDURE [SSop].[QuotesUpsert]
 )
 AS
 BEGIN
+    SET NOCOUNT ON;
+
     DECLARE @OrganisationalUnitId INT = -1,
             @QuotingUserId INT,
             @ContractId INT = -1,
@@ -62,33 +61,33 @@ BEGIN
             @DataClassificationId INT = -1,
             @SecurityClassificationId INT = -1;
 
-    SELECT @OrganisationalUnitId = ID
-    FROM SCore.OrganisationalUnits
-    WHERE Guid = @OrganisationalUnitGuid;
+    SELECT @OrganisationalUnitId = ou.ID
+    FROM SCore.OrganisationalUnits AS ou
+    WHERE ou.Guid = @OrganisationalUnitGuid;
 
-    SELECT @QuotingUserId = ID
-    FROM SCore.Identities
-    WHERE Guid = @QuotingUserGuid;
+    SELECT @QuotingUserId = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @QuotingUserGuid;
 
-    SELECT @QuotingConsultantId = ID
-    FROM SCore.Identities
-    WHERE Guid = @QuotingConsultantGuid;
+    SELECT @QuotingConsultantId = i.ID
+    FROM SCore.Identities AS i
+    WHERE i.Guid = @QuotingConsultantGuid;
 
-    SELECT @ContractId = ID
-    FROM SSop.Contracts
-    WHERE Guid = @ContractGuid;
+    SELECT @ContractId = c.ID
+    FROM SSop.Contracts AS c
+    WHERE c.Guid = @ContractGuid;
 
-    SELECT @AppointmentFromRibaStageId = ID
-    FROM SJob.RibaStages
-    WHERE Guid = @AppointmentFromRibaStageGuid;
+    SELECT @AppointmentFromRibaStageId = rs.ID
+    FROM SJob.RibaStages AS rs
+    WHERE rs.Guid = @AppointmentFromRibaStageGuid;
 
     SELECT @EnquiryServiceID = es.ID
     FROM SSop.EnquiryServices AS es
     WHERE es.Guid = @EnquiryServiceGuid;
 
-    SELECT @CurrentStageId = ID
-    FROM SJob.RibaStages
-    WHERE Guid = @CurrentStageGuid;
+    SELECT @CurrentStageId = rs.ID
+    FROM SJob.RibaStages AS rs
+    WHERE rs.Guid = @CurrentStageGuid;
 
     SELECT @ProjectID = p.ID
     FROM SSop.Projects AS p
@@ -98,18 +97,25 @@ BEGIN
     FROM SJob.JobTypes AS jt
     WHERE jt.Guid = @JobType;
 
-    SELECT @AgentContractID = ID
-    FROM SSop.Contracts
-    WHERE Guid = @AgentContractGuid;
+    SELECT @AgentContractID = c.ID
+    FROM SSop.Contracts AS c
+    WHERE c.Guid = @AgentContractGuid;
 
-    SELECT @SectorId = ID
-    FROM SCore.Sectors
-    WHERE Guid = @SectorGuid;
+    SELECT @SectorId = s.ID
+    FROM SCore.Sectors AS s
+    WHERE s.Guid = @SectorGuid;
 
-    SELECT @MarketId = ID
-    FROM SCore.Markets
-    WHERE Guid = @MarketGuid;
+    SELECT @MarketId = m.ID
+    FROM SCore.Markets AS m
+    WHERE m.Guid = @MarketGuid;
 
+    -------------------------------------------------------------------------
+    -- CYB-340
+    -- Quote classification is editable independently from Project.
+    -- Project is not updated from Quote.
+    -- Existing Jobs are not updated from Quote save.
+    -- Jobs created later from this Quote should inherit from the Quote creation path.
+    -------------------------------------------------------------------------
     SELECT @DataClassificationId = dc.ID
     FROM SCore.DataClassifications AS dc
     WHERE dc.Guid = @DataClassificationGuid
@@ -169,7 +175,7 @@ BEGIN
             CurrentRibaStageId,
             DeadDate,
             EnquiryServiceID,
-            ProjectId,            
+            ProjectId,
             JobTypeId,
             DeclinedToQuoteReason,
             DescriptionOfWorks,
@@ -219,12 +225,12 @@ BEGIN
         DECLARE @DynamicQuotingStatusForQuotes UNIQUEIDENTIFIER;
         DECLARE @DataObjectTransitionQuoteGuid UNIQUEIDENTIFIER = NEWID();
 
-        SELECT @DynamicQuotingStatusForQuotes = Guid
-        FROM SCore.WorkflowStatus
-        WHERE RowStatus NOT IN (0,254)
-          AND ShowInQuotes = 1
-          AND Name = N'Quoting'
-          AND Description = N'Automatically generated status';
+        SELECT @DynamicQuotingStatusForQuotes = ws.Guid
+        FROM SCore.WorkflowStatus AS ws
+        WHERE ws.RowStatus NOT IN (0,254)
+          AND ws.ShowInQuotes = 1
+          AND ws.Name = N'Quoting'
+          AND ws.Description = N'Automatically generated status';
 
         EXEC SCore.DataObjectTransitionUpsert
             @Guid = @DataObjectTransitionQuoteGuid,
@@ -241,7 +247,8 @@ BEGIN
 
         SELECT TOP (1) @EnquiryGuid = e.Guid
         FROM SSop.EnquiryServices AS es
-        LEFT JOIN SSop.Enquiries AS e ON e.ID = es.EnquiryId
+        LEFT JOIN SSop.Enquiries AS e
+            ON e.ID = es.EnquiryId
         WHERE es.ID = @EnquiryServiceID;
 
         EXEC SCore.DataObjectTransitionUpsert
@@ -254,8 +261,8 @@ BEGIN
             @DataObjectGuid = @EnquiryGuid,
             @IsImported = 1;
 
-        SELECT @QuoteId = SCOPE_IDENTITY();
-    END
+        SELECT @QuoteId = CONVERT(INT, SCOPE_IDENTITY());
+    END;
     ELSE
     BEGIN
         DECLARE @_quotingConsultant INT,
@@ -265,11 +272,11 @@ BEGIN
                 @_emailSubject NVARCHAR(MAX),
                 @_quoteNumber NVARCHAR(MAX);
 
-        SELECT @_quotingConsultant = QuotingConsultantId,
-               @_isFinal = IsFinal,
-               @_quoteNumber = Number
-        FROM SSop.Quotes
-        WHERE Guid = @Guid;
+        SELECT @_quotingConsultant = q.QuotingConsultantId,
+               @_isFinal = q.IsFinal,
+               @_quoteNumber = q.Number
+        FROM SSop.Quotes AS q
+        WHERE q.Guid = @Guid;
 
         IF (@DateSent IS NOT NULL OR @DateAccepted IS NOT NULL)
         BEGIN
@@ -277,7 +284,8 @@ BEGIN
 
             SELECT @QuoteItemCount = COUNT(1)
             FROM SSop.QuoteItems AS qi
-            JOIN SSop.Quotes AS q ON q.ID = qi.QuoteId
+            JOIN SSop.Quotes AS q
+                ON q.ID = qi.QuoteId
             WHERE q.Guid = @Guid
               AND q.RowStatus NOT IN (0,254)
               AND qi.RowStatus NOT IN (0,254);
@@ -346,8 +354,10 @@ BEGIN
         BEGIN
             SELECT @_emailRecipient = STRING_AGG(i.EmailAddress, N';')
             FROM SCore.Identities AS i
-            JOIN SCore.UserGroups AS ug ON ug.IdentityID = i.ID
-            JOIN SCore.Groups AS g ON g.ID = ug.GroupID
+            JOIN SCore.UserGroups AS ug
+                ON ug.IdentityID = i.ID
+            JOIN SCore.Groups AS g
+                ON g.ID = ug.GroupID
             WHERE g.Code = N'CDMSA';
 
             SET @_emailBody = N'Quote <a href="' + SCore.GetCurrentApplicationUrl() + N'/QuoteDetail/'
@@ -386,7 +396,8 @@ BEGIN
         SELECT ss.SiteIdentifier,
                spf.FolderPath
         FROM SCore.ObjectSharePointFolder AS spf
-        JOIN SCore.SharepointSites AS ss ON ss.ID = spf.SharepointSiteId
+        JOIN SCore.SharepointSites AS ss
+            ON ss.ID = spf.SharepointSiteId
         WHERE spf.ObjectGuid = @Guid
         FOR JSON PATH
     );
@@ -397,9 +408,12 @@ BEGIN
                                + N' - ' + q.Overview,
            @QuoteNumberString = q.Number
     FROM SSop.Quotes AS q
-    JOIN SJob.Assets AS p ON p.ID = q.UprnId
-    JOIN SCrm.Accounts AS client ON client.ID = q.ClientAccountId
-    JOIN SCrm.Accounts AS agent ON agent.ID = q.AgentAccountId
+    JOIN SJob.Assets AS p
+        ON p.ID = q.UprnId
+    JOIN SCrm.Accounts AS client
+        ON client.ID = q.ClientAccountId
+    JOIN SCrm.Accounts AS agent
+        ON agent.ID = q.AgentAccountId
     WHERE q.Guid = @Guid;
 
     EXEC SOffice.TargetObjectUpsert
@@ -410,5 +424,3 @@ BEGIN
         @FilingLocation = @FilingLocation;
 END;
 GO
-
-

@@ -3,14 +3,6 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]')
-GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]')
-GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]')
-GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]')
-GO
 
 CREATE PROCEDURE [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromPercentageConfig]
 (
@@ -350,6 +342,13 @@ BEGIN
                         , @ObjectName = N'InvoiceRequests'
                         , @IncludeDefaultSecurity = 0
                         , @IsInsert = @WasInsert OUTPUT;
+
+						EXEC [SFin].[CreateFeeAmendmentForInvoiceSchedule]
+										@RIBAStageId	= @RIBAStageId,
+										@Amt			= @CalcNet,
+										@JobId			= @JobId;
+
+					PRINT @JobId;
 
                     INSERT INTO SFin.InvoiceRequests
                     (

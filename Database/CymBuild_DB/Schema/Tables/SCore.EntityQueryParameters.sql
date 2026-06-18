@@ -316,8 +316,3 @@ GO
 ALTER TABLE [SCore].[EntityQueryParameters] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityQueryParameters_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityQueryParameters]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'How to map the values of the Entity Properties to the Parameters of the Entity Query', 'SCHEMA', N'SCore', 'TABLE', N'EntityQueryParameters'
-GO

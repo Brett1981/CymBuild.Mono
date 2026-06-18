@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_ObjectSecurityForObject]')
+GO
 CREATE FUNCTION [SCore].[tvf_ObjectSecurityForObject]
 	(
 		@Guid UNIQUEIDENTIFIER,
 		@UserId INT
 	)
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN SELECT		os.ID,
 					os.RowStatus,

@@ -204,8 +204,3 @@ GO
 ALTER TABLE [SCore].[MergeDocumentTables] WITH NOCHECK
   ADD CONSTRAINT [FK_MergeDocumentTables_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[MergeDocumentTables]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definitions of Talbes for Merge Documents ', 'SCHEMA', N'SCore', 'TABLE', N'MergeDocumentTables'
-GO

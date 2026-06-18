@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-CREATE	FUNCTION [SProd].[tvf_ProductPrices]
+
+PRINT (N'Create function [SProd].[tvf_ProductPrices]')
+GO
+CREATE FUNCTION [SProd].[tvf_ProductPrices]
 (
 	@ProductGuid UNIQUEIDENTIFIER,
 	@UserId INT

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCrm].[AccountContactsUpsert]')
+GO
 CREATE PROCEDURE [SCrm].[AccountContactsUpsert]
 (
     @AccountGuid UNIQUEIDENTIFIER,

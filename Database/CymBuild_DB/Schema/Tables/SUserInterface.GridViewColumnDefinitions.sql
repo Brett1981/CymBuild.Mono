@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SUserInterface].[GridViewColumnDefinitions]')
 GO
-PRINT (N'Create table [SUserInterface].[GridViewColumnDefinitions]')
-GO
 CREATE TABLE [SUserInterface].[GridViewColumnDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_GridViewColumnDefinition_RowStatus] DEFAULT (0),
@@ -67,12 +65,4 @@ PRINT (N'Create foreign key [FK_GridViewColumnDefinitions_RowStatus] on table [S
 GO
 ALTER TABLE [SUserInterface].[GridViewColumnDefinitions] WITH NOCHECK
   ADD CONSTRAINT [FK_GridViewColumnDefinitions_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewColumnDefinitions]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The definition of the columns that make up a Grid View', 'SCHEMA', N'SUserInterface', 'TABLE', N'GridViewColumnDefinitions'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[GridViewColumnDefinitions]')
 GO

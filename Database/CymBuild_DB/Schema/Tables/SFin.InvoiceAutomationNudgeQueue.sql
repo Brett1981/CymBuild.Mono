@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceAutomationNudgeQueue]')
 GO
-PRINT (N'Create table [SFin].[InvoiceAutomationNudgeQueue]')
-GO
 CREATE TABLE [SFin].[InvoiceAutomationNudgeQueue] (
   [ID] [int] IDENTITY,
   [CreatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_InvoiceAutomationNudgeQueue_Created] DEFAULT (sysutcdatetime()),
@@ -19,7 +17,4 @@ PRINT (N'Create primary key [PK_InvoiceAutomationNudgeQueue] on table [SFin].[In
 GO
 ALTER TABLE [SFin].[InvoiceAutomationNudgeQueue] WITH NOCHECK
   ADD CONSTRAINT [PK_InvoiceAutomationNudgeQueue] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
-GO
-
-PRINT (N'Create index [IX_InvoiceAutomationNudgeQueue_Unprocessed] on table [SFin].[InvoiceAutomationNudgeQueue]')
 GO

@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[MilestoneTypesUpsert]')
+GO
+
 CREATE PROCEDURE [SJob].[MilestoneTypesUpsert] @Name NVARCHAR(100),
 										  @Code NVARCHAR(20),
 										  @IsActive BIT,

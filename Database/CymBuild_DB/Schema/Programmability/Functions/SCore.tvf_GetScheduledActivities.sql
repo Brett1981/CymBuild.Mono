@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_GetScheduledActivities]')
+GO
 /*
 	[*] Returns upcoming scheduled activities for a user.
 	[*] Used in the "Scheduler" to popuate the calendar.

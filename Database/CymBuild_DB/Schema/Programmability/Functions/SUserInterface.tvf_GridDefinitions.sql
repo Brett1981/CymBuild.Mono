@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SUserInterface].[tvf_GridDefinitions]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_GridDefinitions]
   (
     @GridCode NVARCHAR(30),
     @UserId   INT
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN SELECT
           gd.ID,

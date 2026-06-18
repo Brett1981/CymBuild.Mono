@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[QuoteSourcesUpsert]')
+GO
+
 CREATE PROCEDURE [SSop].[QuoteSourcesUpsert] 
 								@Name NVARCHAR(50),
 								@Guid UNIQUEIDENTIFIER OUT

@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SProd].[tvf_Products]')
+GO
 CREATE FUNCTION [SProd].[tvf_Products]
 (
 	@UserId INT
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS RETURN	
 SELECT  p.ID,
         p.RowStatus,

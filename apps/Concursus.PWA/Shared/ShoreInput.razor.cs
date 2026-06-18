@@ -56,6 +56,7 @@ public partial class ShoreInput : IDisposable
     [Parameter] public bool Disabled { get; set; } = false;
     [Parameter] public EntityProperty EntityProperty { get; set; } = new();
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [CascadingParameter] public EditPage? ParentEditPage { get; set; }
 
     private bool EffectiveDisabled =>
         Disabled || (
@@ -1100,9 +1101,13 @@ public partial class ShoreInput : IDisposable
 
             var dropDownDataListReply = await CoreClient.DropDownDataListAsync(dropDownDataListRequest);
 
-            args.Data = dropDownDataListReply.Items
-                .Select(item => new ComboDataItem(item))
-                .ToList();
+            var comboItems = dropDownDataListReply.Items
+    .Select(item => new ComboDataItem(item))
+    .ToList();
+
+            args.Data = comboItems;
+
+            await NotifyParentOfSelectedLookupDisplayValueAsync(comboItems);
         }
         catch (Exception ex)
         {
@@ -1110,6 +1115,54 @@ public partial class ShoreInput : IDisposable
             ex.Data.Add("AdditionalInfo", "Error in ReadItemsAsync().");
             ex.Data.Add("PageMethod", "ShoreInput/ReadItemsAsync()");
             _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task NotifyParentOfSelectedLookupDisplayValueAsync(IReadOnlyCollection<ComboDataItem> comboItems)
+    {
+        try
+        {
+            if (ParentEditPage == null)
+            {
+                return;
+            }
+
+            if (EntityProperty == null || string.IsNullOrWhiteSpace(EntityProperty.Guid))
+            {
+                return;
+            }
+
+            var entityPropertyGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty.Guid);
+
+            if (entityPropertyGuid == Guid.Empty)
+            {
+                return;
+            }
+
+            var selectedValue = GuidValueBinding;
+
+            if (selectedValue == Guid.Empty)
+            {
+                return;
+            }
+
+            var selectedItem = comboItems.FirstOrDefault(item => item.Value == selectedValue);
+
+            if (selectedItem == null || string.IsNullOrWhiteSpace(selectedItem.Name))
+            {
+                return;
+            }
+
+            await ParentEditPage.RegisterHeaderLookupDisplayValueAsync(
+                entityPropertyGuid,
+                selectedItem.Name);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error notifying EditPage of selected lookup display value.");
+            ex.Data.Add("PageMethod", "ShoreInput/NotifyParentOfSelectedLookupDisplayValueAsync()");
+            await OnError.InvokeAsync(ex);
         }
     }
 

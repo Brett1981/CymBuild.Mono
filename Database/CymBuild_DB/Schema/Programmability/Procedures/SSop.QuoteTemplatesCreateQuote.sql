@@ -1,5 +1,11 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[QuoteTemplatesCreateQuote]')
+GO
+
+
+
 CREATE PROCEDURE [SSop].[QuoteTemplatesCreateQuote]
 	(
 		@TemplateGuid UNIQUEIDENTIFIER,

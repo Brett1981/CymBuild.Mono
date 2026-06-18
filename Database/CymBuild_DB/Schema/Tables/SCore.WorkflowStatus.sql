@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[WorkflowStatus]')
 GO
-PRINT (N'Create table [SCore].[WorkflowStatus]')
-GO
 CREATE TABLE [SCore].[WorkflowStatus] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF__WorkflowS__RowSt__36005452] DEFAULT (1),
@@ -451,10 +449,4 @@ BEGIN
 		END
 		
 		
-GO
-
-
-
-
-PRINT (N'Create index [IX_WorkflowStatus_Id_Guid] on table [SCore].[WorkflowStatus]')
 GO

@@ -1,7 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-PRINT (N'Create view [SSop].[Quote_JobsSummary]')
-GO
+
 PRINT (N'Create view [SSop].[Quote_JobsSummary]')
 GO
 

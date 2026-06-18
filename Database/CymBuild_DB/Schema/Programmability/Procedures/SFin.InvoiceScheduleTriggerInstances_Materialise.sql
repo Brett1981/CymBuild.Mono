@@ -3,8 +3,6 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceScheduleTriggerInstances_Materialise]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceScheduleTriggerInstances_Materialise]')
-GO
 
 CREATE PROCEDURE [SFin].[InvoiceScheduleTriggerInstances_Materialise]
 (

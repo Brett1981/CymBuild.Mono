@@ -123,6 +123,9 @@ public partial class FilteredDynamicGridView : ComponentBase
 
     private bool RangeFiltersActive { get; set; } = false;
 
+
+    public DataCompositeFilter CompositeFilter { get; set; }
+
     //==============================================
     //=             GROUP BY FILTERS               =
     //==============================================
@@ -472,25 +475,28 @@ public partial class FilteredDynamicGridView : ComponentBase
             await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", args.Request.Page);
 
             // Ensure we handle single `DataCompositeFilter` properly
-            var compositeFilter = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(args.Request.Filters);
+            CompositeFilter = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(args.Request.Filters);
 
             //Check for quick filters
             if (QuickFilters != null)
             {
                 ShowCSVButton = true;
-                compositeFilter.CompositeFilters.Add(QuickFilters);
+                CompositeFilter.CompositeFilters.Add(QuickFilters);
             }
 
             if (RangeFilters != null)
             {
                 ShowCSVButton = true;
-                compositeFilter.CompositeFilters.Add(RangeFilters);
+                CompositeFilter.CompositeFilters.Add(RangeFilters);
             }
 
-            if (compositeFilter != null)
+            if (CompositeFilter != null)
             {
-                gridDataListRequest.Filters.Add(compositeFilter);
-                LogCompositeFilter(compositeFilter);
+                if(CompositeFilter.Filters.Any() || CompositeFilter.CompositeFilters.Any())
+                    ShowCSVButton = true;
+
+                gridDataListRequest.Filters.Add(CompositeFilter);
+                LogCompositeFilter(CompositeFilter);
             }
            
             gridDataListRequest.Sort.AddRange(

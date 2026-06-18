@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SUserInterface].[GridDefinitionUpsert]')
+GO
+
 CREATE PROCEDURE [SUserInterface].[GridDefinitionUpsert]
   (
     @Code              NVARCHAR(30),

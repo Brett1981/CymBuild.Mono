@@ -1,11 +1,16 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuotesNotIssued]')
+GO
+
+
 CREATE FUNCTION [SSop].[tvf_QuotesNotIssued]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -41,7 +46,7 @@ RETURN
     JOIN SCrm.Accounts AS aacc ON (aacc.ID = e.AgentAccountId)
     JOIN SJob.Assets AS uprn ON (uprn.ID = q.UprnId)
     JOIN SCore.Identities AS qc ON (qc.ID = q.QuotingConsultantId)
-    JOIN SJob.JobTypes AS jt ON (jt.ID = es.JobTypeId)
+    JOIN SJob.JobTypes AS jt ON (jt.ID = q.JobTypeId)
 
     -- Latest workflow status for this quote (if any) - rowstatus safe
     OUTER APPLY

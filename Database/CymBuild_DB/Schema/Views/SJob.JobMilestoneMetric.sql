@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[JobMilestoneMetric]')
+GO
 CREATE VIEW [SJob].[JobMilestoneMetric]
-            --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 SELECT	j.ID,
 		j.Guid,

@@ -199,8 +199,3 @@ GO
 ALTER TABLE [SCore].[UserGroups] WITH NOCHECK
   ADD CONSTRAINT [FK_UserGroups_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[UserGroups]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The mapping between Users and their Groups', 'SCHEMA', N'SCore', 'TABLE', N'UserGroups'
-GO

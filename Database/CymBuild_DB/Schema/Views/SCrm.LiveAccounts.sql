@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[LiveAccounts]')
+GO
 CREATE VIEW [SCrm].[LiveAccounts]
-           --WITH SCHEMABINDING 
+                --WITH SCHEMABINDING 
 AS 
 SELECT	root_hobt.Guid,
 		root_hobt.RowStatus,

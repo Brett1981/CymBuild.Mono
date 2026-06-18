@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_DependantsForEntityTypeProperties]')
+GO
 CREATE FUNCTION [SCore].[tvf_DependantsForEntityTypeProperties]
 	(
 		@EntityTypeGuid UNIQUEIDENTIFIER
 	)
 RETURNS TABLE
-	   --WITH SCHEMABINDING
+	        --WITH SCHEMABINDING
 AS
 RETURN SELECT		epd.Guid,
 					epd.RowStatus,

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[MergeAssets]')
+GO
 CREATE PROCEDURE [SJob].[MergeAssets]
 (
 	@FromAssetGuid UNIQUEIDENTIFIER,

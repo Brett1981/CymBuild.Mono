@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_ContactQuotes]')
+GO
 CREATE FUNCTION [SJob].[tvf_ContactQuotes] 
 (
     @UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  q.ID,

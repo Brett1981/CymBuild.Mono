@@ -1,4 +1,6 @@
-﻿CREATE TABLE [SFin].[TransactionSageSubmissionStatus] (
+﻿PRINT (N'Create table [SFin].[TransactionSageSubmissionStatus]')
+GO
+CREATE TABLE [SFin].[TransactionSageSubmissionStatus] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_RowStatus] DEFAULT (1),
   [RowVersion] [timestamp],
@@ -19,14 +21,29 @@
   [CreatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_CreatedDateTimeUTC] DEFAULT (sysutcdatetime()),
   [CreatedByUserID] [int] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_CreatedByUserID] DEFAULT (-1),
   [UpdatedDateTimeUTC] [datetime2] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_UpdatedDateTimeUTC] DEFAULT (sysutcdatetime()),
-  [UpdatedByUserID] [int] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_UpdatedByUserID] DEFAULT (-1),
-  CONSTRAINT [PK_TransactionSageSubmissionStatus] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80),
-  CONSTRAINT [UQ_TransactionSageSubmissionStatus_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+  [UpdatedByUserID] [int] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_UpdatedByUserID] DEFAULT (-1)
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
+PRINT (N'Create primary key [PK_TransactionSageSubmissionStatus] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
+  ADD CONSTRAINT [PK_TransactionSageSubmissionStatus] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
+GO
+
+PRINT (N'Create unique key [UQ_TransactionSageSubmissionStatus_Guid] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
+  ADD CONSTRAINT [UQ_TransactionSageSubmissionStatus_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_TransactionSageSubmissionStatus_StatusCode] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
 CREATE INDEX [IX_TransactionSageSubmissionStatus_StatusCode]
   ON [SFin].[TransactionSageSubmissionStatus] ([StatusCode], [IsInProgress])
   INCLUDE ([TransactionGuid], [SageOrderId], [SageOrderNumber], [LastSucceededOnUtc], [LastFailedOnUtc])
@@ -35,6 +52,11 @@ CREATE INDEX [IX_TransactionSageSubmissionStatus_StatusCode]
   ON [PRIMARY]
 GO
 
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [UX_TransactionSageSubmissionStatus_TransactionGuid_Active] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
 CREATE UNIQUE INDEX [UX_TransactionSageSubmissionStatus_TransactionGuid_Active]
   ON [SFin].[TransactionSageSubmissionStatus] ([TransactionGuid])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
@@ -42,26 +64,38 @@ CREATE UNIQUE INDEX [UX_TransactionSageSubmissionStatus_TransactionGuid_Active]
   ON [PRIMARY]
 GO
 
-ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+PRINT (N'Create foreign key [FK_TransactionSageSubmissionStatus_CreatedBy] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_CreatedBy] FOREIGN KEY ([CreatedByUserID]) REFERENCES [SCore].[Identities] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+PRINT (N'Create foreign key [FK_TransactionSageSubmissionStatus_DataObjects] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
+PRINT (N'Disable foreign key [FK_TransactionSageSubmissionStatus_DataObjects] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
 ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
   NOCHECK CONSTRAINT [FK_TransactionSageSubmissionStatus_DataObjects]
 GO
 
-ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+PRINT (N'Create foreign key [FK_TransactionSageSubmissionStatus_RowStatus] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+PRINT (N'Create foreign key [FK_TransactionSageSubmissionStatus_Transactions] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_Transactions] FOREIGN KEY ([TransactionID]) REFERENCES [SFin].[Transactions] ([ID])
 GO
 
-ALTER TABLE [SFin].[TransactionSageSubmissionStatus]
+PRINT (N'Create foreign key [FK_TransactionSageSubmissionStatus_UpdatedBy] on table [SFin].[TransactionSageSubmissionStatus]')
+GO
+ALTER TABLE [SFin].[TransactionSageSubmissionStatus] WITH NOCHECK
   ADD CONSTRAINT [FK_TransactionSageSubmissionStatus_UpdatedBy] FOREIGN KEY ([UpdatedByUserID]) REFERENCES [SCore].[Identities] ([ID])
 GO

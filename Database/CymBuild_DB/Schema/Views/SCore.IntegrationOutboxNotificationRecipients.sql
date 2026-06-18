@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[IntegrationOutboxNotificationRecipients]')
+GO
 CREATE VIEW [SCore].[IntegrationOutboxNotificationRecipients]
-    --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
 WITH Outbox AS
 (
@@ -154,4 +157,5 @@ SELECT
     u.FullName,
     u.EmailAddress
 FROM Users u;
+
 GO

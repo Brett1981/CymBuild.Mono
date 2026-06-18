@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_MergeDocumentItemsFieldReference]')
+GO
 CREATE FUNCTION [SCore].[tvf_MergeDocumentItemsFieldReference]
 (
 	@UserId INT,

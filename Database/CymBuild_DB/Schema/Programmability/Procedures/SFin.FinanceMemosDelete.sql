@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[FinanceMemosDelete]')
+GO
+
 CREATE PROCEDURE [SFin].[FinanceMemosDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

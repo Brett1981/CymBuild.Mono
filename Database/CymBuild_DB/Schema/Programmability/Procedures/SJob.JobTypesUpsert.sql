@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[JobTypesUpsert]')
+GO
+
 CREATE PROCEDURE [SJob].[JobTypesUpsert]
   @Name     NVARCHAR(100),
   @IsActive BIT,

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[ObjectSharePointPaths]')
+GO
 CREATE VIEW	[SCore].[ObjectSharePointPaths]
---             --WITH SCHEMABINDING
+--                  --WITH SCHEMABINDING
 AS 
 SELECT	ospf.ObjectGuid,
 		ss.SiteIdentifier SharePointSiteIdentifier, 

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[Job_MergeInfo]')
+GO
 CREATE VIEW [SJob].[Job_MergeInfo] 
 AS SELECT
         j.ID,																												-- was [Job ID]

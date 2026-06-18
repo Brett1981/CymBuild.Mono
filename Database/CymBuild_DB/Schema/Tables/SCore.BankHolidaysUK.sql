@@ -1,4 +1,6 @@
-﻿CREATE TABLE [SCore].[BankHolidaysUK] (
+﻿PRINT (N'Create table [SCore].[BankHolidaysUK]')
+GO
+CREATE TABLE [SCore].[BankHolidaysUK] (
   [ID] [int] IDENTITY,
   [Date] [datetime] NULL,
   [DayName] [varchar](20) NULL,

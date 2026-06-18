@@ -160,8 +160,3 @@ GO
 ALTER TABLE [SCore].[UserPreferences] WITH NOCHECK
   ADD CONSTRAINT [FK_UserPreferences_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[UserPreferences]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'User settable preferences, e.g. their default system language. ', 'SCHEMA', N'SCore', 'TABLE', N'UserPreferences'
-GO

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-CREATE	FUNCTION [SFin].[tvf_JobPaymentStageBatch]
+
+PRINT (N'Create function [SFin].[tvf_JobPaymentStageBatch]')
+GO
+CREATE FUNCTION [SFin].[tvf_JobPaymentStageBatch]
 (
 	@UserId int
 )

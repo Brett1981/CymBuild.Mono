@@ -317,6 +317,7 @@ SELECT
     imi.VatTotal,
     imi.GrossTotal,
     imi.JobTitle,
+    imi.LineDescription,
     imi.Quantity,
     imi.UnitPrice,
     imi.Net,
@@ -417,9 +418,9 @@ WHERE imi.TransactionGuid = @TransactionGuid;";
             {
                 result.Lines.Add(new TransactionInvoicePrintLineModel
                 {
-                    Description = string.IsNullOrWhiteSpace(GetString(reader, "JobTitle"))
+                    Description = string.IsNullOrWhiteSpace(GetString(reader, "LineDescription"))
                         ? "Invoice"
-                        : GetString(reader, "JobTitle"),
+                        : GetString(reader, "LineDescription"),
                     Quantity = GetDecimal(reader, "Quantity") == 0m ? 1m : GetDecimal(reader, "Quantity"),
                     UnitPrice = GetDecimal(reader, "UnitPrice"),
                     AmountExVat = GetDecimal(reader, "Net"),

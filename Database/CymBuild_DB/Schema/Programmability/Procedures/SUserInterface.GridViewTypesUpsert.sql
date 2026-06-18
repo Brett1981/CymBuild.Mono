@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SUserInterface].[GridViewTypesUpsert]')
+GO
+
 CREATE PROCEDURE [SUserInterface].[GridViewTypesUpsert] 
 								@Name NVARCHAR(50),
 								@Guid   UNIQUEIDENTIFIER OUT

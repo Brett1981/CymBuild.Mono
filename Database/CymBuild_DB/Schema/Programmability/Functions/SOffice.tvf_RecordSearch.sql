@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SOffice].[tvf_RecordSearch]')
+GO
 CREATE FUNCTION [SOffice].[tvf_RecordSearch]
 	(
 		@UserId INT,

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[DataObjectTransitionAddCalculatedStatus]')
+GO
 CREATE PROCEDURE [SCore].[DataObjectTransitionAddCalculatedStatus]
 AS
 BEGIN

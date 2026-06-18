@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[JobFinance]')
+GO
 CREATE VIEW [SJob].[JobFinance]
-       --WITH SCHEMABINDING
+            --WITH SCHEMABINDING
 AS 
 SELECT	j.ID,
 		TransactionTotals.Net AS InvoicedValue,

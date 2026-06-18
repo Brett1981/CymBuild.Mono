@@ -193,8 +193,3 @@ GO
 ALTER TABLE [SSop].[ContractTypes] WITH NOCHECK
   ADD CONSTRAINT [FK_ContractTypes_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SSop].[ContractTypes]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', 'Type of contract e.g. Fee Matrix, Framework Agreement', 'SCHEMA', N'SSop', 'TABLE', N'ContractTypes'
-GO

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_TransactionFinanceMemo]')
+GO
 CREATE FUNCTION [SFin].[tvf_TransactionFinanceMemo]
 	(
 		@UserId INT,
@@ -7,7 +10,7 @@ CREATE FUNCTION [SFin].[tvf_TransactionFinanceMemo]
 	)
 
 RETURNS TABLE
-     --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN SELECT
 		fm.ID,

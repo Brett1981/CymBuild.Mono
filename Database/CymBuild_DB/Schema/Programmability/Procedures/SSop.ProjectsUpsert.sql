@@ -1,5 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SSop].[ProjectsUpsert]')
 GO
 CREATE PROCEDURE [SSop].[ProjectsUpsert]
@@ -16,10 +17,11 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @IsInsert BIT = 0,
-            @ProjectID INT = -1,
-            @DataClassificationID INT = -1,
-            @SecurityClassificationID INT = -1;
+    DECLARE
+        @IsInsert BIT = 0,
+        @ProjectID INT = -1,
+        @DataClassificationID INT = -1,
+        @SecurityClassificationID INT = -1;
 
     SELECT @DataClassificationID = dc.ID
     FROM SCore.DataClassifications AS dc
@@ -73,6 +75,14 @@ BEGIN
         );
 
         SELECT @ProjectID = CONVERT(INT, SCOPE_IDENTITY());
+
+        DECLARE @ProjectNumber INT;
+        SELECT @ProjectNumber = NEXT VALUE FOR SSop.ProjectNumber;
+
+        UPDATE SSop.Projects
+        SET Number = @ProjectNumber,
+            RowStatus = 1
+        WHERE ID = @ProjectID;
     END;
     ELSE
     BEGIN
@@ -85,31 +95,14 @@ BEGIN
             IsSubjectToNDA = @IsSubjectToNDA,
             DataClassificationID = @DataClassificationID,
             SecurityClassificationID = @SecurityClassificationID
-        WHERE Guid = @Guid;
+        WHERE Guid = @Guid
+          AND RowStatus NOT IN (0,254);
 
         SELECT @ProjectID = p.ID
         FROM SSop.Projects AS p
         WHERE p.Guid = @Guid
           AND p.RowStatus NOT IN (0,254);
     END;
-
-    IF (@IsInsert = 1)
-    BEGIN
-        DECLARE @ProjectNumber INT;
-
-        SELECT @ProjectNumber = NEXT VALUE FOR SSop.ProjectNumber;
-
-        UPDATE SSop.Projects
-        SET Number = @ProjectNumber,
-            RowStatus = 1
-        WHERE ID = @ProjectID;
-    END;
-
-    -------------------------------------------------------------------------
-    -- CYB-340
-    -- Project is the master classification record once saved.
-    -- Push the selected classification to all active linked Quotes and Jobs.
-    -------------------------------------------------------------------------
 
     UPDATE q
     SET q.DataClassificationID = @DataClassificationID,

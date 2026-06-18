@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_DashboardMetrics]')
+GO
 CREATE FUNCTION [SCore].[tvf_DashboardMetrics]
   (
     @UserId INT
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN
   SELECT

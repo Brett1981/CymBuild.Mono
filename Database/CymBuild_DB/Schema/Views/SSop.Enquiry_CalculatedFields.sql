@@ -1,5 +1,12 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[Enquiry_CalculatedFields]')
+GO
+
+
+
+
 /* =============================================================================
    CYB-119 / CYB-101 Follow-up – Enquiry status (ALLENQUIRIES)
 
@@ -23,7 +30,7 @@ SELECT
         ------------------------------------------------------------------
         -- 1) Enquiry WORKFLOW terminal statuses must always win (latest-only)
         ------------------------------------------------------------------
-        WHEN LastEnqStatus.Name IN (N'Declined', N'Dead', N'1st Chase', N'2nd Chase', N'Reopened')
+        WHEN LastEnqStatus.Name IN (N'Declined', N'Dead', N'1st Chase', N'2nd Chase', N'Reopened', N'Complete', N'Sent')
         THEN LastEnqStatus.Name
 
         ------------------------------------------------------------------

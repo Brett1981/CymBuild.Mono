@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SCore].[EntityPropertyDependantUpsert]')
+GO
+
 CREATE PROCEDURE [SCore].[EntityPropertyDependantUpsert]
 	(	@ParentEntityPropertyGuid UNIQUEIDENTIFIER,
 		@DependantEntityPropertyGuid UNIQUEIDENTIFIER,

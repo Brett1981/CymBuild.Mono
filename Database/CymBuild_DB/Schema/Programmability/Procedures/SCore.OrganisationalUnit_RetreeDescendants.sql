@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[OrganisationalUnit_RetreeDescendants]')
+GO
 CREATE PROCEDURE [SCore].[OrganisationalUnit_RetreeDescendants]
 (
 	@ParentID int,

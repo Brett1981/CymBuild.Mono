@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCrm].[ContactUpsert]')
+GO
+
+
 CREATE PROCEDURE [SCrm].[ContactUpsert]
 (
     @FirstName NVARCHAR(250),

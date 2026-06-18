@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SUserInterface].[ActionMenuItemsDelete]')
+GO
+
 CREATE PROCEDURE [SUserInterface].[ActionMenuItemsDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

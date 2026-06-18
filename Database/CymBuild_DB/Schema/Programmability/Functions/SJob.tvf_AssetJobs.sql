@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SJob].[tvf_AssetJobs]')
+GO
+
 
 
 
@@ -10,7 +13,7 @@ CREATE FUNCTION [SJob].[tvf_AssetJobs]
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  j.ID,

@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[MergeDocumentTablesUpsert]')
+GO
+
+
 CREATE PROCEDURE [SCore].[MergeDocumentTablesUpsert] 
 										   @MergeDocumentGuid UNIQUEIDENTIFIER,
 										   @TableName NVARCHAR(50),

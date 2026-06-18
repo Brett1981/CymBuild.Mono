@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[Quote_MergeInfo]')
+GO
 CREATE VIEW [SSop].[Quote_MergeInfo]
 AS
 SELECT		q.ID,
@@ -238,7 +241,4 @@ OUTER APPLY
 						FOR Stage IN ([1], [2], [3], [4], [5], [6], [7], [99], [999])
 					) AS qfd
 			)						  AS DrawDown;
-GO
-
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Quote Merge Fields', 'SCHEMA', N'SSop', 'VIEW', N'Quote_MergeInfo'
 GO

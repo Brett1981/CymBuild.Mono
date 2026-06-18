@@ -1,0 +1,99 @@
+image: mcr.microsoft.com/mssql-tools
+
+options:
+  max-time: 45
+
+definitions:
+  steps:
+    - step: &metadata-schema-deploy
+        name: Deploy SMigration metadata schema
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/deploy-metadata-schema.sh
+        artifacts:
+          - artifacts/**
+
+    - step: &metadata-preview
+        name: Metadata migration preview
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/run-metadata-preview.sh
+        artifacts:
+          - artifacts/**
+
+    - step: &metadata-apply
+        name: Metadata migration apply
+        trigger: manual
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/run-metadata-apply.sh
+        artifacts:
+          - artifacts/**
+
+    - step: &metadata-verify
+        name: Metadata post-apply verify
+        script:
+          - chmod +x ci/scripts/*.sh
+          - ./ci/scripts/run-metadata-verify.sh
+        artifacts:
+          - artifacts/**
+
+pipelines:
+  custom:
+    metadata-dev-qa:
+      - variables:
+          - name: SOURCE_ENVIRONMENT
+            default: "DEV"
+          - name: TARGET_ENVIRONMENT
+            default: "QA"
+          - name: SOURCE_SERVER_NAME
+            default: "SOC-SQLDEVBRE01\\GENERAL"
+          - name: SOURCE_DATABASE_NAME
+            default: "CymBuild_Dev"
+          - name: TARGET_SERVER_NAME
+            default: "SOC-SQLDEVBRE01\\GENERAL"
+          - name: TARGET_DATABASE_NAME
+            default: "CymBuild_QA"
+          - name: ALLOW_UPDATES
+            default: "1"
+          - name: REQUIRE_NO_VALIDATION_ISSUES
+            default: "1"
+          - name: FORCE_APPLY
+            default: "0"
+          - name: REQUIRE_NO_DIFFS
+            default: "1"
+      - step:
+          <<: *metadata-schema-deploy
+          deployment: QA
+      - step:
+          <<: *metadata-preview
+          deployment: QA
+      - step:
+          <<: *metadata-apply
+          deployment: QA
+      - step:
+          <<: *metadata-verify
+          deployment: QA
+
+    metadata-apply-existing-run:
+      - variables:
+          - name: RUN_GUID
+          - name: FORCE_APPLY
+            default: "0"
+      - step:
+          <<: *metadata-apply
+          deployment: QA
+
+    metadata-verify:
+      - variables:
+          - name: SOURCE_ENVIRONMENT
+          - name: TARGET_ENVIRONMENT
+          - name: SOURCE_SERVER_NAME
+          - name: SOURCE_DATABASE_NAME
+          - name: TARGET_SERVER_NAME
+          - name: TARGET_DATABASE_NAME
+          - name: REQUIRE_NO_DIFFS
+            default: "1"
+      - step:
+          <<: *metadata-verify
+          deployment: QA

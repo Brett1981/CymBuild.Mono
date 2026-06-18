@@ -1,11 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_Jobs_NoRecentActivity]')
+GO
+
 CREATE FUNCTION [SJob].[tvf_Jobs_NoRecentActivity]
 (
     @UserId INT
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
 RETURN
 (

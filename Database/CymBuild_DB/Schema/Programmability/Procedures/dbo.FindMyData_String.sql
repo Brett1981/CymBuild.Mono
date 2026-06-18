@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [dbo].[FindMyData_String]')
+GO
+
 CREATE PROCEDURE [dbo].[FindMyData_String]
     @DataToFind NVARCHAR(4000),
     @ExactMatch BIT = 0

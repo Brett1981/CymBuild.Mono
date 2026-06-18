@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[OrganisationalUnitsUpsert]')
+GO
 CREATE PROCEDURE [SCore].[OrganisationalUnitsUpsert] @ParentOrganisationalUnitGuid UNIQUEIDENTIFIER,
 												@Name NVARCHAR(250),
 												@AddressGuid UNIQUEIDENTIFIER,

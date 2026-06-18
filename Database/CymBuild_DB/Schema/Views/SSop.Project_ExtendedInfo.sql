@@ -1,5 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create view [SSop].[Project_ExtendedInfo]')
 GO
 CREATE VIEW [SSop].[Project_ExtendedInfo]

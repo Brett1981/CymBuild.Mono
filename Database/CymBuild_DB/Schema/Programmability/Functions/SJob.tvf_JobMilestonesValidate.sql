@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_JobMilestonesValidate]')
+GO
 CREATE FUNCTION [SJob].[tvf_JobMilestonesValidate]
   (
     @MilestoneTypeGuid UNIQUEIDENTIFIER,

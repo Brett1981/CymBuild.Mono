@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SCrm].[AccountMergeBatch_DataPills]')
+GO
+
 
 CREATE FUNCTION [SCrm].[AccountMergeBatch_DataPills] 
 (

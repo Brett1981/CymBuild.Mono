@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_EnquiryServicesStatus]')
+GO
 /* =============================================================================
    CYB-101 – EnquiryServicesStatus grid dataset hardening
    (NO workflow process changes – data-source correctness only)

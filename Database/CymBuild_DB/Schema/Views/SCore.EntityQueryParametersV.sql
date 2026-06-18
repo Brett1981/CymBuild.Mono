@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityQueryParametersV]')
+GO
 CREATE VIEW [SCore].[EntityQueryParametersV]
-              --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 SELECT	eqp.ID,
 		eqp.RowStatus,
@@ -17,4 +20,5 @@ SELECT	eqp.ID,
 		eqp.IsReturnColumn
 FROM	[SCore].[EntityQueryParameters] eqp
 WHERE	([eqp].[RowStatus] NOT IN (0, 254))
+
 GO

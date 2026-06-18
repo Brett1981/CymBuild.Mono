@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[FormatAddress]')
+GO
 CREATE FUNCTION [SCore].[FormatAddress]
 (
 @Name NVARCHAR(100),
@@ -13,7 +16,7 @@ CREATE FUNCTION [SCore].[FormatAddress]
 @Seperator NVARCHAR(10)
 )
 RETURNS NVARCHAR(600) 
-               --WITH SCHEMABINDING
+                    --WITH SCHEMABINDING
 AS  
 BEGIN
 

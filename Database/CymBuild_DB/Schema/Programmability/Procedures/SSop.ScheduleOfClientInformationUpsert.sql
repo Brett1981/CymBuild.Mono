@@ -1,5 +1,17 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[ScheduleOfClientInformationUpsert]')
+GO
+
+
+
+
+
+
+
+
+
 CREATE PROCEDURE [SSop].[ScheduleOfClientInformationUpsert]
   (
     @EnquiryGuid        UNIQUEIDENTIFIER,

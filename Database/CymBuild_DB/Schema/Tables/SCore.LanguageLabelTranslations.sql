@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[LanguageLabelTranslations]')
 GO
-PRINT (N'Create table [SCore].[LanguageLabelTranslations]')
-GO
 CREATE TABLE [SCore].[LanguageLabelTranslations] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_LanguageLabelTranslations_RowStatus] DEFAULT (0),
@@ -323,12 +321,4 @@ PRINT (N'Create foreign key [FK_LanguageLabelTranslations_RowStatus] on table [S
 GO
 ALTER TABLE [SCore].[LanguageLabelTranslations] WITH NOCHECK
   ADD CONSTRAINT [FK_LanguageLabelTranslations_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[LanguageLabelTranslations]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Language translations for the Language Labels', 'SCHEMA', N'SCore', 'TABLE', N'LanguageLabelTranslations'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[LanguageLabelTranslations]')
 GO

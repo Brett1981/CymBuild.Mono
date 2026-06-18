@@ -1,7 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SFin].[TransactionDetailsUpsert]')
 GO
+
 CREATE PROCEDURE [SFin].[TransactionDetailsUpsert]
 (
       @TransactionGuid          UNIQUEIDENTIFIER
@@ -34,6 +36,9 @@ BEGIN
         , @VatCodeID                  INT
         , @ResolvedVatRate            DECIMAL(9, 4)
         , @IsInsert                   BIT
+        , @TransactionTypeName        NVARCHAR(50)
+        , @TransactionTypeIsNegated   BIT = 0
+        , @TransactionTypeIsBank      BIT = 0
         , @JobNumber                  NVARCHAR(2000)
         , @JobDescription             NVARCHAR(2000)
         , @JobType                    NVARCHAR(2000)
@@ -60,8 +65,14 @@ BEGIN
     END;
 
     SELECT
-        @TransactionID = t.ID
+          @TransactionID = t.ID
+        , @TransactionTypeName = tt.Name
+        , @TransactionTypeIsNegated = ISNULL(tt.IsNegated, 0)
+        , @TransactionTypeIsBank = ISNULL(tt.IsBank, 0)
     FROM SFin.Transactions AS t
+    INNER JOIN SFin.TransactionTypes AS tt
+        ON tt.ID = t.TransactionTypeID
+       AND tt.RowStatus NOT IN (0, 254)
     WHERE t.Guid = @TransactionGuid
       AND t.RowStatus NOT IN (0, 254);
 
@@ -146,38 +157,73 @@ BEGIN
     SET @Vat = ROUND(@Net * (@ResolvedVatRate / 100.0), 2);
     SET @Gross = ROUND(@Net + @Vat, 2);
 
-	DECLARE @JobGuid UNIQUEIDENTIFIER;
-	DECLARE @RemainingAmount DECIMAL(19,2);
+    /*
+        Fee-cap validation must only apply to finance transactions that consume
+        job fee drawdown. Inbound Sage receipt materialisation also uses this
+        upsert to create bank-side receipt details, but receipts must not be
+        blocked by invoice fee-cap remaining values.
 
-	SELECT @JobGuid = j.Guid
-	FROM SFin.Transactions AS root_hobt
-	LEFT JOIN SJob.Jobs AS j ON (root_hobt.JobID = j.ID)
-	WHERE root_hobt.ID = @TransactionID
+        TransactionTypes.IsBank keeps the logic data-driven and preserves the
+        existing accounting sign convention, where TransactionCalculations uses
+        IsNegated rather than storing negative line values directly.
 
-	SELECT
-		@RemainingAmount = ISNULL(fd.Remaining, 0)
-	FROM SJob.Job_FeeDrawdown fd
-	INNER JOIN SJob.Jobs j
-		ON j.ID = fd.JobId
-	WHERE j.Guid = @JobGuid
-	  AND fd.StageLabel = N'Total (inc. Fee Cap)';
+        The explicit Receipt/Payment exclusion protects the inbound path even
+        if historic reference data has not marked a bank-side transaction type
+        as IsBank = 1 yet.
+    */
+    IF ISNULL(@TransactionTypeIsBank, 0) = 0
+       AND ISNULL(@TransactionTypeIsNegated, 0) = 0
+       AND ISNULL(@TransactionTypeName, N'') NOT IN (N'Receipt', N'Payment')
+       AND ISNULL(@Net, 0) > 0
+    BEGIN
+        DECLARE @JobGuid UNIQUEIDENTIFIER;
+        DECLARE @RemainingAmount DECIMAL(19,2);
+        DECLARE @ExistingDetailNetForGuard DECIMAL(19,2) = 0;
+        DECLARE @FeeCapGuardAvailableAmount DECIMAL(19,2);
 
+        SELECT
+            @JobGuid = j.Guid
+        FROM SFin.Transactions AS root_hobt
+        LEFT JOIN SJob.Jobs AS j
+            ON root_hobt.JobID = j.ID
+           AND j.RowStatus NOT IN (0, 254)
+        WHERE root_hobt.ID = @TransactionID
+          AND root_hobt.RowStatus NOT IN (0, 254);
 
-	IF(@Net > @RemainingAmount)
-	BEGIN 
+        SELECT
+            @RemainingAmount = fd.Remaining
+        FROM SJob.Job_FeeDrawdown AS fd
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = fd.JobId
+           AND j.RowStatus NOT IN (0, 254)
+        WHERE j.Guid = @JobGuid
+          AND fd.StageLabel = N'Total (inc. Fee Cap)';
 
-		DECLARE @ErrorMessageDirect NVARCHAR(500);
+        SELECT
+            @ExistingDetailNetForGuard = ISNULL(SUM(ISNULL(td.Net, 0)), 0)
+        FROM SFin.TransactionDetails AS td
+        WHERE td.Guid = @Guid
+          AND td.TransactionID = @TransactionID
+          AND td.RowStatus NOT IN (0, 254);
 
-		SET @ErrorMessageDirect =
-                    N'Cannot save this transaction because only the total of £'
-                    + CONVERT(NVARCHAR(50), @RemainingAmount)
+        SET @FeeCapGuardAvailableAmount = @RemainingAmount + ISNULL(@ExistingDetailNetForGuard, 0);
+
+        IF @RemainingAmount IS NOT NULL
+           AND @Net > @FeeCapGuardAvailableAmount
+        BEGIN
+            DECLARE @ErrorMessageDirect NVARCHAR(500);
+
+            SET @ErrorMessageDirect =
+                      N'Cannot save this transaction because only the total of £'
+                    + CONVERT(NVARCHAR(50), @FeeCapGuardAvailableAmount)
                     + N' remains'
-                    + N',but the transaction Net is £'
+                    + N', but the transaction Net is £'
                     + CONVERT(NVARCHAR(50), @Net)
                     + N'.';
 
-				THROW 51003, @ErrorMessageDirect, 1;
-	END;
+            THROW 51003, @ErrorMessageDirect, 1;
+        END;
+    END;
 
     EXEC SCore.UpsertDataObject
           @Guid       = @Guid

@@ -1,11 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_Jobs_TeamCompleteForReview]')
+GO
+
 CREATE FUNCTION [SJob].[tvf_Jobs_TeamCompleteForReview]
 (
     @UserId INT
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+           --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -69,8 +73,6 @@ RETURN
       (
           SELECT 1
           FROM SCore.ObjectSecurityForUser_CanRead(j.Guid, @UserId) AS oscr
-
-
       )
 
       -- NOT COMPLETE (legacy OR workflow latest only)
@@ -78,9 +80,7 @@ RETURN
       (
           CASE
               WHEN wf.LatestWorkflowStatusGuid IS NULL
-
                   THEN CASE WHEN (ISNULL(j.IsComplete, 0) = 0) AND (j.JobCompleted IS NULL) THEN 1 ELSE 0 END
-
               ELSE
                   CASE
                       WHEN wf.LatestWorkflowStatusGuid = '20D22623-283B-4088-9CEB-D944AC3E6516' THEN 0
@@ -95,7 +95,6 @@ RETURN
           CASE
               WHEN wf.LatestWorkflowStatusGuid IS NULL
                   THEN CASE WHEN ISNULL(j.IsCancelled, 0) = 0 THEN 1 ELSE 0 END
-
               ELSE
                   CASE
                       WHEN wf.LatestWorkflowStatusGuid = '18D8E36B-43BE-4BDE-9D0B-1F34B460AD64' THEN 0
@@ -110,7 +109,6 @@ RETURN
           CASE
               WHEN wf.LatestWorkflowStatusGuid IS NULL
                   THEN CASE WHEN ISNULL(j.IsCompleteForReview, 0) = 1 THEN 1 ELSE 0 END
-
               ELSE
                   CASE
                       WHEN wf.LatestWorkflowStatusGuid = '4BFDB215-3E27-4829-BB44-0468C92DAC82' THEN 1
@@ -118,7 +116,6 @@ RETURN
                   END
           END
       ) = 1
-
 
       AND (j.ReviewedByUserID < 0)
 
@@ -133,7 +130,6 @@ RETURN
                 (ou2.OrgNode.IsDescendantOf(CurrentUser.OrgNode) = 1)
                 OR (ou2.OrgNode = CurrentUser.OrgNode)
             )
-
       )
 );
 GO

@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[EnquiriesRevise]')
+GO
+
 CREATE PROCEDURE [SSop].[EnquiriesRevise] @SourceGuid UNIQUEIDENTIFIER,
 									 @TargetGuid UNIQUEIDENTIFIER
 AS
@@ -366,5 +370,62 @@ BEGIN
 	UPDATE	SSop.Enquiries
 	SET		RowStatus = 1
 	WHERE	(ID = @ID);
-END;
+
+	DECLARE
+    @EnquiryRevisedStatusGuid UNIQUEIDENTIFIER,
+    @NewStatusGuid UNIQUEIDENTIFIER,
+    @TransitionGuid UNIQUEIDENTIFIER;
+
+	SELECT TOP (1)
+		@EnquiryRevisedStatusGuid = ws.Guid
+	FROM SCore.WorkflowStatus AS ws
+	WHERE ws.RowStatus NOT IN (0,254)
+	  AND ws.ShowInEnquiries = 1
+	  AND ws.Name IN (N'Enquiry Revised', N'Revised')
+	ORDER BY
+		CASE
+			WHEN ws.Name = N'Enquiry Revised' THEN 0
+			WHEN ws.Name = N'Revised' THEN 1
+			ELSE 2
+		END,
+		ws.ID;
+
+	SELECT TOP (1)
+		@NewStatusGuid = ws.Guid
+	FROM SCore.WorkflowStatus AS ws
+	WHERE ws.RowStatus NOT IN (0,254)
+	  AND ws.ShowInEnquiries = 1
+	  AND ws.Name = N'New'
+	ORDER BY ws.ID;
+
+	IF (@EnquiryRevisedStatusGuid IS NULL)
+		THROW 60000, N'Could not resolve Enquiry Revised workflow status. Please confirm the Enquiry Revised/Revised WorkflowStatus exists and has ShowInEnquiries = 1.', 1;
+
+	IF (@NewStatusGuid IS NULL)
+		THROW 60000, N'Could not resolve Enquiry New workflow status.', 1;
+
+	SET @TransitionGuid = NEWID();
+
+	EXEC SCore.DataObjectTransitionUpsert
+		@Guid = @TransitionGuid,
+		@OldStatusGuid = '00000000-0000-0000-0000-000000000000',
+		@StatusGuid = @EnquiryRevisedStatusGuid,
+		@Comment = N'Enquiry revised.',
+		@CreatedByUserGuid = '00000000-0000-0000-0000-000000000000',
+		@SurveyorUserGuid = '00000000-0000-0000-0000-000000000000',
+		@DataObjectGuid = @TargetGuid,
+		@IsImported = 1;
+
+	SET @TransitionGuid = NEWID();
+
+	EXEC SCore.DataObjectTransitionUpsert
+		@Guid = @TransitionGuid,
+		@OldStatusGuid = @EnquiryRevisedStatusGuid,
+		@StatusGuid = @NewStatusGuid,
+		@Comment = N'Revision opened as New.',
+		@CreatedByUserGuid = '00000000-0000-0000-0000-000000000000',
+		@SurveyorUserGuid = '00000000-0000-0000-0000-000000000000',
+		@DataObjectGuid = @TargetGuid,
+		@IsImported = 1;
+	END;
 GO

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[QuoteProducts_ETL]')
+GO
 CREATE VIEW [SSop].[QuoteProducts_ETL]
-    --WITH SCHEMABINDING
+      --WITH SCHEMABINDING
 AS
  
 SELECT
@@ -109,5 +112,6 @@ GROUP BY
     eff.EffectiveDateSent,
     eff.EffectiveDateAccepted,
     eff.EffectiveDateRejected;
+
 
 GO

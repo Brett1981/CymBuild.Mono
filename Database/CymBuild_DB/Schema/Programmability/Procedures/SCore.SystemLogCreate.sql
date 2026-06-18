@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[SystemLogCreate]')
+GO
 CREATE PROCEDURE [SCore].[SystemLogCreate]
 	(	@DateTime DATETIME2,
 		@Severity NVARCHAR(50),

@@ -110,8 +110,12 @@
 
     [Parameter] public DataCompositeFilter QuickFilters { get; set; }
     [Parameter] public EventCallback<DataCompositeFilter> QuickFiltersChanged { get; set; }
+
     [Parameter] public DataCompositeFilter RangeFilters { get; set; }
     [Parameter] public EventCallback<DataCompositeFilter> RangeFiltersChanged { get; set; }
+
+    [Parameter] public DataCompositeFilter CompositeFilter { get; set; }
+    [Parameter] public EventCallback<DataCompositeFilter> CompositeFilterChanged { get; set; }
 
     [Parameter] public EventCallback<Exception> OnError { get; set; }
 
@@ -175,17 +179,18 @@
             //if (gridDataListRequest.ParentGuid == Guid.Empty.ToString()) return;
 
             // Ensure we handle single `DataCompositeFilter` properly
-            var compositeFilter = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(new List<Telerik.DataSource.IFilterDescriptor>());
+            if (CompositeFilter == null)
+                CompositeFilter = new();
 
             //Check for quick filters
             if (QuickFilters != null)
-                compositeFilter.CompositeFilters.Add(QuickFilters);
+                CompositeFilter.CompositeFilters.Add(QuickFilters);
 
             if (RangeFilters != null)
-                compositeFilter.CompositeFilters.Add(RangeFilters);
+                CompositeFilter.CompositeFilters.Add(RangeFilters);
 
-            if (compositeFilter != null)
-                gridDataListRequest.Filters.Add(compositeFilter);
+            if (CompositeFilter != null)
+                gridDataListRequest.Filters.Add(CompositeFilter);
 
 
 

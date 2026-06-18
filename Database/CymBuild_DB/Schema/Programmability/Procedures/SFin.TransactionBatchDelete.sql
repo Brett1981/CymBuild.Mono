@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SFin].[TransactionBatchDelete]')
+GO
+
 CREATE PROCEDURE [SFin].[TransactionBatchDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

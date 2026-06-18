@@ -1,7 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SJob].[RibaStagesUpsert]')
 GO
+
 CREATE PROCEDURE [SJob].[RibaStagesUpsert]
     @Number INT,
     @Description NVARCHAR(500),

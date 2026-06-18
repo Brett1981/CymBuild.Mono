@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_InvoiceRequestItems]')
+GO
 CREATE FUNCTION [SFin].[tvf_InvoiceRequestItems] 
 (
     @UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+         --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  iri.ID,

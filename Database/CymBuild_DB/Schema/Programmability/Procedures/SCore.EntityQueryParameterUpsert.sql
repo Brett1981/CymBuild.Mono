@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[EntityQueryParameterUpsert]')
+GO
 CREATE PROCEDURE [SCore].[EntityQueryParameterUpsert]
 	(	@Name NVARCHAR(250),
 		@RowStatus TINYINT,

@@ -142,8 +142,3 @@ GO
 ALTER TABLE [SUserInterface].[PropertyGroupLayouts] WITH NOCHECK
   ADD CONSTRAINT [FK_PropertyGroupLayouts_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SUserInterface].[PropertyGroupLayouts]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The options for how Property Groups are displayed e.g. Row or Column ', 'SCHEMA', N'SUserInterface', 'TABLE', N'PropertyGroupLayouts'
-GO

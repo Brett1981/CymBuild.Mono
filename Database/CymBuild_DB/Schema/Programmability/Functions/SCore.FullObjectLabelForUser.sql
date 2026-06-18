@@ -1,13 +1,16 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SCore].[FullObjectLabelForUser]')
+GO
+
 CREATE FUNCTION [SCore].[FullObjectLabelForUser]
 (
     @LanguageLabelID int,
     @UserId int
 )
 RETURNS TABLE
-                --WITH SCHEMABINDING
+                     --WITH SCHEMABINDING
 AS 
 RETURN 
 SELECT      llt.Text AS Label,

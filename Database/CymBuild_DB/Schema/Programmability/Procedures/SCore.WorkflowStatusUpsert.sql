@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[WorkflowStatusUpsert]')
+GO
 CREATE PROCEDURE [SCore].[WorkflowStatusUpsert]
 (
     @Guid						UNIQUEIDENTIFIER,

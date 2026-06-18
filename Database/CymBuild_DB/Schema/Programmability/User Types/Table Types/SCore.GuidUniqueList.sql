@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[GuidUniqueList] AS TABLE (
+﻿PRINT (N'Create type [SCore].[GuidUniqueList]')
+GO
+CREATE TYPE [SCore].[GuidUniqueList] AS TABLE (
   [GuidValue] [uniqueidentifier] NOT NULL,
   PRIMARY KEY CLUSTERED ([GuidValue])
 )

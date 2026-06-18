@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[GetValidationString]')
+GO
 CREATE FUNCTION [SCore].[GetValidationString]
 (
 	@ValidationResults SCore.ValidationResult READONLY

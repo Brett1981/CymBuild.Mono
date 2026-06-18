@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SFin].[tvf_AutomatedInvoicing]')
+GO
 CREATE FUNCTION [SFin].[tvf_AutomatedInvoicing]
 	(
 		@UserId INT

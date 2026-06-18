@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SSop].[tvf_EnquiryProjectDirectory]')
+GO
+
 
 CREATE FUNCTION [SSop].[tvf_EnquiryProjectDirectory]
 	(
@@ -8,7 +11,7 @@ CREATE FUNCTION [SSop].[tvf_EnquiryProjectDirectory]
 		@ParentGuid UNIQUEIDENTIFIER
 	)
 RETURNS TABLE
-              --WITH SCHEMABINDING
+                   --WITH SCHEMABINDING
 AS
 RETURN SELECT		pd.ID,
 					pd.RowStatus,

@@ -1,5 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[QuoteKeyDatesDelete]')
+GO
+
+
+
+
+
+
 CREATE PROCEDURE [SSop].[QuoteKeyDatesDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

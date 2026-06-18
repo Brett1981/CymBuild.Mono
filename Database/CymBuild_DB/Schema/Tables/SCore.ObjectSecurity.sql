@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[ObjectSecurity]')
 GO
-PRINT (N'Create table [SCore].[ObjectSecurity]')
-GO
 CREATE TABLE [SCore].[ObjectSecurity] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ObjectSecurity_RowStatus] DEFAULT (0),
@@ -320,12 +318,4 @@ PRINT (N'Create foreign key [FK_ObjectSecurity_Users] on table [SCore].[ObjectSe
 GO
 ALTER TABLE [SCore].[ObjectSecurity] WITH NOCHECK
   ADD CONSTRAINT [FK_ObjectSecurity_Users] FOREIGN KEY ([UserId]) REFERENCES [SCore].[Identities] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[ObjectSecurity]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Security records for all rows both meta data and user data. ', 'SCHEMA', N'SCore', 'TABLE', N'ObjectSecurity'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[ObjectSecurity]')
 GO

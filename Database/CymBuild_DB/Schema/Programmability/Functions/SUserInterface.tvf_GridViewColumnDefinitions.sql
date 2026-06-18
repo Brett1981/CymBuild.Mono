@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SUserInterface].[tvf_GridViewColumnDefinitions]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_GridViewColumnDefinitions]
   (
     @GridViewDefinitionId INT,
     @UserId       INT
   )
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
   RETURN SELECT
           gvcd.ID,

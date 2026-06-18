@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityPropertiesV]')
+GO
 CREATE VIEW	[SCore].[EntityPropertiesV]
-             --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 SELECT	ep.ID,
 		ep.RowStatus,
@@ -35,4 +38,5 @@ SELECT	ep.ID,
 		ep.IsVirtual
 FROM	Score.[EntityProperties] ep
 WHERE	(ep.[RowStatus] NOT IN (0, 254))
+
 GO

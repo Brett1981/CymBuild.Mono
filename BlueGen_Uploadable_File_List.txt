@@ -1,0 +1,26 @@
+BlueGen uploadable files created.
+
+Primary recommended upload:
+- BlueGen_CymBuild_Knowledge_Pack_COMBINED.markdown
+
+Alternative structured upload:
+- BlueGen_CymBuild_Knowledge_Pack.json
+
+Individual supported files:
+- 00_BLUEGEN_SYSTEM_RULES.markdown
+- 01_CYMBUILD_ARCHITECTURE.markdown
+- 02_NAVIGATION_SCHEMA.yml
+- 03_REPOSITORY_INVENTORY.markdown
+- 04_METADATA_RULES.markdown
+- 05_GOLDEN_PATH_EXAMPLES.markdown
+- 06_TROUBLESHOOTING_PLAYBOOKS.markdown
+- 07_JIRA_IMPLEMENTATION_HISTORY.markdown
+- 08_USER_HELP_GUIDES.markdown
+- 09_GLOSSARY.markdown
+- 10_DEPLOYMENT_RUNBOOKS.markdown
+- 11_TESTING_AND_DIAGNOSTICS.markdown
+- 12_TELERIK_REMOVAL_GUIDE.markdown
+- 13_INTEGRATION_GUIDE.markdown
+- 14_API_GRPC_CONTRACT_MAP.markdown
+- 15_BLUEGEN_INGESTION_GUIDE.markdown
+- _INDEX.markdown

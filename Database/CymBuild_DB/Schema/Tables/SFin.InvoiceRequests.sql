@@ -1,11 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceRequests]')
 GO
-PRINT (N'Create table [SFin].[InvoiceRequests]')
-GO
-PRINT (N'Create table [SFin].[InvoiceRequests]')
-GO
-PRINT (N'Create table [SFin].[InvoiceRequests]')
-GO
 CREATE TABLE [SFin].[InvoiceRequests] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_InvoiceRequests_RowStatus] DEFAULT (0),

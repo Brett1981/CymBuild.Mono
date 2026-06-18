@@ -37,5 +37,9 @@ namespace Concursus.Common.Shared.Models.Finance
             long externalTransactionId,
             DateTime? nextPollDueOnUtc,
             CancellationToken cancellationToken = default);
+
+        Task MaterialiseReceiptAndAllocationAsync(
+            long externalTransactionId,
+            CancellationToken cancellationToken = default);
     }
 }

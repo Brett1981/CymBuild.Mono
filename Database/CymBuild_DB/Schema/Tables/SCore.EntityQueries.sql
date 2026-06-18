@@ -425,8 +425,3 @@ GO
 ALTER TABLE [SCore].[EntityQueries] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityQueries_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityQueries]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'The queries to run in SQL to perform different functions on this Entity Type e.g. Create Read Update Delete Validate', 'SCHEMA', N'SCore', 'TABLE', N'EntityQueries'
-GO

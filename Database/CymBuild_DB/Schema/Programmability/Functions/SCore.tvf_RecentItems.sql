@@ -1,11 +1,14 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_RecentItems]')
+GO
 CREATE FUNCTION [SCore].[tvf_RecentItems] 
 (
     @UserId INT
 )
 RETURNS TABLE
-            --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 RETURN  
 SELECT      ri.ID,

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[Job_ExtendedInfo]')
+GO
 CREATE VIEW	[SJob].[Job_ExtendedInfo]
-    --WITH SCHEMABINDING
+         --WITH SCHEMABINDING
 AS
 SELECT	j.Id,
 		j.RowStatus,

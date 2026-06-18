@@ -42,6 +42,6 @@ GO
 CREATE INDEX [IX_SageInboundDocumentAttempts_InboundStatusID_AttemptedOnUtc]
   ON [SFin].[SageInboundDocumentAttempts] ([InboundStatusID], [AttemptedOnUtc] DESC, [ID] DESC)
   INCLUDE ([CompletedOnUtc], [IsSuccess], [IsRetryableFailure], [ErrorMessage], [ResponseStatus], [ResponseDetail])
-  WITH (FILLFACTOR = 80)
+  WITH (PAD_INDEX = ON, FILLFACTOR = 80)
   ON [PRIMARY]
 GO

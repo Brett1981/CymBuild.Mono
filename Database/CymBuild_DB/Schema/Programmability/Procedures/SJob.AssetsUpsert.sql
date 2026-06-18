@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[AssetsUpsert]')
+GO
 CREATE PROCEDURE [SJob].[AssetsUpsert]
 	(	@ParentAssetGuid UNIQUEIDENTIFIER,
 		@Name NVARCHAR(100),

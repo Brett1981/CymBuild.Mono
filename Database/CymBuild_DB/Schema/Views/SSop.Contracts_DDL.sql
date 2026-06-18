@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create view [SSop].[Contracts_DDL]')
+GO
+
 CREATE VIEW	[SSop].[Contracts_DDL]
 AS
 SELECT	root_hobt.Guid, 

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[QuoteSectionTotals]')
+GO
 CREATE VIEW [SSop].[QuoteSectionTotals]
-        --WITH SCHEMABINDING
+             --WITH SCHEMABINDING
 AS 
 SELECT	qi.QuoteSectionId AS ID,
 		CONVERT(DECIMAL(9, 2), ROUND(SUM(qit.LineNet), 2)) AS Net,

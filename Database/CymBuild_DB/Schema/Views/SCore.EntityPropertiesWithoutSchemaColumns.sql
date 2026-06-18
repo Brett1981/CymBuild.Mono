@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityPropertiesWithoutSchemaColumns]')
+GO
 CREATE VIEW [SCore].[EntityPropertiesWithoutSchemaColumns]
 AS
 SELECT	ep.ID,

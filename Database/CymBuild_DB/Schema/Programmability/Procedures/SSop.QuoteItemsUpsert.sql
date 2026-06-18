@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[QuoteItemsUpsert]')
+GO
 CREATE PROCEDURE [SSop].[QuoteItemsUpsert]
   (
     @QuoteGuid				UNIQUEIDENTIFIER,
@@ -133,6 +136,7 @@ AS
 				AND (root_hobt.RowStatus NOT IN (0,254))
 				AND (root_hobt.DoNotConsolidateJob = 0)
 				AND (root_hobt.ProductId = @ProductId)
+				AND (root_hobt.CreatedJobId = -1)
 		) AND (@DoNotConsolidateJob = 0)
 	)
 	BEGIN
@@ -144,6 +148,7 @@ AS
 			AND (RowStatus NOT IN (0,254))
 			AND (ProductId = @ProductId)
 			AND (DoNotConsolidateJob = 0)
+			AND (CreatedJobId = -1)
 	END;
 
   END

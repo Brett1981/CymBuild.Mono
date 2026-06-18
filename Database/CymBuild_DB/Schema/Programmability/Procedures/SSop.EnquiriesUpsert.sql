@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[EnquiriesUpsert]')
+GO
+
 /* =========================================================================================
    SSop.EnquiriesUpsert  (instrumented)
    - Adds step-level TRY/CATCH + PRINT logging (shows exactly which call fails)
@@ -195,6 +199,8 @@ BEGIN
                      @ProjectProjectedEndDate = NULL,
                      @ProjectCompleted = NULL,
                      @IsSubjectToNDA = @IsSubjectToNDA,
+                     @DataClassificationGuid = '31e24091-52b4-480e-9a85-7052f614567a',
+                     @SecurityClassificationGuid = 'b4ef7a4d-454b-4c4b-af3d-5996312fd038',
                      @Guid = @ProjectGuid;
 
                 PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)

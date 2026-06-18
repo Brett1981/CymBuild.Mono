@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCrm].[AddressUpsert]')
+GO
+
+
 CREATE PROCEDURE [SCrm].[AddressUpsert]
 (
 	@AddressNumber INT,

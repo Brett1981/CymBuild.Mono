@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SSop].[tvf_QuotePaymentStagesValidate]')
+GO
+
 
 
 CREATE FUNCTION [SSop].[tvf_QuotePaymentStagesValidate]

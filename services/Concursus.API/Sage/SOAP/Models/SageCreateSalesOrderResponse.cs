@@ -5,5 +5,6 @@
         public string? Status { get; set; }
         public string? OrderId { get; set; }
         public string? Detail { get; set; }
+        public string? SageTransactionReference { get; set; } = null;
     }
 }

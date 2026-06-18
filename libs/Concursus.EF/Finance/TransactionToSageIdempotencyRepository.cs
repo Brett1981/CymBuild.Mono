@@ -36,10 +36,14 @@ SELECT TOP (1)
        s.IsInProgress,
        ISNULL(s.SageOrderId, N'') AS SageOrderId,
        ISNULL(s.SageOrderNumber, N'') AS SageOrderNumber,
+       ISNULL(t.SageTransactionReference, N'') AS SageTransactionReference,
        s.LastSucceededOnUtc,
        s.LastFailedOnUtc,
        ISNULL(s.LastError, N'') AS LastError
 FROM   SFin.TransactionSageSubmissionStatus AS s
+LEFT JOIN SFin.Transactions AS t
+ ON t.Guid = s.TransactionGuid
+AND t.RowStatus NOT IN (0,254)
 WHERE  s.TransactionGuid = @TransactionGuid
   AND  s.RowStatus NOT IN (0, 254);
 """;
@@ -134,7 +138,8 @@ WHERE  s.TransactionGuid = @TransactionGuid
     Guid transitionGuid,
     string sageOrderId,
     string sageOrderNumber,
-    string sageDataset,
+    string sageTransactionReference,
+    string sageDataSet,
     string responseStatus,
     string responseDetail,
     string requestPayloadJson,
@@ -156,6 +161,12 @@ WHERE  s.TransactionGuid = @TransactionGuid
             markSuccessCommand.Parameters.Add(new SqlParameter("@TransitionGuid", SqlDbType.UniqueIdentifier) { Value = transitionGuid });
             markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderId", SqlDbType.NVarChar, 100) { Value = (object?)sageOrderId ?? DBNull.Value });
             markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderNumber", SqlDbType.NVarChar, 100) { Value = (object?)sageOrderNumber ?? DBNull.Value });
+            markSuccessCommand.Parameters.Add(new SqlParameter("@SageTransactionReference", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(sageTransactionReference)
+                    ? DBNull.Value
+                    : sageTransactionReference.Trim()
+                        });
             markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseStatus", SqlDbType.NVarChar, 50) { Value = (object?)responseStatus ?? DBNull.Value });
             markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseDetail", SqlDbType.NVarChar) { Value = (object?)responseDetail ?? DBNull.Value });
             markSuccessCommand.Parameters.Add(new SqlParameter("@RequestPayloadJson", SqlDbType.NVarChar) { Value = (object?)requestPayloadJson ?? DBNull.Value });
@@ -168,7 +179,7 @@ WHERE  s.TransactionGuid = @TransactionGuid
                 connection,
                 transactionGuid,
                 sageOrderNumber,
-                sageDataset,
+                sageDataSet,
                 cancellationToken);
 
             if (enqueueTarget is null)

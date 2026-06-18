@@ -1,7 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
-PRINT (N'Create procedure [SFin].[InvoiceRequestUpsert]')
-GO
+
 PRINT (N'Create procedure [SFin].[InvoiceRequestUpsert]')
 GO
 CREATE PROCEDURE [SFin].[InvoiceRequestUpsert]
@@ -13,7 +12,8 @@ CREATE PROCEDURE [SFin].[InvoiceRequestUpsert]
     @InvoicingType NVARCHAR(10),
     @ExpectedDate DATE,
     @ManualStatus BIT,
-    @PaymentStatusGuid UNIQUEIDENTIFIER
+    @PaymentStatusGuid UNIQUEIDENTIFIER,
+	@FinanceAccountGuid UNIQUEIDENTIFIER
 )
 AS
 BEGIN
@@ -99,7 +99,8 @@ BEGIN
             ir.ExpectedDate = @ExpectedDate,
             ir.ManualStatus = ISNULL(@ManualStatus, 0),
             ir.InvoicePaymentStatusID = @PaymentStatusID,
-			ir.RequesterUserId = @RequesterUserId
+			ir.RequesterUserId = @RequesterUserId,
+			ir.FinanceAccountGuid = @FinanceAccountGuid
         FROM SFin.InvoiceRequests ir
         WHERE ir.[Guid] = @Guid;
     END

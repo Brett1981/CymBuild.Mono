@@ -1,26 +1,25 @@
 ﻿#nullable enable
 
 using Concursus.API.Sage.SOAP;
+using Concursus.API.Sage.SOAP.Interface;
+using Concursus.API.Sage.SOAP.Models;
 using Concursus.Common.Shared.Models.Finance;
+using Concursus.EF.Finance;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using SageCreateSalesOrderRequest = Concursus.Common.Shared.Models.Finance.SageCreateSalesOrderRequest;
+using SageCreateSalesOrderResponse = Concursus.Common.Shared.Models.Finance.SageCreateSalesOrderResponse;
 
 namespace Concursus.API.Services.Finance
 {
-    /// <summary>
-    /// Phase 5 orchestration service for approved transaction -> Sage sales order submission.
-    ///
-    /// Important compatibility note:
-    /// This implementation deliberately avoids hard-coding certain property names on
-    /// existing event/status/claim/eligibility models where the current codebase may
-    /// use slightly different naming than the scaffold.
-    /// </summary>
     public sealed class TransactionToSageSubmissionService : ITransactionToSageSubmissionService
     {
         private static readonly JsonSerializerOptions ResponseJsonOptions = new()
@@ -33,6 +32,8 @@ namespace Concursus.API.Services.Finance
         private readonly ITransactionToSageIdempotencyService _idempotencyService;
         private readonly IApprovedTransactionForSagePayloadFactory _payloadFactory;
         private readonly ISageSalesOrderGateway _gateway;
+        private readonly ISageApiClient _sageApiClient;
+        private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
         private readonly IOptionsMonitor<SageApiOptions> _sageOptions;
         private readonly IOptionsMonitor<SageTransactionSubmissionWorkerOptions> _workerOptions;
         private readonly ILogger<TransactionToSageSubmissionService> _logger;
@@ -43,6 +44,8 @@ namespace Concursus.API.Services.Finance
             ITransactionToSageIdempotencyService idempotencyService,
             IApprovedTransactionForSagePayloadFactory payloadFactory,
             ISageSalesOrderGateway gateway,
+            ISageApiClient sageApiClient,
+            ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository,
             IOptionsMonitor<SageApiOptions> sageOptions,
             IOptionsMonitor<SageTransactionSubmissionWorkerOptions> workerOptions,
             ILogger<TransactionToSageSubmissionService> logger)
@@ -52,6 +55,8 @@ namespace Concursus.API.Services.Finance
             _idempotencyService = idempotencyService ?? throw new ArgumentNullException(nameof(idempotencyService));
             _payloadFactory = payloadFactory ?? throw new ArgumentNullException(nameof(payloadFactory));
             _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
+            _sageApiClient = sageApiClient ?? throw new ArgumentNullException(nameof(sageApiClient));
+            _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository ?? throw new ArgumentNullException(nameof(sageInboundDiagnosticsRepository));
             _sageOptions = sageOptions ?? throw new ArgumentNullException(nameof(sageOptions));
             _workerOptions = workerOptions ?? throw new ArgumentNullException(nameof(workerOptions));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -118,9 +123,9 @@ namespace Concursus.API.Services.Finance
                         "invalid_outbox_payload");
                 }
 
-                transaction = await _readRepository.GetApprovedTransactionForSageAsync(
-                    transitionGuid,
-                    cancellationToken);
+                transaction = await _readRepository
+                    .GetApprovedTransactionForSageAsync(transitionGuid, cancellationToken)
+                    .ConfigureAwait(false);
 
                 if (transaction is null)
                 {
@@ -142,17 +147,19 @@ namespace Concursus.API.Services.Finance
                     transaction.TransactionGuid,
                     transaction.TransactionId);
 
-                var status = await _idempotencyService.GetStatusAsync(
-                    transaction.TransactionGuid,
-                    cancellationToken);
+                var status = await _idempotencyService
+                    .GetStatusAsync(transaction.TransactionGuid, cancellationToken)
+                    .ConfigureAwait(false);
 
                 var alreadySubmitted = ResolveStatusIsSuccessfullySubmitted(status);
 
-                var eligibility = await _eligibilityValidator.ValidateAsync(
-                    transaction,
-                    _sageOptions.CurrentValue.Enabled,
-                    alreadySubmitted: alreadySubmitted,
-                    cancellationToken);
+                var eligibility = await _eligibilityValidator
+                    .ValidateAsync(
+                        transaction,
+                        _sageOptions.CurrentValue.Enabled,
+                        alreadySubmitted,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 if (!eligibility.IsEligible)
                 {
@@ -191,13 +198,15 @@ namespace Concursus.API.Services.Finance
 
                 var claimTimeoutMinutes = ResolveClaimTimeoutMinutes(_workerOptions.CurrentValue);
 
-                var claim = await _idempotencyService.TryClaimAsync(
-                    transaction.TransactionId,
-                    transaction.TransactionGuid,
-                    transaction.TransitionGuid,
-                    transaction.ActorIdentityId ?? -1,
-                    claimTimeoutMinutes,
-                    cancellationToken);
+                var claim = await _idempotencyService
+                    .TryClaimAsync(
+                        transaction.TransactionId,
+                        transaction.TransactionGuid,
+                        transaction.TransitionGuid,
+                        transaction.ActorIdentityId ?? -1,
+                        claimTimeoutMinutes,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 claimAcquired = ResolveClaimIsClaimed(claim);
                 var isAlreadyCompleted = ResolveClaimIsAlreadyCompleted(claim);
@@ -237,32 +246,49 @@ namespace Concursus.API.Services.Finance
                 var requestDto = _payloadFactory.Build(transaction);
 
                 _logger.LogInformation(
-                    "Built Sage request payload. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, AccountReference={AccountReference}, LineCount={LineCount}",
+                    "Built Sage request payload. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, TransactionId={TransactionId}, Dataset={Dataset}, AccountReference={AccountReference}, CustomerOrderNo={CustomerOrderNo}, LineCount={LineCount}",
                     transaction.TransitionGuid,
                     transaction.TransactionGuid,
+                    transaction.TransactionId,
+                    requestDto.Dataset,
                     requestDto.AccountReference,
+                    requestDto.CustomerOrderNo,
                     requestDto.Lines?.Count ?? 0);
 
-                var responseDto = await _gateway.CreateSalesOrderAsync(requestDto, cancellationToken);
+                var responseDto = await _gateway
+                    .CreateSalesOrderAsync(requestDto, cancellationToken)
+                    .ConfigureAwait(false);
+
                 responsePayloadJson = JsonSerializer.Serialize(responseDto, ResponseJsonOptions);
 
                 _logger.LogInformation(
-                    "Received Sage gateway response. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, WrapperStatus={WrapperStatus}, HttpStatusCode={HttpStatusCode}, OrderId={OrderId}",
+                    "Raw Sage gateway response received. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, TransactionId={TransactionId}, IsOk={IsOk}, Status={Status}, HttpStatusCode={HttpStatusCode}, OrderId={OrderId}, SageTransactionReference='{SageTransactionReference}', Detail={Detail}, ResponsePayloadJson={ResponsePayloadJson}",
                     transaction.TransitionGuid,
                     transaction.TransactionGuid,
+                    transaction.TransactionId,
+                    responseDto.IsOk,
                     responseDto.Status,
                     responseDto.HttpStatusCode,
-                    responseDto.OrderId);
+                    responseDto.OrderId,
+                    responseDto.SageTransactionReference,
+                    responseDto.Detail,
+                    responsePayloadJson);
 
                 if (responseDto.IsOk && !string.IsNullOrWhiteSpace(responseDto.OrderId))
                 {
-                    var sageTransactionReference = ResolveStringProperty(
-                        responseDto,
-                        "SageTransactionReference",
-                        "TransactionReference",
-                        "TransactionRef",
-                        "Reference",
-                        "OrderReference");
+                    var sageTransactionReference = string.IsNullOrWhiteSpace(responseDto.SageTransactionReference)
+                        ? string.Empty
+                        : responseDto.SageTransactionReference.Trim();
+
+                    if (string.IsNullOrWhiteSpace(sageTransactionReference))
+                    {
+                        sageTransactionReference = await TryFetchSageTransactionReferenceAsync(
+                            transaction,
+                            requestDto,
+                            responseDto.OrderId,
+                            cancellationToken).ConfigureAwait(false);
+                    }
+
                     await _idempotencyService.MarkSuccessAsync(
                         transaction.TransactionGuid,
                         transaction.TransitionGuid,
@@ -275,21 +301,73 @@ namespace Concursus.API.Services.Finance
                         requestPayloadJson: requestPayloadJson,
                         responsePayloadJson: responsePayloadJson,
                         updatedByUserId: transaction.ActorIdentityId ?? -1,
-                        cancellationToken: cancellationToken);
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
 
                     _logger.LogInformation(
-                        "Transaction successfully submitted to Sage. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}, SageTransactionReference={SageTransactionReference}",
+                        "Sage submission MarkSuccess completed. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, TransactionId={TransactionId}, SageOrderId={SageOrderId}, SageTransactionReference='{SageTransactionReference}'",
                         transaction.TransitionGuid,
                         transaction.TransactionGuid,
+                        transaction.TransactionId,
                         responseDto.OrderId,
                         sageTransactionReference);
+
+                    var transactionReferenceApplied = false;
+
+                    if (!string.IsNullOrWhiteSpace(sageTransactionReference))
+                    {
+                        _logger.LogInformation(
+                            "Attempting direct SageTransactionReference update. TransactionId={TransactionId}, SageTransactionReference='{SageTransactionReference}'",
+                            transaction.TransactionId,
+                            sageTransactionReference);
+
+                        transactionReferenceApplied = await _sageInboundDiagnosticsRepository
+                            .SetTransactionSageReferenceIfMissingAsync(
+                                transaction.TransactionId,
+                                sageTransactionReference,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+
+                        _logger.LogInformation(
+                            "Direct SageTransactionReference update completed. TransactionId={TransactionId}, SageTransactionReference='{SageTransactionReference}', Applied={Applied}",
+                            transaction.TransactionId,
+                            sageTransactionReference,
+                            transactionReferenceApplied);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Sage transaction was submitted successfully, but no SageTransactionReference was available after create response and read-back. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}",
+                            transaction.TransactionId,
+                            transaction.TransactionGuid,
+                            responseDto.OrderId);
+                    }
+
+                    var diagnosticsReferenceAppliedCount = await _sageInboundDiagnosticsRepository
+                        .ApplyTransactionReferencesAsync(
+                            statusGuid: null,
+                            transactionId: transaction.TransactionId,
+                            dryRun: false,
+                            cancellationToken: cancellationToken)
+                        .ConfigureAwait(false);
+
+                    _logger.LogInformation(
+                        "Transaction successfully submitted to Sage. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, TransactionId={TransactionId}, SageOrderId={SageOrderId}, SageTransactionReference='{SageTransactionReference}', DirectReferenceApplied={DirectReferenceApplied}, DiagnosticsReferenceAppliedCount={DiagnosticsReferenceAppliedCount}",
+                        transaction.TransitionGuid,
+                        transaction.TransactionGuid,
+                        transaction.TransactionId,
+                        responseDto.OrderId,
+                        sageTransactionReference,
+                        transactionReferenceApplied,
+                        diagnosticsReferenceAppliedCount);
 
                     return TransactionToSageProcessResult.Success(
                         transaction.TransitionGuid,
                         transaction.TransactionGuid,
                         responseDto.OrderId,
                         responseDto.OrderId,
-                        "Transaction successfully submitted to Sage sales-orders endpoint.");
+                        string.IsNullOrWhiteSpace(sageTransactionReference)
+                            ? "Transaction successfully submitted to Sage sales-orders endpoint, but no Sage transaction reference was available."
+                            : "Transaction successfully submitted to Sage sales-orders endpoint and Sage transaction reference was applied.");
                 }
 
                 if (responseDto.IsOk && string.IsNullOrWhiteSpace(responseDto.OrderId))
@@ -307,7 +385,7 @@ namespace Concursus.API.Services.Finance
                         requestPayloadJson: requestPayloadJson,
                         responsePayloadJson: responsePayloadJson,
                         updatedByUserId: transaction.ActorIdentityId ?? -1,
-                        cancellationToken: cancellationToken);
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
 
                     _logger.LogError(
                         "Malformed successful Sage response. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, HttpStatusCode={HttpStatusCode}",
@@ -338,7 +416,7 @@ namespace Concursus.API.Services.Finance
                     requestPayloadJson: requestPayloadJson,
                     responsePayloadJson: responsePayloadJson,
                     updatedByUserId: transaction.ActorIdentityId ?? -1,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
 
                 _logger.LogWarning(
                     "Sage submission failed. TransitionGuid={TransitionGuid}, TransactionGuid={TransactionGuid}, FailureCode={FailureCode}, IsRetryable={IsRetryable}, HttpStatusCode={HttpStatusCode}, Detail={Detail}",
@@ -377,7 +455,7 @@ namespace Concursus.API.Services.Finance
                         isRetryable: false,
                         requestPayloadJson,
                         responsePayloadJson,
-                        cancellationToken);
+                        cancellationToken).ConfigureAwait(false);
                 }
 
                 return TransactionToSageProcessResult.NonRetryableFailure(
@@ -404,7 +482,7 @@ namespace Concursus.API.Services.Finance
                         isRetryable: true,
                         requestPayloadJson,
                         responsePayloadJson,
-                        cancellationToken);
+                        cancellationToken).ConfigureAwait(false);
                 }
 
                 return TransactionToSageProcessResult.RetryableFailure(
@@ -415,6 +493,59 @@ namespace Concursus.API.Services.Finance
                     ex.Message,
                     "submission_exception");
             }
+        }
+
+        private async Task<string> TryFetchSageTransactionReferenceAsync(
+            ApprovedTransactionForSageReadModel transaction,
+            SageCreateSalesOrderRequest requestDto,
+            string sageOrderId,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(sageOrderId))
+            {
+                return string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(requestDto.AccountReference))
+            {
+                return string.Empty;
+            }
+
+            var dataset = ResolveSageDataset(requestDto.Dataset);
+
+            _logger.LogInformation(
+                "SageTransactionReference missing from create response. Attempting read-back. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, Dataset={Dataset}, AccountReference={AccountReference}, SageOrderId={SageOrderId}",
+                transaction.TransactionId,
+                transaction.TransactionGuid,
+                dataset,
+                requestDto.AccountReference,
+                sageOrderId);
+
+            var transactionLookup = await _sageApiClient
+                .FetchCustomerTransactionsAsync(
+                    dataset,
+                    requestDto.AccountReference,
+                    sageOrderId,
+                    4,
+                    force: true,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            var matchedTransaction = transactionLookup?.Transactions?.FirstOrDefault();
+
+            var sageTransactionReference = matchedTransaction is null
+                ? string.Empty
+                : GetString(matchedTransaction, "transactionReference").Trim();
+
+            _logger.LogInformation(
+                "SageTransactionReference read-back completed. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}, Returned={Returned}, SageTransactionReference='{SageTransactionReference}'",
+                transaction.TransactionId,
+                transaction.TransactionGuid,
+                sageOrderId,
+                transactionLookup?.Transactions?.Count ?? 0,
+                sageTransactionReference);
+
+            return sageTransactionReference;
         }
 
         private async Task SafeMarkFailureAsync(
@@ -437,7 +568,7 @@ namespace Concursus.API.Services.Finance
                     requestPayloadJson: requestPayloadJson ?? string.Empty,
                     responsePayloadJson: responsePayloadJson ?? string.Empty,
                     updatedByUserId: transaction.ActorIdentityId ?? -1,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
             }
             catch (Exception markFailureEx)
             {
@@ -447,6 +578,18 @@ namespace Concursus.API.Services.Finance
                     transaction.TransactionGuid,
                     transaction.TransitionGuid);
             }
+        }
+
+        private static SageDataset ResolveSageDataset(object? value)
+        {
+            var text = value?.ToString();
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return SageDataset.group;
+            }
+
+            return Enum.Parse<SageDataset>(text, ignoreCase: true);
         }
 
         private static int ResolveClaimTimeoutMinutes(SageTransactionSubmissionWorkerOptions options)
@@ -461,15 +604,8 @@ namespace Concursus.API.Services.Finance
                 : options.ClaimTimeoutMinutes;
         }
 
-        #region Compatibility Helpers
-
         private static Guid ResolveApprovedEventTransitionGuid(TransactionApprovedForSageSubmissionEvent approvedEvent)
         {
-            if (approvedEvent is null)
-            {
-                throw new ArgumentNullException(nameof(approvedEvent));
-            }
-
             if (approvedEvent.TransitionGuid != Guid.Empty)
             {
                 return approvedEvent.TransitionGuid;
@@ -601,17 +737,10 @@ namespace Concursus.API.Services.Finance
 
             var statusCode = response.HttpStatusCode.Value;
 
-            if (statusCode == 408 || statusCode == 425 || statusCode == 429)
-            {
-                return true;
-            }
-
-            if (statusCode >= 500)
-            {
-                return true;
-            }
-
-            return false;
+            return statusCode == 408 ||
+                   statusCode == 425 ||
+                   statusCode == 429 ||
+                   statusCode >= 500;
         }
 
         private static string ResolveGatewayFailureCode(SageCreateSalesOrderResponse? response)
@@ -663,7 +792,9 @@ namespace Concursus.API.Services.Finance
                 }
 
                 var textValue = rawValue.ToString();
-                if (!string.IsNullOrWhiteSpace(textValue) && Guid.TryParse(textValue, out var parsedGuid))
+
+                if (!string.IsNullOrWhiteSpace(textValue) &&
+                    Guid.TryParse(textValue, out var parsedGuid))
                 {
                     return parsedGuid;
                 }
@@ -760,6 +891,14 @@ namespace Concursus.API.Services.Finance
             return null;
         }
 
-        #endregion Compatibility Helpers
+        private static string GetString(IDictionary<string, object?> source, string key)
+        {
+            if (!source.TryGetValue(key, out var value) || value is null)
+            {
+                return string.Empty;
+            }
+
+            return value.ToString() ?? string.Empty;
+        }
     }
 }

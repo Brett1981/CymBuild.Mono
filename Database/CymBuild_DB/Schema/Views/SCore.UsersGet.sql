@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[UsersGet]')
+GO
 CREATE VIEW [SCore].[UsersGet]
-              --WITH SCHEMABINDING
+                   --WITH SCHEMABINDING
 AS 
 SELECT  i.ID,
 		i.RowStatus,

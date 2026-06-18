@@ -1,8 +1,11 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SUserInterface].[tvf_WidgetDashBoardDefinitions]')
+GO
 CREATE FUNCTION [SUserInterface].[tvf_WidgetDashBoardDefinitions] (@UserId INT)
 RETURNS TABLE
-	   --WITH SCHEMABINDING
+	        --WITH SCHEMABINDING
 AS
 RETURN
 (

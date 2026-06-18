@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[GetEntityPropertyGuid]')
+GO
 CREATE FUNCTION [SCore].[GetEntityPropertyGuid]
 (
     @SchemaName nvarchar(254),
@@ -7,7 +10,7 @@ CREATE FUNCTION [SCore].[GetEntityPropertyGuid]
     @ColumnName nvarchar(254)
 )
 RETURNS nvarchar(600) 
-                --WITH SCHEMABINDING
+                     --WITH SCHEMABINDING
 AS  
 BEGIN
 

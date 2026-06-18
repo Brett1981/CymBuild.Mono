@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create view [SCore].[WF_Auth_LatestWorkflowContext]')
+GO
+
 /* =============================================================================
    VIEW: SCore.WF_Auth_LatestWorkflowContext
 
@@ -24,7 +27,7 @@ GO
    - We deliberately do not throw; consumers decide what to do.
 ============================================================================= */
 CREATE VIEW [SCore].[WF_Auth_LatestWorkflowContext]
-    --WITH SCHEMABINDING
+       --WITH SCHEMABINDING
 AS
 WITH Routing AS
 (
@@ -114,4 +117,5 @@ LEFT JOIN SCore.WorkflowTransition wft
    AND ISNULL(wft.Enabled, 1) = 1
    AND wft.WorkflowID = wf.ID
    AND wft.ToStatusID = l.LatestStatusId;
+
 GO

@@ -1,5 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create function [SSop].[tvf_Enquiry_DataPills]')
 GO
 

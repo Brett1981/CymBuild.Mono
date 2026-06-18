@@ -1,9 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceAutomationRuns]')
 GO
-PRINT (N'Create table [SFin].[InvoiceAutomationRuns]')
-GO
-PRINT (N'Create table [SFin].[InvoiceAutomationRuns]')
-GO
 CREATE TABLE [SFin].[InvoiceAutomationRuns] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceAutomationRuns_RowStatus] DEFAULT (0),

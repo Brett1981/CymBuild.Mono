@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[GetLastModificationUser]')
+GO
 CREATE FUNCTION [SCore].[GetLastModificationUser]
 (
 	@ObjectGuid UNIQUEIDENTIFIER

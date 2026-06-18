@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SSop].[EnquiryServices]')
 GO
-PRINT (N'Create table [SSop].[EnquiryServices]')
-GO
 CREATE TABLE [SSop].[EnquiryServices] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_EnquiryServices_RowStatus] DEFAULT (1),

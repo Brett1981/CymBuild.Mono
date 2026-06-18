@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_JobTransactions]')
+GO
 CREATE FUNCTION [SJob].[tvf_JobTransactions] 
 (
     @UserId INT,

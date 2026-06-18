@@ -57,29 +57,54 @@ public static class PWAFunctions
         IJSRuntime jsRuntime,
         string applicationName,
         string? recordType = null,
-        string? recordNumber = null)
+        string? recordNumber = null,
+        string? fullRecordLabel = null)
     {
         if (jsRuntime == null)
         {
             return;
         }
 
-        var safeApplicationName = string.IsNullOrWhiteSpace(applicationName)
-            ? "CymBuild"
-            : applicationName.Trim();
+        var safeApplicationName = NormaliseBrowserTabTitleSegment(applicationName);
+
+        if (string.IsNullOrWhiteSpace(safeApplicationName))
+        {
+            safeApplicationName = "CymBuild";
+        }
+
+        var safeFullRecordLabel = NormaliseBrowserTabTitleSegment(fullRecordLabel);
+        var safeRecordType = NormaliseBrowserTabTitleSegment(recordType);
+        var safeRecordNumber = NormaliseBrowserTabTitleSegment(recordNumber);
 
         string title;
 
-        if (string.IsNullOrWhiteSpace(recordType) || string.IsNullOrWhiteSpace(recordNumber))
+        if (!string.IsNullOrWhiteSpace(safeFullRecordLabel))
         {
-            title = safeApplicationName;
+            title = $"{safeApplicationName} - {safeFullRecordLabel}";
+        }
+        else if (!string.IsNullOrWhiteSpace(safeRecordType) &&
+                 !string.IsNullOrWhiteSpace(safeRecordNumber))
+        {
+            title = $"{safeApplicationName} - {safeRecordType} {safeRecordNumber}";
         }
         else
         {
-            title = $"{safeApplicationName} - {recordType.Trim()} {recordNumber.Trim()}";
+            title = safeApplicationName;
         }
 
         await jsRuntime.InvokeVoidAsync("cymBuild.setDocumentTitle", title);
+    }
+
+    private static string NormaliseBrowserTabTitleSegment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            " ",
+            value.Split(new[] { ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries));
     }
     public static string BuildEntityNavigationUrl(
             string baseUri,

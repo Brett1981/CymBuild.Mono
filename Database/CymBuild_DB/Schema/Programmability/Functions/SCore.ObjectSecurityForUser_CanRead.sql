@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[ObjectSecurityForUser_CanRead]')
+GO
 CREATE FUNCTION [SCore].[ObjectSecurityForUser_CanRead]
 	(
 		@ObjectGuid UNIQUEIDENTIFIER,
 		@UserId INT
 	)
 RETURNS TABLE
-   --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 	SELECT	1 AS CanRead

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SJob].[JobStatus]')
+GO
 /* =============================================================================
    CYB-101 – Job datapill visibility fixes (NO workflow process changes)
 
@@ -30,7 +33,7 @@ GO
    - Legacy fallback behaviour remains intact for historical jobs.
 ============================================================================= */
 CREATE VIEW [SJob].[JobStatus]
---WITH SCHEMABINDING
+    --WITH SCHEMABINDING
 AS
 SELECT
     j.ID,
@@ -121,4 +124,5 @@ OUTER APPLY
       AND wfs1.RowStatus NOT IN (0,254)
     ORDER BY dot1.DateTimeUTC DESC, dot1.ID DESC
 ) AS CurrentWorkflowStatus;
+
 GO

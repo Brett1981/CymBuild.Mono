@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[AllEntityProperties]')
+GO
 CREATE VIEW [SCore].[AllEntityProperties]
-               --WITH SCHEMABINDING 
+                   --WITH SCHEMABINDING 
 AS
 SELECT
         ep.ID,
@@ -29,4 +32,5 @@ FROM
     JOIN
         SCore.EntityPropertyGroups epg 
             ON (epg.ID = ep.EntityPropertyGroupID)
+
 GO

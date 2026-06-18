@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SFin].[AllTransactions]')
+GO
 CREATE VIEW [SFin].[AllTransactions]
-	   --WITH SCHEMABINDING
+	        --WITH SCHEMABINDING
 AS
 SELECT	t.ID,
 		t.RowStatus,

@@ -111,6 +111,7 @@ public partial class EditPage
     protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
     protected string ObjectLabel { get; set; } = "";
     protected string PageMethod { get; set; } = "Not Set";
+    protected string EnhancedObjectLabel => BuildEnhancedObjectLabel();
 
     #endregion Protected Properties
 
@@ -129,6 +130,35 @@ public partial class EditPage
     private bool LoaderVisibleS { get; set; }
     private bool LoaderVisibleSe { get; set; }
     private bool SaveButtonDisabled { get; set; } = false;
+
+    private static readonly string[] EnhancedHeaderEntityLabels =
+    {
+    "Enquiry",
+    "Quote",
+    "Job"
+};
+
+    private static readonly string[] EnhancedHeaderClientPropertyNames =
+    {
+    "ClientAccountName",
+    "ClientName",
+    "ClientAccount",
+    "ClientAccountID",
+    "ClientID",
+    "Client"
+};
+
+    private static readonly string[] EnhancedHeaderDescriptionPropertyNames =
+    {
+    "DescriptionOfWorks",
+    "JobDescription",
+    "QuoteOverview",
+    "Overview",
+    "Description"
+};
+
+    private readonly Dictionary<string, Any> _pendingHeaderValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _headerLookupDisplayValues = new(StringComparer.OrdinalIgnoreCase);
 
     [Parameter] public bool DeleteOperationPerformed { get; set; }
     [Parameter] public EventCallback<bool> DeleteOperationPerformedChanged { get; set; }
@@ -156,60 +186,574 @@ public partial class EditPage
                 return string.Empty;
             }
 
-            var entityPropertyGuid = entityProperties?
-                .FirstOrDefault(p => p.Name == propertyName)?
-                .Guid;
+            var entityProperty = TryGetEntityPropertyByName(propertyName);
 
-            if (string.IsNullOrWhiteSpace(entityPropertyGuid))
+            if (entityProperty == null || string.IsNullOrWhiteSpace(entityProperty.Guid))
             {
                 return string.Empty;
             }
 
-            var dataProperty = dataObject?.DataProperties?
-                .FirstOrDefault(p => p.EntityPropertyGuid == entityPropertyGuid);
-
-            if (dataProperty?.Value == null)
-            {
-                return string.Empty;
-            }
-
-            if (dataProperty.Value.Is(StringValue.Descriptor))
-            {
-                return dataProperty.Value.Unpack<StringValue>()?.Value ?? string.Empty;
-            }
-
-            if (dataProperty.Value.Is(Int32Value.Descriptor))
-            {
-                return dataProperty.Value.Unpack<Int32Value>().Value.ToString();
-            }
-
-            if (dataProperty.Value.Is(Int64Value.Descriptor))
-            {
-                return dataProperty.Value.Unpack<Int64Value>().Value.ToString();
-            }
-
-            if (dataProperty.Value.Is(DoubleValue.Descriptor))
-            {
-                return dataProperty.Value.Unpack<DoubleValue>().Value.ToString();
-            }
-
-            if (dataProperty.Value.Is(FloatValue.Descriptor))
-            {
-                return dataProperty.Value.Unpack<FloatValue>().Value.ToString();
-            }
-
-            if (dataProperty.Value.Is(BoolValue.Descriptor))
-            {
-                return dataProperty.Value.Unpack<BoolValue>().Value.ToString();
-            }
-
-            return dataProperty.Value.ToString() ?? string.Empty;
+            return GetStringValueByEntityPropertyGuid(entityProperty.Guid);
         }
         catch
         {
             return string.Empty;
         }
     }
+
+    private string GetStringValueByEntityPropertyGuid(string entityPropertyGuid)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(entityPropertyGuid))
+            {
+                return string.Empty;
+            }
+
+            if (_pendingHeaderValues.TryGetValue(entityPropertyGuid, out var pendingValue))
+            {
+                return ConvertAnyValueToString(pendingValue);
+            }
+
+            var dataProperty = dataObject?.DataProperties?
+                .FirstOrDefault(p => string.Equals(
+                    p.EntityPropertyGuid,
+                    entityPropertyGuid,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (dataProperty?.Value == null)
+            {
+                return string.Empty;
+            }
+
+            return ConvertAnyValueToString(dataProperty.Value);
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private string BuildEnhancedObjectLabel()
+    {
+        if (!ShouldUseEnhancedModuleHeader())
+        {
+            return CleanHeaderSegment(ObjectLabel);
+        }
+
+        var segments = new List<string>();
+
+        var recordNumber = GetHeaderRecordNumberSegment();
+        var clientName = GetFirstUsableHeaderValue(
+            rejectReferenceValues: true,
+            EnhancedHeaderClientPropertyNames);
+
+        var descriptionOfWorks = GetFirstUsableHeaderValue(
+            rejectReferenceValues: false,
+            EnhancedHeaderDescriptionPropertyNames);
+
+        AddHeaderSegment(segments, recordNumber);
+        AddHeaderSegment(segments, clientName);
+        AddHeaderSegment(segments, descriptionOfWorks);
+
+        return segments.Count > 0
+            ? string.Join(" - ", segments)
+            : CleanHeaderSegment(ObjectLabel);
+    }
+
+    public async Task RegisterHeaderLookupDisplayValueAsync(Guid entityPropertyGuid, string? displayValue)
+    {
+        if (entityPropertyGuid == Guid.Empty)
+        {
+            return;
+        }
+
+        if (!ShouldUseEnhancedModuleHeader())
+        {
+            return;
+        }
+
+        var entityProperty = entityProperties?.FirstOrDefault(p =>
+            string.Equals(p.Guid, entityPropertyGuid.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        if (!IsEnhancedHeaderClientProperty(entityProperty))
+        {
+            return;
+        }
+
+        var cleanedDisplayValue = CleanHeaderSegment(displayValue);
+
+        if (!IsUsableHeaderSegment(cleanedDisplayValue, rejectReferenceValues: true))
+        {
+            return;
+        }
+
+        var key = entityPropertyGuid.ToString();
+
+        if (_headerLookupDisplayValues.TryGetValue(key, out var existingValue) &&
+            string.Equals(existingValue, cleanedDisplayValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _headerLookupDisplayValues[key] = cleanedDisplayValue;
+
+        await InvokeAsync(async () =>
+        {
+            await UpdateBrowserTabTitleAsync();
+            StateHasChanged();
+        });
+    }
+
+    private string GetHeaderRecordNumberSegment()
+    {
+        var number = GetFirstUsableHeaderValue(
+            rejectReferenceValues: false,
+            "Number");
+
+        if (!string.IsNullOrWhiteSpace(number))
+        {
+            return number;
+        }
+
+        var objectLabel = CleanHeaderSegment(ObjectLabel);
+
+        if (objectLabel.Contains(" - ", StringComparison.Ordinal))
+        {
+            return CleanHeaderSegment(objectLabel.Split(" - ", 2, StringSplitOptions.None)[0]);
+        }
+
+        return objectLabel;
+    }
+
+    private bool ShouldUseEnhancedModuleHeader()
+    {
+        var entityTypeLabel = CleanHeaderSegment(EntityTypeLabel);
+
+        return EnhancedHeaderEntityLabels.Any(label =>
+            string.Equals(label, entityTypeLabel, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetFirstUsableHeaderValue(bool rejectReferenceValues, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var lookupDisplayValue = CleanHeaderSegment(GetLookupDisplayValueByPropertyName(propertyName));
+
+            if (IsUsableHeaderSegment(lookupDisplayValue, rejectReferenceValues))
+            {
+                return lookupDisplayValue;
+            }
+
+            var rawValue = CleanHeaderSegment(GetStringValueByPropertyName(propertyName));
+
+            if (IsUsableHeaderSegment(rawValue, rejectReferenceValues))
+            {
+                return rawValue;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private string GetLookupDisplayValueByPropertyName(string propertyName)
+    {
+        var entityProperty = TryGetEntityPropertyByName(propertyName);
+
+        if (entityProperty == null || string.IsNullOrWhiteSpace(entityProperty.Guid))
+        {
+            return string.Empty;
+        }
+
+        return _headerLookupDisplayValues.TryGetValue(entityProperty.Guid, out var displayValue)
+            ? displayValue
+            : string.Empty;
+    }
+
+    private EntityProperty? TryGetEntityPropertyByName(string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(propertyName) || entityProperties == null)
+        {
+            return null;
+        }
+
+        var exactMatch = entityProperties.FirstOrDefault(p =>
+            string.Equals(p.Name, propertyName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Label, propertyName, StringComparison.OrdinalIgnoreCase));
+
+        if (exactMatch != null)
+        {
+            return exactMatch;
+        }
+
+        var normalisedPropertyName = NormaliseHeaderLookupName(propertyName);
+
+        return entityProperties.FirstOrDefault(p =>
+            string.Equals(NormaliseHeaderLookupName(p.Name), normalisedPropertyName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(NormaliseHeaderLookupName(p.Label), normalisedPropertyName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsEnhancedHeaderClientProperty(EntityProperty? entityProperty)
+    {
+        if (entityProperty == null)
+        {
+            return false;
+        }
+
+        var propertyNames = new[]
+        {
+        entityProperty.Name,
+        entityProperty.Label
+    };
+
+        return propertyNames.Any(propertyName =>
+            EnhancedHeaderClientPropertyNames.Any(clientPropertyName =>
+                string.Equals(
+                    NormaliseHeaderLookupName(propertyName),
+                    NormaliseHeaderLookupName(clientPropertyName),
+                    StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static void AddHeaderSegment(List<string> segments, string value)
+    {
+        var cleanedValue = CleanHeaderSegment(value);
+
+        if (string.IsNullOrWhiteSpace(cleanedValue))
+        {
+            return;
+        }
+
+        if (segments.Any(existing =>
+                string.Equals(existing, cleanedValue, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        segments.Add(cleanedValue);
+    }
+
+    private static bool IsUsableHeaderSegment(string? value, bool rejectReferenceValues)
+    {
+        var cleanedValue = CleanHeaderSegment(value);
+
+        if (string.IsNullOrWhiteSpace(cleanedValue))
+        {
+            return false;
+        }
+
+        if (string.Equals(cleanedValue, "N/A", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cleanedValue, "Not Applicable", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cleanedValue, "Not Specified", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cleanedValue, "00000000-0000-0000-0000-000000000000", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (rejectReferenceValues)
+        {
+            if (Guid.TryParse(cleanedValue, out _))
+            {
+                return false;
+            }
+
+            if (int.TryParse(cleanedValue, out _))
+            {
+                return false;
+            }
+
+            if (string.Equals(cleanedValue, "-1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(cleanedValue, "0", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string NormaliseHeaderLookupName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(value.Length);
+
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(char.ToUpperInvariant(character));
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static string CleanHeaderSegment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            " ",
+            value.Split(new[] { ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string ConvertAnyValueToString(Any? value)
+    {
+        if (value == null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            if (value.Is(StringValue.Descriptor))
+            {
+                return value.Unpack<StringValue>()?.Value ?? string.Empty;
+            }
+
+            if (value.Is(Int32Value.Descriptor))
+            {
+                return value.Unpack<Int32Value>().Value.ToString();
+            }
+
+            if (value.Is(Int64Value.Descriptor))
+            {
+                return value.Unpack<Int64Value>().Value.ToString();
+            }
+
+            if (value.Is(DoubleValue.Descriptor))
+            {
+                return value.Unpack<DoubleValue>().Value.ToString();
+            }
+
+            if (value.Is(FloatValue.Descriptor))
+            {
+                return value.Unpack<FloatValue>().Value.ToString();
+            }
+
+            if (value.Is(BoolValue.Descriptor))
+            {
+                return value.Unpack<BoolValue>().Value.ToString();
+            }
+
+            if (value.Is(Timestamp.Descriptor))
+            {
+                return value.Unpack<Timestamp>().ToDateTime().ToString("dd MMM yyyy HH:mm");
+            }
+
+            return string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+
+
+    private string GetDisplayValueByPropertyName(string propertyName)
+    {
+        try
+        {
+            var entityProperty = TryGetEntityPropertyByName(propertyName);
+
+            if (entityProperty == null || string.IsNullOrWhiteSpace(entityProperty.Guid))
+            {
+                return string.Empty;
+            }
+
+            var rawValue = GetStringValueByEntityPropertyGuid(entityProperty.Guid);
+
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return string.Empty;
+            }
+
+            var lookupDisplayValue = TryResolveDropDownDisplayValue(entityProperty, rawValue);
+
+            if (!string.IsNullOrWhiteSpace(lookupDisplayValue))
+            {
+                return lookupDisplayValue;
+            }
+
+            return rawValue;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private string TryResolveDropDownDisplayValue(EntityProperty entityProperty, string selectedValue)
+    {
+        if (entityProperty?.DropDownListDefinition == null || string.IsNullOrWhiteSpace(selectedValue))
+        {
+            return string.Empty;
+        }
+
+        var dropDownListDefinition = entityProperty.DropDownListDefinition;
+
+        var nameColumn = GetObjectMemberAsString(dropDownListDefinition, "NameColumn");
+        var valueColumn = GetObjectMemberAsString(dropDownListDefinition, "ValueColumn");
+
+        foreach (var item in GetEnumerableObjectPropertyValues(dropDownListDefinition))
+        {
+            if (item == null)
+            {
+                continue;
+            }
+
+            var candidateValue = GetFirstObjectMemberAsString(
+                item,
+                valueColumn,
+                "Value",
+                "Guid",
+                "ID",
+                "Id",
+                "DataObjectGuid",
+                "Key");
+
+            if (!HeaderValuesMatch(candidateValue, selectedValue))
+            {
+                continue;
+            }
+
+            var candidateDisplay = GetFirstObjectMemberAsString(
+                item,
+                nameColumn,
+                "Name",
+                "Label",
+                "Text",
+                "DisplayName",
+                "Description",
+                "Value");
+
+            candidateDisplay = CleanHeaderSegment(candidateDisplay);
+
+            if (!string.IsNullOrWhiteSpace(candidateDisplay) &&
+                !HeaderValuesMatch(candidateDisplay, selectedValue))
+            {
+                return candidateDisplay;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static IEnumerable<object?> GetEnumerableObjectPropertyValues(object source)
+    {
+        foreach (var property in source.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (property.PropertyType == typeof(string))
+            {
+                continue;
+            }
+
+            if (!typeof(IEnumerable).IsAssignableFrom(property.PropertyType))
+            {
+                continue;
+            }
+
+            if (property.GetValue(source) is not IEnumerable enumerable)
+            {
+                continue;
+            }
+
+            foreach (var item in enumerable)
+            {
+                yield return item;
+            }
+        }
+    }
+
+    private static string GetFirstObjectMemberAsString(object source, params string[] memberNames)
+    {
+        foreach (var memberName in memberNames)
+        {
+            var value = GetObjectMemberAsString(source, memberName);
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetObjectMemberAsString(object? source, string? memberName)
+    {
+        if (source == null || string.IsNullOrWhiteSpace(memberName))
+        {
+            return string.Empty;
+        }
+
+        if (source is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                if (entry.Key == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(entry.Key.ToString(), memberName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Value?.ToString() ?? string.Empty;
+                }
+            }
+        }
+
+        var property = source.GetType()
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .FirstOrDefault(p => string.Equals(p.Name, memberName, StringComparison.OrdinalIgnoreCase));
+
+        if (property == null)
+        {
+            return string.Empty;
+        }
+
+        var value = property.GetValue(source);
+
+        return value?.ToString() ?? string.Empty;
+    }
+
+    private static bool HeaderValuesMatch(string? left, string? right)
+    {
+        var cleanLeft = CleanHeaderSegment(left);
+        var cleanRight = CleanHeaderSegment(right);
+
+        if (string.IsNullOrWhiteSpace(cleanLeft) || string.IsNullOrWhiteSpace(cleanRight))
+        {
+            return false;
+        }
+
+        if (string.Equals(cleanLeft, cleanRight, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (Guid.TryParse(cleanLeft, out var leftGuid) &&
+            Guid.TryParse(cleanRight, out var rightGuid))
+        {
+            return leftGuid == rightGuid;
+        }
+
+        if (int.TryParse(cleanLeft, out var leftInt) &&
+            int.TryParse(cleanRight, out var rightInt))
+        {
+            return leftInt == rightInt;
+        }
+
+        return false;
+    }
+
 
     private string ResolveBrowserTabTitlePrefix()
     {
@@ -235,12 +779,31 @@ public partial class EditPage
                 return;
             }
 
+            var prefix = ResolveBrowserTabTitlePrefix();
+
+            if (ShouldUseEnhancedModuleHeader())
+            {
+                var enhancedRecordLabel = CleanHeaderSegment(EnhancedObjectLabel);
+
+                if (string.IsNullOrWhiteSpace(enhancedRecordLabel))
+                {
+                    await PWAFunctions.SetBrowserTabTitleAsync(JsRuntime, BrowserTabApplicationName);
+                    return;
+                }
+
+                await PWAFunctions.SetBrowserTabTitleAsync(
+                    JsRuntime,
+                    BrowserTabApplicationName,
+                    fullRecordLabel: BuildBrowserTabFullRecordLabel(prefix, enhancedRecordLabel));
+
+                return;
+            }
+
             var propertyName = string.IsNullOrWhiteSpace(BrowserTabTitlePropertyName)
                 ? "Number"
                 : BrowserTabTitlePropertyName.Trim();
 
-            var recordNumber = GetStringValueByPropertyName(propertyName);
-            var prefix = ResolveBrowserTabTitlePrefix();
+            var recordNumber = CleanHeaderSegment(GetStringValueByPropertyName(propertyName));
 
             if (string.IsNullOrWhiteSpace(recordNumber))
             {
@@ -261,6 +824,30 @@ public partial class EditPage
             ex.Data["PageMethod"] = "EditPage/UpdateBrowserTabTitleAsync()";
             await OnError(ex);
         }
+    }
+
+    private static string BuildBrowserTabFullRecordLabel(string? prefix, string? enhancedRecordLabel)
+    {
+        var cleanPrefix = CleanHeaderSegment(prefix);
+        var cleanEnhancedRecordLabel = CleanHeaderSegment(enhancedRecordLabel);
+
+        if (string.IsNullOrWhiteSpace(cleanPrefix))
+        {
+            return cleanEnhancedRecordLabel;
+        }
+
+        if (string.IsNullOrWhiteSpace(cleanEnhancedRecordLabel))
+        {
+            return cleanPrefix;
+        }
+
+        if (cleanEnhancedRecordLabel.StartsWith($"{cleanPrefix} ", StringComparison.OrdinalIgnoreCase) ||
+            cleanEnhancedRecordLabel.StartsWith($"{cleanPrefix} :-", StringComparison.OrdinalIgnoreCase))
+        {
+            return cleanEnhancedRecordLabel;
+        }
+
+        return $"{cleanPrefix} {cleanEnhancedRecordLabel}";
     }
     /// <summary>
     /// Useful when for example we update the dataobject programmatically. If the user tries to
@@ -358,9 +945,17 @@ public partial class EditPage
                 Value = inputUpdatedArgs.NewValue,
                 EntityPropertyGuid = inputUpdatedArgs.EntityId.ToString()
             });
-
+            _pendingHeaderValues[inputUpdatedArgs.EntityId.ToString()] = inputUpdatedArgs.NewValue;
             _debounceTimer?.Dispose();
-            _debounceTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, 300, Timeout.Infinite);
+            _debounceTimer = new Timer(
+                    _ => _ = InvokeAsync(async () =>
+                    {
+                        await UpdateBrowserTabTitleAsync();
+                        StateHasChanged();
+                    }),
+                    null,
+                    300,
+                    Timeout.Infinite);
 
             var isVirtualProperty = dataObject.DataProperties
                 .FirstOrDefault(x => x.EntityPropertyGuid == inputUpdatedArgs.EntityId.ToString() && x.IsVirtual);
@@ -749,7 +1344,8 @@ public partial class EditPage
 
                 Console.WriteLine($"New Data Object Guid- {newDataObject.Guid}");
                 dataObject = newDataObject;
-
+                _pendingHeaderValues.Clear();
+                await UpdateBrowserTabTitleAsync();
                 // Update the references after data object changes
                 await UpdateReferencesAfterSaveAsync();
 
@@ -1334,7 +1930,7 @@ public partial class EditPage
                     OnError(ex);
                 }
                 ;
-                dataObject = newDataObject;
+                //dataObject = newDataObject;
 
                 HasValidationMessages = dataObject.HasValidationMessages;
                 SaveButtonDisabled = dataObject.SaveButtonDisabled;
@@ -1805,6 +2401,14 @@ public partial class EditPage
                     entityProperty.Value = Any.Pack(new StringValue { Value = (string)stateService.ChildRecordGuid });
 
                     (message, newDataObject) = await _formHelper.UpsertDataObject(oldDataObject, null, false, IsBulkUpdate);
+
+                    if (string.IsNullOrEmpty(message) &&
+                        newDataObject != null &&
+                        dataObject != null &&
+                        string.Equals(newDataObject.Guid, dataObject.Guid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        dataObject.RowVersion = newDataObject.RowVersion;
+                    }
                 }
             }
 

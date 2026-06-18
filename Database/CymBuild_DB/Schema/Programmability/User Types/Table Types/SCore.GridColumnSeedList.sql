@@ -1,4 +1,6 @@
-﻿CREATE TYPE [SCore].[GridColumnSeedList] AS TABLE (
+﻿PRINT (N'Create type [SCore].[GridColumnSeedList]')
+GO
+CREATE TYPE [SCore].[GridColumnSeedList] AS TABLE (
   [Name] [nvarchar](250) NOT NULL,
   [ColumnOrder] [int] NOT NULL,
   [IsPrimaryKey] [bit] NOT NULL DEFAULT (0),

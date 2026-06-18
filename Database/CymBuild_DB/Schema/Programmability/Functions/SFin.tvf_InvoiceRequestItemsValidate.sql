@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SFin].[tvf_InvoiceRequestItemsValidate]')
+GO
+
 CREATE FUNCTION [SFin].[tvf_InvoiceRequestItemsValidate]
 (
     @Guid				UNIQUEIDENTIFIER,

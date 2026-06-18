@@ -4,6 +4,7 @@ GO
 PRINT (N'Create procedure [SFin].[SageInboundReceiptAndAllocation_Materialise]')
 GO
 
+
 CREATE PROCEDURE [SFin].[SageInboundReceiptAndAllocation_Materialise]
 (
     @ExternalTransactionID BIGINT
@@ -169,12 +170,24 @@ BEGIN
             ;THROW 60000, N'Could not resolve finance TransactionType = Receipt.', 1;
         END;
 
+        --SET @ReceiptSageTransactionReference =
+        --    LEFT(N'PMT - ' + ISNULL(@SageTransactionReference, N'') + N' / ' + ISNULL(@InvoiceNumber, N''), 50);
+
+        --SET @ReceiptDescription =
+        --    LEFT(
+        --        N'PMT - ' + ISNULL(@SageTransactionReference, N'') + N' / ' + ISNULL(@InvoiceNumber, N'')
+        --        + CASE
+        --            WHEN ISNULL(@InvoiceDescription, N'') = N'' THEN N''
+        --            ELSE CHAR(13) + CHAR(10) + @InvoiceDescription
+        --          END,
+        --        2000
+        --    );
+
         SET @ReceiptSageTransactionReference =
-            LEFT(N'PMT - ' + ISNULL(@SageTransactionReference, N'') + N' / ' + ISNULL(@InvoiceNumber, N''), 50);
+            ISNULL(@SageTransactionReference, N'');
 
         SET @ReceiptDescription =
-            LEFT(
-                N'PMT - ' + ISNULL(@SageTransactionReference, N'') + N' / ' + ISNULL(@InvoiceNumber, N'')
+            LEFT(ISNULL(@SageTransactionReference, N'')
                 + CASE
                     WHEN ISNULL(@InvoiceDescription, N'') = N'' THEN N''
                     ELSE CHAR(13) + CHAR(10) + @InvoiceDescription

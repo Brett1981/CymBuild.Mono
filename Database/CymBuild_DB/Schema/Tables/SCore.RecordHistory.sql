@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[RecordHistory]')
 GO
-PRINT (N'Create table [SCore].[RecordHistory]')
-GO
 CREATE TABLE [SCore].[RecordHistory] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_RecordHistory_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -56,12 +54,4 @@ PRINT (N'Create foreign key [FK_RecordHistory_Identities] on table [SCore].[Reco
 GO
 ALTER TABLE [SCore].[RecordHistory] WITH NOCHECK
   ADD CONSTRAINT [FK_RecordHistory_Identities] FOREIGN KEY ([UserID]) REFERENCES [SCore].[Identities] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[RecordHistory]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'An audit of all changes made to user data. ', 'SCHEMA', N'SCore', 'TABLE', N'RecordHistory'
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[RecordHistory]')
 GO

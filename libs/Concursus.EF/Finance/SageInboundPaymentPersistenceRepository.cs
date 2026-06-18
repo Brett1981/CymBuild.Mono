@@ -19,8 +19,8 @@ namespace Concursus.EF.Finance
         }
 
         public async Task<long> UpsertExternalTransactionAsync(
-    SageExternalTransactionUpsertRequest request,
-    CancellationToken cancellationToken = default)
+            SageExternalTransactionUpsertRequest request,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
 
@@ -237,6 +237,23 @@ namespace Concursus.EF.Finance
                 IsPaid = reader.GetBoolean(reader.GetOrdinal("IsPaid")),
                 IsFullyPaid = reader.GetBoolean(reader.GetOrdinal("IsFullyPaid"))
             };
+        }
+
+        public async Task MaterialiseReceiptAndAllocationAsync(
+            long externalTransactionId,
+            CancellationToken cancellationToken = default)
+        {
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[SageInboundReceiptAndAllocation_Materialise]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.AddWithValue("@ExternalTransactionID", externalTransactionId);
+
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task UpdateInboundStatusFromExternalTransactionAsync(

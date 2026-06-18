@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SFin].[tvf_SageExports]')
+GO
+
 
 
 CREATE FUNCTION [SFin].[tvf_SageExports] 
@@ -8,7 +11,7 @@ CREATE FUNCTION [SFin].[tvf_SageExports]
     @UserId INT
 )
 RETURNS TABLE
-     --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  se.ID,

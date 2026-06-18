@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SJob].[FeeAmendmentsUpsert]')
+GO
+
+
 CREATE PROCEDURE [SJob].[FeeAmendmentsUpsert]
 (
     @JobGuid UNIQUEIDENTIFIER,

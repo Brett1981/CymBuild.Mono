@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_ScheduleItems]')
+GO
 CREATE FUNCTION [SCore].[tvf_ScheduleItems] 
 (
     @UserId INT,
     @CurrentUserOnly bit
 )
 RETURNS TABLE
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 RETURN  
 SELECT      a.ID,

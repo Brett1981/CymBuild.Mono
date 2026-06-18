@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[EntityPropertyGroupsV]')
+GO
 CREATE VIEW	[SCore].[EntityPropertyGroupsV]
-             --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 SELECT	epg.ID,
 		epg.RowStatus,
@@ -19,4 +22,5 @@ SELECT	epg.ID,
 		epg.ShowOnMobile
 FROM	Score.[EntityPropertyGroups] epg
 WHERE	(epg.[RowStatus] NOT IN (0, 254))
+
 GO

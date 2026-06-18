@@ -3,7 +3,9 @@ GO
 
 PRINT (N'Create view [SFin].[Transaction_InvoiceMergeInfo]')
 GO
+
 CREATE VIEW [SFin].[Transaction_InvoiceMergeInfo]
+    --WITH SCHEMABINDING
 AS
 SELECT
     t.ID,
@@ -22,6 +24,7 @@ SELECT
     j.Number AS JobNumber,
     j.ExternalReference AS CustomerReference,
     j.JobDescription AS JobTitle,
+    td.Description AS LineDescription,
     CASE
         WHEN t.ExpectedDate IS NULL THEN
             CASE
@@ -59,15 +62,62 @@ JOIN SCrm.Accounts AS acc
     ON acc.ID = t.AccountID
 LEFT JOIN SJob.Jobs AS j
     ON j.ID = t.JobID
+LEFT JOIN SCrm.Accounts AS facc
+    ON facc.ID = NULLIF(j.FinanceAccountID, -1)
+   AND facc.RowStatus NOT IN (0, 254)
+
+OUTER APPLY
+(
+    SELECT TOP (1)
+        aa.AddressID
+    FROM SCrm.AccountAddresses AS aa
+    WHERE aa.RowStatus NOT IN (0, 254)
+      AND aa.AccountID = COALESCE(NULLIF(j.FinanceAccountID, -1), t.AccountID)
+      AND
+      (
+            aa.ID = NULLIF(j.FinanceAddressID, -1)
+         OR aa.ID = NULLIF(facc.MainAccountAddressId, -1)
+         OR aa.IsMain = 1
+      )
+    ORDER BY
+        CASE
+            WHEN aa.ID = NULLIF(j.FinanceAddressID, -1) THEN 1
+            WHEN aa.ID = NULLIF(facc.MainAccountAddressId, -1) THEN 2
+            WHEN aa.IsMain = 1 THEN 3
+            ELSE 4
+        END,
+        aa.ID
+) AS finaddr
+
 LEFT JOIN SCrm.Addresses AS fadd
-    ON fadd.ID = j.FinanceAddressID
+    ON fadd.ID = finaddr.AddressID
+   AND fadd.RowStatus NOT IN (0, 254)
 LEFT JOIN SFin.CreditTerms AS ct
     ON ct.ID = t.CreditTermsId
-LEFT JOIN SCrm.AccountAddresses AS caa
-    ON caa.AccountID = acc.ID
-   AND caa.IsMain = 1
+OUTER APPLY
+(
+    SELECT TOP (1)
+        aa.AddressID
+    FROM SCrm.AccountAddresses AS aa
+    WHERE aa.RowStatus NOT IN (0, 254)
+      AND aa.AccountID = acc.ID
+      AND
+      (
+            aa.ID = NULLIF(acc.MainAccountAddressId, -1)
+         OR aa.IsMain = 1
+      )
+    ORDER BY
+        CASE
+            WHEN aa.ID = NULLIF(acc.MainAccountAddressId, -1) THEN 1
+            WHEN aa.IsMain = 1 THEN 2
+            ELSE 3
+        END,
+        aa.ID
+) AS clientaddr
+
 LEFT JOIN SCrm.Addresses AS cadd
-    ON cadd.ID = caa.AddressID
+    ON cadd.ID = clientaddr.AddressID
+   AND cadd.RowStatus NOT IN (0, 254)
 LEFT JOIN SCore.OrganisationalUnits AS ou
     ON ou.ID = t.OrganisationalUnitId
 LEFT JOIN SCrm.Addresses AS offadd

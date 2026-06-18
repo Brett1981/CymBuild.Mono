@@ -21,23 +21,17 @@ namespace Concursus.EF.Finance
         }
 
         public async Task<TransactionSageSubmissionRequeueResult> RequeueAsync(
-            IReadOnlyCollection<Guid> transactionGuids,
-            CancellationToken cancellationToken = default)
+    IReadOnlyCollection<Guid> transactionGuids,
+    bool includeNonRetryableFailures = false,
+    CancellationToken cancellationToken = default)
         {
             if (transactionGuids is null || transactionGuids.Count == 0)
-            {
                 throw new ArgumentException("At least one transaction guid must be supplied.", nameof(transactionGuids));
-            }
 
-            var distinctGuids = transactionGuids
-                .Where(x => x != Guid.Empty)
-                .Distinct()
-                .ToList();
+            var distinctGuids = transactionGuids.Where(x => x != Guid.Empty).Distinct().ToList();
 
             if (distinctGuids.Count == 0)
-            {
                 throw new ArgumentException("At least one valid transaction guid must be supplied.", nameof(transactionGuids));
-            }
 
             var json = JsonSerializer.Serialize(distinctGuids.Select(x => x.ToString()));
 
@@ -59,6 +53,11 @@ namespace Concursus.EF.Finance
             command.Parameters.Add(new SqlParameter("@TransactionGuidsJson", SqlDbType.NVarChar)
             {
                 Value = json
+            });
+
+            command.Parameters.Add(new SqlParameter("@IncludeNonRetryableFailures", SqlDbType.Bit)
+            {
+                Value = includeNonRetryableFailures
             });
 
             var result = new TransactionSageSubmissionRequeueResult();

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SUserInterface].[GridDefinitionsV]')
+GO
 CREATE VIEW [SUserInterface].[GridDefinitionsV]
-              --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS
 SELECT	gd.ID,
 		gd.RowStatus,
@@ -13,4 +16,5 @@ SELECT	gd.ID,
 		gd.ShowAsTiles
 FROM	SUserInterface.GridDefinitions gd
 WHERE	(gd.RowStatus NOT IN (0, 254))
+
 GO

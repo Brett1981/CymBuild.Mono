@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCrm].[AccountMergeBatchUpsert]')
+GO
 CREATE PROCEDURE [SCrm].[AccountMergeBatchUpsert]
 	(	@SourceAccountGuid UNIQUEIDENTIFIER,
 		@TargetAccountGuid UNIQUEIDENTIFIER,

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create view [SJob].[Job_FeeDrawdown]')
 GO
+
+
 /*
     CYB-339
     Makes the job fee grid stage-keyed where dynamic quote-item carry-over rows exist.

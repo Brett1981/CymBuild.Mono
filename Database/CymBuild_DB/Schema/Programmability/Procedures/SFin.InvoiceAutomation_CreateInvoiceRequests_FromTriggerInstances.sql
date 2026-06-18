@@ -3,10 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
 GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
-GO
-PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
-GO
+
+
 CREATE PROCEDURE [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]
 (
       @AutomationRunGuid         UNIQUEIDENTIFIER
@@ -25,13 +23,17 @@ BEGIN
     SET XACT_ABORT OFF;
 
     DECLARE @NowUtcEff DATETIME2(7) = COALESCE(@NowUtc, SYSUTCDATETIME());
+
     SET @CreatedAtUtc = @NowUtcEff;
     SET @CreatedInvoiceRequests = 0;
 
     DECLARE @RequesterUserId INT;
-    SELECT @RequesterUserId = i.ID
+
+    SELECT
+        @RequesterUserId = i.ID
     FROM SCore.Identities AS i
-    WHERE i.Guid = @RequesterUserGuid;
+    WHERE i.Guid = @RequesterUserGuid
+      AND i.RowStatus NOT IN (0,254);
 
     IF (@RequesterUserId IS NULL)
     BEGIN
@@ -43,14 +45,16 @@ BEGIN
 
     IF (@DefaultPaymentStatusGuid IS NOT NULL)
     BEGIN
-        SELECT @DefaultPaymentStatusId = ps.ID
+        SELECT
+            @DefaultPaymentStatusId = ps.ID
         FROM SFin.InvoicePaymentStatus AS ps
         WHERE ps.Guid = @DefaultPaymentStatusGuid
           AND ps.RowStatus NOT IN (0,254);
     END
     ELSE
     BEGIN
-        SELECT TOP (1) @DefaultPaymentStatusId = ps.ID
+        SELECT TOP (1)
+            @DefaultPaymentStatusId = ps.ID
         FROM SFin.InvoicePaymentStatus AS ps
         WHERE ps.RowStatus NOT IN (0,254)
         ORDER BY ps.ID ASC;
@@ -58,7 +62,7 @@ BEGIN
 
     IF (@DefaultPaymentStatusId IS NULL)
     BEGIN
-        RAISERROR(N'No active InvoicePaymentStatus row found (and/or DefaultPaymentStatusGuid invalid).', 16, 1);
+        RAISERROR(N'No active InvoicePaymentStatus row found.', 16, 1);
         RETURN;
     END;
 
@@ -70,21 +74,20 @@ BEGIN
         SET @Attempt = @LocalAttempt;
 
         BEGIN TRY
-            IF OBJECT_ID('tempdb..#Candidates') IS NOT NULL DROP TABLE #Candidates;
-            IF OBJECT_ID('tempdb..#ToCreate') IS NOT NULL DROP TABLE #ToCreate;
-            IF OBJECT_ID('tempdb..#InsertedRequests') IS NOT NULL DROP TABLE #InsertedRequests;
-            IF OBJECT_ID('tempdb..#ItemsToCreate') IS NOT NULL DROP TABLE #ItemsToCreate;
-            IF OBJECT_ID('tempdb..#ParsedRequests') IS NOT NULL DROP TABLE #ParsedRequests;
+            IF OBJECT_ID(N'tempdb..#Candidates') IS NOT NULL DROP TABLE #Candidates;
+            IF OBJECT_ID(N'tempdb..#ToCreate') IS NOT NULL DROP TABLE #ToCreate;
+            IF OBJECT_ID(N'tempdb..#InsertedRequests') IS NOT NULL DROP TABLE #InsertedRequests;
+            IF OBJECT_ID(N'tempdb..#ItemsToCreate') IS NOT NULL DROP TABLE #ItemsToCreate;
 
             CREATE TABLE #Candidates
             (
-                  InvoiceScheduleId      INT               NOT NULL
-                , JobId                  INT               NOT NULL
-                , InstanceType           NVARCHAR(50)      NOT NULL
-                , InstanceKey            NVARCHAR(200)     NOT NULL
-                , TriggerInstanceGuid    UNIQUEIDENTIFIER  NOT NULL
-                , CompletedDateTimeUTC   DATETIME2(7)      NULL
-                , InvoicingType          NVARCHAR(10)      NOT NULL
+                  InvoiceScheduleId      INT              NOT NULL
+                , JobId                  INT              NOT NULL
+                , InstanceType           NVARCHAR(50)     NOT NULL
+                , InstanceKey            NVARCHAR(200)    NOT NULL
+                , TriggerInstanceGuid    UNIQUEIDENTIFIER NOT NULL
+                , CompletedDateTimeUTC   DATETIME2(7)     NULL
+                , InvoicingType          NVARCHAR(10)     NOT NULL
             );
 
             INSERT #Candidates
@@ -112,10 +115,10 @@ BEGIN
                   END
             FROM SFin.tvf_InvoiceAutomation_Phase3Detections() AS d
             JOIN SFin.InvoiceScheduleTriggerInstances AS ti
-              ON ti.InvoiceScheduleId = d.InvoiceScheduleId
-             AND ti.InstanceType = d.InstanceType
-             AND ti.InstanceKey = d.InstanceKey
-             AND ti.RowStatus NOT IN (0,254)
+                ON ti.InvoiceScheduleId = d.InvoiceScheduleId
+               AND ti.InstanceType = d.InstanceType
+               AND ti.InstanceKey = d.InstanceKey
+               AND ti.RowStatus NOT IN (0,254)
             WHERE d.CompletedDateTimeUTC IS NOT NULL
               AND d.InstanceType <> N'Percentage';
 
@@ -127,14 +130,14 @@ BEGIN
 
             CREATE TABLE #ToCreate
             (
-                  InvoiceScheduleId      INT               NOT NULL
-                , JobId                  INT               NOT NULL
-                , InstanceType           NVARCHAR(50)      NOT NULL
-                , InstanceKey            NVARCHAR(200)     NOT NULL
-                , TriggerInstanceGuid    UNIQUEIDENTIFIER  NOT NULL
-                , CompletedDateTimeUTC   DATETIME2(7)      NULL
-                , InvoicingType          NVARCHAR(10)      NOT NULL
-                , NewInvoiceRequestGuid  UNIQUEIDENTIFIER  NOT NULL
+                  InvoiceScheduleId      INT              NOT NULL
+                , JobId                  INT              NOT NULL
+                , InstanceType           NVARCHAR(50)     NOT NULL
+                , InstanceKey            NVARCHAR(200)    NOT NULL
+                , TriggerInstanceGuid    UNIQUEIDENTIFIER NOT NULL
+                , CompletedDateTimeUTC   DATETIME2(7)     NULL
+                , InvoicingType          NVARCHAR(10)     NOT NULL
+                , NewInvoiceRequestGuid  UNIQUEIDENTIFIER NOT NULL
             );
 
             INSERT #ToCreate
@@ -177,13 +180,13 @@ BEGIN
 
             CREATE TABLE #InsertedRequests
             (
-                  InvoiceRequestId       INT               NOT NULL
-                , InvoiceRequestGuid     UNIQUEIDENTIFIER  NOT NULL
-                , JobId                  INT               NOT NULL
-                , TriggerInstanceGuid    UNIQUEIDENTIFIER  NOT NULL
-                , InvoicingType          NVARCHAR(10)      NOT NULL
-                , CompletedDateTimeUTC   DATETIME2(7)      NULL
-                , InstanceKey            NVARCHAR(200)     NOT NULL
+                  InvoiceRequestId       INT              NOT NULL
+                , InvoiceRequestGuid     UNIQUEIDENTIFIER NOT NULL
+                , JobId                  INT              NOT NULL
+                , TriggerInstanceGuid    UNIQUEIDENTIFIER NOT NULL
+                , InvoicingType          NVARCHAR(10)     NOT NULL
+                , CompletedDateTimeUTC   DATETIME2(7)     NULL
+                , InstanceKey            NVARCHAR(200)    NOT NULL
             );
 
             DECLARE
@@ -196,11 +199,19 @@ BEGIN
                 , @RequestNotes NVARCHAR(MAX);
 
             DECLARE cur_req CURSOR LOCAL FAST_FORWARD FOR
-                SELECT JobId, TriggerInstanceGuid, InstanceKey, InvoicingType, CompletedDateTimeUTC, NewInvoiceRequestGuid
-                FROM #ToCreate;
+                SELECT
+                      tc.JobId
+                    , tc.TriggerInstanceGuid
+                    , tc.InstanceKey
+                    , tc.InvoicingType
+                    , tc.CompletedDateTimeUTC
+                    , tc.NewInvoiceRequestGuid
+                FROM #ToCreate AS tc;
 
             OPEN cur_req;
-            FETCH NEXT FROM cur_req INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
+
+            FETCH NEXT FROM cur_req
+            INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
 
             WHILE @@FETCH_STATUS = 0
             BEGIN
@@ -231,13 +242,14 @@ BEGIN
                             @RequestNotes = NULLIF(LTRIM(RTRIM(a.Notes)), N'')
                         FROM SJob.Activities AS a
                         WHERE a.RowStatus NOT IN (0,254)
-                          AND a.ID = CASE
-                                        WHEN @InstanceKey LIKE N'ACT:%'
-                                            THEN TRY_CONVERT(BIGINT, SUBSTRING(@InstanceKey, 5, 200))
-                                        WHEN CHARINDEX(N'|A', @InstanceKey) > 0
-                                            THEN TRY_CONVERT(BIGINT, SUBSTRING(@InstanceKey, CHARINDEX(N'|A', @InstanceKey) + 2, 50))
-                                        ELSE NULL
-                                     END;
+                          AND a.ID =
+                              CASE
+                                  WHEN @InstanceKey LIKE N'ACT:%'
+                                      THEN TRY_CONVERT(BIGINT, SUBSTRING(@InstanceKey, 5, 200))
+                                  WHEN CHARINDEX(N'|A', @InstanceKey) > 0
+                                      THEN TRY_CONVERT(BIGINT, SUBSTRING(@InstanceKey, CHARINDEX(N'|A', @InstanceKey) + 2, 50))
+                                  ELSE NULL
+                              END;
                     END;
 
                     SET @RequestNotes = ISNULL(@RequestNotes, N'');
@@ -320,7 +332,8 @@ BEGIN
                       AND r.RowStatus NOT IN (0,254);
                 END;
 
-                FETCH NEXT FROM cur_req INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
+                FETCH NEXT FROM cur_req
+                INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
             END;
 
             CLOSE cur_req;
@@ -334,14 +347,19 @@ BEGIN
 
             CREATE TABLE #ItemsToCreate
             (
-                  NewItemGuid        UNIQUEIDENTIFIER  NOT NULL
-                , InvoiceRequestId   INT               NOT NULL
-                , MilestoneId        BIGINT            NULL
-                , ActivityId         BIGINT            NULL
-                , Net                DECIMAL(19,2)     NOT NULL
-                , ShortDescription   NVARCHAR(200)     NOT NULL
+                  NewItemGuid            UNIQUEIDENTIFIER NOT NULL
+                , InvoiceRequestId       INT              NOT NULL
+                , MilestoneId            BIGINT           NULL
+                , ActivityId             BIGINT           NULL
+                , Net                    DECIMAL(19,2)    NOT NULL
+                , ShortDescription       NVARCHAR(200)    NOT NULL
+                , RIBAStageId            INT              NULL
+                , ValueDerivationReason  NVARCHAR(200)    NOT NULL
             );
 
+            ------------------------------------------------------------------
+            -- Activity items
+            ------------------------------------------------------------------
             INSERT #ItemsToCreate
             (
                   NewItemGuid
@@ -350,24 +368,55 @@ BEGIN
                 , ActivityId
                 , Net
                 , ShortDescription
+                , RIBAStageId
+                , ValueDerivationReason
             )
             SELECT
                   NEWID()
                 , ir.InvoiceRequestId
                 , a.MilestoneID
                 , a.ID
-                , CAST(ISNULL(a.InvoicingValue, 0) AS DECIMAL(19,2))
+                , CAST
+                  (
+                      CASE
+                          WHEN ISNULL(a.InvoicingQuantity, 0.00) = 0.00
+                              THEN ISNULL(a.InvoicingValue, 0.00)
+                          ELSE
+                              ISNULL(a.InvoicingQuantity, 0.00)
+                              * CASE
+                                    WHEN ISNULL(a.InvoicingValue, 0.00) = 0.00 THEN 1.00
+                                    ELSE a.InvoicingValue
+                                END
+                      END
+                      AS DECIMAL(19,2)
+                  )
                 , LEFT(ISNULL(NULLIF(a.Title, N''), N'Activity'), 200)
+                , NULLIF(a.RibaStageId, -1)
+                , CASE
+                      WHEN ISNULL(a.InvoicingQuantity, 0.00) = 0.00
+                       AND ISNULL(a.InvoicingValue, 0.00) = 0.00
+                          THEN N'Activity item created but value could not be determined because quantity and value are both zero.'
+                      ELSE N''
+                  END
             FROM #InsertedRequests AS ir
             JOIN SJob.Activities AS a
-              ON a.RowStatus NOT IN (0,254)
-             AND a.ID = CASE WHEN ir.InstanceKey LIKE N'ACT:%'
-                             THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 5, 200))
-                             WHEN CHARINDEX(N'|A', ir.InstanceKey) > 0
-                                 THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|A', ir.InstanceKey) + 2, 50))
-                             ELSE NULL END
+                ON a.RowStatus NOT IN (0,254)
+               AND a.ID =
+                   CASE
+                       WHEN ir.InstanceKey LIKE N'ACT:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 5, 200))
+                       WHEN CHARINDEX(N'|A', ir.InstanceKey) > 0
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|A', ir.InstanceKey) + 2, 50))
+                       ELSE NULL
+                   END
             WHERE ir.InvoicingType = N'ACT';
 
+            ------------------------------------------------------------------
+            -- Milestone items
+            -- Uses Job.SurveyorID -> Identities.BillableRate.
+            -- If QuotedHours exist, use QuotedHours * rate.
+            -- Otherwise fall back to QuoteItem.Net.
+            ------------------------------------------------------------------
             INSERT #ItemsToCreate
             (
                   NewItemGuid
@@ -376,141 +425,207 @@ BEGIN
                 , ActivityId
                 , Net
                 , ShortDescription
+                , RIBAStageId
+                , ValueDerivationReason
+            )
+            SELECT
+                  NEWID()
+                , ir.InvoiceRequestId
+                , m.ID
+                , NULL
+                , CAST
+                  (
+                      CASE
+                          WHEN ISNULL(m.QuotedHours, 0.00) > 0.00
+                                THEN ISNULL(m.QuotedHours, 0.00) * ISNULL(i.BillableRate, 0.00)
+                          ELSE ISNULL(qi.Net, 0.00)
+                      END
+                      AS DECIMAL(19,2)
+                  )
+                , LEFT(ISNULL(NULLIF(m.Description, N''), N'Milestone'), 200)
+                , NULL
+                , CASE
+                      WHEN ISNULL(m.QuotedHours, 0.00) > 0.00
+                       AND ISNULL(i.BillableRate, 0.00) = 0.00
+                          THEN N'Milestone item created with zero value because the job surveyor billable rate is zero.'
+                      WHEN ISNULL(m.QuotedHours, 0.00) = 0.00
+                       AND ISNULL(qi.Net, 0.00) = 0.00
+                          THEN N'Milestone item created but value could not be determined because Quoted Hours and Quote Item value are both zero.'
+                      ELSE N''
+                  END
+            FROM #InsertedRequests AS ir
+            JOIN SJob.Milestones AS m
+                ON m.RowStatus NOT IN (0,254)
+               AND m.ID =
+                   CASE
+                       WHEN ir.InstanceKey LIKE N'MS:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 4, 200))
+                       WHEN CHARINDEX(N'|M', ir.InstanceKey) > 0
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|M', ir.InstanceKey) + 2, 50))
+                       ELSE NULL
+                   END
+            JOIN SJob.Jobs AS j
+                ON j.ID = ir.JobId
+               AND j.RowStatus NOT IN (0,254)
+            LEFT JOIN SCore.Identities AS i
+                ON i.ID = j.SurveyorID
+               AND i.RowStatus NOT IN (0,254)
+            LEFT JOIN SSop.QuoteItems AS qi
+                ON qi.ID = m.QuoteLineID
+               AND qi.CreatedJobId = ir.JobId
+               AND qi.RowStatus NOT IN (0,254)
+            WHERE ir.InvoicingType = N'MS';
+
+            ------------------------------------------------------------------
+            -- RIBA items
+            ------------------------------------------------------------------
+            INSERT #ItemsToCreate
+            (
+                  NewItemGuid
+                , InvoiceRequestId
+                , MilestoneId
+                , ActivityId
+                , Net
+                , ShortDescription
+                , RIBAStageId
+                , ValueDerivationReason
+            )
+            SELECT
+                  NEWID()
+                , ir.InvoiceRequestId
+                , a.MilestoneID
+                , a.ID
+                , CAST(ISNULL(a.InvoicingValue, 0.00) AS DECIMAL(19,2))
+                , LEFT(ISNULL(NULLIF(a.Title, N''), N'RIBA stage activity'), 200)
+                , NULLIF(a.RibaStageId, -1)
+                , CASE
+                      WHEN ISNULL(a.InvoicingValue, 0.00) = 0.00
+                          THEN N'RIBA item created but activity value is zero.'
+                      ELSE N''
+                  END
+            FROM #InsertedRequests AS ir
+            JOIN SJob.JobStages AS js
+                ON js.RowStatus NOT IN (0,254)
+               AND js.JobID = ir.JobId
+               AND js.ID =
+                   CASE
+                       WHEN ir.InstanceKey LIKE N'RIBA:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 6, 200))
+                       ELSE NULL
+                   END
+            JOIN SJob.Activities AS a
+                ON a.RowStatus NOT IN (0,254)
+               AND a.JobID = ir.JobId
+               AND a.RibaStageId = js.RIBAStageID
+            JOIN SJob.ActivityTypes AS t
+                ON t.ID = a.ActivityTypeID
+            JOIN SJob.ActivityStatus AS s
+                ON s.ID = a.ActivityStatusID
+            WHERE ir.InvoicingType = N'RIBA'
+              AND t.IsBillable = 1
+              AND s.IsCompleteStatus = 1;
+
+            ------------------------------------------------------------------
+            -- Fallback items.
+            -- Never leave an InvoiceRequest without an item.
+            ------------------------------------------------------------------
+            INSERT #ItemsToCreate
+            (
+                  NewItemGuid
+                , InvoiceRequestId
+                , MilestoneId
+                , ActivityId
+                , Net
+                , ShortDescription
+                , RIBAStageId
+                , ValueDerivationReason
             )
             SELECT
                   NEWID()
                 , ir.InvoiceRequestId
                 , m.ID
                 , a.ID
-                , CAST(ISNULL(a.InvoicingValue, 0) AS DECIMAL(19,2))
-                , LEFT(ISNULL(NULLIF(a.Title, N''), N'Milestone activity'), 200)
-            FROM #InsertedRequests AS ir
-            JOIN SJob.Milestones AS m
-              ON m.RowStatus NOT IN (0,254)
-             AND m.ID = CASE WHEN ir.InstanceKey LIKE N'MS:%'
-                             THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 4, 200))
-                             WHEN CHARINDEX(N'|M', ir.InstanceKey) > 0
-                                 THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|M', ir.InstanceKey) + 2, 50))
-                             ELSE NULL END
-            JOIN SJob.Activities AS a
-              ON a.RowStatus NOT IN (0,254)
-             AND a.MilestoneID = m.ID
-            JOIN SJob.ActivityTypes AS t
-              ON t.ID = a.ActivityTypeID
-            JOIN SJob.ActivityStatus AS s
-              ON s.ID = a.ActivityStatusID
-            WHERE ir.InvoicingType = N'MS'
-              AND t.IsBillable = 1
-              AND s.IsCompleteStatus = 1;
-
-            INSERT #ItemsToCreate
-            (
-                  NewItemGuid
-                , InvoiceRequestId
-                , MilestoneId
-                , ActivityId
-                , Net
-                , ShortDescription
-            )
-            SELECT
-                  NEWID()
-                , ir.InvoiceRequestId
-                , a.MilestoneID
-                , a.ID
-                , CAST(ISNULL(a.InvoicingValue, 0) AS DECIMAL(19,2))
-                , LEFT(ISNULL(NULLIF(a.Title, N''), N'RIBA stage activity'), 200)
-            FROM #InsertedRequests AS ir
-            JOIN SJob.JobStages AS js
-              ON js.RowStatus NOT IN (0,254)
-             AND js.JobID = ir.JobId
-             AND js.ID = CASE WHEN ir.InstanceKey LIKE N'RIBA:%'
-                              THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 6, 200))
-                              ELSE NULL END
-            JOIN SJob.Activities AS a
-              ON a.RowStatus NOT IN (0,254)
-             AND a.JobID = ir.JobId
-             AND a.RibaStageId = js.RIBAStageID
-            JOIN SJob.ActivityTypes AS t
-              ON t.ID = a.ActivityTypeID
-            JOIN SJob.ActivityStatus AS s
-              ON s.ID = a.ActivityStatusID
-            WHERE ir.InvoicingType = N'RIBA'
-              AND t.IsBillable = 1
-              AND s.IsCompleteStatus = 1;
-
-            SELECT
-                  ir.InvoiceRequestId
-                , ir.InvoicingType
-                , ir.InstanceKey
-                , ParsedActivityId = CASE
-                                        WHEN ir.InvoicingType = N'ACT' AND ir.InstanceKey LIKE N'ACT:%'
-                                            THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 5, 200))
-                                        WHEN ir.InvoicingType = N'ACT' AND CHARINDEX(N'|A', ir.InstanceKey) > 0
-                                            THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|A', ir.InstanceKey) + 2, 50))
-                                        ELSE NULL
-                                     END
-                , ParsedMilestoneId = CASE
-                                         WHEN ir.InvoicingType = N'MS' AND ir.InstanceKey LIKE N'MS:%'
-                                             THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 4, 200))
-                                         WHEN ir.InvoicingType = N'MS' AND CHARINDEX(N'|M', ir.InstanceKey) > 0
-                                             THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|M', ir.InstanceKey) + 2, 50))
-                                         ELSE NULL
-                                      END
-            INTO #ParsedRequests
-            FROM #InsertedRequests AS ir
-            WHERE ir.InvoicingType IN (N'ACT', N'MS');
-
-            INSERT #ItemsToCreate
-            (
-                  NewItemGuid
-                , InvoiceRequestId
-                , MilestoneId
-                , ActivityId
-                , Net
-                , ShortDescription
-            )
-            SELECT
-                  NEWID()
-                , pr.InvoiceRequestId
-                , CASE WHEN pr.InvoicingType = N'MS' THEN m.ID ELSE a.MilestoneID END
-                , CASE WHEN pr.InvoicingType = N'ACT' THEN a.ID ELSE NULL END
-                , CAST(0 AS DECIMAL(19,2))
-                , LEFT(
-                    CASE
-                        WHEN pr.InvoicingType = N'ACT' THEN ISNULL(NULLIF(a.Title, N''), N'Activity')
-                        WHEN pr.InvoicingType = N'MS'  THEN ISNULL(NULLIF(m.Description, N''), N'Milestone')
-                        ELSE N'Invoice item'
-                    END,
-                    200
+                , CAST(0.00 AS DECIMAL(19,2))
+                , LEFT
+                  (
+                      CASE
+                          WHEN ir.InvoicingType = N'ACT'  THEN ISNULL(NULLIF(a.Title, N''), N'Activity')
+                          WHEN ir.InvoicingType = N'MS'   THEN ISNULL(NULLIF(m.Description, N''), N'Milestone')
+                          WHEN ir.InvoicingType = N'RIBA' THEN N'RIBA stage invoice item'
+                          ELSE N'Invoice item'
+                      END,
+                      200
                   )
-            FROM #ParsedRequests AS pr
+                , CASE
+                      WHEN ir.InvoicingType IN (N'ACT', N'RIBA') THEN NULLIF(a.RibaStageId, -1)
+                      ELSE NULL
+                  END
+                , CASE
+                      WHEN ir.InvoicingType = N'ACT'
+                          THEN N'Activity item created for reconciliation because no billable activity value could be derived.'
+                      WHEN ir.InvoicingType = N'MS'
+                          THEN N'Milestone item created for reconciliation because no milestone or quote value could be derived.'
+                      WHEN ir.InvoicingType = N'RIBA'
+                          THEN N'RIBA item created for reconciliation because no billable RIBA value could be derived.'
+                      ELSE N'Invoice item created for reconciliation because no value could be derived.'
+                  END
+            FROM #InsertedRequests AS ir
             LEFT JOIN SJob.Activities AS a
-              ON a.ID = pr.ParsedActivityId
-             AND a.RowStatus NOT IN (0,254)
+                ON a.ID =
+                   CASE
+                       WHEN ir.InvoicingType = N'ACT' AND ir.InstanceKey LIKE N'ACT:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 5, 200))
+                       WHEN ir.InvoicingType = N'ACT' AND CHARINDEX(N'|A', ir.InstanceKey) > 0
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|A', ir.InstanceKey) + 2, 50))
+                       ELSE NULL
+                   END
+               AND a.RowStatus NOT IN (0,254)
             LEFT JOIN SJob.Milestones AS m
-              ON m.ID = pr.ParsedMilestoneId
-             AND m.RowStatus NOT IN (0,254)
+                ON m.ID =
+                   CASE
+                       WHEN ir.InvoicingType = N'MS' AND ir.InstanceKey LIKE N'MS:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, 4, 200))
+                       WHEN ir.InvoicingType = N'MS' AND CHARINDEX(N'|M', ir.InstanceKey) > 0
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(ir.InstanceKey, CHARINDEX(N'|M', ir.InstanceKey) + 2, 50))
+                       ELSE NULL
+                   END
+               AND m.RowStatus NOT IN (0,254)
             WHERE NOT EXISTS
             (
                 SELECT 1
                 FROM #ItemsToCreate AS itc
-                WHERE itc.InvoiceRequestId = pr.InvoiceRequestId
+                WHERE itc.InvoiceRequestId = ir.InvoiceRequestId
             );
 
+            ------------------------------------------------------------------
+            -- Insert items with required DataObject rows.
+            ------------------------------------------------------------------
             DECLARE
                   @ItemGuid UNIQUEIDENTIFIER
                 , @ReqId INT
                 , @MsId BIGINT
                 , @ActId BIGINT
                 , @Net DECIMAL(19,2)
-                , @Desc NVARCHAR(200);
+                , @Desc NVARCHAR(200)
+                , @RIBAStageId INT
+                , @ValueDerivationReason NVARCHAR(200);
 
             DECLARE cur_item CURSOR LOCAL FAST_FORWARD FOR
-                SELECT NewItemGuid, InvoiceRequestId, MilestoneId, ActivityId, Net, ShortDescription
+                SELECT
+                      NewItemGuid
+                    , InvoiceRequestId
+                    , MilestoneId
+                    , ActivityId
+                    , Net
+                    , ShortDescription
+                    , RIBAStageId
+                    , ValueDerivationReason
                 FROM #ItemsToCreate;
 
             OPEN cur_item;
-            FETCH NEXT FROM cur_item INTO @ItemGuid, @ReqId, @MsId, @ActId, @Net, @Desc;
+
+            FETCH NEXT FROM cur_item
+            INTO @ItemGuid, @ReqId, @MsId, @ActId, @Net, @Desc, @RIBAStageId, @ValueDerivationReason;
 
             WHILE @@FETCH_STATUS = 0
             BEGIN
@@ -534,17 +649,19 @@ BEGIN
                     , LegacyId
                     , LegacySystemID
                     , ShortDescription
+                    , RIBAStageId
                 )
                 SELECT
                       1
                     , @ItemGuid
                     , @ReqId
-                    , @MsId
-                    , @ActId
+                    , ISNULL(@MsId, -1)
+                    , ISNULL(@ActId, -1)
                     , @Net
                     , NULL
                     , -1
                     , LEFT(ISNULL(@Desc, N''), 200)
+                    , ISNULL(@RIBAStageId, -1)
                 WHERE NOT EXISTS
                 (
                     SELECT 1
@@ -552,42 +669,84 @@ BEGIN
                     WHERE Guid = @ItemGuid
                 );
 
-                FETCH NEXT FROM cur_item INTO @ItemGuid, @ReqId, @MsId, @ActId, @Net, @Desc;
+                FETCH NEXT FROM cur_item
+                INTO @ItemGuid, @ReqId, @MsId, @ActId, @Net, @Desc, @RIBAStageId, @ValueDerivationReason;
             END;
 
             CLOSE cur_item;
             DEALLOCATE cur_item;
 
+            ------------------------------------------------------------------
+            -- Mark reconciliation on the header if value is zero or value was
+            -- derived with a warning/default.
+            ------------------------------------------------------------------
             ;WITH R AS
             (
-                SELECT r.ID
+                SELECT
+                    r.ID
                 FROM SFin.InvoiceRequests AS r
                 WHERE r.RowStatus NOT IN (0,254)
                   AND r.SourceType = N'TriggerInstance'
                   AND r.AutomationRunGuid = @AutomationRunGuid
-                  AND r.InvoicingType IN (N'ACT', N'MS')
+                  AND r.InvoicingType IN (N'ACT', N'MS', N'RIBA')
             ),
             Totals AS
             (
                 SELECT
                       r.ID
-                    , TotalNet = ISNULL(SUM(iri.Net), 0)
+                    , TotalNet = ISNULL(SUM(iri.Net), 0.00)
                     , ItemCount = COUNT(iri.ID)
                 FROM R AS r
                 LEFT JOIN SFin.InvoiceRequestItems AS iri
-                  ON iri.InvoiceRequestId = r.ID
-                 AND iri.RowStatus NOT IN (0,254)
-                GROUP BY r.ID
+                    ON iri.InvoiceRequestId = r.ID
+                   AND iri.RowStatus NOT IN (0,254)
+                GROUP BY
+                    r.ID
+            ),
+            Reasons AS
+            (
+                SELECT
+                      itc.InvoiceRequestId AS ID
+                    , MAX(NULLIF(itc.ValueDerivationReason, N'')) AS ValueDerivationReason
+                FROM #ItemsToCreate AS itc
+                GROUP BY
+                    itc.InvoiceRequestId
             )
             UPDATE r
-               SET r.IsZeroValuePlaceholder = CASE WHEN t.TotalNet = 0 THEN 1 ELSE 0 END
-                 , r.ReconciliationRequired = CASE WHEN t.TotalNet = 0 THEN 1 ELSE 0 END
-                 , r.ReconciliationReason = CASE WHEN t.TotalNet = 0 THEN N'Items derived but value is zero' ELSE N'' END
+               SET r.IsZeroValuePlaceholder =
+                        CASE
+                            WHEN t.TotalNet = 0.00 THEN 1
+                            ELSE 0
+                        END,
+                   r.ReconciliationRequired =
+                        CASE
+                            WHEN t.TotalNet = 0.00
+                              OR rs.ValueDerivationReason IS NOT NULL
+                              OR t.ItemCount = 0 THEN 1
+                            ELSE 0
+                        END,
+                   r.ReconciliationReason =
+                        CASE
+                            WHEN rs.ValueDerivationReason IS NOT NULL
+                                THEN rs.ValueDerivationReason
+                            WHEN t.ItemCount = 0
+                                THEN N'Invoice request created but no items could be derived.'
+                            WHEN t.TotalNet = 0.00
+                                THEN N'Items derived but value is zero'
+                            ELSE N''
+                        END
             FROM SFin.InvoiceRequests AS r
             JOIN Totals AS t
-              ON t.ID = r.ID;
+                ON t.ID = r.ID
+            LEFT JOIN Reasons AS rs
+                ON rs.ID = r.ID;
 
-            SET @CreatedInvoiceRequests = (SELECT COUNT(1) FROM #InsertedRequests);
+            SET @CreatedInvoiceRequests =
+            (
+                SELECT COUNT(1)
+                FROM #InsertedRequests
+            );
+
             RETURN;
         END TRY
         BEGIN CATCH

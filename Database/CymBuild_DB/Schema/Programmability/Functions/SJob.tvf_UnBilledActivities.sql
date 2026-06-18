@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[tvf_UnBilledActivities]')
+GO
+
 CREATE FUNCTION [SJob].[tvf_UnBilledActivities] 
 (
     @UserId INT
@@ -72,10 +76,11 @@ SELECT
 		ELSE N'Not Created'
 	END AS IsInvoiceReqCreated,
 	j.Number,
-	Sec.Name AS Sector
+	Sec.Name AS Sector,
+	ActT.Name AS ActivityType
 FROM SJob.Activities			AS root_hobt
 JOIN SJob.Jobs					AS J	ON (J.ID = root_hobt.JobID)
-JOIN SCore.Identities			AS I	ON (I.ID = root_hobt.CreatedByUserID)
+JOIN SCore.Identities			AS I	ON (I.ID = root_hobt.SurveyorID)
 JOIN SCore.OrganisationalUnits	AS Org  ON (Org.ID = J.OrganisationalUnitID) 
 JOIN SJob.JobTypes				AS JT	ON (JT.ID = J.JobTypeID)
 JOIN SJob.ActivityTypes			AS ActT	ON (ActT.ID = root_hobt.ActivityTypeID)

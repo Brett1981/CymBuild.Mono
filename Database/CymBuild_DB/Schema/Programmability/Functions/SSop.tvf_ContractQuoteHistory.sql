@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_ContractQuoteHistory]')
+GO
 CREATE FUNCTION [SSop].[tvf_ContractQuoteHistory]
 (
 	@UserId INT,
 	@ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-     --WITH SCHEMABINDING
+         --WITH SCHEMABINDING
 AS RETURN	
 SELECT  q.ID,
         q.RowStatus,

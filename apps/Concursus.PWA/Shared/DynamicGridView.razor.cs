@@ -1,26 +1,27 @@
 ﻿using Concursus.API.Client;
 using Concursus.API.Client.Models;
+using Concursus.API.Client.Models.Finance;
 using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
 using Concursus.PWA.Classes;
 using Concursus.PWA.Helpers;
 using DocumentFormat.OpenXml.Drawing.Diagrams;
+using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using System.Collections;
 using System.Dynamic;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Telerik.Blazor.Components;
 using Telerik.Blazor.Components.Grid;
 using Telerik.DataSource;
 using Telerik.DataSource.Extensions;
-using System.Net.Http;
-using System.Net.Http.Json;
 using static Concursus.PWA.Shared.DynamicGrid;
 using static Concursus.PWA.Shared.MessageDisplay;
 using JsonSerializer = System.Text.Json.JsonSerializer;
-using System.Threading.Tasks;
-using Google.Protobuf.WellKnownTypes;
 
 namespace Concursus.PWA.Shared;
 
@@ -116,7 +117,23 @@ public partial class DynamicGridView : ComponentBase
     #endregion Protected Properties
 
     #region Private Properties
+    private bool IsInvoiceScheduleInlineEditable =>
+    string.Equals(GridCode, "INVSCEDMONTHLY", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(GridCode, "INVSCEDULEPERCENTAGE", StringComparison.OrdinalIgnoreCase);
 
+    private bool IsMonthlyDrawdownGrid =>
+        string.Equals(GridCode, "INVSCEDMONTHLY", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsPercentageDrawdownGrid =>
+        string.Equals(GridCode, "INVSCEDULEPERCENTAGE", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsInlineEditMode { get; set; }
+    private bool InlineSaveInProgress { get; set; }
+    private bool InlineLookupLoading { get; set; }
+    private string? InlineEditError { get; set; }
+
+    private List<InvoiceScheduleDrawdownStageLookupModel> InlineStageLookup { get; set; } = new();
+    private bool InlineStageLookupLoaded { get; set; }
     private bool BatchGridVisible { get; set; } = false;
     // Stores the grid data
 
@@ -502,7 +519,7 @@ public partial class DynamicGridView : ComponentBase
         }
     }
 
-  
+
 
     // Optimized ReadItems to avoid unnecessary API calls
     protected async Task ReadItems(GridReadEventArgs args)
@@ -621,6 +638,10 @@ public partial class DynamicGridView : ComponentBase
             args.Total = (int)gridDataListReply.TotalRows;
             CurrentGridItems = gridData;
 
+            if (IsInvoiceScheduleInlineEditable && IsInlineEditMode && !InlineStageLookupLoaded)
+            {
+                await LoadInlineStageLookupAsync();
+            }
             //CBLD-686: Ensure grid is rebinded, otherwise you will have to click the backwards/forwards arrow 2x on the grid (for the page number)
             if (ComingFromModal)
             {
@@ -634,6 +655,200 @@ public partial class DynamicGridView : ComponentBase
             ex.Data.Add("PageMethod", "DynamicGridView/ReadItems()");
             OnError(ex);
         }
+    }
+
+    private async Task ToggleInlineEditMode()
+    {
+        InlineEditError = null;
+        IsInlineEditMode = !IsInlineEditMode;
+
+        if (IsInlineEditMode)
+        {
+            await LoadInlineStageLookupAsync();
+        }
+    }
+
+    private void CancelInlineEdit()
+    {
+        InlineEditError = null;
+        IsInlineEditMode = false;
+        GridRef?.Rebind();
+    }
+
+    private async Task LoadInlineStageLookupAsync()
+    {
+        try
+        {
+            InlineEditError = null;
+            InlineLookupLoading = true;
+
+            Guid invoiceScheduleGuid = Guid.Empty;
+            TryResolveInvoiceScheduleGuid(out invoiceScheduleGuid);
+
+            var helper = new FormHelper(
+                coreClient,
+                sageIntegrationService,
+                Guid.Empty.ToString(),
+                userService);
+
+            InlineStageLookup = await helper.InvoiceScheduleDrawdownStageLookupGetAsync(invoiceScheduleGuid);
+            InlineStageLookupLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            InlineEditError = $"Stage lookup could not be loaded: {ex.Message}";
+        }
+        finally
+        {
+            InlineLookupLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveInlineDrawdownsAsync()
+    {
+        try
+        {
+            InlineEditError = null;
+            InlineSaveInProgress = true;
+
+            if (!TryResolveInvoiceScheduleGuid(out var invoiceScheduleGuid))
+            {
+                InlineEditError = "Invoice Schedule must be saved first.";
+                return;
+            }
+
+            var sourceRows = CurrentGridItems ?? Enumerable.Empty<ExpandoObject>();
+
+            var rows = sourceRows
+                .Select(ToBulkEditRow)
+                .Where(x => x.Guid != Guid.Empty)
+                .ToList();
+
+            if (rows.Count == 0)
+            {
+                InlineEditError = "There are no drawdown rows to save.";
+                return;
+            }
+
+            var helper = new FormHelper(
+                coreClient,
+                sageIntegrationService,
+                Guid.Empty.ToString(),
+                userService);
+
+            var updatedCount = await helper.InvoiceScheduleDrawdownsBulkUpdateAsync(
+                invoiceScheduleGuid,
+                GridCode,
+                rows);
+
+            Toast.ShowSuccess($"Saved {updatedCount} drawdown row(s).");
+
+            IsInlineEditMode = false;
+
+            GridRef?.Rebind();
+
+            if (ResyncDataObject.HasDelegate)
+            {
+                await ResyncDataObject.InvokeAsync();
+            }
+
+            if (OnActionCompleted.HasDelegate)
+            {
+                await OnActionCompleted.InvokeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            InlineEditError = ex.Message;
+        }
+        finally
+        {
+            InlineSaveInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private InvoiceScheduleDrawdownBulkEditRowModel ToBulkEditRow(ExpandoObject item)
+    {
+        var row = (IDictionary<string, object>)item;
+
+        return new InvoiceScheduleDrawdownBulkEditRowModel
+        {
+            Guid = ReadGuid(row, "Guid"),
+            PeriodNumber = ReadInt(row, "PeriodNumber"),
+            Amount = ReadDecimal(row, "Amount"),
+            Percentage = ReadDecimal(row, "Percentage"),
+            OnDayOfMonth = ReadDate(row, "OnDayOfMonth"),
+            Description = ReadString(row, "Description"),
+            RibaStageGuid = ReadNullableGuid(row, "RibaStageID")
+        };
+    }
+
+    private static string ReadString(IDictionary<string, object> row, string key)
+    {
+        return row.TryGetValue(key, out var value)
+            ? value?.ToString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static Guid ReadGuid(IDictionary<string, object> row, string key)
+    {
+        return Guid.TryParse(ReadString(row, key), out var guid)
+            ? guid
+            : Guid.Empty;
+    }
+
+    private static Guid? ReadNullableGuid(IDictionary<string, object> row, string key)
+    {
+        return Guid.TryParse(ReadString(row, key), out var guid) && guid != Guid.Empty
+            ? guid
+            : null;
+    }
+
+    private static int ReadInt(IDictionary<string, object> row, string key)
+    {
+        return int.TryParse(ReadString(row, key), out var value)
+            ? value
+            : 0;
+    }
+
+    private static decimal ReadDecimal(IDictionary<string, object> row, string key)
+    {
+        return decimal.TryParse(ReadString(row, key), out var value)
+            ? value
+            : 0m;
+    }
+
+    private static DateTime? ReadDate(IDictionary<string, object> row, string key)
+    {
+        return DateTime.TryParse(ReadString(row, key), out var value)
+            ? value.Date
+            : null;
+    }
+
+    private static string FormatDateInputValue(DateTime? value)
+    {
+        return value.HasValue
+            ? value.Value.ToString("yyyy-MM-dd")
+            : string.Empty;
+    }
+
+    private void SetRowValue(IDictionary<string, object> row, string key, object? value)
+    {
+        row[key] = value?.ToString() ?? string.Empty;
+    }
+
+    private void SetStageValue(IDictionary<string, object> row, string? selectedStageGuid)
+    {
+        var stageGuid = selectedStageGuid ?? string.Empty;
+
+        row["RibaStageID"] = stageGuid;
+
+        var selectedStage = InlineStageLookup
+            .FirstOrDefault(x => x.Guid.ToString().Equals(stageGuid, StringComparison.OrdinalIgnoreCase));
+
+        row["RibaStage"] = selectedStage?.Name ?? string.Empty;
     }
 
     private static readonly HashSet<string> _loggedFilters = new();
@@ -828,10 +1043,17 @@ public partial class DynamicGridView : ComponentBase
             CloseMonthlySeriesModal();
 
             GridRef?.Rebind();
-            _ = RefreshMe();
+            await RefreshMe();
 
             if (ResyncDataObject.HasDelegate)
+            {
                 await ResyncDataObject.InvokeAsync();
+            }
+
+            if (OnActionCompleted.HasDelegate)
+            {
+                await OnActionCompleted.InvokeAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -844,7 +1066,7 @@ public partial class DynamicGridView : ComponentBase
         }
     }
     //OE: CBLD-430.
-  
+
     private Task<GridState<ExpandoObject>> CalcGridStateAsync()
     {
         try

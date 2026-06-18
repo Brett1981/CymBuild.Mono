@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_LanguageLabelTranslations]')
+GO
 CREATE FUNCTION [SCore].[tvf_LanguageLabelTranslations] 
 (
     @UserId INT,
     @ParentGuid UNIQUEIDENTIFIER
 )
 RETURNS TABLE
-               --WITH SCHEMABINDING
+                    --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  llt.ID,

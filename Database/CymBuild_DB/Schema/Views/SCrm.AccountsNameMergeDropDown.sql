@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[AccountsNameMergeDropDown]')
+GO
 CREATE VIEW [SCrm].[AccountsNameMergeDropDown]
 AS
     SELECT root_hobt.Id,

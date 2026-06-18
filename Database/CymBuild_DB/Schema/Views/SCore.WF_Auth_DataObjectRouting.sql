@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[WF_Auth_DataObjectRouting]')
+GO
 /* =============================================================================
    SCore.WF_Auth_DataObjectRouting
    Purpose:
@@ -11,7 +14,7 @@ GO
    - OU is derived from the entity row (Jobs/Enquiries/Quotes).
 ============================================================================= */
 CREATE VIEW [SCore].[WF_Auth_DataObjectRouting]
-    --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 SELECT
     d.Guid            AS DataObjectGuid,

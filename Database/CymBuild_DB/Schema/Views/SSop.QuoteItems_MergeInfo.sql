@@ -1,5 +1,13 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[QuoteItems_MergeInfo]')
+GO
+
+
+
+
+
 CREATE VIEW [SSop].[QuoteItems_MergeInfo]
 AS
 SELECT		qi.ID,

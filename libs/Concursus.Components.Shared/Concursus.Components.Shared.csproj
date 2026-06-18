@@ -41,37 +41,39 @@
     <None Remove="Controls\UpdateAvailableDetector.razor.css" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Blazored.Modal" Version="7.3.1" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageReference Include="getAddress.Sdk" Version="3.5.1" />
     <PackageReference Include="itext" Version="9.6.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.6" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.6" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.6" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.6" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.6" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.6" />
-    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.6" />
-    <PackageReference Include="MimeKit" Version="4.15.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.8" />
+    <PackageReference Include="MimeKit" Version="4.16.0" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.6" />
-    <PackageReference Include="Telerik.Documents.Core" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.DrawingML" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.Fixed" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.Flow" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Doc" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Pdf" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.ImageUtils" Version="2025.4.1216" />
-    <PackageReference Include="Telerik.Documents.SpreadsheetStreaming" Version="2025.4.1216" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Forms" Version="10.0.6" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.6" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.8" />
+    <PackageReference Include="Telerik.Documents.Core" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.DrawingML" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.Fixed" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.Flow" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Doc" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Pdf" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.ImageUtils" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Documents.SpreadsheetStreaming" Version="2026.2.519" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Forms" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.8" />
     <!--<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.1" />
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.1" />-->
-    <PackageReference Include="Telerik.UI.for.Blazor" Version="12.2.0" />
-    <PackageReference Include="Telerik.Zip" Version="2025.4.1216" />
+    <PackageReference Include="Telerik.UI.for.Blazor" Version="14.0.0" />
+    <PackageReference Include="Telerik.Zip" Version="2026.2.519" />
+    <PackageReference Include="Telerik.Recurrence" Version="1.0.0" />
+    <PackageReference Include="Telerik.Pivot.Core" Version="1.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Concursus.API.Client\Concursus.API.Client.csproj" />

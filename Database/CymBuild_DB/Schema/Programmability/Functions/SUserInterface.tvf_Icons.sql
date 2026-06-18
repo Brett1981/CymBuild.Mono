@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create function [SUserInterface].[tvf_Icons]')
+GO
+
 CREATE FUNCTION [SUserInterface].[tvf_Icons]
   (
     @UserId INT

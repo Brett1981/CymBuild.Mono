@@ -3,8 +3,6 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_InvoiceAutomation_Phase3Detections]')
 GO
-PRINT (N'Create function [SFin].[tvf_InvoiceAutomation_Phase3Detections]')
-GO
 
 /* =============================================================================
    SFin.tvf_InvoiceAutomation_Phase3Detections (corrected)

@@ -16,469 +16,602 @@
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject UserInteractionTrackerService InteractionTracker
 @inject AiErrorReporter AiErrorReporter
-@inject UserInteractionTrackerService InteractionTracker
 @inject IToastService Toast
 @inject IHttpClientFactory HttpClientFactory
 
 @attribute [Authorize]
 
-@*  CBLD-540  *@
+@* CBLD-540 *@
 @inject Helpers.LocalStorageAccessor LocalStorageAccessor
 
-
 <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
 <ErrorBoundary>
     <ChildContent>
+        @if (ViewDefinition is not null)
+        {
+            @* CBLD-408: allowNewButtonSection can be hidden on widgets. *@
+            <div class="d-flex flex-wrap justify-content-between allowNewButtonSection">
+                <div class="p-2">
+                    <h5 class="view-name">@ViewDefinition?.Name</h5>
+                </div>
 
-
-        <!--CBLD-408: Added -> allowNewButtonSection so we can hide the button on widgets
-        <div class="d-flex flex-wrap justify-content-between allowNewButtonSection">
-                    <div class="p-2">
-                        <h5 class="view-name">@ViewDefinition?.Name</h5>
-                    </div>
-
-                    <div class="p-2">
-                        <div class="button-group d-flex flex-row">
-                            @if (ViewDefinition is not null)
-                    {
-                        @* [OE: CBLD-260] + [CBLD-515] *@
-                        @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
+                <div class="p-2">
+                    <div class="button-group d-flex flex-row">
+                        @if (ViewDefinition is not null)
                         {
-                            <GridButtonMenu
-                                ViewDefinition="@ViewDefinition"
-                                OnOpenBatchGrid="@OpenDynamicBatchGrid" />
-                        }
-
+                            @* [OE: CBLD-260] + [CBLD-515] *@
+                            @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
+                            {
+                                <GridButtonMenu ViewDefinition="@ViewDefinition"
+                                                OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                            }
 
                             <div class="button-menu-container d-flex flex-row align-items-center">
                                 @if (ViewDefinition.AllowNew && !Disabled)
                                 {
-                                    <btn class="btn btn-success" id="newBtn" type="button" @onclick="AddNew"><i class="bi bi-plus-circle-fill me-2" style="font-size: 1.2rem;"></i> New</btn>
+                                    <button class="btn btn-success" id="newBtn" type="button" @onclick="AddNew">
+                                        <i class="bi bi-plus-circle-fill me-2" style="font-size: 1.2rem;"></i> New
+                                    </button>
                                 }
 
-
-
-                                @if(FullGrid){
-                                        <GridFilterButton GridRef="@GridRef" />
-                                }
-
-                            </div>
-
-                    }
-                        </div>
-                    </div>
-
-                </div>
-        @if (ViewDefinition is not null)
-        {
-            @if (FullGrid)
-            {
-                                <div class="grid-container">
-                                @if (ViewDefinition.Code == "ENGOVERDUEACT" || ViewDefinition.Code == "ENGOVERDUEMIL")
+                                @if (FullGrid)
                                 {
-                                    <TelerikButton OnClick="@(async () => await ExportToCsvWithOptions())">Export to CSV</TelerikButton>
+                                    <GridFilterButton GridRef="@GridRef" />
                                 }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
 
-                                <TelerikGrid TItem="ExpandoObject"
+            <div class="grid-container">
+                @if (ViewDefinition.Code == "ENGOVERDUEACT" || ViewDefinition.Code == "ENGOVERDUEMIL")
+                {
+                    <TelerikButton OnClick="@(async () => await ExportToCsvWithOptions())">Export to CSV</TelerikButton>
+                }
 
-                                             OnRead="@ReadItems"
-                                             Pageable="true"
-                                             Sortable="true"
-                                             PageSize="50"
-                                             Height="100%"
-                                             Width="100%"
-                                             Resizable="true"
-                                             OnRowDoubleClick="@OnRowDoubleClickHandler"
-                                             @ref="@GridRef"
-                                             OnRowRender="@OnRowRenderHandler"
-                                             FilterMode="@GridFilterMode.FilterMenu"
-                                             SelectionMode="GridSelectionMode.Single"
-                                             OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                             ScrollMode="@GridScrollMode.Scrollable"
-                                             OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
-                                                <GridExport>
-                                                    <GridCsvExport FileName="telerik-grid-export" AllPages="true" />
-                                                </GridExport>
-                                                <GridSettings>
-                                                    <GridPagerSettings InputType="PagerInputType.Input"
-                                                                       PageSizes=null
-                                                                       ButtonCount="5"
-                                                                       Responsive="true"
-                                                                       Position="PagerPosition.Bottom">
-                                                    </GridPagerSettings>
-                                                </GridSettings>
-                                                <GridColumns>
+                @if (IsInvoiceScheduleInlineEditable)
+                {
+                    <div class="drawdown-inline-edit-toolbar">
+                        @if (!IsInlineEditMode)
+                        {
+                            <button type="button"
+                                    class="btn btn-primary btn-sm"
+                                    disabled="@Disabled"
+                                    @onclick="ToggleInlineEditMode">
+                                <i class="bi bi-pencil-square me-1"></i>
+                                Edit Drawdowns
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="btn btn-success btn-sm me-2"
+                                    disabled="@(InlineSaveInProgress || InlineLookupLoading)"
+                                    @onclick="SaveInlineDrawdownsAsync">
+                                <i class="bi bi-save me-1"></i>
+                                Save Changes
+                            </button>
 
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm"
+                                    disabled="@InlineSaveInProgress"
+                                    @onclick="CancelInlineEdit">
+                                Cancel
+                            </button>
+
+                            @if (InlineLookupLoading)
+                            {
+                                <span class="drawdown-inline-edit-muted">Loading stage lookup...</span>
+                            }
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(InlineEditError))
+                        {
+                            <div class="alert alert-danger mt-2 mb-0">@InlineEditError</div>
+                        }
+                    </div>
+                }
+
+                @if (FullGrid)
+                {
+                    <TelerikGrid TItem="ExpandoObject"
+                                 OnRead="@ReadItems"
+                                 Pageable="true"
+                                 Sortable="true"
+                                 PageSize="50"
+                                 Height="100%"
+                                 Width="100%"
+                                 Resizable="true"
+                                 OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                 @ref="@GridRef"
+                                 OnRowRender="@OnRowRenderHandler"
+                                 FilterMode="@GridFilterMode.FilterMenu"
+                                 SelectionMode="GridSelectionMode.Single"
+                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                                 ScrollMode="@GridScrollMode.Scrollable"
+                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
+                        <GridExport>
+                            <GridCsvExport FileName="telerik-grid-export" AllPages="true" />
+                        </GridExport>
+                        <GridSettings>
+                            <GridPagerSettings InputType="PagerInputType.Input"
+                                               PageSizes="null"
+                                               ButtonCount="5"
+                                               Responsive="true"
+                                               Position="PagerPosition.Bottom">
+                            </GridPagerSettings>
+                        </GridSettings>
+                        <GridColumns>
                             @{
-                                //OE: [CBLD-348]: Variables to ensure that only the first column gets locked.
-                                int index = 0;
-                                bool isLocked = false;
-                                int numOfItems = ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder).Count();
+                                // OE: [CBLD-348]: variables to ensure that only the first visible column gets a default width.
+                                var isLocked = false;
+                                var visibleColumnCount = ViewDefinition.Columns
+                                    .Where(o => !o.IsHidden)
+                                    .OrderBy(o => o.ColumnOrder)
+                                    .Count();
                             }
 
-                            @* @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder).ThenBy(c => c.IsHidden)) *@
-                            @*Ensures that only the first column is locked.*@
-                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder))
+                            @foreach (GridViewColumnDefinition gvcd in ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder))
                             {
-
-                                /**
-                                    OE: [CBLD-348]
-                                    in ViewDefinition.Columns, we go by column order. The first few
-                                    columns will be hidden - the first that is not hidden will also be the very first column.
-                                **/
-                                //if (!isLocked && !gvcd.IsHidden)
                                 if (!isLocked && !gvcd.IsHidden)
                                 {
-                                    @* if (gvcd.Width == "" || gvcd.Width == "0px" || gvcd.Width == "0%")
-                                                gvcd.Width = "300px"; *@
-
                                     if (string.IsNullOrEmpty(gvcd.Width) || gvcd.Width.StartsWith('0'))
                                     {
                                         gvcd.Width = "240px";
                                     }
 
-                                    //Set it to locked.
-                                    if (numOfItems > 1)
+                                    if (visibleColumnCount > 1)
+                                    {
                                         isLocked = true;
-
-                                                                <GridColumn Field="@gvcd.Name"
-                                                                            Title="@gvcd.Title"
-                                                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                                            Visible="gvcd.IsHidden != true"
-                                                                            Filterable="@gvcd.IsFiltered"
-                                                                            Width="@gvcd.Width"
-                                                                            Sortable="true"
-                                                                            Resizable="true">
-                                                                    <Template>
-                                                                        <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                                                        </div>
-                                                                    </Template>
-                                                                </GridColumn>
-                                }
-                                else
-                                {
-                                                            <GridColumn Field="@gvcd.Name"
-                                                                        Title="@gvcd.Title"
-                                                                        FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                                        Visible="gvcd.IsHidden != true"
-                                                                        Filterable="@gvcd.IsFiltered"
-                                                                        Width="@gvcd.Width"
-                                                                        Sortable="true"
-                                                                        Resizable="true">
-                                                                <Template>
-                                                                    <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                                                    </div>
-                                                                </Template>
-                                                            </GridColumn>
+                                    }
                                 }
 
-                                if (!gvcd.IsHidden)
-                                    index++;
+                                <GridColumn Field="@gvcd.Name"
+                                            Title="@gvcd.Title"
+                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                            Visible="@(gvcd.IsHidden != true)"
+                                            Filterable="@gvcd.IsFiltered"
+                                            Width="@gvcd.Width"
+                                            Sortable="true"
+                                            Resizable="true">
+                                    <Template>
+                                        @{
+                                            var row = context as ExpandoObject;
+                                            var dict = row as IDictionary<string, object>;
+                                            var columnName = gvcd.Name;
+                                        }
 
-                            }
-                                    </GridColumns>
-                                </TelerikGrid>
-                                </div>
-                                <div class="back-to-top-button">
-                                    <button class="btn btn-secondary" @onclick="ScrollToTop">
-                                        <i class="bi bi-arrow-up-circle"></i> Back To Top
-                                    </button>
-                                </div>
-            }
-            else
-            {
-                                <div class="grid-container">
-                                <TelerikGrid TItem="ExpandoObject"
-                                             OnRead="@ReadItems"
-                                             Pageable="true"
-                                             Sortable="true"
-                                             Resizable="true"
-                                             Height="100%"
-                                             OnRowDoubleClick="@OnRowDoubleClickHandler"
-                                             OnRowRender="@OnRowRenderHandler"
-                                             @ref="@GridRef"
-                                             FilterMode="@GridFilterMode.FilterMenu"
-                                             OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                             OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
-                                    <GridSettings>
-                                        <GridPagerSettings InputType="PagerInputType.Input"
-                                                           PageSizes=null
-                                                           ButtonCount="5"
-                                                           Responsive="true"
-                                                           Position="PagerPosition.Bottom">
-                                        </GridPagerSettings>
-                                    </GridSettings>
-                                    <GridColumns>
-                            @foreach (var gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
-                            {
-                                                <GridColumn Field="@gvcd.Name"
-                                                            Title="@gvcd.Title"
-                                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                            Visible="gvcd.IsHidden != true"
-                                                            Filterable="@gvcd.IsFiltered"
-                                                            Width="@gvcd.Width"
-                                                            Sortable="true"
-                                                            Resizable="true">
-                                                    <Template>
-                                                        <div class="custom-ellipsis">
-                                            @(GetColumnTemplate(gvcd.Name)(context))
-                                                        </div>
-                                                    </Template>
-                                                </GridColumn>
-                            }
-                                    </GridColumns>
-                                </TelerikGrid>
-                </div>
-            }
-            @if (IsMonthlySeriesModalVisible)
-            {
-                                <TelerikWindow @bind-Visible="@IsMonthlySeriesModalVisible"
-                                   Modal="true"
-                                   CloseOnOverlayClick="false"
-                                   Width="720px"
-                                   MaxHeight="90vh">
-                        <WindowTitle>Generate Monthly Schedule</WindowTitle>
-
-                        <WindowContent>
-                            <div class="p-3">
-
-                                @if (!string.IsNullOrWhiteSpace(MonthlySeriesError))
-                                {
-                                        <div class="alert alert-danger">@MonthlySeriesError</div>
-                                }
-
-                                <div class="row g-3">
-                                    <div class="col-12 col-md-6">
-                                        <label class="form-label">Start Date (First Invoice)</label>
-                                        <TelerikDatePicker @bind-Value="MonthlySeries.StartDateFirstInvoice" />
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        <label class="form-label">End Date (Final Invoice)</label>
-                                        <TelerikDatePicker @bind-Value="MonthlySeries.EndDateFinalInvoice" />
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        <label class="form-label">Total Value (Net)</label>
-                                        <TelerikNumericTextBox @bind-Value="MonthlySeries.TotalValueNet"
-                                                               Decimals="2"
-                                                               Min="0"
-                                                               Format="n2" />
-                                    </div>
-
-                                    <div class="col-12 col-md-6 d-flex align-items-end">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" @bind="MonthlySeries.OverwriteExisting" />
-                                            <label class="form-check-label">
-                                                Overwrite existing monthly rows
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <hr />
-
-                                <div class="d-flex justify-content-end gap-2">
-                                    <button class="btn btn-secondary" @onclick="CloseMonthlySeriesModal" disabled="@MonthlySeriesSaving">
-                                        Cancel
-                                    </button>
-
-                                    <button class="btn btn-success" @onclick="SaveMonthlySeriesAsync" disabled="@MonthlySeriesSaving">
-                                        @if (MonthlySeriesSaving)
+                                        @if (IsInlineEditMode && IsInvoiceScheduleInlineEditable && dict != null)
                                         {
-                                                <span>Saving...</span>
+                                            if (IsMonthlyDrawdownGrid && string.Equals(columnName, "Amount", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="number"
+                                                       step="0.01"
+                                                       value="@ReadString(dict, "Amount")"
+                                                       @onchange='e => SetRowValue(dict, "Amount", e.Value)' />
+                                            }
+                                            else if (IsPercentageDrawdownGrid && string.Equals(columnName, "Percentage", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="number"
+                                                       step="0.01"
+                                                       value="@ReadString(dict, "Percentage")"
+                                                       @onchange='e => SetRowValue(dict, "Percentage", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "OnDayOfMonth", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="date"
+                                                       value="@FormatDateInputValue(ReadDate(dict, "OnDayOfMonth"))"
+                                                       @onchange='e => SetRowValue(dict, "OnDayOfMonth", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "Description", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-description"
+                                                       value="@ReadString(dict, "Description")"
+                                                       @onchange='e => SetRowValue(dict, "Description", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "RibaStage", StringComparison.OrdinalIgnoreCase)
+                                                  || string.Equals(columnName, "Stage", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <select class="form-select form-select-sm drawdown-inline-stage"
+                                                        value="@ReadString(dict, "RibaStageID")"
+                                                        @onchange='e => SetStageValue(dict, e.Value?.ToString())'>
+                                                    <option value="">-- None --</option>
+                                                    @foreach (var stage in InlineStageLookup)
+                                                    {
+                                                        <option value="@stage.Guid.ToString()">@stage.Name</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <div class="custom-ellipsis">
+                                                    @(GetColumnTemplate(columnName)(context))
+                                                </div>
+                                            }
                                         }
                                         else
                                         {
-                                                <span>Save</span>
+                                            <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(columnName)(context))
+                                            </div>
                                         }
-                                    </button>
+                                    </Template>
+                                </GridColumn>
+                            }
+                        </GridColumns>
+                    </TelerikGrid>
+
+                    <div class="back-to-top-button">
+                        <button class="btn btn-secondary" @onclick="ScrollToTop">
+                            <i class="bi bi-arrow-up-circle"></i> Back To Top
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <TelerikGrid TItem="ExpandoObject"
+                                 OnRead="@ReadItems"
+                                 Pageable="true"
+                                 Sortable="true"
+                                 Resizable="true"
+                                 Height="100%"
+                                 OnRowDoubleClick="@OnRowDoubleClickHandler"
+                                 OnRowRender="@OnRowRenderHandler"
+                                 @ref="@GridRef"
+                                 FilterMode="@GridFilterMode.FilterMenu"
+                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
+                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
+                        <GridSettings>
+                            <GridPagerSettings InputType="PagerInputType.Input"
+                                               PageSizes="null"
+                                               ButtonCount="5"
+                                               Responsive="true"
+                                               Position="PagerPosition.Bottom">
+                            </GridPagerSettings>
+                        </GridSettings>
+                        <GridColumns>
+                            @foreach (GridViewColumnDefinition gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
+                            {
+                                <GridColumn Field="@gvcd.Name"
+                                            Title="@gvcd.Title"
+                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
+                                            Visible="@(gvcd.IsHidden != true)"
+                                            Filterable="@gvcd.IsFiltered"
+                                            Width="@gvcd.Width"
+                                            Sortable="true"
+                                            Resizable="true">
+                                    <Template>
+                                        @{
+                                            var row = context as ExpandoObject;
+                                            var dict = row as IDictionary<string, object>;
+                                            var columnName = gvcd.Name;
+                                        }
+
+                                        @if (IsInlineEditMode && IsInvoiceScheduleInlineEditable && dict != null)
+                                        {
+                                            if (IsMonthlyDrawdownGrid && string.Equals(columnName, "Amount", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="number"
+                                                       step="0.01"
+                                                       value="@ReadString(dict, "Amount")"
+                                                       @onchange='e => SetRowValue(dict, "Amount", e.Value)' />
+                                            }
+                                            else if (IsPercentageDrawdownGrid && string.Equals(columnName, "Percentage", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="number"
+                                                       step="0.01"
+                                                       value="@ReadString(dict, "Percentage")"
+                                                       @onchange='e => SetRowValue(dict, "Percentage", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "OnDayOfMonth", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-input"
+                                                       type="date"
+                                                       value="@FormatDateInputValue(ReadDate(dict, "OnDayOfMonth"))"
+                                                       @onchange='e => SetRowValue(dict, "OnDayOfMonth", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "Description", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <input class="form-control form-control-sm drawdown-inline-description"
+                                                       value="@ReadString(dict, "Description")"
+                                                       @onchange='e => SetRowValue(dict, "Description", e.Value)' />
+                                            }
+                                            else if (string.Equals(columnName, "RibaStage", StringComparison.OrdinalIgnoreCase)
+                                                  || string.Equals(columnName, "Stage", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <select class="form-select form-select-sm drawdown-inline-stage"
+                                                        value="@ReadString(dict, "RibaStageID")"
+                                                        @onchange='e => SetStageValue(dict, e.Value?.ToString())'>
+                                                    <option value="">-- None --</option>
+                                                    @foreach (var stage in InlineStageLookup)
+                                                    {
+                                                        <option value="@stage.Guid.ToString()">@stage.Name</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <div class="custom-ellipsis">
+                                                    @(GetColumnTemplate(columnName)(context))
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div class="custom-ellipsis">
+                                                @(GetColumnTemplate(columnName)(context))
+                                            </div>
+                                        }
+                                    </Template>
+                                </GridColumn>
+                            }
+                        </GridColumns>
+                    </TelerikGrid>
+                }
+            </div>
+
+            @if (IsMonthlySeriesModalVisible)
+            {
+                <TelerikWindow @bind-Visible="@IsMonthlySeriesModalVisible"
+                               Modal="true"
+                               CloseOnOverlayClick="false"
+                               Width="720px"
+                               MaxHeight="90vh">
+                    <WindowTitle>Generate Monthly Schedule</WindowTitle>
+
+                    <WindowContent>
+                        <div class="p-3">
+                            @if (!string.IsNullOrWhiteSpace(MonthlySeriesError))
+                            {
+                                <div class="alert alert-danger">@MonthlySeriesError</div>
+                            }
+
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">Start Date (First Invoice)</label>
+                                    <TelerikDatePicker @bind-Value="MonthlySeries.StartDateFirstInvoice" />
                                 </div>
 
-                            </div>
-                        </WindowContent>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">End Date (Final Invoice)</label>
+                                    <TelerikDatePicker @bind-Value="MonthlySeries.EndDateFinalInvoice" />
+                                </div>
 
-                        <WindowActions>
-                            <WindowAction Name="Close" OnClick="@CloseMonthlySeriesModal"></WindowAction>
-                        </WindowActions>
-                    </TelerikWindow>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">Total Value (Net)</label>
+                                    <TelerikNumericTextBox @bind-Value="MonthlySeries.TotalValueNet"
+                                                           Decimals="2"
+                                                           Min="0"
+                                                           Format="n2" />
+                                </div>
+
+                                <div class="col-12 col-md-6 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" @bind="MonthlySeries.OverwriteExisting" />
+                                        <label class="form-check-label">
+                                            Overwrite existing monthly rows
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr />
+
+                            <div class="d-flex justify-content-end gap-2">
+                                <button class="btn btn-secondary" @onclick="CloseMonthlySeriesModal" disabled="@MonthlySeriesSaving">
+                                    Cancel
+                                </button>
+
+                                <button class="btn btn-success" @onclick="SaveMonthlySeriesAsync" disabled="@MonthlySeriesSaving">
+                                    @if (MonthlySeriesSaving)
+                                    {
+                                        <span>Saving...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Save</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </WindowContent>
+
+                    <WindowActions>
+                        <WindowAction Name="Close" OnClick="@CloseMonthlySeriesModal"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
             }
+
             @if (ViewDefinition.IsDetailWindowed)
             {
-                                <TelerikWindow @ref="ModalWindow"
-                                               Class="responsive-window"
-                                               Visible="@WindowIsVisible"
-                                               Modal="true"
-                                               CloseOnOverlayClick="false"
-                                               VisibleChanged="@WindowVisibleChangedHandler"
-                                               MaxHeight="100vh">
-                                    <WindowTitle>@WindowTitle</WindowTitle>
-                                    <WindowContent>
-                                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")" Parameters="@_detailPageParameters" />
-                                    </WindowContent>
-                                    <WindowActions>
-                                        @*  [CBLD-595] ==> Removing minimise + maximise *@
-                                        @* <WindowAction Name="Minimize"></WindowAction> *@
-                                        @* <WindowAction Name="Maximize"></WindowAction> *@
-                                        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
-                                    </WindowActions>
-                                </TelerikWindow>
+                <TelerikWindow @ref="ModalWindow"
+                               Class="responsive-window"
+                               Visible="@WindowIsVisible"
+                               Modal="true"
+                               CloseOnOverlayClick="false"
+                               VisibleChanged="@WindowVisibleChangedHandler"
+                               MaxHeight="100vh">
+                    <WindowTitle>@WindowTitle</WindowTitle>
+                    <WindowContent>
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")" Parameters="@_detailPageParameters" />
+                    </WindowContent>
+                    <WindowActions>
+                        @* [CBLD-595] Removing minimise + maximise *@
+                        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
             }
+
             @* Modal to display DynamicBatchGridView when initiated from GridButtonMenu *@
             @if (BatchGridVisible)
             {
-            <div class="k-overlay" z-index=-10/>
-                                    <TelerikWindow Visible="true">
-                                        <WindowTitle>Batch Edit</WindowTitle>
-                                        <WindowContent>
-                                            <DynamicBatchGridView Items="@CurrentGridItems"
-                                                        OnActionCompleted="CloseBatchGridModal"
-                                                        IsBulkProcessing="true"
-                                                        ViewDefinition="@ViewDefinition"
-                                                        ParentDataObjectReference="@ParentDataObjectReference"
-                                                        ParentGuid="@ParentGuid"/>
-                                        </WindowContent>
-                                        <WindowActions>
-                                            @* <WindowAction Name="Minimize"></WindowAction> *@
-                                            @* <WindowAction Name="Maximize"></WindowAction> *@
-                                            <WindowAction Name="Close" OnClick="@CloseBatchGridModal"></WindowAction>
-                                        </WindowActions>
-                                    </TelerikWindow>
+                <div class="k-overlay" style="z-index:-10;"></div>
+                <TelerikWindow Visible="true">
+                    <WindowTitle>Batch Edit</WindowTitle>
+                    <WindowContent>
+                        <DynamicBatchGridView Items="@CurrentGridItems"
+                                              OnActionCompleted="@CloseBatchGridModal"
+                                              IsBulkProcessing="true"
+                                              ViewDefinition="@ViewDefinition"
+                                              ParentDataObjectReference="@ParentDataObjectReference"
+                                              ParentGuid="@ParentGuid" />
+                    </WindowContent>
+                    <WindowActions>
+                        <WindowAction Name="Close" OnClick="@CloseBatchGridModal"></WindowAction>
+                    </WindowActions>
+                </TelerikWindow>
             }
         }
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>
 
-            </ChildContent>
-            <ErrorContent Context="ex">
-                <ErrorDisplay ErrorMessage="@ex.Message"/>
-            </ErrorContent>
-        </ErrorBoundary>
+<script>
+    document.addEventListener("keypress", function (e) {
+        const filterButton = document.querySelector(".k-button-solid-primary");
+        const enterPressed = (e.key === "Enter");
 
-        <script>
-               //Add event listener to when the page is loaded.
-            document.addEventListener("keypress", function (e) {
+        if (enterPressed) {
+            console.log("Enter has been pressed down!");
+            if (filterButton) filterButton.click();
+        }
+    });
+</script>
 
+<style>
+    .k-drawer-wrapper {
+        scrollbar-color: auto !important;
+    }
 
-                // Select the filter button by class
-                const filterButton = document.querySelector(".k-button-solid-primary");
-                const enterPressed = (e.key === 'Enter');
+    .sticky {
+        position: sticky;
+        z-index: 100;
+        background-color: white;
+    }
 
-                if (enterPressed) {
-                    console.log("Enter has been pressed down!");
-                    if (filterButton) filterButton.click();
-                }
+    .grid-container .k-grid td {
+        min-width: 100%;
+        width: 100%;
+    }
 
-            });
-        </script>
+    .view-name {
+        padding: 5px;
+    }
 
-        <style>
+    .width-100 {
+        width: 100%;
+    }
 
-        .k-drawer-wrapper {
-            scrollbar-color: auto !important;
+    .grid .k-grid-content tr {
+        line-height: 32px;
+    }
+
+    .k-grid-content {
+        max-height: 600px !important;
+        overflow: scroll !important;
+    }
+
+    .k-drawer-mini .k-drawer .k-drawer-wrapper {
+        width: 50px;
+    }
+
+    .k-drawer-container {
+        max-height: 800px !important;
+    }
+
+    .k-drawer-items {
+        max-height: 730px;
+    }
+
+    .custom-ellipsis,
+    .k-grid td.custom-ellipsis,
+    .k-grid tr.custom-ellipsis .k-table-td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .grid-container {
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+        .grid-container .k-grid {
+            width: 100%;
+            table-layout: fixed;
         }
 
-            .sticky {
-                position: sticky;
-                z-index: 100; /* Ensure the sticky header is above other elements */
-                background-color: white; /* Optional, to prevent content showing through */
-            }
+    .back-to-top-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        opacity: 0.5;
+        transition: opacity 0.3s ease;
+    }
 
-             .grid-container .k-grid td {
-                 min-width: 100%;
-                 width: 100%;
-            }
-
-
-            .view-name {
-                padding: 5px;
-            }
-
-            .width-100 {
-                width: 100%;
-            }
-
-            .grid .k-grid-content tr {
-                line-height: 32px;
-            }
-
-            .k-grid-content{
-                max-height: 600px !important;
-                overflow: scroll !important;
-            }
-
-            .k-drawer-mini .k-drawer .k-drawer-wrapper{
-                width: 50px;
-            }
-
-            .k-drawer-container{
-                max-height: 800px !important;
-            }
-
-            .k-drawer-items{
-                max-height: 730px;
-            }
-
-            /* Ensure text overflow with ellipsis for grid cells */
-            .custom-ellipsis,
-            .k-grid td.custom-ellipsis,
-            .k-grid tr.custom-ellipsis .k-table-td {
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            /* Container to enable horizontal scrolling */
-            .grid-container {
-                max-width: 100%; /* Ensure the container does not exceed the viewport width */
-                overflow-x: auto; /* Enable horizontal scrolling */
-            }
-
-            /* Adjusting the grid layout */
-            .grid-container .k-grid {
-    @* min-width: 1200px; /* Adjust this value based on your columns' total width */ *@
-                width: 100%; /* This ensures the grid will take up all available width */
-                table-layout: fixed; /* Use fixed layout for the grid */
-            }
-
-
-
-            /* Style for the back-to-top button */
-            .back-to-top-button {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                z-index: 1000; /* Ensure it is on top of other elements */
-                opacity: 0.5; /* Initial opacity set to 50% */
-                transition: opacity 0.3s ease; /* Smooth transition for hover effect */
-            }
-
-                /* Full opacity on hover for better visibility */
-                .back-to-top-button:hover {
-                    opacity: 1;
-                }
-
-
-            .k-grid .k-grouping-row {
-                position: static;
-                z-index: auto;
-                top: 0;
-            }
-
-            .k-grid .k-grouping-row td {
-                position: sticky;
-                z-index: 2;
-                top: inherit;
-                bottom: inherit;
-                min-width: 100%;
-            }
-
-            #newBtn{
-                padding: .5rem !important;
-            }
-
-        .highlight-total-row {
-            font-weight: bold;
-            background-color: #ADD8E6 !important;
+        .back-to-top-button:hover {
+            opacity: 1;
         }
-        </style>
+
+    .k-grid .k-grouping-row {
+        position: static;
+        z-index: auto;
+        top: 0;
+    }
+
+        .k-grid .k-grouping-row td {
+            position: sticky;
+            z-index: 2;
+            top: inherit;
+            bottom: inherit;
+            min-width: 100%;
+        }
+
+    #newBtn {
+        padding: .5rem !important;
+    }
+
+    .highlight-total-row {
+        font-weight: bold;
+        background-color: #ADD8E6 !important;
+    }
+
+    .drawdown-inline-edit-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0 12px 0;
+    }
+
+        .drawdown-inline-edit-toolbar .alert {
+            width: 100%;
+        }
+
+    .drawdown-inline-edit-muted {
+        color: #6b7280;
+        font-size: 0.875rem;
+    }
+
+    .drawdown-inline-input {
+        min-width: 110px;
+    }
+
+    .drawdown-inline-description {
+        min-width: 220px;
+    }
+
+    .drawdown-inline-stage {
+        min-width: 220px;
+    }
+</style>

@@ -1,7 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create function [SCore].[tvf_DataObjectTransitionValidate]')
 GO
+
 
 CREATE FUNCTION [SCore].[tvf_DataObjectTransitionValidate]
 (
@@ -28,7 +30,51 @@ BEGIN
 
     SELECT
         @UserID = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
+    -------------------------------------------------------------------------
+    -- CYB-143 / Workflow audit protection
+    -- Existing historical transitions must be read-only.
+    -- Only the latest transition for the record may be edited.
+    -------------------------------------------------------------------------
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.DataObjectTransition AS dot
+        WHERE dot.Guid = @Guid
+          AND dot.RowStatus NOT IN (0,254)
+          AND EXISTS
+          (
+              SELECT 1
+              FROM SCore.DataObjectTransition AS laterDot
+              WHERE laterDot.DataObjectGuid = dot.DataObjectGuid
+                AND laterDot.RowStatus NOT IN (0,254)
+                AND laterDot.ID > dot.ID
+          )
+    )
+    BEGIN
+        INSERT @ValidationResult
+        (
+            TargetGuid,
+            TargetType,
+            IsReadOnly,
+            IsHidden,
+            IsInvalid,
+            IsInformationOnly,
+            Message
+        )
+        SELECT
+            epfvv.Guid,
+            N'P',
+            1,
+            0,
+            0,
+            0,
+            N''
+        FROM SCore.EntityPropertiesForValidationV AS epfvv
+        WHERE epfvv.[Schema] = N'SCore'
+          AND epfvv.Hobt = N'DataObjectTransition';
 
+        RETURN;
+    END;
     -------------------------------------------------------------------------
     -- Hide everything but the comment/Status ID when first saving the transition record
     -------------------------------------------------------------------------

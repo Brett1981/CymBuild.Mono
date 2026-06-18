@@ -1,12 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[tvf_ParametersForEntityQuery]')
+GO
 CREATE FUNCTION [SCore].[tvf_ParametersForEntityQuery]
 	(
 		@Guid UNIQUEIDENTIFIER,
 		@UserId INT
 	)
 RETURNS TABLE
-              --WITH SCHEMABINDING
+                   --WITH SCHEMABINDING
 AS
 RETURN SELECT		eqp.RowStatus,
 					eqp.RowVersion,

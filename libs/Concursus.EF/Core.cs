@@ -1018,6 +1018,12 @@ WHERE i.RowStatus NOT IN (0,254)
                             {
                                 list.Add(new SqlParameter(name, System.Data.SqlDbType.UniqueIdentifier) { Value = DBNull.Value });
                             }
+                            //Allows us to search date columns in grids.
+                            //MAKE SURE TO USE DATE RATHER THAN DATETIME (expects exact match)
+                            else if (DateTime.TryParse(s, out var dt))
+                            {
+                                list.Add(  new SqlParameter(name, SqlDbType.Date) {  Value = dt.Date });
+                            }
                             else
                             {
                                 // normal string
@@ -1080,7 +1086,7 @@ WHERE i.RowStatus NOT IN (0,254)
 
             // Main query to retrieve entity type details.
             string baseQuery = forProcessingOnly ?
-                "SELECT RowStatus, RowVersion, Guid, Name, HasDocuments, CanRead, CanWrite, IsRootEntity FROM SCore.tvf_EntityTypes (@Guid, @UserId)" :
+                "SELECT RowStatus, RowVersion, Guid, Name, HasDocuments, CanRead, CanWrite, IsRootEntity, IsDeletable FROM SCore.tvf_EntityTypes (@Guid, @UserId)" :
                 "SELECT * FROM SCore.tvf_EntityTypes (@Guid, @UserId)";
 
             await ExecuteQueryAsync(baseQuery, reader =>
@@ -1093,6 +1099,7 @@ WHERE i.RowStatus NOT IN (0,254)
                     Name = reader.GetString(reader.GetOrdinal("Name")),
                     HasDocuments = reader.GetBoolean(reader.GetOrdinal("HasDocuments")),
                     IsRootEntity = reader.GetBoolean(reader.GetOrdinal("IsRootEntity")),
+                    IsDeletable = reader.GetBoolean(reader.GetOrdinal("IsDeletable")),
                     ObjectSecurity = new List<Types.ObjectSecurity>
                     {
                         new Types.ObjectSecurity
@@ -1112,6 +1119,7 @@ WHERE i.RowStatus NOT IN (0,254)
                     entityType.IsReadOnlyOffline = reader.GetBoolean(reader.GetOrdinal("IsReadOnlyOffline"));
                     entityType.IsRequiredSystemData = reader.GetBoolean(reader.GetOrdinal("IsRequiredSystemData"));
                     entityType.DoNotTrackChanges = reader.GetBoolean(reader.GetOrdinal("DoNotTrackChanges"));
+                    entityType.IsDeletable = reader.GetBoolean(reader.GetOrdinal("IsDeletable"));
                 }
             },
             new SqlParameter("@Guid", guid),
@@ -1181,7 +1189,7 @@ WHERE i.RowStatus NOT IN (0,254)
             // Load additional properties if required.
             await ExecuteQueryAsync(
                 forProcessingOnly ?
-                "SELECT RowStatus, RowVersion, Guid, Name, EntityDataTypeGuid, ExternalSearchPageUrl, EntityPropertyGroupGuid, IsReadOnly, IsImmutable, IsCompulsory, MaxLength, Precision, Scale, EntityDataTypeName, IsObjectLabel, DropDownListDefinitionGuid, IsParentRelationship, EntityHobtGuid, IsIncludedInformation, CanRead, CanWrite, IsUpperCase, IsVirtual, ShowOnMobile, IsAlwaysVisibleInGroup, IsAlwaysVisibleInGroup_Mobile   FROM SCore.tvf_PropertiesForEntityType (@Guid, @UserId)" :
+                "SELECT RowStatus, RowVersion, Guid, Name, EntityDataTypeGuid, ExternalSearchPageUrl, EntityPropertyGroupGuid, IsReadOnly, IsImmutable, IsCompulsory, MaxLength, Precision, Scale, EntityDataTypeName, IsObjectLabel, DropDownListDefinitionGuid, IsParentRelationship, EntityHobtGuid, IsIncludedInformation, CanRead, CanWrite, IsUpperCase, IsVirtual, ShowOnMobile, IsAlwaysVisibleInGroup, IsAlwaysVisibleInGroup_Mobile, HelpText   FROM SCore.tvf_PropertiesForEntityType (@Guid, @UserId)" :
                 "SELECT * FROM SCore.tvf_PropertiesForEntityType (@Guid, @UserId)",
                 reader =>
                 {
@@ -1213,6 +1221,7 @@ WHERE i.RowStatus NOT IN (0,254)
                             ShowOnMobile = reader.GetBoolean(reader.GetOrdinal("ShowOnMobile")),
                             IsAlwaysVisibleInGroup = reader.GetBoolean(reader.GetOrdinal("IsAlwaysVisibleInGroup")),
                             IsAlwaysVisibleInGroup_Mobile = reader.GetBoolean(reader.GetOrdinal("IsAlwaysVisibleInGroup_Mobile")),
+                            HelpText = reader.GetString(reader.GetOrdinal("HelpText")),
                             ObjectSecurity = new List<Types.ObjectSecurity>
                             {
                             new Types.ObjectSecurity
@@ -1241,14 +1250,50 @@ WHERE i.RowStatus NOT IN (0,254)
                             entityProperty.ForeignEntityTypeGuid = reader.GetGuid(reader.GetOrdinal("ForeignEntityTypeGuid"));
                             entityProperty.AllowBulkChange = reader.GetBoolean(reader.GetOrdinal("AllowBulkChange"));
                             entityProperty.ExternalSearchPageUrl = reader.GetString(reader.GetOrdinal("ExternalSearchPageUrl"));
+                            entityProperty.HelpText = reader.GetString(reader.GetOrdinal("HelpText"));
                         }
 
                         if (forInformationView)
                         {
                             entityProperty.IsReadOnly = true;
                         }
+                        var duplicate = entityType.EntityProperties.FirstOrDefault(x =>
+                            x.Guid == entityProperty.Guid
+                            || (
+                                x.Name.Equals(entityProperty.Name, StringComparison.OrdinalIgnoreCase)
+                                && x.EntityHoBTGuid == entityProperty.EntityHoBTGuid
+                            ));
 
-                        entityType.EntityProperties.Add(entityProperty);
+                        if (duplicate != null)
+                        {
+                            Console.WriteLine(
+                                $"DUPLICATE ENTITY PROPERTY DETECTED | " +
+                                $"Name={entityProperty.Name} | " +
+                                $"Guid={entityProperty.Guid} | " +
+                                $"ExistingGuid={duplicate.Guid} | " +
+                                $"Label={entityProperty.Label} | " +
+                                $"HoBT={entityProperty.EntityHoBTGuid}");
+                        }
+                        var existingProperty = entityType.EntityProperties.FirstOrDefault(x =>
+                            x.Guid == entityProperty.Guid
+                            || (
+                                x.Name.Equals(entityProperty.Name, StringComparison.OrdinalIgnoreCase)
+                                && x.EntityHoBTGuid == entityProperty.EntityHoBTGuid
+                            ));
+
+                        if (existingProperty == null)
+                        {
+                            entityType.EntityProperties.Add(entityProperty);
+                        }
+                        else
+                        {
+                            // keep latest hydrated label metadata
+                            existingProperty.Label = entityProperty.Label;
+                            existingProperty.HelpText = entityProperty.HelpText;
+                            existingProperty.SortOrder = entityProperty.SortOrder;
+                            existingProperty.GroupSortOrder = entityProperty.GroupSortOrder;
+                            existingProperty.IsHidden = entityProperty.IsHidden;
+                        }
                     }
                 },
                 new SqlParameter("@Guid", entityType.Guid),
@@ -1956,12 +2001,29 @@ WHERE i.RowStatus NOT IN (0,254)
                 var dataObject = request.DataObject;
                 dataObject.ValidationResults = new List<ValidationResult>();
                 dataObject.HasValidationMessages = false;
-
+                dataObject.SaveButtonDisabled = false;
                 // Row Version Validation
-                var rowVersionValid = await ValidateRowVersion(dataObject, entityType, connection, transaction);
-                if (!rowVersionValid)
+                if (!request.ValidateOnly)
                 {
-                    AddRowVersionValidationMessage(dataObject, connection, transaction);
+
+                    var rowVersionValid = await ValidateRowVersion(
+                        dataObject,
+                        entityType,
+                        connection,
+                        transaction);
+
+                    if (!rowVersionValid)
+                    {
+                        AddRowVersionValidationMessage(dataObject, connection, transaction);
+
+                        dataObject.HasValidationMessages = true;
+                        dataObject.SaveButtonDisabled = true;
+
+                        response.DataObject = dataObject;
+
+                        await QueryBuilder.RollbackTransactionAsync(transaction);
+                        return response;
+                    }
                 }
 
                 // Perform Validation and Upsert
@@ -1984,6 +2046,17 @@ WHERE i.RowStatus NOT IN (0,254)
 
                         // Apply validation results but continue processing
                         Validation.ApplyValidationResults(ref dataObject, false, entityType, validationResults, entityHoBT.Guid, false);
+
+                        if (!request.ValidateOnly && dataObject.ValidationResults.Any(v => v.IsInvalid))
+                        {
+                            dataObject.HasValidationMessages = true;
+                            dataObject.SaveButtonDisabled = true;
+
+                            response.DataObject = dataObject;
+
+                            await QueryBuilder.RollbackTransactionAsync(transaction);
+                            return response;
+                        }
                     }
 
                     // Perform Upsert Logic (Validation-Only or Actual Upsert)
@@ -2000,6 +2073,9 @@ WHERE i.RowStatus NOT IN (0,254)
                 if (!request.ValidateOnly)
                 {
                     response.DataObject = await ReQueryObject(dataObject, request);
+                    Console.WriteLine(
+                        $"SAVE SUCCESS REQUERY Guid={response.DataObject.Guid} " +
+                        $"Returned RowVersion={response.DataObject.RowVersion}");
                 }
                 else
                 {
@@ -2090,10 +2166,62 @@ WHERE i.RowStatus NOT IN (0,254)
             return rsl;
         }
 
+        public async Task<InvoiceScheduleConfigurationTotalsRow> GetInvoiceScheduleConfigurationTotalsAsync(
+    int userId,
+    Guid invoiceScheduleGuid,
+    CancellationToken ct = default)
+        {
+            var result = new InvoiceScheduleConfigurationTotalsRow();
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(ct);
+
+            await using var cmd = new SqlCommand("SFin.InvoiceScheduleConfigurationTotalsGet", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 30
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int)
+            {
+                Value = userId
+            });
+
+            cmd.Parameters.Add(new SqlParameter("@ParentGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = invoiceScheduleGuid
+            });
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                return result;
+            }
+
+            result.MonthlyTotalAmount = reader.IsDBNull(reader.GetOrdinal("MonthlyTotalAmount"))
+                ? 0m
+                : Convert.ToDecimal(reader["MonthlyTotalAmount"]);
+
+            result.PercentageTotalPercentage = reader.IsDBNull(reader.GetOrdinal("PercentageTotalPercentage"))
+                ? 0m
+                : Convert.ToDecimal(reader["PercentageTotalPercentage"]);
+
+            result.PercentageTotalAmount = reader.IsDBNull(reader.GetOrdinal("PercentageTotalAmount"))
+                ? 0m
+                : Convert.ToDecimal(reader["PercentageTotalAmount"]);
+
+            result.ScheduleAmount = reader.IsDBNull(reader.GetOrdinal("ScheduleAmount"))
+                ? 0m
+                : Convert.ToDecimal(reader["ScheduleAmount"]);
+
+            return result;
+        }
+
         public async Task<IReadOnlyList<JobInvoiceScheduleRow>> GetJobInvoiceSchedulesAsync(
-int userId,
-Guid parentGuid,
-CancellationToken ct)
+    int userId,
+    Guid parentGuid,
+    CancellationToken ct)
         {
             var results = new List<JobInvoiceScheduleRow>();
 
@@ -2101,37 +2229,44 @@ CancellationToken ct)
             await conn.OpenAsync(ct);
 
             const string sql = @"
-SELECT root_hobt.ID, root_hobt.Guid, root_hobt.Name, root_hobt.DescriptionOfWork,
-       root_hobt.Amount, root_hobt.TriggerId, root_hobt.ExpectedDate
-FROM [SFin].[tvf_JobInvoiceSchedules](@UserId, @ParentGuid) AS root_hobt
-WHERE root_hobt.RowStatus NOT IN (0,254)
-ORDER BY root_hobt.ExpectedDate,
-         root_hobt.ID;";
+            SELECT
+                root_hobt.ID,
+                root_hobt.Guid,
+                root_hobt.Name,
+                root_hobt.DescriptionOfWork,
+                root_hobt.Amount,
+                root_hobt.TriggerId,
+                root_hobt.ExpectedDate,
+                root_hobt.RibaStageGuid,
+                root_hobt.RibaStageName
+            FROM [SFin].[tvf_JobInvoiceSchedules](@UserId, @ParentGuid) AS root_hobt
+            WHERE root_hobt.RowStatus NOT IN (0,254)
+            ORDER BY
+                root_hobt.ExpectedDate,
+                root_hobt.ID;";
 
-            await using var cmd = new SqlCommand(sql, conn) { CommandType = CommandType.Text };
+            await using var cmd = new SqlCommand(sql, conn)
+            {
+                CommandType = CommandType.Text
+            };
+
             cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = userId });
             cmd.Parameters.Add(new SqlParameter("@ParentGuid", SqlDbType.UniqueIdentifier) { Value = parentGuid });
 
             await using var r = await cmd.ExecuteReaderAsync(ct);
+
             while (await r.ReadAsync(ct))
             {
-                long id = 0;
-                if (!r.IsDBNull(0))
-                {
-                    var t = r.GetFieldType(0);
-                    id = t == typeof(long) ? r.GetInt64(0)
-                         : t == typeof(int) ? r.GetInt32(0)
-                         : Convert.ToInt64(r.GetValue(0));
-                }
-
                 results.Add(new JobInvoiceScheduleRow(
-                    Id: id,
-                    Guid: r.IsDBNull(1) ? Guid.Empty : r.GetGuid(1),
-                    Name: r.IsDBNull(2) ? "" : r.GetString(2),
-                    DescriptionOfWork: r.IsDBNull(3) ? "" : r.GetString(3),
-                    Amount: r.IsDBNull(4) ? 0m : Convert.ToDecimal(r.GetValue(4)),
-                    TriggerId: r.IsDBNull(5) ? "Manual" : Convert.ToString(r.GetValue(5)) ?? "",
-                    ExpectedDateUtc: r.IsDBNull(6) ? (DateTime?)null : r.GetDateTime(6)
+                    Id: r.IsDBNull(r.GetOrdinal("ID")) ? 0 : Convert.ToInt64(r["ID"]),
+                    Guid: r.IsDBNull(r.GetOrdinal("Guid")) ? Guid.Empty : r.GetGuid(r.GetOrdinal("Guid")),
+                    Name: r.IsDBNull(r.GetOrdinal("Name")) ? string.Empty : r.GetString(r.GetOrdinal("Name")),
+                    DescriptionOfWork: r.IsDBNull(r.GetOrdinal("DescriptionOfWork")) ? string.Empty : r.GetString(r.GetOrdinal("DescriptionOfWork")),
+                    Amount: r.IsDBNull(r.GetOrdinal("Amount")) ? 0m : Convert.ToDecimal(r["Amount"]),
+                    TriggerId: r.IsDBNull(r.GetOrdinal("TriggerId")) ? string.Empty : Convert.ToString(r["TriggerId"]) ?? string.Empty,
+                    ExpectedDateUtc: r.IsDBNull(r.GetOrdinal("ExpectedDate")) ? null : r.GetDateTime(r.GetOrdinal("ExpectedDate")),
+                    RibaStageGuid: r.IsDBNull(r.GetOrdinal("RibaStageGuid")) ? null : r.GetGuid(r.GetOrdinal("RibaStageGuid")),
+                    RibaStageName: r.IsDBNull(r.GetOrdinal("RibaStageName")) ? string.Empty : r.GetString(r.GetOrdinal("RibaStageName"))
                 ));
             }
 
@@ -4528,6 +4663,173 @@ EXECUTE SCore.UserCreate
             }
         }
 
+        public async Task<List<InvoiceScheduleDrawdownStageLookupRow>> InvoiceScheduleDrawdownStageLookupGetAsync(
+    int userId,
+    Guid invoiceScheduleGuid,
+    CancellationToken ct = default)
+        {
+            var result = new List<InvoiceScheduleDrawdownStageLookupRow>();
+
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = new SqlCommand("SJob.RibaStageLookupForInvoiceScheduleDrawdownsGet", connection)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 30
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int)
+            {
+                Value = userId
+            });
+
+            cmd.Parameters.Add(new SqlParameter("@InvoiceScheduleGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = invoiceScheduleGuid == Guid.Empty
+                    ? DBNull.Value
+                    : invoiceScheduleGuid
+            });
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            while (await reader.ReadAsync(ct))
+            {
+                result.Add(new InvoiceScheduleDrawdownStageLookupRow
+                {
+                    Guid = reader.IsDBNull(reader.GetOrdinal("Guid"))
+                        ? Guid.Empty
+                        : reader.GetGuid(reader.GetOrdinal("Guid")),
+                    Name = reader.IsDBNull(reader.GetOrdinal("Name"))
+                        ? string.Empty
+                        : reader.GetString(reader.GetOrdinal("Name"))
+                });
+            }
+
+            return result;
+        }
+
+        public async Task<int> InvoiceScheduleDrawdownsBulkUpdateAsync(
+    Guid invoiceScheduleGuid,
+    string gridCode,
+    IEnumerable<InvoiceScheduleDrawdownBulkUpdateRow> rows,
+    CancellationToken ct = default)
+        {
+            if (invoiceScheduleGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Invoice schedule guid is required.", nameof(invoiceScheduleGuid));
+            }
+
+            var cleanRows = rows
+                .Where(x => x.Guid != Guid.Empty)
+                .ToList();
+
+            if (cleanRows.Count == 0)
+            {
+                return 0;
+            }
+
+            var isMonthly = string.Equals(gridCode, "INVSCEDMONTHLY", StringComparison.OrdinalIgnoreCase);
+            var isPercentage = string.Equals(gridCode, "INVSCEDULEPERCENTAGE", StringComparison.OrdinalIgnoreCase);
+
+            if (!isMonthly && !isPercentage)
+            {
+                throw new InvalidOperationException($"Grid '{gridCode}' is not supported for inline drawdown editing.");
+            }
+
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+
+            try
+            {
+                var updatedCount = 0;
+
+                foreach (var row in cleanRows)
+                {
+                    if (row.OnDayOfMonth is null)
+                    {
+                        throw new InvalidOperationException("On Day Of Month is required for all drawdown rows.");
+                    }
+
+                    if (isMonthly)
+                    {
+                        await using var cmd = new SqlCommand("SFin.InvoiceScheduleMonthConfigurationUpsert", connection, (SqlTransaction)transaction)
+                        {
+                            CommandType = CommandType.StoredProcedure,
+                            CommandTimeout = 30
+                        };
+
+                        cmd.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = row.Guid });
+                        cmd.Parameters.Add(new SqlParameter("@InvoiceScheduleGuid", SqlDbType.UniqueIdentifier) { Value = invoiceScheduleGuid });
+                        cmd.Parameters.Add(new SqlParameter("@OnDayOfMonth", SqlDbType.Date) { Value = row.OnDayOfMonth.Value.Date });
+                        cmd.Parameters.Add(new SqlParameter("@PeriodNumber", SqlDbType.Int) { Value = row.PeriodNumber });
+                        cmd.Parameters.Add(new SqlParameter("@Amount", SqlDbType.Decimal) { Precision = 19, Scale = 2, Value = row.Amount });
+                        cmd.Parameters.Add(new SqlParameter("@Description", SqlDbType.NVarChar) { Value = row.Description ?? string.Empty });
+                        cmd.Parameters.Add(new SqlParameter("@RibaStageGuid", SqlDbType.UniqueIdentifier)
+                        {
+                            Value = row.RibaStageGuid.HasValue && row.RibaStageGuid.Value != Guid.Empty
+                                ? row.RibaStageGuid.Value
+                                : DBNull.Value
+                        });
+
+                        await cmd.ExecuteNonQueryAsync(ct);
+                        updatedCount++;
+                    }
+                    else
+                    {
+                        await using var cmd = new SqlCommand("SFin.InvoiceSchedulePercentageConfigurationUpsert", connection, (SqlTransaction)transaction)
+                        {
+                            CommandType = CommandType.StoredProcedure,
+                            CommandTimeout = 30
+                        };
+
+                        cmd.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = row.Guid });
+                        cmd.Parameters.Add(new SqlParameter("@InvoiceScheduleGuid", SqlDbType.UniqueIdentifier) { Value = invoiceScheduleGuid });
+                        cmd.Parameters.Add(new SqlParameter("@OnDayOfMonth", SqlDbType.Date) { Value = row.OnDayOfMonth.Value.Date });
+                        cmd.Parameters.Add(new SqlParameter("@PeriodNumber", SqlDbType.Int) { Value = row.PeriodNumber });
+                        cmd.Parameters.Add(new SqlParameter("@Percentage", SqlDbType.Decimal) { Precision = 19, Scale = 2, Value = row.Percentage });
+                        cmd.Parameters.Add(new SqlParameter("@Description", SqlDbType.NVarChar) { Value = row.Description ?? string.Empty });
+                        cmd.Parameters.Add(new SqlParameter("@RibaStageGuid", SqlDbType.UniqueIdentifier)
+                        {
+                            Value = row.RibaStageGuid.HasValue && row.RibaStageGuid.Value != Guid.Empty
+                                ? row.RibaStageGuid.Value
+                                : DBNull.Value
+                        });
+
+                        await cmd.ExecuteNonQueryAsync(ct);
+                        updatedCount++;
+                    }
+                }
+
+                await transaction.CommitAsync(ct);
+                return updatedCount;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        public sealed class InvoiceScheduleDrawdownBulkUpdateRow
+        {
+            public Guid Guid { get; set; }
+            public int PeriodNumber { get; set; }
+            public decimal Amount { get; set; }
+            public decimal Percentage { get; set; }
+            public DateTime? OnDayOfMonth { get; set; }
+            public string Description { get; set; } = string.Empty;
+            public Guid? RibaStageGuid { get; set; }
+        }
+
+        public sealed class InvoiceScheduleDrawdownStageLookupRow
+        {
+            public Guid Guid { get; set; }
+            public string Name { get; set; } = string.Empty;
+        }
+
         #endregion Public Methods
 
         #region Private Methods
@@ -4860,23 +5162,33 @@ EXECUTE SCore.UserCreate
         }
 
         private void AddRowVersionValidationMessage(
-                    DataObject dataObject,
-                    SqlConnection connection,
-                    SqlTransaction transaction)
+    DataObject dataObject,
+    SqlConnection connection,
+    SqlTransaction transaction)
         {
             const string query = "SELECT SCore.GetLastModificationUser(@Guid)";
-            var message = "Another user has edited this record, please reload the record before making any changes.";
+            const string fallbackMessage =
+                "This record has changed since it was loaded. Please reload the record before making any further changes.";
+
+            var message = fallbackMessage;
 
             using var command = new SqlCommand(query, connection, transaction);
             command.Parameters.AddWithValue("@Guid", dataObject.Guid);
 
             var result = command.ExecuteScalar();
-            if (result != null)
+
+            if (result != null && result != DBNull.Value)
             {
-                message = $"{result} has edited this record, please reload the record before making any changes.";
+                var modifiedBy = Convert.ToString(result);
+
+                message = string.IsNullOrWhiteSpace(modifiedBy)
+                    ? fallbackMessage
+                    : $"This record has changed since it was loaded. Last changed by {modifiedBy}. Please reload the record before making any further changes.";
             }
 
             dataObject.HasValidationMessages = true;
+            dataObject.SaveButtonDisabled = true;
+
             dataObject.ValidationResults.Add(new ValidationResult
             {
                 IsInvalid = true,
@@ -6162,17 +6474,28 @@ EXECUTE SCore.UserCreate
         }
 
         private async Task<bool> ValidateRowVersion(
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                    DataObject dataObject,
+            DataObject dataObject,
             EntityType entityType,
             SqlConnection connection,
             SqlTransaction transaction)
         {
-            return await Validation.CheckRowVersionMatches(
+            Console.WriteLine(
+                $"ROWVERSION CHECK Guid={dataObject.Guid} " +
+                $"EntityTypeGuid={dataObject.EntityTypeGuid} " +
+                $"Client RowVersion={dataObject.RowVersion}");
+
+            var rowVersionValid = await Validation.CheckRowVersionMatches(
                 entityType,
                 dataObject.RowVersion,
                 dataObject.Guid,
                 connection,
                 transaction);
+
+            Console.WriteLine(
+                $"ROWVERSION CHECK RESULT Guid={dataObject.Guid} " +
+                $"Valid={rowVersionValid}");
+
+            return rowVersionValid;
         }
 
         /*
@@ -6227,6 +6550,13 @@ EXECUTE SCore.UserCreate
         #endregion Private Methods
     }
 
+    public sealed class InvoiceScheduleConfigurationTotalsRow
+    {
+        public decimal MonthlyTotalAmount { get; set; }
+        public decimal PercentageTotalPercentage { get; set; }
+        public decimal PercentageTotalAmount { get; set; }
+        public decimal ScheduleAmount { get; set; }
+    }
     public sealed record JobInvoiceScheduleRow(
     long Id,
     Guid Guid,
@@ -6234,6 +6564,8 @@ EXECUTE SCore.UserCreate
     string DescriptionOfWork,
     decimal Amount,
     string TriggerId,
-    DateTime? ExpectedDateUtc
+    DateTime? ExpectedDateUtc,
+    Guid? RibaStageGuid,
+    string RibaStageName
 );
 }

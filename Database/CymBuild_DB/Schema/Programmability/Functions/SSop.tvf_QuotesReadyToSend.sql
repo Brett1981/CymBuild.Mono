@@ -1,11 +1,15 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SSop].[tvf_QuotesReadyToSend]')
+GO
+
 CREATE FUNCTION [SSop].[tvf_QuotesReadyToSend]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN
 (

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[ActivitiesValidate]')
+GO
 CREATE FUNCTION [SJob].[ActivitiesValidate]
 	(
 		@Guid UNIQUEIDENTIFIER,

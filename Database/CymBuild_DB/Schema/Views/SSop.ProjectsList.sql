@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[ProjectsList]')
+GO
 CREATE VIEW [SSop].[ProjectsList]
-	   --WITH SCHEMABINDING
+	        --WITH SCHEMABINDING
 AS
 SELECT	root_hobt.ID,
 		root_hobt.RowStatus,

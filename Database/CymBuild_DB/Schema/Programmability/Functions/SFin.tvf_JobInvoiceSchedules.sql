@@ -1,5 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create function [SFin].[tvf_JobInvoiceSchedules]')
 GO
 
@@ -185,11 +186,16 @@ RETURN
     RibaConfigs AS
     (
         SELECT
-            riba.ID
+            riba.ID,
+			rs.Description AS RibaStageName,
+			rs.Guid AS RibaStageGuid
         FROM SFin.InvoiceScheduleRibaConfiguration AS riba
+		JOIN SJob.RibaStages AS rs ON (riba.ID = rs.ID)
         WHERE riba.RowStatus NOT IN (0, 254)
         GROUP BY
-            riba.ID
+            riba.ID,
+			rs.Description,
+			rs.Guid
     )
 
     SELECT
@@ -249,7 +255,10 @@ RETURN
                 ELSE 0
             END
             AS bit
-        ) AS IsSystemGeneratedManual
+        ) AS IsSystemGeneratedManual,
+	CASE WHEN riba.RibaStageName IS NULL THEN N'' ELSE riba.RibaStageName END AS RibaStageName,
+	CASE WHEN riba.RibaStageGuid IS NULL THEN '00000000-0000-0000-0000-000000000000' ELSE riba.RibaStageGuid END AS RibaStageGuid
+
     FROM ScheduleBase AS sb
     JOIN SFin.InvoiceScheduleTrigger AS ist
         ON ist.ID = sb.TriggerId

@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCrm].[Contact_MergeInfo]')
+GO
 CREATE VIEW [SCrm].[Contact_MergeInfo]
-	--WITH SCHEMABINDING
+	    --WITH SCHEMABINDING
 AS
 	SELECT
 			c.ID,

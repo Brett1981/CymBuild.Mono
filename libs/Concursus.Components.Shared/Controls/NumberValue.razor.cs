@@ -6,19 +6,19 @@ namespace Concursus.Components.Shared.Controls;
 
 public partial class NumberValue
 {
-    [Parameter] public DashboardMetric? Metric { get; set; }
 
-    protected void HandleClickOnMetric(string? metricGuid, string? pageUri)
+    private bool CanOpenMetric =>
+        !string.IsNullOrWhiteSpace(Metric?.Guid)
+        && !string.IsNullOrWhiteSpace(Metric?.PageUri);
+
+    private void HandleClickOnMetric()
     {
-        if (string.IsNullOrEmpty(metricGuid) || string.IsNullOrEmpty(pageUri)) return;
-        try
+        if (!CanOpenMetric)
         {
-            Navigation.NavigateTo(pageUri + "/" + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(metricGuid).ToString());
+            return;
         }
-        catch (Exception ex)
-        {
-            var exception = ex.Message;
-            if (exception != "") throw new Exception(ex.Message);
-        }
+
+        Navigation.NavigateTo(
+            $"{Metric!.PageUri}/{ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(Metric.Guid)}");
     }
 }

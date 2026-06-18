@@ -251,8 +251,3 @@ GO
 ALTER TABLE [SCore].[EntityPropertyGroups] WITH NOCHECK
   ADD CONSTRAINT [FK_EntityPropertyGroups_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[EntityPropertyGroups]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Records to group properties together', 'SCHEMA', N'SCore', 'TABLE', N'EntityPropertyGroups'
-GO

@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SOffice].[OutlookEmail_SysProcessingUpdate]')
+GO
+
 
 
 CREATE PROCEDURE [SOffice].[OutlookEmail_SysProcessingUpdate]

@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SSop].[ContractsUpsert]')
+GO
 CREATE PROCEDURE [SSop].[ContractsUpsert]
 (
     @AccountGuid UNIQUEIDENTIFIER,

@@ -161,8 +161,3 @@ GO
 ALTER TABLE [SCore].[Languages] WITH NOCHECK
   ADD CONSTRAINT [FK_Languages_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[Languages]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'A List of Languages to be used with Language Labels', 'SCHEMA', N'SCore', 'TABLE', N'Languages'
-GO

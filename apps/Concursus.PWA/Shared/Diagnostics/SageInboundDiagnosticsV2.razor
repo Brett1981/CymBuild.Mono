@@ -270,6 +270,16 @@
                                                 Run Sync Now
                                             </button>
 
+                                            @if (CanApplySageReference(row))
+                                            {
+                                                <button type="button"
+                                                        class="cb-v2-btn-secondary"
+                                                        @onclick="() => ApplySageReferenceAsync(row)"
+                                                        disabled="@IsRowBusy(row)">
+                                                    Apply Missing Sage Ref
+                                                </button>
+                                            }
+
                                             <button type="button" class="cb-v2-btn-secondary" @onclick="() => RequeueAsync(row, true)" disabled="@(!row.CanForceRequeue || IsRowBusy(row))">
                                                 Force Requeue
                                             </button>
@@ -554,6 +564,58 @@
         }
     }
 
+    private async Task ApplySageReferenceAsync(SageInboundDiagnosticsRowModel row)
+        {
+            if (row is null)
+            {
+                return;
+            }
+
+            if (row.TransactionId <= 0)
+            {
+                _isError = true;
+                _message = "The selected row does not contain a valid transaction id.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(row.LastSageTransactionReference))
+            {
+                _isError = true;
+                _message = "The selected row does not contain a Sage transaction reference to apply.";
+                return;
+            }
+
+            EnsureFormHelper();
+
+            _rowActionGuid = row.CymBuildDocumentGuid;
+            _message = string.Empty;
+            _isError = false;
+
+            try
+            {
+                var appliedCount = await _formHelper!.SageInboundDiagnosticsApplyTransactionReferencesAsync(
+                    statusGuid: row.Guid,
+                    transactionId: row.TransactionId,
+                    dryRun: false);
+
+                _message = appliedCount > 0
+                    ? $"Sage reference {DisplayText(row.LastSageTransactionReference)} applied to {DisplayText(row.DisplayTransactionNumber)}."
+                    : $"No Sage reference update was required for {DisplayText(row.DisplayTransactionNumber)}.";
+
+                await LoadAsync();
+            }
+            catch (Exception ex)
+            {
+                _isError = true;
+                _message = $"Apply Sage reference failed for {DisplayText(row.DisplayTransactionNumber)}: {ex.Message}";
+            }
+            finally
+            {
+                _rowActionGuid = null;
+                StateHasChanged();
+            }
+        }
+
     private async Task RunSyncNowAsync(SageInboundDiagnosticsRowModel row)
     {
         if (row.CymBuildDocumentGuid == Guid.Empty)
@@ -671,6 +733,32 @@
     private bool IsRowBusy(SageInboundDiagnosticsRowModel row)
     {
         return _isBusy || (_rowActionGuid.HasValue && _rowActionGuid.Value == row.CymBuildDocumentGuid);
+    }
+
+    private static bool CanApplySageReference(SageInboundDiagnosticsRowModel row)
+    {
+        if (row is null)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(row.LastSageTransactionReference))
+        {
+            return false;
+        }
+
+        var existingReference = !string.IsNullOrWhiteSpace(row.TransactionSageTransactionReference)
+            ? row.TransactionSageTransactionReference
+            : row.MatchedTransactionSageTransactionReference;
+
+        if (!string.IsNullOrWhiteSpace(existingReference))
+        {
+            return false;
+        }
+
+        return row.TransactionId > 0 ||
+               row.TransactionGuid.HasValue ||
+               row.MatchedTransactionGuid.HasValue;
     }
 
     private string GetSummaryCardClass(string? statusCode)

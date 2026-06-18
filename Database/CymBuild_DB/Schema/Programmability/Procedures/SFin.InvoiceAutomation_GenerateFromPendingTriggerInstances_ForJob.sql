@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SFin].[InvoiceAutomation_GenerateFromPendingTriggerInstances_ForJob]')
+GO
 CREATE PROCEDURE [SFin].[InvoiceAutomation_GenerateFromPendingTriggerInstances_ForJob]
 (
       @JobGuid             UNIQUEIDENTIFIER

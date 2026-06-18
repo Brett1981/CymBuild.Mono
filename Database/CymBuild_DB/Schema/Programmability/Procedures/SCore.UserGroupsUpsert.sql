@@ -1,5 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[UserGroupsUpsert]')
+GO
+
+
 CREATE PROCEDURE [SCore].[UserGroupsUpsert]
   @UserGuid  UNIQUEIDENTIFIER,
   @GroupGuid UNIQUEIDENTIFIER,

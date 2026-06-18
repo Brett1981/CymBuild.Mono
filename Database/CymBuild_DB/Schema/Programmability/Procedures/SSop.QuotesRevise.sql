@@ -1,7 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
 PRINT (N'Create procedure [SSop].[QuotesRevise]')
 GO
+
 
 CREATE PROCEDURE [SSop].[QuotesRevise]
     @SourceGuid UNIQUEIDENTIFIER,
@@ -17,18 +19,18 @@ BEGIN
 
     SELECT @SourceID = q.ID
     FROM SSop.Quotes AS q
-    WHERE q.Guid = @SourceGuid;
+    WHERE q.Guid = @SourceGuid
+      AND q.RowStatus NOT IN (0,254);
 
-    IF (@@ROWCOUNT <> 1)
-    BEGIN
-        ;THROW 60000, N'Invalid source Quote', 1;
-    END;
+    IF (@SourceID IS NULL)
+        THROW 60000, N'Invalid source Quote', 1;
 
     IF EXISTS
     (
         SELECT 1
         FROM SSop.Quotes AS q
         WHERE q.Guid = @SourceGuid
+          AND q.RowStatus NOT IN (0,254)
           AND q.DateAccepted IS NOT NULL
     )
     BEGIN
@@ -74,7 +76,9 @@ BEGIN
         AgentContractID,
         MarketId,
         SectorId,
-        JobTypeId
+        JobTypeId,
+        DataClassificationID,
+        SecurityClassificationID
     )
     SELECT
         0,
@@ -110,7 +114,9 @@ BEGIN
         q.AgentContractID,
         q.MarketId,
         q.SectorId,
-        q.JobTypeId
+        q.JobTypeId,
+        q.DataClassificationID,
+        q.SecurityClassificationID
     FROM SSop.Quotes AS q
     OUTER APPLY
     (
@@ -125,7 +131,7 @@ BEGIN
     ) AS latest_revision
     WHERE q.ID = @SourceID;
 
-    SELECT @ID = SCOPE_IDENTITY();
+    SELECT @ID = CONVERT(INT, SCOPE_IDENTITY());
 
     DECLARE @QuoteItems SCore.TwoGuidUniqueList;
 
@@ -292,16 +298,24 @@ BEGIN
     SET RowStatus = 1
     WHERE ID = @ID;
 
-    DECLARE @QuoteRevisedStatusGuid UNIQUEIDENTIFIER;
-    DECLARE @QuotingStatusGuid UNIQUEIDENTIFIER;
+    DECLARE
+        @QuoteRevisedStatusGuid UNIQUEIDENTIFIER,
+        @QuotingStatusGuid UNIQUEIDENTIFIER,
+        @NewTransitionGuid UNIQUEIDENTIFIER;
 
     SELECT TOP (1)
         @QuoteRevisedStatusGuid = ws.Guid
     FROM SCore.WorkflowStatus AS ws
     WHERE ws.RowStatus NOT IN (0,254)
       AND ws.ShowInQuotes = 1
-      AND ws.Name = N'Quote Revised'
-    ORDER BY ws.ID;
+      AND ws.Name IN (N'Quote Revised', N'Revised')
+    ORDER BY
+        CASE
+            WHEN ws.Name = N'Quote Revised' THEN 0
+            WHEN ws.Name = N'Revised' THEN 1
+            ELSE 2
+        END,
+        ws.ID;
 
     SELECT TOP (1)
         @QuotingStatusGuid = ws.Guid
@@ -312,17 +326,15 @@ BEGIN
     ORDER BY ws.ID;
 
     IF (@QuoteRevisedStatusGuid IS NULL)
-    BEGIN
-        ;THROW 60000, N'Could not resolve Quote Revised workflow status.', 1;
-    END;
+        THROW 60000, N'Could not resolve Quote Revised workflow status. Please confirm the Quote Revised/Revised WorkflowStatus exists and has ShowInQuotes = 1.', 1;
 
     IF (@QuotingStatusGuid IS NULL)
-    BEGIN
-        ;THROW 60000, N'Could not resolve Quote Quoting workflow status.', 1;
-    END;
-    DECLARE @NewGuid UNIQUEIDENTIFIER = NEWID();
+        THROW 60000, N'Could not resolve Quote Quoting workflow status.', 1;
+
+    SET @NewTransitionGuid = NEWID();
+
     EXEC SCore.DataObjectTransitionUpsert
-        @Guid = @NewGuid,
+        @Guid = @NewTransitionGuid,
         @OldStatusGuid = '00000000-0000-0000-0000-000000000000',
         @StatusGuid = @QuoteRevisedStatusGuid,
         @Comment = N'Quote revised.',
@@ -331,9 +343,10 @@ BEGIN
         @DataObjectGuid = @TargetGuid,
         @IsImported = 1;
 
-    SET @NewGuid = NEWID();
+    SET @NewTransitionGuid = NEWID();
+
     EXEC SCore.DataObjectTransitionUpsert
-        @Guid = @NewGuid,
+        @Guid = @NewTransitionGuid,
         @OldStatusGuid = @QuoteRevisedStatusGuid,
         @StatusGuid = @QuotingStatusGuid,
         @Comment = N'Revision opened for quoting.',

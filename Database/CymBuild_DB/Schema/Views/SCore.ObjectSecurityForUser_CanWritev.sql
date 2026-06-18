@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SCore].[ObjectSecurityForUser_CanWritev]')
+GO
 CREATE VIEW [SCore].[ObjectSecurityForUser_CanWritev]
-        --WITH SCHEMABINDING
+             --WITH SCHEMABINDING
 AS
 	SELECT	do.Guid,
 			i.ID

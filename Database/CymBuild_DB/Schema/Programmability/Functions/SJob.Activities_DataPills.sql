@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SJob].[Activities_DataPills]')
+GO
 CREATE FUNCTION [SJob].[Activities_DataPills]
   (
 	@SurveyorGuid				UNIQUEIDENTIFIER,

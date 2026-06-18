@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SUserInterface].[GridViewDefinitionsDelete]')
+GO
  
 
 CREATE PROCEDURE [SUserInterface].[GridViewDefinitionsDelete]

@@ -77,6 +77,96 @@ BEGIN
       AND qi.Quantity > 0
       AND CASE WHEN qi.ProvideAtStageID = -1 THEN 2 ELSE qi.ProvideAtStageID END > 0;
 
+	  --Check for custom RIBA stages specified for Month configuration.
+	  --Need to ensure they are displayed in the fee drawdown table (with agreed fee = 0)
+	  IF(EXISTS
+			(
+				SELECT 1
+				FROM SFin.InvoiceSchedules root_hobt 
+				JOIN SFin.InvoiceScheduleMonthConfiguration AS invmonthconfig ON (invmonthconfig.InvoiceScheduleId = root_hobt.ID)
+				JOIN SSop.QuoteItems AS qi ON (qi.InvoicingSchedule = root_hobt.ID)
+				JOIN SJob.RibaStages AS Riba ON (Riba.ID = invmonthconfig.RIBAStageId)
+
+				WHERE 
+						(root_hobt.RowStatus NOT IN (0,254))
+					AND (qi.CreatedJobId = @JobId)
+					AND (Riba.IsCustomStage = 1)
+			)
+		)
+		BEGIN
+
+		   INSERT INTO @StageFees
+			(
+				Guid,
+				JobID,
+				RibaStageID,
+				CreatedFromQuoteItemID,
+				AgreedFee
+			)
+			SELECT 
+					NEWID() AS Guid,
+					@JobId AS JobId,
+					Riba.ID AS RibaStageID,
+					invmonthconfig.ID AS CreatedFromQuoteItemID,
+					0.0 AS AgreedFee								--For now it's just 0. 
+			FROM SFin.InvoiceSchedules root_hobt
+			JOIN SSop.Quotes AS q ON (q.ID = root_hobt.QuoteId)
+			JOIN SSop.QuoteItems AS qi ON (qi.InvoicingSchedule = root_hobt.ID)
+			JOIN SSop.QuoteItemTotals AS qit ON qit.ID = qi.ID
+			JOIN SJob.Jobs AS J ON (J.ID = qi.CreatedJobId)
+			JOIN SFin.InvoiceScheduleMonthConfiguration AS invmonthconfig ON (invmonthconfig.InvoiceScheduleId = root_hobt.ID)
+			JOIN SJob.RibaStages AS Riba ON (Riba.ID = invmonthconfig.RIBAStageId)
+			WHERE 
+					(qi.CreatedJobId = @JobId)
+				AND (root_hobt.RowStatus NOT IN (0,254))
+				
+		END;
+
+	  --Same thing for the percetnage as the month configuration.
+	  --We need to ensure it is present in the fee drawdown grid.
+	  IF(EXISTS
+			(
+				SELECT 1
+				FROM SFin.InvoiceSchedules root_hobt 
+				JOIN SFin.InvoiceSchedulePercentageConfiguration AS invpercconfig ON (invpercconfig.InvoiceScheduleId = root_hobt.ID)
+				JOIN SSop.QuoteItems AS qi ON (qi.InvoicingSchedule = root_hobt.ID)
+				JOIN SJob.RibaStages AS Riba ON (Riba.ID = invpercconfig.RIBAStageId)
+
+				WHERE 
+						(root_hobt.RowStatus NOT IN (0,254))
+					AND (qi.CreatedJobId = @JobId)
+					AND (Riba.IsCustomStage = 1)
+			)
+		)
+		BEGIN
+
+		   INSERT INTO @StageFees
+			(
+				Guid,
+				JobID,
+				RibaStageID,
+				CreatedFromQuoteItemID,
+				AgreedFee
+			)
+			SELECT 
+					NEWID() AS Guid,
+					@JobId AS JobId,
+					Riba.ID AS RibaStageID,
+					invpercconfig.ID AS CreatedFromQuoteItemID,
+					0.0 AS AgreedFee --For now, 
+			FROM SFin.InvoiceSchedules root_hobt
+			JOIN SSop.Quotes AS q ON (q.ID = root_hobt.QuoteId)
+			JOIN SSop.QuoteItems AS qi ON (qi.InvoicingSchedule = root_hobt.ID)
+			JOIN SSop.QuoteItemTotals AS qit ON qit.ID = qi.ID
+			JOIN SJob.Jobs AS J ON (J.ID = qi.CreatedJobId)
+			JOIN SFin.InvoiceSchedulePercentageConfiguration AS invpercconfig ON (invpercconfig.InvoiceScheduleId = root_hobt.ID)
+			JOIN SJob.RibaStages AS Riba ON (Riba.ID = invpercconfig.RIBAStageId)
+			WHERE 
+					(qi.CreatedJobId = @JobId)
+				AND (root_hobt.RowStatus NOT IN (0,254))
+				
+		END;
+
     IF NOT EXISTS (SELECT 1 FROM @StageFees)
     BEGIN
         RETURN;

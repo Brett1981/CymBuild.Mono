@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create function [SCore].[EntityQueriesValidate]')
+GO
 CREATE FUNCTION [SCore].[EntityQueriesValidate]
 	(
 		@Guid UNIQUEIDENTIFIER,

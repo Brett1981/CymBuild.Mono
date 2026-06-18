@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SSop].[QuoteItemTotals]')
+GO
 CREATE VIEW [SSop].[QuoteItemTotals]
-             --WITH SCHEMABINDING
+                  --WITH SCHEMABINDING
 AS 
 SELECT	qi.ID,
 		CONVERT(DECIMAL(19, 2), ROUND((qi.Net * (qi.VatRate / 100)), 2)) AS Vat,

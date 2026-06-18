@@ -1,4 +1,6 @@
-﻿CREATE FULLTEXT STOPLIST [Honorifics] AUTHORIZATION [dbo];
+﻿PRINT (N'Create full-text stoplist [Honorifics]')
+GO
+CREATE FULLTEXT STOPLIST [Honorifics] AUTHORIZATION [dbo];
 GO
 
 ALTER FULLTEXT STOPLIST [Honorifics] ADD 'Dr' LANGUAGE 1033;

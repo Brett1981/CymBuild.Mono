@@ -1,7 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create view [SUserInterface].[DropDownListDefinitionsV]')
+GO
 CREATE VIEW [SUserInterface].[DropDownListDefinitionsV]
-             --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 SELECT	ddld.ID,
 		ddld.RowStatus,
@@ -20,4 +23,5 @@ SELECT	ddld.ID,
 		ddld.InformationPageUrl
 FROM	SUserInterface.DropDownListDefinitions ddld
 WHERE	(ddld.RowStatus NOT IN (0, 254))
+
 GO

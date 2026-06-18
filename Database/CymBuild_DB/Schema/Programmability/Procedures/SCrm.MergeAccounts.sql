@@ -1,5 +1,8 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCrm].[MergeAccounts]')
+GO
 CREATE PROCEDURE [SCrm].[MergeAccounts]
 (
 	@FromAccountGuid UNIQUEIDENTIFIER,

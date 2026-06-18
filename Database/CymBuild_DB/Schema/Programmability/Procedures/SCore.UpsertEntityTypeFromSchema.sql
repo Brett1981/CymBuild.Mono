@@ -1,5 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+
+PRINT (N'Create procedure [SCore].[UpsertEntityTypeFromSchema]')
+GO
+
 CREATE PROCEDURE [SCore].[UpsertEntityTypeFromSchema]
   (
     @HobtList SCore.TwoStringBitIndexedList READONLY
@@ -427,7 +431,58 @@ AS
                   AND (t.Name = @CurrentHoBTName)
                   AND (t.Type IN (N'V', N'U'))
 
-      /* Add the needed data object records */
+          /* Add the needed data object records */
+                /*
+            Reconcile existing EntityProperties by natural key before creating
+            DataObjects.
+
+            This prevents the procedure from creating orphan DataObjects and then
+            attempting to insert a duplicate EntityProperty when the initial LEFT JOIN
+            failed to resolve the existing EntityProperties.ID.
+          */
+          PRINT N'Reconciling existing Entity Properties by HoBT and Name.'
+
+          UPDATE  p
+          SET     ID = ep.ID,
+                  EntityPropertyID = ep.ID,
+                  EntityPropertyGuid = ep.Guid,
+                  LanguageLabelID =
+                    CASE
+                        WHEN ISNULL(ep.LanguageLabelID, -1) <> -1 THEN ep.LanguageLabelID
+                        ELSE p.LanguageLabelID
+                    END,
+                  LanguageLabelGuid = COALESCE(ll.Guid, p.LanguageLabelGuid),
+                  LanguageLabelTranslationGuid = COALESCE(llt.Guid, p.LanguageLabelTranslationGuid)
+          FROM
+                  @PropertiesToCreateTable p
+          CROSS APPLY
+                  (
+                      SELECT TOP (1)
+                              ep2.ID,
+                              ep2.Guid,
+                              ep2.LanguageLabelID,
+                              ep2.RowStatus
+                      FROM
+                              SCore.EntityProperties ep2
+                      WHERE
+                              ep2.EntityHoBTID = p.EntityHoBTID
+                              AND ep2.Name = p.Name
+                      ORDER BY
+                              CASE
+                                  WHEN ep2.RowStatus NOT IN (0,254) THEN 0
+                                  WHEN ep2.RowStatus = 254 THEN 1
+                                  ELSE 2
+                              END,
+                              ep2.ID DESC
+                  ) ep
+          LEFT JOIN
+                  SCore.LanguageLabels ll ON ll.ID = ep.LanguageLabelID
+          LEFT JOIN
+                  SCore.LanguageLabelTranslations llt ON llt.LanguageLabelID = ll.ID
+                      AND llt.LanguageID = @LanguageID
+          WHERE
+                  p.RowStatus = 1;
+
       PRINT N'Creating the needed Data Object records.'
 
       INSERT SCore.DataObjects
@@ -629,55 +684,145 @@ AS
   		*/
       PRINT N'Upserting Entity Properties'
 
-      MERGE [SCore].[EntityProperties] tgt
-        USING
-        (
-            SELECT
-                    ID,
-                    EntityHoBTID,
-                    [Name],
-                    [LanguageLabelID],
-                    [IsReadOnly],
-                    [IsHidden],
-                    [MaxLength],
-                    [Precision],
-                    [Scale],
-                    [DoNotTrackChanges],
-                    RowStatus,
-                    EntityDataTypeID,
-                    EntityPropertyGuid
-            FROM
-                    @PropertiesToCreateTable
-        ) AS src
-      ON (tgt.ID = src.ID)
-        AND (tgt.EntityHoBTID = src.EntityHoBTID)
-        AND (tgt.Name = src.Name)
-      WHEN NOT MATCHED
-        THEN INSERT
+      /*
+        Update existing properties first, using either the resolved ID or the
+        natural active key of EntityHoBTID + Name.
+
+        This avoids duplicate-key failures where the property already exists
+        but the staging table did not resolve the ID.
+      */
+      ;WITH SourceProperties AS
+      (
+          SELECT
+                  ID,
+                  EntityHoBTID,
+                  [Name],
+                  [LanguageLabelID],
+                  [IsReadOnly],
+                  [IsHidden],
+                  [MaxLength],
+                  [Precision],
+                  [Scale],
+                  [DoNotTrackChanges],
+                  RowStatus,
+                  EntityDataTypeID,
+                  EntityPropertyGuid,
+                  ROW_NUMBER() OVER
+                  (
+                      PARTITION BY EntityHoBTID, [Name], RowStatus
+                      ORDER BY
+                          CASE WHEN ISNULL(ID, -1) > 0 THEN 0 ELSE 1 END,
+                          ID DESC
+                  ) AS RowNumber
+          FROM
+                  @PropertiesToCreateTable
+      )
+      UPDATE  tgt
+      SET     tgt.RowStatus = src.RowStatus,
+              tgt.LanguageLabelID =
+                CASE
+                    WHEN ISNULL(src.LanguageLabelID, -1) <> -1 THEN src.LanguageLabelID
+                    ELSE tgt.LanguageLabelID
+                END,
+              tgt.IsReadOnly = src.IsReadOnly,
+              tgt.IsHidden = src.IsHidden,
+              tgt.MaxLength = src.MaxLength,
+              tgt.Precision = src.Precision,
+              tgt.Scale = src.Scale,
+              tgt.DoNotTrackChanges = src.DoNotTrackChanges,
+              tgt.EntityDataTypeID = src.EntityDataTypeID
+      FROM
+              SCore.EntityProperties tgt
+      JOIN
+              SourceProperties src ON src.RowNumber = 1
+                  AND
+                  (
+                      tgt.ID = src.ID
+                      OR
+                      (
+                          src.RowStatus = 1
+                          AND tgt.EntityHoBTID = src.EntityHoBTID
+                          AND tgt.Name = src.Name
+                          AND tgt.RowStatus = 1
+                      )
+                  );
+
+      /*
+        Insert only genuinely new active properties.
+
+        Deleted/missing-schema properties are handled by the update path because
+        they originate from existing EntityProperties rows.
+      */
+      ;WITH SourceProperties AS
+      (
+          SELECT
+                  ID,
+                  EntityHoBTID,
+                  [Name],
+                  [LanguageLabelID],
+                  [IsReadOnly],
+                  [IsHidden],
+                  [MaxLength],
+                  [Precision],
+                  [Scale],
+                  [DoNotTrackChanges],
+                  RowStatus,
+                  EntityDataTypeID,
+                  EntityPropertyGuid,
+                  ROW_NUMBER() OVER
+                  (
+                      PARTITION BY EntityHoBTID, [Name], RowStatus
+                      ORDER BY
+                          CASE WHEN ISNULL(ID, -1) > 0 THEN 0 ELSE 1 END,
+                          ID DESC
+                  ) AS RowNumber
+          FROM
+                  @PropertiesToCreateTable
+      )
+      INSERT INTO SCore.EntityProperties
             (
-              [RowStatus],
-              [Guid],
+              RowStatus,
+              Guid,
               [Name],
-              [EntityHoBTID],
-              [LanguageLabelID],
-              [IsReadOnly],
-              [IsHidden],
-              [MaxLength],
+              EntityHoBTID,
+              LanguageLabelID,
+              IsReadOnly,
+              IsHidden,
+              MaxLength,
               [Precision],
-              [Scale],
-              [DoNotTrackChanges],
+              Scale,
+              DoNotTrackChanges,
               EntityDataTypeID
             )
-          VALUES
-            (
-              1, src.EntityPropertyGuid, src.Name, src.EntityHoBTID, src.LanguageLabelID, src.[IsReadOnly], src.[IsHidden], src.[MaxLength], src.[Precision], src.[Scale], src.[DoNotTrackChanges], src.EntityDataTypeID
-            )
-      WHEN MATCHED
-        THEN UPDATE SET
-            RowStatus = src.RowStatus,
-            Scale = src.Scale,
-            tgt.Precision = src.Precision,
-            tgt.EntityDataTypeID = src.EntityDataTypeID;
+      SELECT
+              1,
+              src.EntityPropertyGuid,
+              src.Name,
+              src.EntityHoBTID,
+              src.LanguageLabelID,
+              src.IsReadOnly,
+              src.IsHidden,
+              src.MaxLength,
+              src.Precision,
+              src.Scale,
+              src.DoNotTrackChanges,
+              src.EntityDataTypeID
+      FROM
+              SourceProperties src
+      WHERE
+              src.RowNumber = 1
+              AND src.RowStatus = 1
+              AND NOT EXISTS
+              (
+                  SELECT
+                          1
+                  FROM
+                          SCore.EntityProperties ep
+                  WHERE
+                          ep.RowStatus = 1
+                          AND ep.EntityHoBTID = src.EntityHoBTID
+                          AND ep.Name = src.Name
+              );
     END
   END
 GO

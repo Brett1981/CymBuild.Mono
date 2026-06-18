@@ -1,18 +1,6 @@
 ﻿SET QUOTED_IDENTIFIER ON
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
 PRINT (N'Create table [SCore].[Identities]')
 GO
 CREATE TABLE [SCore].[Identities] (
@@ -381,9 +369,4 @@ PRINT (N'Create foreign key [FK_Identities_RowStatus] on table [SCore].[Identiti
 GO
 ALTER TABLE [SCore].[Identities] WITH NOCHECK
   ADD CONSTRAINT [FK_Identities_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
-GO
-
-PRINT (N'Add extended property [MS_Description] on table [SCore].[Identities]')
-GO
-EXEC sys.sp_addextendedproperty N'MS_Description', N'Users mapped to their Entra ID''s', 'SCHEMA', N'SCore', 'TABLE', N'Identities'
 GO
