@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceBatches]')
 GO
+PRINT (N'Create table [SFin].[InvoiceBatches]')
+GO
 CREATE TABLE [SFin].[InvoiceBatches] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceBatches_RowStatus] DEFAULT (0),

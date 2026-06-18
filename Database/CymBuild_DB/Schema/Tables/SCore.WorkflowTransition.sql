@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[WorkflowTransition]')
 GO
+PRINT (N'Create table [SCore].[WorkflowTransition]')
+GO
 CREATE TABLE [SCore].[WorkflowTransition] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF__WorkflowT__RowSt__75E5CF3D] DEFAULT (1),

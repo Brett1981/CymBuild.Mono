@@ -1,5 +1,9 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceSchedulePercentageConfiguration]')
 GO
+PRINT (N'Create table [SFin].[InvoiceSchedulePercentageConfiguration]')
+GO
+PRINT (N'Create table [SFin].[InvoiceSchedulePercentageConfiguration]')
+GO
 CREATE TABLE [SFin].[InvoiceSchedulePercentageConfiguration] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceSchedulePercentageConfiguration_RowStatus] DEFAULT (0),

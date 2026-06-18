@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SSop].[QuoteSections]')
 GO
+PRINT (N'Create table [SSop].[QuoteSections]')
+GO
 CREATE TABLE [SSop].[QuoteSections] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_QuoteSections_RowStatus] DEFAULT (1),

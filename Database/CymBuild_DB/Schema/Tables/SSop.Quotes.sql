@@ -3,6 +3,16 @@ GO
 
 PRINT (N'Create table [SSop].[Quotes]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SSop].[Quotes]')
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SSop].[Quotes]')
+GO
 CREATE TABLE [SSop].[Quotes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Quotes_RowStatus] DEFAULT (1),

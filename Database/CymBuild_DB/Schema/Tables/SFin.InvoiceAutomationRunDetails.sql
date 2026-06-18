@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceAutomationRunDetails]')
 GO
+PRINT (N'Create table [SFin].[InvoiceAutomationRunDetails]')
+GO
 CREATE TABLE [SFin].[InvoiceAutomationRunDetails] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceAutomationRunDetails_RowStatus] DEFAULT (0),

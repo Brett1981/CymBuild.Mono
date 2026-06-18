@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[ObjectSharePointFolder]')
 GO
+PRINT (N'Create table [SCore].[ObjectSharePointFolder]')
+GO
 CREATE TABLE [SCore].[ObjectSharePointFolder] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ObjectSharePointFolder_RowStatus] DEFAULT (0),

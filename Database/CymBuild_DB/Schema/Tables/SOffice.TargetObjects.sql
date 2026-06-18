@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SOffice].[TargetObjects]')
 GO
+PRINT (N'Create table [SOffice].[TargetObjects]')
+GO
 CREATE TABLE [SOffice].[TargetObjects] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_TargetObjects_Guid] DEFAULT (newid()) ROWGUIDCOL,

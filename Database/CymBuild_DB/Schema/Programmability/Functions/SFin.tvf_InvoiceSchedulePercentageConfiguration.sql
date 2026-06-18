@@ -1,5 +1,7 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
+PRINT (N'Create function [SFin].[tvf_InvoiceSchedulePercentageConfiguration]')
+GO
 
 PRINT (N'Create function [SFin].[tvf_InvoiceSchedulePercentageConfiguration]')
 GO

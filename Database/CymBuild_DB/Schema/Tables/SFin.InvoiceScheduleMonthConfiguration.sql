@@ -1,5 +1,9 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceScheduleMonthConfiguration]')
 GO
+PRINT (N'Create table [SFin].[InvoiceScheduleMonthConfiguration]')
+GO
+PRINT (N'Create table [SFin].[InvoiceScheduleMonthConfiguration]')
+GO
 CREATE TABLE [SFin].[InvoiceScheduleMonthConfiguration] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceScheduleMonthConfiguration_RowStatus] DEFAULT (0),
