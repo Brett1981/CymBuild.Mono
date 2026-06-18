@@ -14,7 +14,7 @@ permissions:
 
 env:
   CONFIGURATION: Release
-  SOLUTION_FILE: CymBuild.Mono.sln
+  SOLUTION_FILE: CymBuild.Monorepo.sln
 
 jobs:
   build:
