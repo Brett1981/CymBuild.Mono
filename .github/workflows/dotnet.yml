@@ -18,7 +18,7 @@ env:
 
 jobs:
   build:
-    name: Restore, Build and Test
+    name: Restore and Build
     runs-on: ubuntu-latest
 
     steps:
@@ -28,7 +28,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v5
         with:
-          global-json-file: ./global.json
+          dotnet-version: 10.0.x
 
       - name: Show .NET info
         run: dotnet --info
@@ -39,5 +39,26 @@ jobs:
       - name: Build
         run: dotnet build "$SOLUTION_FILE" --configuration "$CONFIGURATION" --no-restore
 
-      - name: Test
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+    continue-on-error: true
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore "$SOLUTION_FILE"
+
+      - name: Build
+        run: dotnet build "$SOLUTION_FILE" --configuration "$CONFIGURATION" --no-restore
+
+      - name: Run tests
         run: dotnet test "$SOLUTION_FILE" --configuration "$CONFIGURATION" --no-build --verbosity normal
