@@ -1,0 +1,43 @@
+name: CymBuild .NET CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CONFIGURATION: Release
+  SOLUTION_FILE: CymBuild.Mono.sln
+
+jobs:
+  build:
+    name: Restore, Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ./global.json
+
+      - name: Show .NET info
+        run: dotnet --info
+
+      - name: Restore dependencies
+        run: dotnet restore "$SOLUTION_FILE"
+
+      - name: Build
+        run: dotnet build "$SOLUTION_FILE" --configuration "$CONFIGURATION" --no-restore
+
+      - name: Test
+        run: dotnet test "$SOLUTION_FILE" --configuration "$CONFIGURATION" --no-build --verbosity normal
