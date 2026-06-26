@@ -1,39 +1,83 @@
 ﻿@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
 @using Newtonsoft.Json
 @using System.Web
 @attribute [Authorize]
 
-<DynamicGrid GridCode="PERMISSIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="ParentDataObjectReference" />
+<DynamicGrid GridCode="PERMISSIONS"
+             ParentGuid="@EffectiveParentGuid"
+             ParentDataObjectReference="@EffectiveParentReference"
+             FullGrid="false" />
 
 @code {
-
     [Parameter] public string RecordGuid { get; set; } = Guid.Empty.ToString();
     [Parameter] public DataObjectReference? ParentDataObjectReference { get; set; }
     [Parameter] public string? SerializedDataObjectReference { get; set; }
     [Parameter] public string? ModalId { get; set; }
-    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
-
     [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public EventCallback CloseWindow { get; set; }
+
+    private DataObjectReference? _deserializedReference;
+
+    private DataObjectReference EffectiveParentReference =>
+        _deserializedReference
+        ?? ParentDataObjectReference
+        ?? new DataObjectReference(string.Empty, Guid.Empty.ToString());
+
+    private string EffectiveParentGuid
+    {
+        get
+        {
+            if (Guid.TryParse(RecordGuid, out var recordGuid)
+                && recordGuid != Guid.Empty)
+            {
+                return recordGuid.ToString();
+            }
+
+            if (EffectiveParentReference.DataObjectGuid != Guid.Empty)
+            {
+                return EffectiveParentReference.DataObjectGuid.ToString();
+            }
+
+            return Guid.Empty.ToString();
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
     {
         try
         {
-            if(ParentDataObjectReference != null)
+            _deserializedReference = null;
+
+            if (string.IsNullOrWhiteSpace(SerializedDataObjectReference))
             {
-                ParentDataObjectReference = JsonConvert.DeserializeObject<DataObjectReference>(HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
-                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+                return;
             }
-            await base.OnParametersSetAsync();
+
+            var decodedReference = HttpUtility.UrlDecode(SerializedDataObjectReference);
+
+            if (string.IsNullOrWhiteSpace(decodedReference))
+            {
+                return;
+            }
+
+            var deserializedReference = JsonConvert.DeserializeObject<DataObjectReference>(decodedReference);
+
+            if (deserializedReference is not null)
+            {
+                _deserializedReference = deserializedReference;
+            }
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the Permissions component.");
             ex.Data.Add("PageMethod", "Permissions/OnParametersSetAsync()");
-            _ = OnError.InvokeAsync(ex);
+
+            if (OnError.HasDelegate)
+            {
+                await OnError.InvokeAsync(ex);
+            }
         }
     }
-
 }

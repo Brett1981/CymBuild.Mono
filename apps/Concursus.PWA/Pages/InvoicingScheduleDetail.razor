@@ -27,7 +27,8 @@
           IsDetailWindowed="@IsDetailWindowed"
           HideDefaultActions="@HideDefaultActions"
           DisableDefaultActions="@ShouldDisableDefaultActions()"
-          TransientVirtualProperties="@BuildTransientVirtualProperties()">
+          TransientVirtualProperties="@BuildTransientVirtualProperties()"
+          DataObjectLoaded="@OnInvoiceScheduleDataObjectLoadedAsync">
     <FormTitle>
         <i class="bi bi-person-fill-lock" style="font-size: 1.2rem;"></i>
     </FormTitle>
@@ -73,7 +74,9 @@
                     </div>
                 }
             </div>
-            <DynamicGrid GridCode="INVSCEDMONTHLY"
+            <DynamicGrid @key="GetCurrentInvoiceScheduleGuid()"
+                         FormHelper="@_formHelper"
+                         GridCode="INVSCEDMONTHLY"
                          @bind-Disabled="@DisableNewButton"
                          ParentGuid="@GetCurrentInvoiceScheduleGuid()"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -108,7 +111,9 @@
                     </div>
                 }
             </div>
-            <DynamicGrid GridCode="INVSCEDULEPERCENTAGE"
+            <DynamicGrid @key="GetCurrentInvoiceScheduleGuid()"
+                         FormHelper="@_formHelper"
+                         GridCode="INVSCEDULEPERCENTAGE"
                          @bind-Disabled="@DisableNewButton"
                          ParentGuid="@GetCurrentInvoiceScheduleGuid()"
                          ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -338,7 +343,7 @@
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (!firstRender && editPage?.dataObject != null)
+        if (editPage?.dataObject != null)
         {
             ShowCorrectInvoiceSchedulingGrid();
             ShouldDisableNewButton();
@@ -374,6 +379,29 @@
     // }
 
 
+    private async Task OnInvoiceScheduleDataObjectLoadedAsync(Concursus.API.Core.DataObject loadedDataObject)
+    {
+        try
+        {
+            ShowCorrectInvoiceSchedulingGrid();
+            ShouldDisableNewButton();
+
+            if (ShowMonthBreakDownGrid || ShowPercentageBreakDownGrid)
+            {
+                QueueTotalsRefreshIfNeeded();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while preparing the invoice schedule child grids.");
+            ex.Data.Add("PageMethod", "InvoicingScheduleDetail/OnInvoiceScheduleDataObjectLoadedAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
     /// <summary>
     /// Extracts the set configuration from the dropdown (Invoicing Structure)
     /// and shows the appropriate grid.
@@ -383,36 +411,90 @@
         const string MonthlyTriggerType = "1a6296d5-6f78-4692-9acb-895ba1e7e9bb";
         const string PercentageTriggerType = "3f5d1de2-05cf-47ed-9e0d-af56cc6cead0";
 
-        var dataObject = editPage.dataObject;
+        var dataObject = editPage?.dataObject;
+        if (dataObject?.DataProperties == null)
+        {
+            return;
+        }
+
         var triggerTypeProperty = dataObject.DataProperties
             .FirstOrDefault(x => x.EntityPropertyGuid == "bb1fc1da-d825-4cb7-ba29-936b3218fc42");
 
-        if (triggerTypeProperty?.Value != null &&
-            triggerTypeProperty.Value.Is(StringValue.Descriptor))
+        var triggerTypeValue = ReadAnyAsString(triggerTypeProperty?.Value);
+        var normalisedTrigger = NormaliseTriggerValue(triggerTypeValue);
+
+        var shouldShowMonthly =
+            string.Equals(normalisedTrigger, MonthlyTriggerType, StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("monthly", StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("month", StringComparison.OrdinalIgnoreCase);
+
+        var shouldShowPercentage =
+            string.Equals(normalisedTrigger, PercentageTriggerType, StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("percentage", StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("percent", StringComparison.OrdinalIgnoreCase);
+
+        if (!shouldShowMonthly && !shouldShowPercentage)
         {
-            var triggerTypeValue = triggerTypeProperty.Value.Unpack<StringValue>().Value?.ToLowerInvariant() ?? string.Empty;
-            var updated = false;
+            return;
+        }
 
-            if (triggerTypeValue == MonthlyTriggerType && !ShowMonthBreakDownGrid)
-            {
-                ShowMonthBreakDownGrid = true;
-                ShowPercentageBreakDownGrid = false;
-                updated = true;
-            }
-            else if (triggerTypeValue == PercentageTriggerType && !ShowPercentageBreakDownGrid)
-            {
-                ShowPercentageBreakDownGrid = true;
-                ShowMonthBreakDownGrid = false;
-                updated = true;
-            }
+        var updated = false;
 
-            if (updated)
-            {
-                InvokeAsync(StateHasChanged);
-            }
+        if (ShowMonthBreakDownGrid != shouldShowMonthly)
+        {
+            ShowMonthBreakDownGrid = shouldShowMonthly;
+            updated = true;
+        }
+
+        if (ShowPercentageBreakDownGrid != shouldShowPercentage)
+        {
+            ShowPercentageBreakDownGrid = shouldShowPercentage;
+            updated = true;
+        }
+
+        if (updated)
+        {
+            InvokeAsync(StateHasChanged);
         }
     }
 
+    private static string ReadAnyAsString(Any? value)
+    {
+        if (value is null)
+        {
+            return string.Empty;
+        }
+
+        if (value.Is(StringValue.Descriptor))
+        {
+            return value.Unpack<StringValue>().Value?.Trim() ?? string.Empty;
+        }
+
+        if (value.Is(Int32Value.Descriptor))
+        {
+            return value.Unpack<Int32Value>().Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (value.Is(Int64Value.Descriptor))
+        {
+            return value.Unpack<Int64Value>().Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (value.Is(BoolValue.Descriptor))
+        {
+            return value.Unpack<BoolValue>().Value.ToString();
+        }
+
+        return value.ToString();
+    }
+
+    private static string NormaliseTriggerValue(string? value)
+    {
+        return (value ?? string.Empty)
+            .Trim()
+            .Trim('{', '}')
+            .ToLowerInvariant();
+    }
     /// <summary>
     /// Hides the "New" button for the grid - based on the "IsEnabled" prop for the field "Name".
     /// </summary>

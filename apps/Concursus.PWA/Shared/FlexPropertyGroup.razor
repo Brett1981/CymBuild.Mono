@@ -162,6 +162,7 @@
                                             <ShoreInput EntityProperty="@ep"
                                                         @bind-DataProperty="@dataProperty"
                                                         IsMainRecordContext="@IsMainRecordContext"
+                                                        FormHelper="@FormHelper"
                                                         RecordGuid="@RecordGuid"
                                                         InputUpdated="@HandleInputUpdated" />
                                         }
@@ -177,6 +178,7 @@
                                                 <ShoreInput EntityProperty="@ep"
                                                             IsBulkEdit="true"
                                                             IsMainRecordContext="@IsMainRecordContext"
+                                                            FormHelper="@FormHelper"
                                                             @bind-DataProperty="@dataProperty"
                                                             Disabled="@(!ep.IsSelectedForBulkChange || ep.IsReadOnly)"
                                                             RecordGuid="@RecordGuid"

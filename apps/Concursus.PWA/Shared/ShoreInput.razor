@@ -79,7 +79,7 @@
         @if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && EntityProperty.ShowOnMobile))
         {
             <div class="col-auto m-1 flex-fill">
-                <div class="input-group col-auto">
+                <div class="input-group col-auto" @onmousedown="HandleLookupUserInteractionAsync" @onfocusin="HandleLookupUserInteractionAsync">
                     <div class="input-group-text">
                         <label for="@PropertyId">@PropertyName</label>
                     </div>

@@ -45,7 +45,6 @@
                 </div>
 
                 <div class="d-flex align-items-center gap-2">
-                    @* Keep your existing menu component if you want (not Telerik) *@
                     @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
                     {
                         <GridButtonMenu ViewDefinition="@ViewDefinition"

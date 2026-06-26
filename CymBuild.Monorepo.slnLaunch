@@ -3,14 +3,14 @@
     "Name": "CymBuild Dev ",
     "Projects": [
       {
-        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
-        "Action": "Start",
-        "DebugTarget": "PWA - Dev (IIS Express)"
-      },
-      {
         "Path": "services\\Concursus.API\\Concursus.API.csproj",
         "Action": "Start",
         "DebugTarget": "API - Dev (Kestrel)"
+      },
+      {
+        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
+        "Action": "Start",
+        "DebugTarget": "PWA - Dev (IIS Express)"
       }
     ]
   },

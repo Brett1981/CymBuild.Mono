@@ -1,0 +1,35 @@
+@namespace Concursus.PWA.Shared
+
+@if (IsLoaded)
+{
+    @ChildContent
+}
+else
+{
+    <div class="alert alert-light border d-flex align-items-center justify-content-between mb-0 cym-lazy-record-tab-placeholder">
+        <span>@PlaceholderText</span>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary"
+                @onclick="LoadRequestedAsync">
+            Load @Label
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsLoaded { get; set; }
+    [Parameter] public string Label { get; set; } = "section";
+    [Parameter] public string? PlaceholderText { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnLoadRequested { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        PlaceholderText ??= $"{Label} will load when opened.";
+    }
+
+    private Task LoadRequestedAsync()
+    {
+        return OnLoadRequested.InvokeAsync();
+    }
+}

@@ -1,122 +1,327 @@
 ﻿@page "/Permissions"
-@using Concursus.API.Client;
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Google.Protobuf.WellKnownTypes
-@inject NavigationManager NavManager
-@inject Core.CoreClient coreClient
-@inject IJSRuntime JSRuntime;
-@inject UserService userService
-@inject ModalService modalService
-@inject AppConfiguration appConfiguration
-
 @attribute [Authorize]
-<TelerikWindow @ref="ModalWindow" Class="responsive-window" Visible="@ModalWindowIsVisible" VisibleChanged="VisibleChangedHandler" Modal="true" CloseOnOverlayClick="false" MaxHeight="100vh">
-    <WindowTitle>@WindowTitle</WindowTitle>
-    <WindowContent>
-        <h4>
-            <i class="@HeaderCssIcon" style="font-size: 1.2rem;"></i> @HeaderText
-        </h4>
-        @if (!string.IsNullOrEmpty(@GridCodeSelection))
-        {
-            <DynamicGrid GridCode="@GridCodeSelection" ParentGuid="@GetParentGuid()" TransientVirtualProperties="@TransientVirtualProperties" />
-        }
-        @if (!string.IsNullOrEmpty(@LoadPageUrl))
-        {
-            <DynamicComponent Type="@System.Type.GetType(@LoadPageUrl)" Parameters="@DetailPageParameters" />
-        }
-    </WindowContent>
-    <WindowActions>
-        <WindowAction Name="MinRimize"></WindowAction>
-        <WindowAction Name="Maximize"></WindowAction>
-        <WindowAction Name="Close" OnClick="@CloseWindowCross"></WindowAction>
-    </WindowActions>
-</TelerikWindow>
 
-@code
+@if (ModalWindowIsVisible)
 {
+    <div class="cb-permissions-modal-backdrop"
+         role="presentation"
+         aria-hidden="true">
+    </div>
+
+    <section class="@GetModalClass()"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@ModalTitleElementId">
+
+        <header class="cb-permissions-modal-header">
+            <div class="cb-permissions-modal-title-wrap">
+                <div class="cb-permissions-modal-icon">
+                    @if (!string.IsNullOrWhiteSpace(HeaderCssIcon))
+                    {
+                        <i class="@HeaderCssIcon" aria-hidden="true"></i>
+                    }
+                    else
+                    {
+                        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                    }
+                </div>
+
+                <div>
+                    <h4 id="@ModalTitleElementId" class="cb-permissions-modal-title">
+                        @(!string.IsNullOrWhiteSpace(WindowTitle) ? WindowTitle : "Permissions")
+                    </h4>
+
+                    @if (!string.IsNullOrWhiteSpace(HeaderText))
+                    {
+                        <p class="cb-permissions-modal-subtitle">@HeaderText</p>
+                    }
+                </div>
+            </div>
+
+            <div class="cb-permissions-modal-actions">
+                <button type="button"
+                        class="cb-permissions-window-action"
+                        title="@(_isMinimised ? "Restore" : "Minimise")"
+                        aria-label="@(_isMinimised ? "Restore permissions window" : "Minimise permissions window")"
+                        @onclick="ToggleMinimise">
+                    <i class="@(_isMinimised ? "bi bi-window" : "bi bi-dash")" aria-hidden="true"></i>
+                </button>
+
+                <button type="button"
+                        class="cb-permissions-window-action"
+                        title="@(_isMaximised ? "Restore" : "Maximise")"
+                        aria-label="@(_isMaximised ? "Restore permissions window" : "Maximise permissions window")"
+                        @onclick="ToggleMaximise">
+                    <i class="@(_isMaximised ? "bi bi-fullscreen-exit" : "bi bi-fullscreen")" aria-hidden="true"></i>
+                </button>
+
+                <button type="button"
+                        class="cb-permissions-window-action cb-permissions-window-action-close"
+                        title="Close"
+                        aria-label="Close permissions window"
+                        @onclick="CloseWindowCross">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+        </header>
+
+        @if (!_isMinimised)
+        {
+            <div class="cb-permissions-modal-body">
+                <Permissions RecordGuid="@RecordGuid"
+                             ParentDataObjectReference="@ParentDataObjectReference"
+                             SerializedDataObjectReference="@SerializedDataObjectReference"
+                             ModalId="@ModalId"
+                             CloseWindow="@CloseWindowCross"
+                             OnError="@HandleChildErrorAsync" />
+            </div>
+        }
+    </section>
+}
+
+@code {
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter] public EventCallback CloseWindow { get; set; }
     [Parameter] public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
     [Parameter] public string? ModalId { get; set; }
     [Parameter] public bool Windowed { get; set; } = true;
-
-    // [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public EventCallback<Exception> OnError { get; set; }
     [Parameter] public EventCallback GridUpdated { get; set; }
 
-    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
-    [Parameter] public string? SerializedDataObjectReference { get; set; } = "";
-
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new(string.Empty, Guid.Empty.ToString());
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public string? SerializedDataObjectReference { get; set; } = string.Empty;
     [Parameter] public string RecordGuid { get; set; } = Guid.Empty.ToString();
 
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
+    private bool ModalWindowIsVisible { get; set; }
+    private bool _isMaximised;
+    private bool _isMinimised;
 
-    public List<API.Client.MenuItem>? MenuItems { get; set; }
-    public TelerikWindow ModalWindow { get; set; }
-    private string? GridCodeSelection { get; set; }
-    private string HeaderCssIcon { get; set; } = "";
-    private string HeaderText { get; set; } = "";
-    private string? LoadPageUrl { get; set; }
-    private bool ModalWindowIsVisible { get; set; } = false;
-    private bool windowIsClosable { get; set; } = true;
-    private string? WindowTitle { get; set; }
-    protected FormHelper? formHelper;
-    private IDictionary<string, object> DetailPageParameters = new Dictionary<string, object>();
-    public API.Client.MenuItem? ClickedItem { get; set; }
+    private string WindowTitle { get; set; } = "Permissions";
+    private string HeaderCssIcon { get; set; } = "bi bi-shield-lock";
+    private string HeaderText { get; set; } = "Permissions Set";
 
-    private string GetParentGuid()
+    private string ModalTitleElementId =>
+        $"permissions-modal-title-{(string.IsNullOrWhiteSpace(ModalId) ? "default" : ModalId)}";
+
+    protected override void OnParametersSet()
     {
-        try
-        {
-            // Retrieve the value associated with the "RecordGuid
-            // (ParentDataObjectReference)" key when loading a DynamicGrid
-            if (DetailPageParameters.TryGetValue("RecordGuid", out var parentGuid))
-                return parentGuid?.ToString();
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("Message", "An error occurred while trying to get the parent guid.");
-            ex.Data.Add("PageMethod", "SettingsPermissions/GetParentGuid()");
-            _ = OnError.InvokeAsync(ex);
-        }
-
-        // If the key is not found, you can return a default value or handle it
-        // as needed
-        return Guid.Empty.ToString();
+        WindowTitle = "Permissions";
+        HeaderCssIcon = "bi bi-shield-lock";
+        HeaderText = "Permissions Set";
+        ModalWindowIsVisible = true;
     }
 
-    protected void CloseWindowCross()
+    private async Task HandleChildErrorAsync(Exception exception)
+    {
+        if (OnError.HasDelegate)
+        {
+            await OnError.InvokeAsync(exception);
+        }
+    }
+
+    private async Task CloseWindowCross()
     {
         ModalWindowIsVisible = false;
-        CloseWindow.InvokeAsync();
+
+        if (CloseWindow.HasDelegate)
+        {
+            await CloseWindow.InvokeAsync();
+        }
     }
 
-    private void VisibleChangedHandler(bool currVisible) // this will always come in as false
+    private void ToggleMaximise()
     {
-        ModalWindowIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
+        _isMaximised = !_isMaximised;
+
+        if (_isMaximised)
+        {
+            _isMinimised = false;
+        }
     }
 
-    protected override Task OnAfterRenderAsync(bool firstRender)
+    private void ToggleMinimise()
     {
-            // Open the Modal showing the permissions dialog set LoadPageUrl
-            // to empty as GridCode required instead
-            DetailPageParameters.Clear();
-            DetailPageParameters.Add("SerializedDataObjectReference", SerializedDataObjectReference);
-            DetailPageParameters.Add("ParentDataObjectReference", ParentDataObjectReference);
-            DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
-            DetailPageParameters.Add("OnError", EventCallback.Factory.Create(this, OnError));
-            DetailPageParameters.Add("RecordGuid", RecordGuid);
-            LoadPageUrl = " Concursus.PWA.Shared.Permissions";
-            GridCodeSelection = "";
-            WindowTitle = "Permissions";
-            HeaderCssIcon = "";
-            HeaderText = "Permissions Set";
-            ModalWindowIsVisible = true;
-        return base.OnAfterRenderAsync(firstRender);
+        _isMinimised = !_isMinimised;
     }
 
+    private string GetModalClass()
+    {
+        var classes = new List<string>
+        {
+            "cb-permissions-modal"
+        };
+
+        if (_isMaximised)
+        {
+            classes.Add("cb-permissions-modal-maximised");
+        }
+
+        if (_isMinimised)
+        {
+            classes.Add("cb-permissions-modal-minimised");
+        }
+
+        if (!Windowed)
+        {
+            classes.Add("cb-permissions-modal-inline");
+        }
+
+        return string.Join(" ", classes);
+    }
 }
+
+<style>
+    .cb-permissions-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1050;
+        background: rgba(15, 23, 42, 0.35);
+        backdrop-filter: blur(2px);
+    }
+
+    .cb-permissions-modal {
+        position: fixed;
+        z-index: 1051;
+        top: 5vh;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(1100px, calc(100vw - 2rem));
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #ffffff;
+        border: 1px solid rgba(147, 197, 253, 0.75);
+        border-radius: 18px;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+    }
+
+    .cb-permissions-modal-inline {
+        position: relative;
+        z-index: auto;
+        top: auto;
+        left: auto;
+        transform: none;
+        width: 100%;
+        max-height: none;
+        box-shadow: none;
+    }
+
+    .cb-permissions-modal-maximised {
+        top: 1rem;
+        width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+    }
+
+    .cb-permissions-modal-minimised {
+        top: auto;
+        bottom: 1rem;
+        width: min(520px, calc(100vw - 2rem));
+    }
+
+    .cb-permissions-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.98));
+        border-bottom: 1px solid rgba(191, 219, 254, 0.8);
+    }
+
+    .cb-permissions-modal-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        min-width: 0;
+    }
+
+    .cb-permissions-modal-icon {
+        width: 42px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        border-radius: 14px;
+        color: #0d6efd;
+        background: #e8f1ff;
+        border: 1px solid rgba(147, 197, 253, 0.75);
+    }
+
+    .cb-permissions-modal-title {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .cb-permissions-modal-subtitle {
+        margin: 0.2rem 0 0;
+        font-size: 0.82rem;
+        color: #475569;
+    }
+
+    .cb-permissions-modal-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex: 0 0 auto;
+    }
+
+    .cb-permissions-window-action {
+        width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.55);
+        background: #ffffff;
+        color: #334155;
+        cursor: pointer;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+
+        .cb-permissions-window-action:hover {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #0d6efd;
+        }
+
+    .cb-permissions-window-action-close:hover {
+        background: #fef2f2;
+        border-color: #fca5a5;
+        color: #dc2626;
+    }
+
+    .cb-permissions-modal-body {
+        padding: 1rem;
+        overflow: auto;
+        background: #f8fafc;
+    }
+
+    @@media (max-width: 768px) {
+        .cb-permissions-modal {
+            top: 0.5rem;
+            width: calc(100vw - 1rem);
+            max-height: calc(100vh - 1rem);
+            border-radius: 14px;
+        }
+
+        .cb-permissions-modal-header {
+            align-items: flex-start;
+        }
+
+        .cb-permissions-modal-title-wrap {
+            align-items: flex-start;
+        }
+    }
+</style>

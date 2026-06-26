@@ -1,4 +1,4 @@
-@using Concursus.API.Client
+﻿@using Concursus.API.Client
 @using Concursus.API.Core
 @using Concursus.PWA.Classes
 @using Google.Protobuf.WellKnownTypes
@@ -11,7 +11,7 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject AppConfiguration appConfiguration
 
-<div class="record-doc-browser v2-docs cb-v2-shell">
+<div class="record-doc-browser v2-docs cb-v2-shell cb-v2-docs-polish">
 
     <div class="doc-toolbar cb-v2-toolbar">
         <div class="doc-location flex-grow-1">
@@ -36,14 +36,14 @@
                         }
                     }
                 </div>
-
+@*
                 <div class="small cb-v2-muted mt-1">
-                    @(_location?.RootFolderName ?? "Documents") · Current folder: @(_currentFolderName ?? "-")
-                </div>
+                    @(_location?.RootFolderName ?? "Documents") Â· Current folder: @(_currentFolderName ?? "-")
+                </div> *@
             }
         </div>
 
-        <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="doc-toolbar-actions d-flex flex-wrap align-items-center gap-2">
             <input class="cb-v2-input doc-search"
                    placeholder="Search current folder..."
                    value="@_searchText"
@@ -131,7 +131,7 @@
     }
     else
     {
-        <div class="doc-body row g-2 mt-1">
+        <div class="doc-body row g-2 mt-1 doc-layout-grid">
             <div class="navigation col-12 col-xl-3">
                 <div class="panel-title cb-v2-title fw-semibold mb-2">Records</div>
 
@@ -187,7 +187,11 @@
                                                                 Unavailable
                                                             </span>
 
-                                                            <button class="badge rounded-pill btn-warning d-inline-flex align-items-center gap-2" @onclick="async () => await ReSyncLocation(item)">
+                                                            <button type="button"
+                                                                    class="badge rounded-pill btn-warning d-inline-flex align-items-center gap-2"
+                                                                    @onclick="async () => await ReSyncLocation(item)"
+                                                                    @onclick:stopPropagation="true"
+                                                                    @onclick:preventDefault="true">
                                                                 <i class="bi bi-arrow-repeat"></i>
                                                                 Resync
                                                             </button>
@@ -321,15 +325,15 @@
                         }
                         else
                         {
-                            <div class="cb-v2-table-wrap table-responsive">
+                            <div class="cb-v2-table-wrap table-responsive doc-grid-wrap">
                                 <table class="cb-v2-table table table-sm table-hover align-middle mb-0 doc-grid-table">
                                     <colgroup>
-                                        <col style="width:36px;" />
-                                        <col style="width:32%;" />
-                                        <col style="width:24%;" />
-                                        <col style="width:150px;" />
-                                        <col style="width:90px;" />
-                                        <col style="width:170px;" />
+                                        <col class="doc-col-select" />
+                                        <col class="doc-col-name" />
+                                        <col class="doc-col-description" />
+                                        <col class="doc-col-date" />
+                                        <col class="doc-col-size" />
+                                        <col class="doc-col-actions" />
                                     </colgroup>
                                     <thead>
                                         <tr>
@@ -367,7 +371,7 @@
 
                                                     <td class="doc-name-cell">
                                                         <div class="doc-name-wrap">
-                                                            <span class="doc-icon">@GetItemIcon(item)</span>
+                                                            <span class="doc-icon" aria-hidden="true"><i class="@GetItemIconCss(item)"></i></span>
 
                                                             @if (item.IsFolder)
                                                             {
@@ -396,9 +400,9 @@
                                                         </div>
                                                     </td>
 
-                                                    <td class="small cb-v2-muted">@FormatTimestamp(item.LastModifiedUtc)</td>
-                                                    <td class="small cb-v2-muted">@(item.IsFolder ? "" : FormatBytes(item.Size))</td>
-                                                    <td>
+                                                    <td class="small cb-v2-muted doc-date-cell" title="@FormatTimestamp(item.LastModifiedUtc)">@FormatTimestamp(item.LastModifiedUtc)</td>
+                                                    <td class="small cb-v2-muted doc-size-cell" title='@(item.IsFolder ? "Folder" : FormatBytes(item.Size))'>@(item.IsFolder ? "" : FormatBytes(item.Size))</td>
+                                                    <td class="doc-actions-cell">
                                                         <div class="d-flex flex-nowrap gap-1 doc-actions">
                                                             @if (item.IsFolder)
                                                             {
@@ -625,55 +629,69 @@
                 return;
 
             IsResyncing = true;
-            SetMessage("Please wait, syncing in progress…", false);
+            SetMessage("Please wait, syncing SharePoint locationâ€¦", false);
 
-            var RecordGuid = item.RecordGuid;
-            var EntityTypeGuid = item.EntityTypeGuid;
+            var recordGuid = item.RecordGuid;
+            var entityTypeGuid = item.EntityTypeGuid;
 
-            if (RecordGuid != null && EntityTypeGuid != null)
+            if (string.IsNullOrWhiteSpace(recordGuid) || string.IsNullOrWhiteSpace(entityTypeGuid))
+                return;
+
+            var dataObjectReference = new API.Client.Models.DataObjectReference(recordGuid, entityTypeGuid);
+            var dataObject = await FormHelper.ReadDataObjectAsync(recordGuid, dataObjectReference, false, entityTypeGuid);
+
+            var response = await FormHelper.SharePointCreate(new SharePointCreateRequest()
             {
-                var DataObjectReference = new API.Client.Models.DataObjectReference(RecordGuid, EntityTypeGuid);
-
-                var dataObject = await FormHelper.ReadDataObjectAsync(RecordGuid, DataObjectReference, false, EntityTypeGuid);
-
-                var response = await FormHelper.SharePointCreate(new SharePointCreateRequest()
+                DataObject = dataObject,
+                DataObjectUpsertRequest = new DataObjectUpsertRequest()
                 {
                     DataObject = dataObject,
-                    DataObjectUpsertRequest = new DataObjectUpsertRequest()
-                    {
-                        DataObject = dataObject,
-                        EntityQueryGuid = Guid.Empty.ToString(),
-                        ValidateOnly = true
-                    }
-                });
-
-                if (!string.IsNullOrEmpty(response.ErrorReturned))
-                {
-                    throw new Exception(response.ErrorReturned);
+                    EntityQueryGuid = Guid.Empty.ToString(),
+                    ValidateOnly = false
                 }
+            });
 
-                dataObject = response.DataObject;
-
-                var (message, updatedDataObject) = await FormHelper.UpsertDataObject(dataObject, null, false, false);
-
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    SetMessage(message, true);
-                    return;
-                }
-
-                SetMessage("Resynced SharePoint location for " + item.RecordTitle, false);
-
-                IsResyncing = false;
-                StateHasChanged();
-
-                await InitialiseAsync();
-
+            if (!string.IsNullOrEmpty(response.ErrorReturned))
+            {
+                throw new Exception(response.ErrorReturned);
             }
-        } 
+
+            var repairedSharePointUrl = response.DataObject?.SharePointUrl ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(repairedSharePointUrl))
+            {
+                throw new Exception("SharePoint resync completed without returning a SharePointUrl.");
+            }
+
+            // Resolve once using the repaired URL returned by the server. Do not poll in a loop here:
+            // explicit Resync should either return a persisted location or return an actionable error.
+            var location = await FormHelper.DocumentsResolveAsync(
+                    recordGuid: item.RecordGuid,
+                    entityTypeId: item.EntityTypeId,
+                    entityQueryGuid: EntityQueryGuid,
+                    sharePointUrlHint: repairedSharePointUrl,
+                    ct: CancellationToken.None)
+                .ConfigureAwait(false);
+
+            if (location is null ||
+                string.IsNullOrWhiteSpace(location.DriveId) ||
+                string.IsNullOrWhiteSpace(location.RootFolderId))
+            {
+                throw new Exception("SharePoint location was repaired but could not be resolved by the document browser.");
+            }
+
+            SetMessage("Resynced SharePoint location for " + item.RecordTitle, false);
+            ClearNavigationWarning(item);
+            await InitialiseAsync();
+        }
         catch (Exception ex)
         {
             SetMessage("There was an error syncing the record: " + ex.Message, true);
+        }
+        finally
+        {
+            IsResyncing = false;
+            StateHasChanged();
         }
 
     }
@@ -1786,7 +1804,9 @@
         return message;
     }
 
-    private static string GetItemIcon(DocumentsListItem item) => item.IsFolder ? "📁" : "📄";
+    private static string GetItemIconCss(DocumentsListItem item) => item.IsFolder
+        ? "bi bi-folder-fill cb-doc-icon-folder"
+        : "bi bi-file-earmark-text cb-doc-icon-file";
 
     private static string FormatTimestamp(Timestamp? timestamp)
     {
@@ -1841,3 +1861,5 @@
         public List<FolderNode> Children { get; set; } = new();
     }
 }
+
+

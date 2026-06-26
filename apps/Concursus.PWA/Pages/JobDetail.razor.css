@@ -16,3 +16,133 @@
     padding-top: 10px;
     margin-top: 10px;
 }
+/* =========================================================
+   Job summary pastel status cards
+   Uses CymBuild V2 design tokens from cymbuild-v2.css.
+   ========================================================= */
+
+.cb-job-summary-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--cb-job-summary-border, var(--cb-v2-border-soft, #e2e8f0));
+    border-radius: var(--cb-v2-radius-sm, 10px);
+    background: var(--cb-job-summary-gradient, linear-gradient(135deg, #ffffff 0%, #f8fafc 100%));
+    box-shadow: var(--cb-v2-shadow-sm, 0 6px 18px rgba(15, 23, 42, 0.05));
+    transition: transform var(--cb-v2-transition-fast, 0.16s ease),
+                box-shadow var(--cb-v2-transition-fast, 0.16s ease),
+                border-color var(--cb-v2-transition-fast, 0.16s ease);
+}
+
+.cb-job-summary-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--cb-job-summary-accent, var(--cb-v2-primary, #2563eb));
+    opacity: 0.75;
+}
+
+.cb-job-summary-card::after {
+    content: "";
+    position: absolute;
+    top: -35px;
+    right: -35px;
+    width: 96px;
+    height: 96px;
+    border-radius: 999px;
+    background: var(--cb-job-summary-orb, rgba(37, 99, 235, 0.08));
+    pointer-events: none;
+}
+
+.cb-job-summary-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--cb-v2-shadow-md, 0 10px 24px rgba(15, 23, 42, 0.08));
+}
+
+.cb-job-summary-card .card-body {
+    position: relative;
+    z-index: 1;
+    padding-left: 1rem;
+}
+
+.cb-job-summary-card .text-muted.small {
+    color: var(--cb-job-summary-label, var(--cb-v2-text-muted, #64748b)) !important;
+    font-size: 0.72rem;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+.cb-job-summary-card .fw-semibold {
+    color: var(--cb-job-summary-text, var(--cb-v2-text-strong, #0f172a));
+}
+
+.cb-job-summary-card--new {
+    --cb-job-summary-gradient: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    --cb-job-summary-border: #bae6fd;
+    --cb-job-summary-accent: #0284c7;
+    --cb-job-summary-orb: rgba(14, 165, 233, 0.12);
+    --cb-job-summary-label: #0369a1;
+}
+
+.cb-job-summary-card--active {
+    --cb-job-summary-gradient: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    --cb-job-summary-border: #c7d2fe;
+    --cb-job-summary-accent: #4f46e5;
+    --cb-job-summary-orb: rgba(79, 70, 229, 0.12);
+    --cb-job-summary-label: #4338ca;
+}
+
+.cb-job-summary-card--info {
+    --cb-job-summary-gradient: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    --cb-job-summary-border: var(--cb-v2-info-border, #bfdbfe);
+    --cb-job-summary-accent: var(--cb-v2-info, #1d4ed8);
+    --cb-job-summary-orb: rgba(37, 99, 235, 0.12);
+    --cb-job-summary-label: #1d4ed8;
+}
+
+.cb-job-summary-card--success {
+    --cb-job-summary-gradient: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    --cb-job-summary-border: var(--cb-v2-success-border, #a7f3d0);
+    --cb-job-summary-accent: var(--cb-v2-success, #16a34a);
+    --cb-job-summary-orb: rgba(22, 163, 74, 0.12);
+    --cb-job-summary-label: var(--cb-v2-success-text, #047857);
+}
+
+.cb-job-summary-card--warning {
+    --cb-job-summary-gradient: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    --cb-job-summary-border: var(--cb-v2-warning-border, #fde68a);
+    --cb-job-summary-accent: var(--cb-v2-warning, #b45309);
+    --cb-job-summary-orb: rgba(245, 158, 11, 0.14);
+    --cb-job-summary-label: #92400e;
+}
+
+.cb-job-summary-card--danger {
+    --cb-job-summary-gradient: linear-gradient(135deg, #fff1f2 0%, #fee2e2 100%);
+    --cb-job-summary-border: var(--cb-v2-danger-border, #fecaca);
+    --cb-job-summary-accent: var(--cb-v2-danger, #b91c1c);
+    --cb-job-summary-orb: rgba(220, 38, 38, 0.12);
+    --cb-job-summary-label: #991b1b;
+}
+
+.cb-job-summary-card--neutral {
+    --cb-job-summary-gradient: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    --cb-job-summary-border: var(--cb-v2-muted-border, #cbd5e1);
+    --cb-job-summary-accent: #64748b;
+    --cb-job-summary-orb: rgba(100, 116, 139, 0.10);
+    --cb-job-summary-label: #64748b;
+}
+.cb-job-summary-card--dormant {
+    --cb-job-summary-gradient: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    --cb-job-summary-border: #cbd5e1;
+    --cb-job-summary-accent: #475569;
+    --cb-job-summary-orb: rgba(71, 85, 105, 0.12);
+    --cb-job-summary-label: #475569;
+}
+.cb-job-summary-card--review {
+    --cb-job-summary-gradient: linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%);
+    --cb-job-summary-border: #ddd6fe;
+    --cb-job-summary-accent: #7c3aed;
+    --cb-job-summary-orb: rgba(124, 58, 237, 0.12);
+    --cb-job-summary-label: #6d28d9;
+}
+

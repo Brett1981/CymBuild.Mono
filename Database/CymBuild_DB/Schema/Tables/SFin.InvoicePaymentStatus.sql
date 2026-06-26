@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SFin].[InvoicePaymentStatus]')
 GO
-PRINT (N'Create table [SFin].[InvoicePaymentStatus]')
-GO
 CREATE TABLE [SFin].[InvoicePaymentStatus] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_InvoicePaymentStatus_RowStatus] DEFAULT (0),

@@ -1,4 +1,4 @@
-/* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowserV2.razor.css */
+﻿/* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowserV2.razor.css */
 
 .empty-tr{
     min-width: 100%;
@@ -346,3 +346,510 @@
         min-width: 0;
     }
 }
+/* 13A RecordDocumentBrowserV2 polish */
+.v2-docs.cb-v2-docs-polish {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 1rem 1.1rem;
+    margin-bottom: .85rem;
+    border: 1px solid var(--cb-v2-border, #e5eaf3);
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background: linear-gradient(135deg, #ffffff 0%, var(--cb-v2-bg-soft, #f8fafc) 100%);
+    box-shadow: var(--cb-v2-shadow-sm, 0 8px 24px rgba(15, 23, 42, .06));
+}
+
+.v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+    justify-content: flex-end;
+    flex: 1 1 620px;
+    min-width: 300px;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-location {
+    flex: 1 1 340px;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-search {
+    width: clamp(260px, 24vw, 440px);
+    min-height: 40px;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-layout-grid {
+    display: grid !important;
+    grid-template-columns: minmax(220px, 280px) minmax(220px, 280px) minmax(0, 1fr);
+    gap: 1rem !important;
+    align-items: start;
+    width: 100%;
+    max-width: none;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-layout-grid > .navigation,
+.v2-docs.cb-v2-docs-polish .doc-layout-grid > .folders,
+.v2-docs.cb-v2-docs-polish .doc-layout-grid > .files {
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0;
+    flex: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-layout-grid > .files {
+    min-width: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .panel-title,
+.v2-docs.cb-v2-docs-polish .cb-v2-panel-header {
+    min-height: 32px;
+    margin-bottom: .45rem !important;
+    color: var(--cb-v2-text, #172033);
+}
+
+.v2-docs.cb-v2-docs-polish .cb-v2-panel {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--cb-v2-border, #e5eaf3);
+    border-radius: var(--cb-v2-radius-md, 16px);
+    box-shadow: var(--cb-v2-shadow-sm, 0 8px 24px rgba(15, 23, 42, .06));
+    overflow: hidden;
+}
+
+.v2-docs.cb-v2-docs-polish .v2-nav-card .cb-v2-panel-body,
+.v2-docs.cb-v2-docs-polish .folders .cb-v2-panel-body {
+    max-height: min(68vh, 760px);
+    overflow-y: auto;
+}
+
+.v2-docs.cb-v2-docs-polish .drop-panel {
+    margin: .9rem .9rem .65rem;
+    border-color: rgba(37, 99, 235, .24);
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background: linear-gradient(180deg, rgba(37, 99, 235, .035), rgba(255, 255, 255, .92));
+}
+
+.v2-docs.cb-v2-docs-polish .drop-panel-inner {
+    padding: 1.15rem;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-grid-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    border-top: 1px solid var(--cb-v2-border-soft, #edf2f7);
+}
+
+.v2-docs.cb-v2-docs-polish .files .cb-v2-table.doc-grid-table {
+    width: 100%;
+    min-width: 1040px;
+    table-layout: fixed;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-select { width: 42px; }
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-name { width: 30%; }
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-description { width: 30%; }
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-date { width: 155px; }
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-size { width: 88px; }
+.v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-actions { width: 220px; }
+
+.v2-docs.cb-v2-docs-polish .cb-v2-table td,
+.v2-docs.cb-v2-docs-polish .cb-v2-table th {
+    padding: .62rem .75rem;
+    border-bottom: 1px solid var(--cb-v2-border-soft, #edf2f7);
+    vertical-align: middle;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-grid-table thead th {
+    background: var(--cb-v2-bg-soft, #f8fafc);
+    color: #334155;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .045em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-name-cell,
+.v2-docs.cb-v2-docs-polish .doc-description-cell {
+    min-width: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-name-wrap {
+    align-items: center;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-name-link {
+    display: block;
+    max-width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: normal;
+    line-height: 1.35;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-description {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--cb-v2-text-muted, #64748b);
+    line-height: 1.35;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-date-cell,
+.v2-docs.cb-v2-docs-polish .doc-size-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-actions-cell {
+    white-space: nowrap;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-actions {
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    border-radius: var(--cb-v2-radius-sm, 10px);
+    font-weight: 700;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-icon {
+    align-items: center;
+    margin-top: 0;
+}
+
+@media (min-width: 1760px) {
+    .v2-docs.cb-v2-docs-polish .doc-layout-grid {
+        grid-template-columns: minmax(230px, 300px) minmax(230px, 300px) minmax(0, 1fr);
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-name { width: 32%; }
+    .v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-description { width: 34%; }
+    .v2-docs.cb-v2-docs-polish .doc-grid-table .doc-col-actions { width: 240px; }
+}
+
+@media (max-width: 1399.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-layout-grid {
+        grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-layout-grid > .files {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        align-items: stretch;
+        justify-content: flex-start;
+        flex-direction: column;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-search {
+        width: 100%;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-layout-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .v2-docs.cb-v2-docs-polish .v2-nav-card .cb-v2-panel-body,
+    .v2-docs.cb-v2-docs-polish .folders .cb-v2-panel-body {
+        max-height: none;
+        overflow-y: visible;
+    }
+}
+/* 13B RecordDocumentBrowserV2 icon repair */
+.v2-docs .doc-icon {
+    width: 1.35rem;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 0;
+    line-height: 1;
+}
+
+.v2-docs .doc-icon i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.v2-docs .cb-doc-icon-folder {
+    color: #f59e0b;
+}
+
+.v2-docs .cb-doc-icon-file {
+    color: var(--cb-v2-text-muted, #64748b);
+}
+
+
+/* 13C RecordDocumentBrowserV2 portrait/mobile toolbar repair
+   Fixes portrait/mobile toolbar height caused by the previous flex-basis rule becoming vertical
+   when the toolbar actions switch to column layout. Also hides the native InputFile text reliably
+   when Blazor CSS isolation renders the input from the InputFile component. */
+.v2-docs.cb-v2-docs-polish .doc-toolbar,
+.v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+    min-height: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap {
+    position: relative !important;
+    overflow: hidden !important;
+    display: inline-flex !important;
+    align-items: stretch;
+    justify-content: stretch;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap > .btn {
+    position: relative;
+    z-index: 1;
+}
+
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap input[type="file"],
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap .upload-input-overlay,
+.v2-docs.cb-v2-docs-polish ::deep .upload-btn-wrap input[type="file"],
+.v2-docs.cb-v2-docs-polish ::deep .upload-input-overlay {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 3 !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 100% !important;
+    min-height: 100% !important;
+    max-width: none !important;
+    opacity: 0 !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+    color: transparent !important;
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 100px !important;
+    line-height: 1 !important;
+}
+
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap input[type="file"]:disabled,
+.v2-docs.cb-v2-docs-polish .upload-btn-wrap .upload-input-overlay:disabled,
+.v2-docs.cb-v2-docs-polish ::deep .upload-btn-wrap input[type="file"]:disabled,
+.v2-docs.cb-v2-docs-polish ::deep .upload-input-overlay:disabled {
+    cursor: not-allowed !important;
+}
+
+@media (max-width: 991.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: .75rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: .85rem !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-location {
+        flex: 0 1 auto !important;
+        flex-basis: auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        text-align: left !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        flex: 0 1 auto !important;
+        flex-basis: auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        gap: .5rem !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > * {
+        min-width: 0 !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-search {
+        grid-column: 1 / -1;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .btn,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .upload-btn-wrap {
+        width: 100% !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .btn,
+    .v2-docs.cb-v2-docs-polish .upload-btn-wrap > .btn {
+        min-height: 38px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: normal;
+    }
+
+    .v2-docs.cb-v2-docs-polish .upload-btn-wrap > .btn {
+        width: 100% !important;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        grid-template-columns: 1fr;
+    }
+}
+/* 13C-R2 RecordDocumentBrowserV2 portrait/tablet toolbar breakpoint repair
+   The previous mobile fix only applied below 992px. Portrait tablets and narrow desktop
+   layouts can still be above 992px, so the old flex-basis: 620px rule continued to create
+   a very tall toolbar panel. This block normalises the toolbar host first, then applies
+   the compact single-column toolbar from tablet width down. */
+.v2-docs.cb-v2-docs-polish .doc-toolbar {
+    align-items: center !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+.v2-docs.cb-v2-docs-polish .doc-toolbar-actions,
+.v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+    flex: 0 1 auto !important;
+    flex-basis: auto !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+
+@media (max-width: 1399.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        align-items: start !important;
+        justify-content: stretch !important;
+        gap: .75rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        padding: .85rem !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-location {
+        grid-column: 1 / -1;
+        flex: 0 1 auto !important;
+        flex-basis: auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        text-align: left !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        grid-column: 1 / -1;
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: .5rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        margin-top: 0 !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-search {
+        flex: 1 1 260px !important;
+        width: auto !important;
+        min-width: min(260px, 100%) !important;
+        max-width: 420px !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions > .btn,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions > .upload-btn-wrap,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .btn,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .upload-btn-wrap {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .upload-btn-wrap > .btn {
+        width: auto !important;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-search {
+        grid-column: 1 / -1 !important;
+        width: 100% !important;
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions > .btn,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions > .upload-btn-wrap,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .btn,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex > .upload-btn-wrap,
+    .v2-docs.cb-v2-docs-polish .upload-btn-wrap > .btn {
+        width: 100% !important;
+        min-height: 38px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .v2-docs.cb-v2-docs-polish .doc-toolbar-actions,
+    .v2-docs.cb-v2-docs-polish .doc-toolbar > .d-flex {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+}
+

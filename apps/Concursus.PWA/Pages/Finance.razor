@@ -11,12 +11,12 @@
 @* <DynamicGrid GridCode="GRIDVIEWACTIONS" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" /> *@
 
 
-<TelerikTabStrip>
+@* <TelerikTabStrip>
 
     <!-- Finance -->
-    <TabStripTab Title="Finance">
+    <TabStripTab Title="Finance"> *@
         <DynamicGrid GridCode="FINANCE" DrawerGuid="@DrawerGuid" FullGrid="true" IsLoading="@isLoading" TransientVirtualProperties="@TransientVirtualProperties" />
-     </TabStripTab>
+     @* </TabStripTab> *@
 
 @*     @if (appConfiguration.EnvironmentType == "DEV")
     { *@
@@ -45,8 +45,8 @@
     </TabStripTab> *@
 
     @* } *@
-</TelerikTabStrip>
-
+@* </TelerikTabStrip>
+ *@
 
 
 <style>

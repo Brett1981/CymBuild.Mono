@@ -4,7 +4,9 @@
 @using Microsoft.Extensions.Options
 @using Newtonsoft.Json
 @using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.JobPerformance
 @using System.Web
+@using System.Diagnostics
 @using Concursus.PWA.Classes
 @using Concursus.Components.Shared.Controls.Documents
 @using static Concursus.API.Client.FormHelper
@@ -37,6 +39,7 @@
           EnableBrowserTabTitle="true"
           BrowserTabTitlePropertyName="Number"
           BrowserTabTitlePrefix="Job"
+          PrepareStorageUrlOnInitialLoad="false"
           TransientVirtualProperties="@TransientVirtualProperties"
           DataObjectLoaded="@OnJobDataObjectLoadedAsync">
     <FormTitle>
@@ -48,15 +51,54 @@
 
             <TabStripTab Title="Job">
                 <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Job
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Job))"><i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Job</span>
                 </HeaderTemplate>
                 <Content>
                     <div class="row">
                         <JobProgress @ref="jobProgressRef" DataObject="@editPage.dataObject" />
                     </div>
 
+                    @if (_jobSummary is not null)
+                    {
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-3">
+                                <div class="@GetJobSummaryCardCss(JobSummaryCardKind.CurrentStatus)">
+                                    <div class="card-body py-2">
+                                        <div class="text-muted small">Current status</div>
+                                        <div class="fw-semibold">@SafeText(_jobSummary.CurrentStatusName, "Not set")</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="@GetJobSummaryCardCss(JobSummaryCardKind.OpenItems)">
+                                    <div class="card-body py-2">
+                                        <div class="text-muted small">Open items</div>
+                                        <div class="fw-semibold">@_jobSummary.OpenMilestoneCount milestones · @_jobSummary.OpenActivityCount activities · @_jobSummary.OpenActionCount actions</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="@GetJobSummaryCardCss(JobSummaryCardKind.FinancialOverview)">
+                                    <div class="card-body py-2">
+                                        <div class="text-muted small">Financial overview</div>
+                                        <div class="fw-semibold">@FormatCurrency(_jobSummary.FinancialOverview.InvoicedNet) invoiced / @FormatCurrency(_jobSummary.FinancialOverview.AgreedFeeIncludingCap)</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="@GetJobSummaryCardCss(JobSummaryCardKind.InvoiceRequests)">
+                                    <div class="card-body py-2">
+                                        <div class="text-muted small">Invoice requests</div>
+                                        <div class="fw-semibold">@_jobSummary.PendingInvoiceRequestCount pending · @FormatCurrency(_jobSummary.FinancialOverview.InvoiceRequestPendingTotal)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
                     <div class="row">
-                        <DynamicGrid GridCode="RECORDSTATUS"
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="RECORDSTATUS"
+                                     OnActionCompleted="OnRecordStatusActionCompletedAsync"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus"
@@ -66,18 +108,19 @@
                                             entityProperties="@editPage.entityProperties"
                                             entityPropertyGroups="@editPage.entityPropertyGroups"
                                             IsMainRecordContext="@IsMainRecordContext"
+                                            FormHelper="@ActiveFormHelper"
                                             @bind-dataObject="@editPage.dataObject"
                                             RecordGuid="@RecordGuid"
                                             inputUpdated="@editPage.HandleInputUpdated" />
                     </div>
 
                     <div class="row">
-                        <DynamicGrid GridCode="JOB_MEMOS"
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOB_MEMOS"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
 
-                        <DynamicGrid GridCode="JOBMEMOS"
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBMEMOS"
                                      OnActionCompleted="RefreshJobProgress"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -88,9 +131,11 @@
 
             <TabStripTab Title="Fees">
                 <HeaderTemplate>
-                    <i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Fees))"><i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees</span>
                 </HeaderTemplate>
                 <Content>
+                    @if (IsTabRequested(JobDetailTab.Fees))
+                    {
                     @if (ShowReplacementInvoiceScheduleButton)
                     {
                         <div class="mb-2">
@@ -100,14 +145,14 @@
                             </button>
                         </div>
                     }
-                    <DynamicGrid GridCode="JOBFEES"
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFEES"
                                  OnActionCompleted="RefreshJobProgressAndInvoiceScheduleActions"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
                                  ParentRowStatus="@editPage.dataObject.RowStatus"
                                  TransientVirtualProperties="@TransientVirtualProperties" />
 
-                    <DynamicGrid GridCode="JOBFINANCEMEMO"
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFINANCEMEMO"
                                  OnActionCompleted="RefreshJobProgress"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -143,7 +188,7 @@
                                 <button class="btn btn-primary" onclick="@PromptModeChangeAsync" disabled="@(_selectedMode != _currentMode)">
                                     Apply mode change
                                 </button>
-                             
+
 
                                 <div class="text-muted small align-self-center">
                                     Changing mode is logged and auditable.
@@ -151,7 +196,7 @@
                             </div>
                         </div>
                     </div>
-                    <DynamicGrid GridCode="JOBINVOICES"
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBINVOICES"
                                  OnActionCompleted="RefreshJobProgress"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -160,7 +205,7 @@
                                  DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
 
 
-                    <DynamicGrid GridCode="JOBINVOICEREQUESTS"
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBINVOICEREQUESTS"
                                  OnActionCompleted="OnInvoiceRequestsActionCompletedAsync"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -171,7 +216,7 @@
 
                     @if (ShowSubContractorGrid)
                     {
-                        <DynamicGrid GridCode="SUBCONTRACTOR"
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="SUBCONTRACTOR"
                                      OnActionCompleted="RefreshJobProgress"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
@@ -182,91 +227,115 @@
 
 
 
+
+                    }
+                    else
+                    {
+                        @RenderLazyTabPlaceholder(JobDetailTab.Fees, "Fees")
+                    }
                 </Content>
             </TabStripTab>
 
             <TabStripTab Title="Project Details">
                 <HeaderTemplate>
-                    <i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Details
+                    <span @onclick="@(() => RequestTab(JobDetailTab.ProjectDetails))"><i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Details</span>
                 </HeaderTemplate>
                 <Content>
-                    <div class="card shadow-sm">
-                        <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
-                            <i class="bi bi-info-circle" style="margin-right: 9px !important; color: #ffffff"></i>
-                            Information
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.ProjectDetails)"
+                                      Label="Project Details"
+                                      OnLoadRequested="@(() => RequestTab(JobDetailTab.ProjectDetails))">
+                        <div class="card shadow-sm">
+                            <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                                <i class="bi bi-info-circle" style="margin-right: 9px !important; color: #ffffff"></i>
+                                Information
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">
+                                    Project Details are shared across all records linked to this project.
+                                    Changes you make here will be visible on any Enquiry, Quote or Job for this project,
+                                    even if they belong to a different Business Unit.
+                                </p>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <p class="card-text">
-                                Project Details are shared across all records linked to this project.
-                                Changes you make here will be visible on any Enquiry, Quote or Job for this project,
-                                even if they belong to a different Business Unit.
-                            </p>
-                        </div>
-                    </div>
 
-                    <DynamicGrid GridCode="JOBPROJECTDIRECTORY"
-                                 OnActionCompleted="RefreshJobProgress"
-                                 ParentGuid="@RecordGuid"
-                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBPROJECTDIRECTORY"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
 
-                    <DynamicGrid GridCode="JOBKEYDATES"
-                                 ParentGuid="@RecordGuid"
-                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBKEYDATES"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
 
             <TabStripTab Title="Milestones">
                 <HeaderTemplate>
-                    <i class="bi bi-signpost-split-fill me-2" style="font-size: 1.2rem;"></i> Milestones
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Milestones))"><i class="bi bi-signpost-split-fill me-2" style="font-size: 1.2rem;"></i> Milestones</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="JOBMILESTONES"
-                                 OnActionCompleted="RefreshJobProgress"
-                                 ParentGuid="@RecordGuid"
-                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Milestones)"
+                                      Label="Milestones"
+                                      OnLoadRequested="@(() => RequestTab(JobDetailTab.Milestones))">
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBMILESTONES"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
 
             <TabStripTab Title="Activity">
                 <HeaderTemplate>
-                    <i class="bi bi-activity me-2" style="font-size: 1.2rem;"></i> Activities
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Activity))"><i class="bi bi-activity me-2" style="font-size: 1.2rem;"></i> Activities</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="JOBACTIVITY"
-                                 OnActionCompleted="OnActivityActionCompletedAsync"
-                                 ParentGuid="@RecordGuid"
-                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Activity)"
+                                      Label="Activities"
+                                      OnLoadRequested="@(() => RequestTab(JobDetailTab.Activity))">
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBACTIVITY"
+                                     OnActionCompleted="OnActivityActionCompletedAsync"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
 
             <TabStripTab Title="Actions">
                 <HeaderTemplate>
-                    <i class="bi bi-card-checklist me-2" style="font-size: 1.2rem;"></i> Actions
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Actions))"><i class="bi bi-card-checklist me-2" style="font-size: 1.2rem;"></i> Actions</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="JOBACTIONS"
-                                 OnActionCompleted="RefreshJobProgress"
-                                 ParentGuid="@RecordGuid"
-                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
-                                 ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Actions)"
+                                      Label="Actions"
+                                      OnLoadRequested="@(() => RequestTab(JobDetailTab.Actions))">
+                        <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBACTIONS"
+                                     OnActionCompleted="RefreshJobProgress"
+                                     ParentGuid="@RecordGuid"
+                                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                     ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
             @if (ShowDocumentsTab)
 {
             <TabStripTab Title="Documents">
                 <HeaderTemplate>
-                    <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                    <span @onclick="@(() => RequestTab(JobDetailTab.Documents))"><i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents</span>
                 </HeaderTemplate>
 
                 <Content>
+                    @if (IsTabRequested(JobDetailTab.Documents))
+                    {
                     <ErrorBoundary @ref="_docsBoundary">
                         <ChildContent>
                             @* Only render when EditPage has actually loaded a real record *@
-                            @if (_formHelper is null
+                            @if (ActiveFormHelper is null
                                                         || editPage is null
                                                         || editPage.dataObject is null
                                                         || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
@@ -278,7 +347,7 @@
                             }
                             else
                             {
-                                <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                <RecordDocumentBrowserV2 FormHelper="@ActiveFormHelper"
                                                        DataObject="editPage.dataObject"
                                                        EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
                                                              EntityTypeId="9"
@@ -300,6 +369,12 @@
                             </div>
                         </ErrorContent>
                     </ErrorBoundary>
+
+                    }
+                    else
+                    {
+                        @RenderLazyTabPlaceholder(JobDetailTab.Documents, "Documents")
+                    }
                 </Content>
             </TabStripTab>
             }
@@ -319,7 +394,7 @@
 
             <WindowContent>
                 <p class="mb-2">
-                    You are about to change this job’s invoicing mode to:
+                    You are about to change this jobâ€™s invoicing mode to:
                     <strong>@GetModeLabel(_pendingNewMode)</strong>
                 </p>
 
@@ -356,12 +431,12 @@
 
             <WindowContent>
                 <p>
-                    This job’s invoicing is paused.
+                    This jobâ€™s invoicing is paused.
                     There are <strong>@_pendingTriggerCount</strong> completed item(s) that could generate invoice requests.
                 </p>
 
                 <div class="alert alert-info">
-                    “This job’s invoicing is paused. Do you still want to generate an invoice request?”
+                    â€œThis jobâ€™s invoicing is paused. Do you still want to generate an invoice request?â€
                 </div>
 
                 <div class="d-flex justify-content-end gap-2">
@@ -464,6 +539,57 @@
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
+    private enum JobDetailTab
+    {
+        Job,
+        Fees,
+        ProjectDetails,
+        Milestones,
+        Activity,
+        Actions,
+        Documents
+    }
+
+    private readonly HashSet<JobDetailTab> _requestedTabs = new()
+    {
+        JobDetailTab.Job
+    };
+
+    private void RequestTab(JobDetailTab tab)
+    {
+        if (_requestedTabs.Add(tab))
+        {
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=JobDetail Step=TabRequested Tab={tab}");
+
+            if (tab == JobDetailTab.Fees)
+            {
+                _ = RefreshReplacementInvoiceScheduleButtonAsync();
+            }
+        }
+    }
+
+    private bool IsTabRequested(JobDetailTab tab) => _requestedTabs.Contains(tab);
+
+    private RenderFragment RenderLazyTabPlaceholder(JobDetailTab tab, string label) => builder =>
+    {
+        var sequence = 0;
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", "alert alert-light border d-flex align-items-center justify-content-between mb-0");
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddContent(sequence++, $"{label} will load when opened.");
+        builder.CloseElement();
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", "btn btn-sm btn-outline-primary");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => RequestTab(tab)));
+        builder.AddContent(sequence++, $"Load {label}");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
     private InvoiceProcessingModeUi _currentMode = InvoiceProcessingModeUi.Manual;
     private InvoiceProcessingModeUi _selectedMode = InvoiceProcessingModeUi.Manual;
     private string _modeChangeReason = string.Empty;
@@ -476,6 +602,15 @@
     private JobProgress? jobProgressRef;
 
     private API.Client.FormHelper? _formHelper;
+    private API.Client.FormHelper? ActiveFormHelper => editPage?.FormHelperInstance ?? _formHelper;
+    private enum JobSummaryCardKind
+    {
+        CurrentStatus,
+        OpenItems,
+        FinancialOverview,
+        InvoiceRequests
+    }
+    private JobSummaryModel? _jobSummary;
     private ErrorBoundary? _docsBoundary;
 
     private bool ShowDocumentsTab =>
@@ -490,6 +625,7 @@
 
     // Optional: show loading while we resolve schedule
     private bool _loadingScheduleForAutomation;
+    private readonly Stopwatch _jobDetailInitialLoadStopwatch = Stopwatch.StartNew();
     private void RecoverDocumentsTab()
     {
         _docsBoundary?.Recover();
@@ -535,9 +671,9 @@
 
             _currentMode = await _formHelper.JobInvoiceProcessingModeGetAsync(jobGuid);
             _selectedMode = _currentMode;
+            await RefreshJobSummaryAsync(updateReplacementScheduleButton: true);
 
-
-            await RefreshReplacementInvoiceScheduleButtonAsync();
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=JobDetail Step=FirstRenderComplete DurationMs={_jobDetailInitialLoadStopwatch.ElapsedMilliseconds}");
             StateHasChanged();
         }
         catch
@@ -589,6 +725,7 @@
                 string.IsNullOrWhiteSpace(orgUnitValue)
                 || !excludedOrgUnits.Contains(orgUnitValue);
 
+            await RefreshJobSummaryAsync(updateReplacementScheduleButton: true);
             await InvokeAsync(StateHasChanged);
         }
         catch
@@ -597,9 +734,170 @@
         }
     }
 
+    private async Task RefreshJobSummaryAsync(bool updateReplacementScheduleButton = false)
+    {
+        try
+        {
+            EnsureFormHelper();
+            if (_formHelper is null || string.IsNullOrWhiteSpace(RecordGuid))
+            {
+                return;
+            }
+
+            var jobGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid);
+            if (jobGuid == Guid.Empty)
+            {
+                return;
+            }
+
+            _jobSummary = await _formHelper.JobSummaryGetAsync(jobGuid);
+            if (_jobSummary is not null)
+            {
+                _currentMode = _jobSummary.InvoiceProcessingMode;
+                _selectedMode = _currentMode;
+
+                if (updateReplacementScheduleButton)
+                {
+                    ShowReplacementInvoiceScheduleButton = _jobSummary.CanCreateReplacementInvoiceSchedule;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "JobDetail/RefreshJobSummaryAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private static string SafeText(string? value, string fallback)
+    {
+        return string.IsNullOrWhiteSpace(value) ? fallback : value;
+    }
+
+    private static string FormatCurrency(decimal value)
+    {
+        return value.ToString("C");
+    }
+    private string GetJobSummaryCardCss(JobSummaryCardKind kind)
+    {
+        var variant = kind switch
+        {
+            JobSummaryCardKind.CurrentStatus => GetCurrentStatusSummaryVariant(),
+            JobSummaryCardKind.OpenItems => GetOpenItemsSummaryVariant(),
+            JobSummaryCardKind.FinancialOverview => GetFinancialSummaryVariant(),
+            JobSummaryCardKind.InvoiceRequests => GetInvoiceRequestsSummaryVariant(),
+            _ => "neutral"
+        };
+
+        return $"card shadow-sm h-100 cb-job-summary-card cb-job-summary-card--{variant}";
+    }
+
+    private string GetCurrentStatusSummaryVariant()
+    {
+        var status = _jobSummary?.CurrentStatusName?.Trim();
+        if (string.IsNullOrWhiteSpace(status)) return "neutral";
+
+        // Explicit mappings for the current Job workflow statuses.
+        // Unknown/local statuses intentionally fall back to neutral unless a safe
+        // keyword match below can infer the intent.
+        var statusKey = status.ToUpperInvariant();
+        var exactVariant = statusKey switch
+        {
+            "N/A" => "neutral",
+            "TEST STATUS" => "neutral",
+
+            "NOT STARTED" => "new",
+            "NEW" => "new",
+            "REOPENED" => "new",
+
+            "LIVE" => "active",
+            "JOB STARTED" => "active",
+
+            "DORMANT" => "dormant",
+
+            "CLOSURE REQUEST" => "review",
+            "COMPLETE FOR REVIEW" => "review",
+
+            "QUOTE EXPIRED" => "warning",
+
+            "PART ACCEPTED" => "success",
+            "REVIEWED" => "success",
+            "COMPLETED" => "success",
+            "APPROVE CLOSURE" => "success",
+
+            "CANCELLED" => "danger",
+            "DEAD" => "danger",
+            "CLOSURE REJECTED" => "danger",
+
+            _ => null
+        };
+
+        if (!string.IsNullOrWhiteSpace(exactVariant)) return exactVariant;
+
+        var normalised = status.ToLowerInvariant();
+
+        if (ContainsAny(normalised, "cancel", "dead", "declin", "reject", "failed", "lost")) return "danger";
+        if (ContainsAny(normalised, "complete", "completed", "accepted", "approved", "reviewed", "won")) return "success";
+        if (ContainsAny(normalised, "closure", "review", "approval", "authoris")) return "review";
+        if (ContainsAny(normalised, "pending", "await", "expired", "hold", "paused", "dormant")) return "warning";
+        if (ContainsAny(normalised, "sent", "submit", "issued")) return "info";
+        if (ContainsAny(normalised, "new", "open", "reopen", "not started")) return "new";
+        if (ContainsAny(normalised, "live", "started", "progress", "active", "work", "quoting")) return "active";
+
+        return "neutral";
+    }
+    private string GetOpenItemsSummaryVariant()
+    {
+        if (_jobSummary is null) return "neutral";
+
+        var openCount = _jobSummary.OpenMilestoneCount + _jobSummary.OpenActivityCount + _jobSummary.OpenActionCount;
+        return openCount <= 0 ? "success" : "warning";
+    }
+
+    private string GetFinancialSummaryVariant()
+    {
+        if (_jobSummary is null) return "neutral";
+
+        var financial = _jobSummary.FinancialOverview;
+        if (financial.AgreedFeeIncludingCap <= 0) return "neutral";
+        if (financial.InvoicedNet <= 0) return "warning";
+        if (financial.InvoicedNet >= financial.AgreedFeeIncludingCap) return "success";
+
+        return "info";
+    }
+
+    private string GetInvoiceRequestsSummaryVariant()
+    {
+        if (_jobSummary is null) return "neutral";
+
+        var financial = _jobSummary.FinancialOverview;
+        if (financial.BlockedInvoiceRequestCount > 0 || financial.ReconciliationRequiredInvoiceRequestCount > 0) return "danger";
+        if (_jobSummary.PendingInvoiceRequestCount > 0 || financial.InvoiceRequestPendingTotal > 0) return "warning";
+
+        return "success";
+    }
+
+    private static bool ContainsAny(string value, params string[] tokens)
+    {
+        foreach (var token in tokens)
+        {
+            if (value.Contains(token, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task OnRecordStatusActionCompletedAsync()
+    {
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
+    }
     private async Task OnInvoiceRequestsActionCompletedAsync()
     {
-        RefreshJobProgress();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         await TryPromptGenerateWhilePausedAsync("InvoiceRequest grid action completed");
     }
 
@@ -709,7 +1007,7 @@
 
     _showAutomationReenableModal = false;
 
-    RefreshJobProgress();
+    await RefreshJobShellAsync(updateReplacementScheduleButton: true);
     StateHasChanged();
 }
 
@@ -743,7 +1041,7 @@ private async Task CancelAutomationReenableAsync()
 
     _showAutomationReenableModal = false;
 
-    RefreshJobProgress();
+    await RefreshJobShellAsync(updateReplacementScheduleButton: true);
     StateHasChanged();
 }
 
@@ -759,7 +1057,7 @@ private async Task CancelAutomationReenableAsync()
         _currentMode = _pendingNewMode;
         _selectedMode = _currentMode;
 
-        RefreshJobProgress();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         StateHasChanged();
     }
 
@@ -772,8 +1070,7 @@ private async Task CancelAutomationReenableAsync()
 
     private async Task OnActivityActionCompletedAsync()
     {
-        // Preserve existing behaviour
-        RefreshJobProgress();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: false);
         await TryPromptGenerateWhilePausedAsync("Activity grid action completed");
 
     }
@@ -789,7 +1086,7 @@ private async Task CancelAutomationReenableAsync()
             jobGuid,
             "User confirmed generation while Paused (JobDetail prompt).");
 
-        RefreshJobProgress();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         StateHasChanged();
     }
 
@@ -811,9 +1108,31 @@ private async Task CancelAutomationReenableAsync()
 
     private void RefreshJobProgress()
     {
-        _ = LoadData();
+        _ = RefreshJobShellAsync(updateReplacementScheduleButton: false);
     }
 
+    private async Task RefreshJobShellAsync(bool updateReplacementScheduleButton = false)
+    {
+        try
+        {
+            jobProgressRef?.RefreshProgress();
+            await RefreshJobSummaryAsync(updateReplacementScheduleButton);
+            await InvokeAsync(StateHasChanged);
+
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=JobDetail Step=TargetedShellRefresh UpdateReplacementScheduleButton={updateReplacementScheduleButton}");
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while refreshing the Job shell.");
+            ex.Data.Add("PageMethod", "JobDetail/RefreshJobShellAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    // Full data reload is intentionally retained as a fallback for future use, but normal child-grid
+    // actions should refresh only the lightweight job shell/summary. Reloading the full DataObject
+    // rehydrates metadata and all form state, which is what the performance patches are avoiding.
     private async Task LoadData()
     {
         try
@@ -859,7 +1178,7 @@ private async Task CancelAutomationReenableAsync()
     private string GetInvoiceRequestsDisabledMessage()
     {
         if (_currentMode == InvoiceProcessingModeUi.Paused)
-            return "This job’s invoicing is paused. Complete activities/milestones will not auto-generate invoice requests unless you confirm.";
+            return "This jobâ€™s invoicing is paused. Complete activities/milestones will not auto-generate invoice requests unless you confirm.";
 
         if (editPage.GetValueAsBool("CannotBeInvoiced"))
             return "This job cannot currently be invoiced.";
@@ -877,8 +1196,7 @@ private async Task CancelAutomationReenableAsync()
 
     private async Task RefreshJobProgressAndInvoiceScheduleActions()
     {
-        RefreshJobProgress();
-        await RefreshReplacementInvoiceScheduleButtonAsync();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
     }
 
     private async Task RefreshReplacementInvoiceScheduleButtonAsync()
@@ -887,36 +1205,25 @@ private async Task CancelAutomationReenableAsync()
         {
             ShowReplacementInvoiceScheduleButton = false;
 
-            if (string.IsNullOrWhiteSpace(RecordGuid) || editPage?.MyDataObjectReference == null)
+            EnsureFormHelper();
+
+            if (_formHelper is null || string.IsNullOrWhiteSpace(RecordGuid))
             {
                 return;
             }
 
-            var gridDataListRequest = new GridDataListRequest
+            var jobGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid);
+            if (jobGuid == Guid.Empty)
             {
-                GridCode = "JOBFEES",
-                GridViewCode = "JOBINVOICESCHEDULES",
-                Page = 1,
-                PageSize = 50,
-                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid).ToString()
-            };
-
-            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
-
-            if (gridDataListReply == null || gridDataListReply.DataTable == null || gridDataListReply.DataTable.Count == 0)
-            {
-                ShowReplacementInvoiceScheduleButton = false;
-                await InvokeAsync(StateHasChanged);
                 return;
             }
 
-            var activeRows = gridDataListReply.DataTable
-                .Where(r => GetIntColumnValue(r, "RowStatus") is int rs && rs != 0 && rs != 254)
-                .ToList();
+            if (_jobSummary is null)
+            {
+                _jobSummary = await _formHelper.JobSummaryGetAsync(jobGuid);
+            }
 
-            ShowReplacementInvoiceScheduleButton =
-                activeRows.Count == 1 &&
-                GetBoolColumnValue(activeRows[0], "IsSystemGeneratedManual");
+            ShowReplacementInvoiceScheduleButton = _jobSummary?.CanCreateReplacementInvoiceSchedule == true;
 
             await InvokeAsync(StateHasChanged);
         }
@@ -969,40 +1276,8 @@ private async Task CancelAutomationReenableAsync()
         }
     }
 
-    private static bool GetBoolColumnValue(GridDataRow row, string columnName)
-    {
-        var column = row.Columns.FirstOrDefault(x =>
-            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
-
-        if (column == null || string.IsNullOrWhiteSpace(column.Value))
-        {
-            return false;
-        }
-
-        if (bool.TryParse(column.Value, out var boolValue))
-        {
-            return boolValue;
-        }
-
-        if (int.TryParse(column.Value, out var intValue))
-        {
-            return intValue == 1;
-        }
-
-        return false;
-    }
-
-    private static int? GetIntColumnValue(GridDataRow row, string columnName)
-    {
-        var column = row.Columns.FirstOrDefault(x =>
-            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
-
-        if (column == null || string.IsNullOrWhiteSpace(column.Value))
-        {
-            return null;
-        }
-
-        return int.TryParse(column.Value, out var intValue) ? intValue : null;
-    }
 }
+
+
+
 

@@ -1,4 +1,4 @@
-﻿@using System.Globalization
+@using System.Globalization
 
 <div class="dp-row">
 
@@ -100,7 +100,7 @@
                     <div class="dp-modal-header">
                         <div class="dp-modal-title">
                             <span aria-hidden="true">📄</span>
-                            <span>Overdue invoices</span>
+                            <span>Overdue invoices for this job</span>
                         </div>
 
                         <button type="button"
@@ -113,13 +113,18 @@
 
                     <div class="dp-modal-body">
                         @* IMPORTANT:
-                           This assumes your FINANCE grid uses DrawerGuid to scope to the current Job.
+                           This uses JOBOVERDUEINVOICES metadata and ParentGuid to scope transactions to the current Job.
                            If your FINANCE grid also supports a “quick filter” parameter, we can wire it in next.
                         *@
-                        <DynamicGrid GridCode="@OverdueGridCode"
-                                     DrawerGuid="@DrawerGuid"
+                        <DynamicGrid FormHelper="@FormHelper"
+                                     GridCode="@OverdueGridCode"
+                                     ParentGuid="@ParentGuid"
+                                     ParentDataObjectReference="@ParentDataObjectReference"
+                                     ParentRowStatus="@ParentRowStatus"
+                                     TransientVirtualProperties="@TransientVirtualProperties"
                                      FullGrid="true"
-                                     IsLoading="@IsGridLoading" />
+                                     IsLoading="@IsGridLoading"
+                                     OnActionCompleted="OnOverdueGridActionCompleted" />
                     </div>
                 </div>
             </div>

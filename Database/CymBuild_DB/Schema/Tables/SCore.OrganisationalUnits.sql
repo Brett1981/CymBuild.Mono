@@ -3,11 +3,6 @@ GO
 
 PRINT (N'Create table [SCore].[OrganisationalUnits]')
 GO
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create table [SCore].[OrganisationalUnits]')
-GO
 CREATE TABLE [SCore].[OrganisationalUnits] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_OrganisationalUnits_RowStatus] DEFAULT (1),

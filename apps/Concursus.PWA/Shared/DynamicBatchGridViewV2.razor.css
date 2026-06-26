@@ -165,3 +165,47 @@
         grid-template-columns: 1fr;
     }
 }
+
+
+/* Native tooltip replacement for the removed TelerikTooltip.
+   The title attribute remains as a browser/accessibility fallback; this CSS provides the V2 hover treatment. */
+.cb-v2-tooltip-target {
+    position: relative;
+    cursor: help;
+}
+
+.cb-v2-tooltip-target[data-tooltip]:hover::after,
+.cb-v2-tooltip-target[data-tooltip]:focus-within::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 0.45rem);
+    z-index: 1050;
+    width: max-content;
+    max-width: min(36rem, 70vw);
+    padding: 0.55rem 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 0.65rem;
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.35;
+    white-space: normal;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+}
+
+.cb-v2-tooltip-target[data-tooltip]:hover::before,
+.cb-v2-tooltip-target[data-tooltip]:focus-within::before {
+    content: "";
+    position: absolute;
+    left: 1rem;
+    bottom: calc(100% + 0.18rem);
+    z-index: 1051;
+    width: 0.55rem;
+    height: 0.55rem;
+    background: #0f172a;
+    transform: rotate(45deg);
+    pointer-events: none;
+}

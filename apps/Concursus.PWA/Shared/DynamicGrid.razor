@@ -6,202 +6,213 @@
 @attribute [Authorize]
 @inject HttpClient Http
 @inject DeviceInfoService DeviceInfoService
-@inject Helpers.SessionStorageAccessor SessionStorageAccessor //CBLD-12
+@inject Helpers.SessionStorageAccessor SessionStorageAccessor
 @inject NavigationManager NavManager
 @inject UserInteractionTrackerService InteractionTracker
 
 <ErrorBoundary>
     <ChildContent>
-        @if (!DeviceInfoService.IsMobile || (DeviceInfoService.IsMobile && selectedItem?.ViewDefinition?.ShowOnMobile == true))
+        @if (ShouldRenderForDevice)
         {
-            <div class="drawer-container @(FullGrid ? "full-grid" : "")">
-                <div class="card shadow-sm">
-                    <div class="custom-toolbar">
-                        <TelerikButton OnClick="@ToggleDrawer"
-                                       Icon="@("bi bi-list")"
-                                       FillMode="@(ThemeConstants.Button.FillMode.Flat)">
-                        </TelerikButton>
-                        <span>@GridName</span>
+            <div class="drawer-container @(FullGrid ? "full-grid" : string.Empty)">
+                <div class="card shadow-sm cb-dynamic-grid-card">
+                    <div class="custom-toolbar cb-dynamic-grid-toolbar">
+                        <button type="button"
+                                class="btn btn-link cb-drawer-toggle"
+                                title="Toggle grid views"
+                                aria-label="Toggle grid views"
+                                aria-expanded="@_drawerExpanded"
+                                @onclick="ToggleDrawer">
+                            <i class="bi bi-list" aria-hidden="true"></i>
+                        </button>
+                        <span class="cb-dynamic-grid-title">@GridName</span>
                     </div>
 
-                    <TelerikDrawer @ref="@Drawer"
-                                   Data="@Data"
-                                   MiniMode="true"
-                                   Mode="@DrawerMode.Push"
-                                   SelectedItem="@selectedItem"
-                                   SelectedItemChanged="((DrawerItem item) => SelectedItemChangedHandler(item))">
-                        <DrawerContent>
-                            <div class="page">
+                    <div class="cb-drawer-layout @(_drawerExpanded ? "cb-drawer-open" : "cb-drawer-mini")">
+                        <nav class="cb-drawer-nav" aria-label="Grid views">
+                            @foreach (var item in Data)
+                            {
+                                <button type="button"
+                                        class="cb-drawer-item @(IsSelected(item) ? "selected" : string.Empty)"
+                                        title="@item.Text"
+                                        @onclick="() => SelectedItemChangedHandlerAsync(item)">
+                                    <i class="@(string.IsNullOrWhiteSpace(item.Icon) ? "bi bi-grid-3x3-gap" : item.Icon)" aria-hidden="true"></i>
+                                    <span>@item.Text</span>
+                                </button>
+                            }
+                        </nav>
 
-                                @if (IsLoading)
+                        <main class="cb-drawer-content page">
+                            @if (IsLoading)
+                            {
+                                <div class="cb-grid-loading" role="status" aria-live="polite">
+                                    <div class="spinner-border spinner-border-sm" aria-hidden="true"></div>
+                                    <span>Loading...</span>
+                                </div>
+                            }
+                            else if (selectedItem?.ViewDefinition is null)
+                            {
+                                <div class="alert alert-info mb-0" role="alert">
+                                    No grid view is available.
+                                </div>
+                            }
+                            else
+                            {
+                                @if (Disabled)
                                 {
-                                    <div style="width:100%; align-content:center">
-                                        <TelerikLoader Class="loader-indicator"
-                                                       Type="LoaderType.InfiniteSpinner"
-                                                       ThemeColor="dark"
-                                                       Size="@(ThemeConstants.Loader.Size.Medium)"
-                                                       Visible="@IsLoading">
-                                        </TelerikLoader>
+                                    <div class="alert alert-warning mb-2" role="alert">
+                                        <strong>Action disabled.</strong>
+                                        @(!string.IsNullOrWhiteSpace(DisabledMessage)
+                                            ? DisabledMessage
+                                            : "This area is currently disabled.")
+                                    </div>
+                                }
+
+                                @if (ParentRowStatus == -1 || ParentRowStatus > 0)
+                                {
+                                    <div class="dg-host @(Disabled ? "dg-disabled" : string.Empty)">
+                                        @if (selectedItem.ViewDefinition.Code == "ALLTRANSACTIONS")
+                                        {
+                                            <div class="cb-tabs" role="tablist" aria-label="Transaction views">
+                                                @if (BatchedTransactionsGvd != null)
+                                                {
+                                                    <button type="button"
+                                                            role="tab"
+                                                            class="cb-tab @(_allTransactionsTab == AllTransactionsTab.Batched ? "active" : string.Empty)"
+                                                            aria-selected="@(_allTransactionsTab == AllTransactionsTab.Batched)"
+                                                            @onclick="() => SetAllTransactionsTab(AllTransactionsTab.Batched)">
+                                                        Transactions (Batched)
+                                                    </button>
+                                                }
+                                                <button type="button"
+                                                        role="tab"
+                                                        class="cb-tab @(_allTransactionsTab == AllTransactionsTab.Transactions ? "active" : string.Empty)"
+                                                        aria-selected="@(_allTransactionsTab == AllTransactionsTab.Transactions)"
+                                                        @onclick="() => SetAllTransactionsTab(AllTransactionsTab.Transactions)">
+                                                    Transactions
+                                                </button>
+                                            </div>
+
+                                            <div class="cb-tab-panel" role="tabpanel">
+                                                @if (_allTransactionsTab == AllTransactionsTab.Batched && BatchedTransactionsGvd != null)
+                                                {
+                                                    <DynamicBatchGridView @ref="@Dgv"
+                                                                          @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                          OnActionCompleted="HandleActionCompleted"
+                                                                          ViewDefinition="@BatchedTransactionsGvd"
+                                                                          GridCode="BATCHEDTRANSACTIONS"
+                                                                          ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                                          ParentDataObjectReference="@ParentDataObjectReference"
+                                                                          ParentGuid="@ParentGuid"
+                                                                          FullGrid="@FullGrid" />
+                                                }
+                                                else
+                                                {
+                                                    <FilteredDynamicGridView @ref="@Dgv"
+                                                                             @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                             OnActionCompleted="HandleActionCompleted"
+                                                                             Disabled="@Disabled"
+                                                                             DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
+                                                                             ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                             GridCode="@GridCode"
+                                                                             ParentDataObjectReference="@ParentDataObjectReference"
+                                                                             ParentGuid="@ParentGuid"
+                                                                             FullGrid="@FullGrid" />
+                                                }
+                                            </div>
+                                        }
+                                        else if (selectedItem.ViewDefinition.GridViewTypeId == 7)
+                                        {
+                                            <FilteredDynamicGridViewV2 @ref="@Dgv"
+                                                                       @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                       OnActionCompleted="HandleActionCompleted"
+                                                                       Disabled="@Disabled"
+                                                                       DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
+                                                                       ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                       GridCode="@GridCode"
+                                                                       ParentDataObjectReference="@ParentDataObjectReference"
+                                                                       FullGrid="@FullGrid" />
+                                        }
+                                        else if (GridCode == "FILTEREDQUOTES")
+                                        {
+                                            <FilteredDynamicGridView @ref="@Dgv"
+                                                                     @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                     OnActionCompleted="HandleActionCompleted"
+                                                                     Disabled="@Disabled"
+                                                                     DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
+                                                                     ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                     GridCode="@GridCode"
+                                                                     ParentDataObjectReference="@ParentDataObjectReference"
+                                                                     FullGrid="@FullGrid" />
+                                        }
+                                        else if (selectedItem.ViewDefinition.GridViewTypeId == 1 && GridCode != "MYPROJECTS")
+                                        {
+                                            <DynamicGridView @ref="@Dgv"
+                                                             @key="@($"Grid-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                             ResyncDataObject="@ResyncDataObject"
+                                                             OnActionCompleted="HandleActionCompleted"
+                                                             Disabled="@Disabled"
+                                                             DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
+                                                             ViewDefinition="@selectedItem?.ViewDefinition"
+                                                             GridCode="@GridCode"
+                                                             ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                             ParentDataObjectReference="@ParentDataObjectReference"
+                                                             @bind-ParentGuid="@ParentGuid"
+                                                             FullGrid="@FullGrid"
+                                                             TransientVirtualProperties="@TransientVirtualProperties" />
+                                        }
+                                        else if (selectedItem.ViewDefinition.GridViewTypeId == 5)
+                                        {
+                                            <DynamicTreeListGridView @ref="@Dgv"
+                                                                     @key="@($"Tree-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                     OnActionCompleted="HandleActionCompleted"
+                                                                     ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                     GridCode="@GridCode"
+                                                                     ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                                     ParentDataObjectReference="@ParentDataObjectReference"
+                                                                     ParentGuid="@ParentGuid"
+                                                                     FullGrid="@FullGrid" />
+                                        }
+                                        else if (selectedItem.ViewDefinition.Code == "ALLSAGESUBMON")
+                                        {
+                                            <DynamicBatchGridView @ref="@Dgv"
+                                                                  @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                  OnActionCompleted="HandleActionCompleted"
+                                                                  ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                  GridCode="@GridCode"
+                                                                  ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                                  ParentDataObjectReference="@ParentDataObjectReference"
+                                                                  ParentGuid="@ParentGuid"
+                                                                  FullGrid="@FullGrid" />
+                                        }
+                                        else
+                                        {
+                                            <DynamicBatchGridView @ref="@Dgv"
+                                                                  @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
+                                                                  OnActionCompleted="HandleActionCompleted"
+                                                                  ViewDefinition="@selectedItem?.ViewDefinition"
+                                                                  GridCode="@GridCode"
+                                                                  ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                                  ParentDataObjectReference="@ParentDataObjectReference"
+                                                                  ParentGuid="@ParentGuid"
+                                                                  FullGrid="@FullGrid" />
+                                        }
+
+                                        @if (Disabled)
+                                        {
+                                            <div class="dg-blocker" aria-hidden="true"></div>
+                                        }
                                     </div>
                                 }
                                 else
                                 {
-                                    @* 1) Always show a banner if Disabled *@
-                                    @if (Disabled)
-                                    {
-                                        <div class="alert alert-warning mb-2" role="alert">
-                                            <strong>Action disabled.</strong>
-                                            @(!string.IsNullOrWhiteSpace(DisabledMessage)
-                                                                            ? DisabledMessage
-                                                                            : "This area is currently disabled.")
-                                        </div>
-                                    }
-
-                                    @if (ParentRowStatus == -1 || ParentRowStatus > 0)
-                                    {
-                                        @* 2) Wrap the entire grid selection so we can overlay block clicks *@
-                                        <div class="dg-host @(Disabled ? "dg-disabled" : "")">
-
-                                            @* ALLTRANSACTIONS special view *@
-                                            @if (selectedItem?.ViewDefinition?.Code == "ALLTRANSACTIONS")
-                                            {
-                                                <TelerikTabStrip>
-                                                    @if (BatchedTransactionsGvd != null)
-                                                    {
-                                                        <TabStripTab Title="Transactions (Batched)">
-                                                            <DynamicBatchGridView @ref="@Dgv"
-                                                                                  @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                                  OnActionCompleted="HandleActionCompleted"
-                                                                                  ViewDefinition="@BatchedTransactionsGvd"
-                                                                                  GridCode="BATCHEDTRANSACTIONS"
-                                                                                  ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                                                  ParentDataObjectReference="@ParentDataObjectReference"
-                                                                                  ParentGuid="@ParentGuid"
-                                                                                  FullGrid="@FullGrid" />
-                                                        </TabStripTab>
-                                                    }
-
-                                                    <TabStripTab Title="Transactions">
-                                                        <FilteredDynamicGridView 
-                                                                        @ref="@Dgv"
-                                                                        @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                         OnActionCompleted="HandleActionCompleted"
-                                                                         Disabled="@Disabled"
-                                                                         DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
-                                                                         ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                         GridCode="@GridCode"
-                                                                         ParentDataObjectReference="@ParentDataObjectReference"
-                                                                         ParentGuid="@ParentGuid"
-                                                                         FullGrid="@FullGrid" />
-                                                    </TabStripTab>
-                                                </TelerikTabStrip>
-                                            }
-                                            @* Filtered Grid Version 2 *@
-                                            else if (selectedItem?.ViewDefinition?.GridViewTypeId == 7)
-                                            {
-                                                <FilteredDynamicGridViewV2 @ref="@Dgv"
-                                                                           @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                           OnActionCompleted="HandleActionCompleted"
-                                                                           Disabled="@Disabled"
-                                                                           DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
-                                                                           ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                           GridCode="@GridCode"
-                                                                           ParentDataObjectReference="@ParentDataObjectReference"
-                                                                           FullGrid="@FullGrid" />
-                                            }
-                                            @* Original Filtered grid built for Filtered Quotes *@
-                                            else if (GridCode == "FILTEREDQUOTES")
-                                            {
-                                                <FilteredDynamicGridView @ref="@Dgv"
-                                                                         @key="@($"Filtered-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                         OnActionCompleted="HandleActionCompleted"
-                                                                         Disabled="@Disabled"
-                                                                         DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
-                                                                         ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                         GridCode="@GridCode"
-                                                                         ParentDataObjectReference="@ParentDataObjectReference"
-                                                                         FullGrid="@FullGrid" />
-                                            }
-                                            @* Standard grid view *@
-                                            else if (selectedItem?.ViewDefinition?.GridViewTypeId == 1 && GridCode != "MYPROJECTS")
-                                            {
-                                                @* CBLD-393 *@
-                                                <DynamicGridView @ref="@Dgv"
-                                                                 @key="@($"Grid-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                 ResyncDataObject="@ResyncDataObject"
-                                                                 OnActionCompleted="HandleActionCompleted"
-                                                                 Disabled="@Disabled"
-                                                                 DoubleClickDisabled="@(DoubleClickDisabled || Disabled)"
-                                                                 ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                 GridCode="@GridCode"
-                                                                 ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                                 ParentDataObjectReference="@ParentDataObjectReference"
-                                                                 @bind-ParentGuid="@ParentGuid"
-                                                                 FullGrid="@FullGrid"
-                                                                 TransientVirtualProperties="@TransientVirtualProperties" />
-                                            }
-                                            @* Tree list view *@
-                                            else if (selectedItem?.ViewDefinition?.GridViewTypeId == 5)
-                                            {
-                                                <DynamicTreeListGridView @ref="@Dgv"
-                                                                         @key="@($"Tree-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                         OnActionCompleted="HandleActionCompleted"
-                                                                         ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                         GridCode="@GridCode"
-                                                                         ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                                         ParentDataObjectReference="@ParentDataObjectReference"
-                                                                         ParentGuid="@ParentGuid"
-                                                                         FullGrid="@FullGrid" />
-                                            }
-                                            @* Batch/grid fallback *@
-                                            else
-                                            {
-
-                                                @if (selectedItem?.ViewDefinition?.Code == "ALLSAGESUBMON")
-                                                {
-                                                    <DynamicBatchGridViewV2 
-                                                        @ref="@Dgv"
-                                                        @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                        OnActionCompleted="HandleActionCompleted"
-                                                        ViewDefinition="@selectedItem?.ViewDefinition"
-                                                        GridCode="@GridCode"
-                                                        ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                        ParentDataObjectReference="@ParentDataObjectReference"
-                                                        ParentGuid="@ParentGuid"
-                                                        FullGrid="@FullGrid" />
-                                                }
-                                                else
-                                                {
-                                                    <DynamicBatchGridView @ref="@Dgv"
-                                                                           @key="@($"Batch-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
-                                                                            OnActionCompleted="HandleActionCompleted"
-                                                                            ViewDefinition="@selectedItem?.ViewDefinition"
-                                                                            GridCode="@GridCode"
-                                                                            ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
-                                                                            ParentDataObjectReference="@ParentDataObjectReference"
-                                                                            ParentGuid="@ParentGuid"
-                                                                            FullGrid="@FullGrid" />
-                                                }
-                                            }
-
-                                            @* 3) Overlay blocker (wrapper-level) to ensure Disabled actually prevents interaction *@
-                                            @if (Disabled)
-                                            {
-                                                <div class="dg-blocker" aria-hidden="true"></div>
-                                            }
-
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="alert alert-info" role="alert">
-                                            <strong>Save First!</strong> You must save the record before you can access this area.
-                                        </div>
-                                    }
+                                    <div class="alert alert-info" role="alert">
+                                        <strong>Save First!</strong> You must save the record before you can access this area.
+                                    </div>
                                 }
-                            </div>
-                        </DrawerContent>
-                    </TelerikDrawer>
+                            }
+                        </main>
+                    </div>
                 </div>
             </div>
         }
@@ -211,5 +222,3 @@
         <ErrorDisplay ErrorMessage="@ex.Message" />
     </ErrorContent>
 </ErrorBoundary>
-
-

@@ -1,4 +1,4 @@
-﻿@page "/QuoteDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/QuoteDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @using Concursus.API.Client.Models
 @using Concursus.Components.Shared.Controls.Documents
 @using Concursus.PWA.Classes
@@ -33,102 +33,115 @@
         <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
     </FormTitle>
     <FormBody>
-         <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
             <TabStripTab Title="Quote Details">
                 <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Quote Details
+                    <span @onclick="@(() => RequestTab(QuoteDetailTab.QuoteDetails))"><i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Quote Details</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid FormHelper="@_formHelper" GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
                     <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
-                            entityProperties="@editPage.entityProperties"
-                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                                        entityProperties="@editPage.entityProperties"
+                                        entityPropertyGroups="@editPage.entityPropertyGroups"
                                         IsMainRecordContext="@IsMainRecordContext"
-                            dataObject="@editPage.dataObject"
-                            RecordGuid="@RecordGuid"
-                            inputUpdated="@editPage.HandleInputUpdated"/>
+                                        FormHelper="@_formHelper"
+                                        dataObject="@editPage.dataObject"
+                                        RecordGuid="@RecordGuid"
+                                        inputUpdated="@editPage.HandleInputUpdated" />
 
-                    <DynamicGrid GridCode="QUOTEMEMOS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                    <DynamicGrid GridCode="QUOTEITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                @* <DynamicGrid GridCode="QUOTESECTIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" /> *@
-
-
+                    <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEMEMOS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    @* <DynamicGrid GridCode="QUOTESECTIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" /> *@
                 </Content>
             </TabStripTab>
+
             <TabStripTab Title="Project Details">
                 <HeaderTemplate>
-                    <i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Project Details
+                    <span @onclick="@(() => RequestTab(QuoteDetailTab.ProjectDetails))"><i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Project Details</span>
                 </HeaderTemplate>
                 <Content>
-                    <div class="card shadow-sm">
-                        <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
-                            <i class="bi bi-info-circle" style=" margin-right: 9px !important; color: #ffffff">  </i>Information
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(QuoteDetailTab.ProjectDetails)"
+                                      Label="Project Details"
+                                      OnLoadRequested="@(() => RequestTab(QuoteDetailTab.ProjectDetails))">
+                        <div class="card shadow-sm">
+                            <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                                <i class="bi bi-info-circle" style=" margin-right: 9px !important; color: #ffffff">  </i>Information
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">Project Details are shared across all records linked to this project. Changes you make here will be visible on any Enquiry, Quote or Job for this project, even if they belong to a different Business Unit.</p>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <p class="card-text">Project Details are shared across all records linked to this project. Changes you make here will be visible on any Enquiry, Quote or Job for this project, even if they belong to a different Business Unit.</p>
-
-                        </div>
-                    </div>
-                    <DynamicGrid GridCode="QUOTEPROJECTDIRECTORY " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                    <DynamicGrid GridCode="QUOTEKEYDATES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEPROJECTDIRECTORY " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEKEYDATES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
+
             <TabStripTab Title="Invoicing">
                 <HeaderTemplate>
-                    <i class="bi bi-receipt" style="font-size: 1.2rem; margin-right: 5px;"> </i> Invoicing
+                    <span @onclick="@(() => RequestTab(QuoteDetailTab.Invoicing))"><i class="bi bi-receipt" style="font-size: 1.2rem; margin-right: 5px;"> </i> Invoicing</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="QUOTEINVOICING" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(QuoteDetailTab.Invoicing)"
+                                      Label="Invoicing"
+                                      OnLoadRequested="@(() => RequestTab(QuoteDetailTab.Invoicing))">
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEINVOICING" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
+
             @if (ShowDocumentsTab)
             {
                 <TabStripTab Title="Documents">
                     <HeaderTemplate>
-                        <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                        <span @onclick="@(() => RequestTab(QuoteDetailTab.Documents))"><i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents</span>
                     </HeaderTemplate>
 
                     <Content>
-                        <ErrorBoundary @ref="_docsBoundary">
-                            <ChildContent>
-                                @if (_formHelper is null
-                                    || editPage is null
-                                    || editPage.dataObject is null
-                                    || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
-                                    || editPage.dataObject.Guid == Guid.Empty.ToString())
-                                {
-                                    <div class="alert alert-info mb-0">
-                                        Documents are loading...
-                                    </div>
-                                }
-                                else
-                                {
-                                    <RecordDocumentBrowserV2 FormHelper="_formHelper"
-                                                                DataObject="editPage.dataObject"
-                                                                EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
-                                                             EntityTypeId="55"
-                                                             EntityProperties="editPage.entityProperties"
-                                                             EmailRecordNumberPropertyName="Number"
-                                                             EmailRecordDescriptionPropertyName="Overview"
-                                                             EmailRecordLocationPropertyName="FormattedAddressComma" />
-                                }
-                            </ChildContent>
+                        <CymLazyRecordTab IsLoaded="@IsTabRequested(QuoteDetailTab.Documents)"
+                                          Label="Documents"
+                                          OnLoadRequested="@(() => RequestTab(QuoteDetailTab.Documents))">
+                            <ErrorBoundary @ref="_docsBoundary">
+                                <ChildContent>
+                                    @if (_formHelper is null
+                                         || editPage is null
+                                         || editPage.dataObject is null
+                                         || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
+                                         || editPage.dataObject.Guid == Guid.Empty.ToString())
+                                    {
+                                        <div class="alert alert-info mb-0">
+                                            Documents are loading...
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                                                 DataObject="editPage.dataObject"
+                                                                 EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
+                                                                 EntityTypeId="55"
+                                                                 EntityProperties="editPage.entityProperties"
+                                                                 EmailRecordNumberPropertyName="Number"
+                                                                 EmailRecordDescriptionPropertyName="Overview"
+                                                                 EmailRecordLocationPropertyName="FormattedAddressComma" />
+                                    }
+                                </ChildContent>
 
-                            <ErrorContent Context="ex">
-                                <div class="alert alert-danger">
-                                    <strong>Documents tab crashed.</strong><br />
-                                    @ex.Message
+                                <ErrorContent Context="ex">
+                                    <div class="alert alert-danger">
+                                        <strong>Documents tab crashed.</strong><br />
+                                        @ex.Message
 
-                                    <div class="mt-2">
-                                        <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                        <div class="mt-2">
+                                            <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                        </div>
                                     </div>
-                                </div>
-                            </ErrorContent>
-                        </ErrorBoundary>
+                                </ErrorContent>
+                            </ErrorBoundary>
+                        </CymLazyRecordTab>
                     </Content>
                 </TabStripTab>
             }
-         </TelerikTabStrip>
+        </TelerikTabStrip>
     </FormBody>
 </EditPage>
 
@@ -145,18 +158,41 @@
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
+    private enum QuoteDetailTab
+    {
+        QuoteDetails,
+        ProjectDetails,
+        Invoicing,
+        Documents
+    }
+
+    private readonly HashSet<QuoteDetailTab> _requestedTabs = new()
+    {
+        QuoteDetailTab.QuoteDetails
+    };
+
     private API.Client.FormHelper? _formHelper;
     private ErrorBoundary? _docsBoundary;
 
     private bool ShowDocumentsTab =>
         Config.Value.Environment.ShowDocumentsTab;
 
+    private void RequestTab(QuoteDetailTab tab)
+    {
+        if (_requestedTabs.Add(tab))
+        {
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=QuoteDetail Step=TabRequested Tab={tab}");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsTabRequested(QuoteDetailTab tab) => _requestedTabs.Contains(tab);
+
     private void RecoverDocumentsTab()
     {
         _docsBoundary?.Recover();
         StateHasChanged();
     }
-
     private void EnsureFormHelper()
     {
         if (_formHelper != null) return;
@@ -164,7 +200,7 @@
         _formHelper = new API.Client.FormHelper(
             coreClient,
             sageIntegrationService,
-            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(),
+            "1c4794c1-f956-4c32-b886-5500ac778a56",
             userService);
     }
     protected override async Task OnParametersSetAsync()
@@ -180,7 +216,6 @@
                 await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
             }
 
-            // Ensure FormHelper exists early so Documents tab can work immediately
             EnsureFormHelper();
 
             await base.OnParametersSetAsync();

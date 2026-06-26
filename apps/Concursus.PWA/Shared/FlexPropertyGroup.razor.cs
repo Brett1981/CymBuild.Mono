@@ -1,4 +1,5 @@
-﻿using Concursus.API.Core;
+﻿using Concursus.API.Client;
+using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
 using Concursus.PWA.Classes;
 using Microsoft.AspNetCore.Components;
@@ -20,12 +21,13 @@ public partial class FlexPropertyGroup
     [Parameter]
     public bool Disabled { get; set; } = false;
 
-    [Parameter] public List<EntityProperty> entityProperties { get; set; } = new();
+    [Parameter] public List<API.Core.EntityProperty> entityProperties { get; set; } = new();
 
     [Parameter] public EntityPropertyGroup entityPropertyGroup { get; set; } = new();
 
     [Parameter] public EventCallback<InputUpdatedArgs> inputUpdated { get; set; }
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public FormHelper? FormHelper { get; set; }
 
     [Parameter] public bool IsBulkEdit { get; set; } = false;
     [Parameter] public string RecordGuid { get; set; } = "";
@@ -92,7 +94,7 @@ public partial class FlexPropertyGroup
         }
     }
 
-    private IEnumerable<EntityProperty> FilteredEntityProperties => entityProperties
+    private IEnumerable<API.Core.EntityProperty> FilteredEntityProperties => entityProperties
         .Where(p => p.EntityPropertyGroupGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(entityPropertyGroup.Guid).ToString())
         .OrderBy(p => p.GroupSortOrder)
         .ThenBy(p => p.SortOrder)

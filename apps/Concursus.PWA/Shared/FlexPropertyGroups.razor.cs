@@ -1,4 +1,5 @@
-﻿using Concursus.API.Core;
+﻿using Concursus.API.Client;
+using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
 using Microsoft.AspNetCore.Components;
 
@@ -17,10 +18,11 @@ public partial class FlexPropertyGroups
     public List<FlexPropertyGroup> ChildGroups { get; set; } = new();
     [Parameter] public DataObject? dataObject { get; set; }
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public FormHelper? FormHelper { get; set; }
 
     [Parameter] public EventCallback<DataObject> dataObjectChanged { get; set; }
 
-    [Parameter] public List<EntityProperty> entityProperties { get; set; } = new();
+    [Parameter] public List<API.Core.EntityProperty> entityProperties { get; set; } = new();
 
     [Parameter] public List<EntityPropertyGroup> entityPropertyGroups { get; set; } = new();
 

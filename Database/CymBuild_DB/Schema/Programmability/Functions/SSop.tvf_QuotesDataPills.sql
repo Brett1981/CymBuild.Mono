@@ -3,9 +3,6 @@ GO
 
 PRINT (N'Create function [SSop].[tvf_QuotesDataPills]')
 GO
-PRINT (N'Create function [SSop].[tvf_QuotesDataPills]')
-GO
-
 
 
 CREATE FUNCTION [SSop].[tvf_QuotesDataPills]

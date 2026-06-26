@@ -1,4 +1,4 @@
-﻿using Concursus.API.Client;
+using Concursus.API.Client;
 using Concursus.API.Client.Models;
 using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
@@ -42,6 +42,7 @@ public partial class EditPage
     private bool isHubConnected = false;
     private bool isPreparingStorageUrl = false;
     private string storageUrl = "";
+    private string? _lastBrowserTabTitleKey;
     private Timer _debounceTimer;
 
     #endregion Private Fields
@@ -54,6 +55,7 @@ public partial class EditPage
     [Parameter] public string BrowserTabTitlePropertyName { get; set; } = "Number";
     [Parameter] public string? BrowserTabTitlePrefix { get; set; }
     [Parameter] public string BrowserTabApplicationName { get; set; } = "CymBuild";
+    [Parameter] public bool PrepareStorageUrlOnInitialLoad { get; set; } = true;
     [Parameter] public EventCallback CloseWindow { get; set; }
     [Parameter] public DataObject dataObject { get; set; } = new() { RowStatus = 999 };
     [Parameter] public List<EntityProperty> entityProperties { get; set; } = new();
@@ -71,6 +73,8 @@ public partial class EditPage
     [Parameter] public bool IsBulkUpdate { get; set; } = false;
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
     public bool IsFirstLoad { get; private set; } = true;
+    public API.Client.FormHelper? FormHelperInstance => _formHelper;
+    public API.Client.FormHelper? ActiveFormHelper => _formHelper;
     [Parameter] public bool IsInformationPage { get; set; } = false;
     [Parameter] public string? ModalId { get; set; }
     public DataObjectReference? MyDataObjectReference { get; set; }
@@ -770,6 +774,17 @@ public partial class EditPage
         return "Record";
     }
 
+    private bool BrowserTabTitleAlreadyApplied(string key)
+    {
+        if (string.Equals(_lastBrowserTabTitleKey, key, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        _lastBrowserTabTitleKey = key;
+        return false;
+    }
+
     private async Task UpdateBrowserTabTitleAsync()
     {
         try
@@ -787,14 +802,25 @@ public partial class EditPage
 
                 if (string.IsNullOrWhiteSpace(enhancedRecordLabel))
                 {
-                    await PWAFunctions.SetBrowserTabTitleAsync(JsRuntime, BrowserTabApplicationName);
+                    var appOnlyKey = $"AppOnly|{BrowserTabApplicationName}";
+                    if (!BrowserTabTitleAlreadyApplied(appOnlyKey))
+                    {
+                        await PWAFunctions.SetBrowserTabTitleAsync(JsRuntime, BrowserTabApplicationName);
+                    }
+
                     return;
                 }
 
-                await PWAFunctions.SetBrowserTabTitleAsync(
-                    JsRuntime,
-                    BrowserTabApplicationName,
-                    fullRecordLabel: BuildBrowserTabFullRecordLabel(prefix, enhancedRecordLabel));
+                var fullRecordLabel = BuildBrowserTabFullRecordLabel(prefix, enhancedRecordLabel);
+                var fullRecordKey = $"Full|{BrowserTabApplicationName}|{fullRecordLabel}";
+
+                if (!BrowserTabTitleAlreadyApplied(fullRecordKey))
+                {
+                    await PWAFunctions.SetBrowserTabTitleAsync(
+                        JsRuntime,
+                        BrowserTabApplicationName,
+                        fullRecordLabel: fullRecordLabel);
+                }
 
                 return;
             }
@@ -807,15 +833,24 @@ public partial class EditPage
 
             if (string.IsNullOrWhiteSpace(recordNumber))
             {
-                await PWAFunctions.SetBrowserTabTitleAsync(JsRuntime, BrowserTabApplicationName);
+                var appOnlyKey = $"AppOnly|{BrowserTabApplicationName}";
+                if (!BrowserTabTitleAlreadyApplied(appOnlyKey))
+                {
+                    await PWAFunctions.SetBrowserTabTitleAsync(JsRuntime, BrowserTabApplicationName);
+                }
+
                 return;
             }
 
-            await PWAFunctions.SetBrowserTabTitleAsync(
-                JsRuntime,
-                BrowserTabApplicationName,
-                prefix,
-                recordNumber);
+            var tabTitleKey = $"Record|{BrowserTabApplicationName}|{prefix}|{recordNumber}";
+            if (!BrowserTabTitleAlreadyApplied(tabTitleKey))
+            {
+                await PWAFunctions.SetBrowserTabTitleAsync(
+                    JsRuntime,
+                    BrowserTabApplicationName,
+                    prefix,
+                    recordNumber);
+            }
         }
         catch (Exception ex)
         {
@@ -1697,7 +1732,7 @@ public partial class EditPage
             await UpdateBrowserTabTitleAsync();
             // Get the storage URL after initializing the form helper
 
-            if (RecordGuid != Guid.Empty.ToString())
+            if (RecordGuid != Guid.Empty.ToString() && PrepareStorageUrlOnInitialLoad)
             {
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl, IsBulkUpdate);
                 Console.WriteLine($"Storage URL - {storageUrl}");

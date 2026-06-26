@@ -3,14 +3,6 @@ GO
 
 PRINT (N'Create procedure [SSop].[QuoteCreateJobs]')
 GO
-PRINT (N'Create procedure [SSop].[QuoteCreateJobs]')
-GO
-PRINT (N'Create procedure [SSop].[QuoteCreateJobs]')
-GO
-
-
-
-
 
 
 

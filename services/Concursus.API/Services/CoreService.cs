@@ -1,8 +1,9 @@
-﻿using Concursus.API.Classes;
+using Concursus.API.Classes;
 using Concursus.API.Components;
 using Concursus.API.Core;
 using Concursus.API.Interfaces;
 using Concursus.API.Sage.SOAP.Interface;
+using Concursus.API.Services.AIAssistant;
 using Concursus.API.Services.Finance;
 using Concursus.API.Services.Graph;
 using Concursus.API.Services.Monitoring;
@@ -43,6 +44,7 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly IDelegatedGraphClientFactory _delegatedGraphClientFactory;
     private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
+    private readonly IAIAssistantAnswerService _aiAssistantAnswerService;
 
     private static readonly Guid JobEntityTypeGuid =
     Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
@@ -55,17 +57,18 @@ public partial class CoreService : Core.Core.CoreBase
     #region Public Constructors
 
     public CoreService(
-    ILogger<CoreService> logger,
-    IConfiguration config,
-    IHttpContextAccessor httpContextAccessor,
-    ISharepointService sharepointService,
-    JobClosureDecisionRepository repo,
-    ILookupService lookupService,
-    ISageApiClient sageApiClient,
-    ITransactionSageSubmissionAdminService transactionSageSubmissionAdminService,
-    IDelegatedGraphClientFactory delegatedGraphClientFactory,
-    ISageInboundPaymentSyncService sageInboundPaymentSyncService,
-    ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository)
+        ILogger<CoreService> logger,
+        IConfiguration config,
+        IHttpContextAccessor httpContextAccessor,
+        ISharepointService sharepointService,
+        JobClosureDecisionRepository repo,
+        ILookupService lookupService,
+        ISageApiClient sageApiClient,
+        ITransactionSageSubmissionAdminService transactionSageSubmissionAdminService,
+        IDelegatedGraphClientFactory delegatedGraphClientFactory,
+        ISageInboundPaymentSyncService sageInboundPaymentSyncService,
+        ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository,
+        IAIAssistantAnswerService? aiAssistantAnswerService = null)
     {
         _config = config;
         _serviceBase = new ServiceBase(config, httpContextAccessor, new Logging(logger, config));
@@ -73,13 +76,14 @@ public partial class CoreService : Core.Core.CoreBase
         _repo = repo;
         _lookupService = lookupService ?? throw new ArgumentNullException(nameof(lookupService));
         _sageApiClient = sageApiClient ?? throw new ArgumentNullException(nameof(sageApiClient));
-        _serviceBase.logger.LogTrace("Core Service Initialised");
         _transactionSageSubmissionAdminService = transactionSageSubmissionAdminService ?? throw new ArgumentNullException(nameof(transactionSageSubmissionAdminService));
         _delegatedGraphClientFactory = delegatedGraphClientFactory ?? throw new ArgumentNullException(nameof(delegatedGraphClientFactory));
         _sageInboundPaymentSyncService = sageInboundPaymentSyncService ?? throw new ArgumentNullException(nameof(sageInboundPaymentSyncService));
-        _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository;
-    }
+        _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository ?? throw new ArgumentNullException(nameof(sageInboundDiagnosticsRepository));
+        _aiAssistantAnswerService = aiAssistantAnswerService;
 
+        _serviceBase.logger.LogTrace("Core Service Initialised");
+    }
     #endregion Public Constructors
 
     #region Public Methods
@@ -1681,17 +1685,81 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
     {
         try
         {
-            await QueueSharePointStructureRepairAsync(
-                    request.DataObject,
-                    request.DataObjectUpsertRequest,
-                    context.CancellationToken)
+            if (request?.DataObject == null)
+            {
+                return new SharePointCreateResponse
+                {
+                    DataObject = new DataObject(),
+                    Success = false,
+                    ErrorReturned = "DataObject is required."
+                };
+            }
+
+            var dataObjectGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.DataObject.Guid);
+            var entityTypeGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.DataObject.EntityTypeGuid);
+
+            if (dataObjectGuid == Guid.Empty || entityTypeGuid == Guid.Empty)
+            {
+                return new SharePointCreateResponse
+                {
+                    DataObject = request.DataObject,
+                    Success = false,
+                    ErrorReturned = "DataObject Guid and EntityTypeGuid are required to create or repair a SharePoint document location."
+                };
+            }
+
+            // SharePointCreate is called by UI paths that expect the location to be available in
+            // the response. Queueing the repair only leaves the caller with an empty SharePointUrl
+            // and causes the document browser to keep polling until the outbox item exhausts its
+            // attempts. Therefore explicit/manual SharePointCreate performs the repair synchronously
+            // and persists the repaired location before returning.
+            using var sharePoint = new SharePoint(_config, _sharepointService);
+
+            var efDataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject);
+
+            var upsertRequest = new DataObjectUpsertRequest
+            {
+                DataObject = request.DataObject,
+                EntityQueryGuid = string.IsNullOrWhiteSpace(request.DataObjectUpsertRequest?.EntityQueryGuid)
+                    ? Guid.Empty.ToString()
+                    : request.DataObjectUpsertRequest.EntityQueryGuid,
+                ValidateOnly = false
+            };
+
+            var repairResponse = await sharePoint.GetSharePointLocation(
+                    entityTypeGuid.ToString(),
+                    efDataObject,
+                    _serviceBase._entityFramework,
+                    _serviceBase,
+                    upsertRequest)
                 .ConfigureAwait(false);
+
+            var repairedDataObject = repairResponse?.DataObject != null
+                ? Converters.ConvertEfDataObjectToCoreDataObject(repairResponse.DataObject)
+                : request.DataObject;
+
+            if (string.IsNullOrWhiteSpace(repairedDataObject.SharePointUrl))
+            {
+                // Keep the background repair safety net, but do not report success to the caller.
+                await QueueSharePointStructureRepairAsync(
+                        request.DataObject,
+                        upsertRequest,
+                        context.CancellationToken)
+                    .ConfigureAwait(false);
+
+                return new SharePointCreateResponse
+                {
+                    DataObject = repairedDataObject,
+                    Success = false,
+                    ErrorReturned = "SharePoint repair did not return a SharePointUrl. A background repair has been queued."
+                };
+            }
 
             return new SharePointCreateResponse
             {
-                DataObject = request.DataObject,
+                DataObject = repairedDataObject,
                 Success = true,
-                ErrorReturned = ""
+                ErrorReturned = string.Empty
             };
         }
         catch (Exception ex)
@@ -1700,7 +1768,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
 
             return new SharePointCreateResponse
             {
-                DataObject = request.DataObject,
+                DataObject = request?.DataObject ?? new DataObject(),
                 Success = false,
                 ErrorReturned = ex.Message
             };
@@ -1774,6 +1842,29 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
             // Initialize response object
             var sharepointDocumentsGetResponse = new SharepointDocumentsGetResponse();
 
+            // 08A: initial DataObjectGet now carries merge-document headers only.
+            // Hydrate the selected merge document here, only when the user actually generates it.
+            var mergeDocument = request.MergeDocument ?? new MergeDocument();
+            if (mergeDocument.Items.Count == 0 &&
+                Functions.ParseAndReturnEmptyGuidIfInvalid(mergeDocument.Guid) != Guid.Empty)
+            {
+                var swMergeDocHydrate = System.Diagnostics.Stopwatch.StartNew();
+                var fullMergeDocuments = await _serviceBase._entityFramework.GetMergeDocuments(
+                    Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityTypeGuid),
+                    Functions.ParseAndReturnEmptyGuidIfInvalid(request.RecordGuid));
+
+                var selectedMergeDocument = fullMergeDocuments.FirstOrDefault(x =>
+                    x.Guid == Functions.ParseAndReturnEmptyGuidIfInvalid(mergeDocument.Guid));
+
+                if (selectedMergeDocument != null)
+                {
+                    mergeDocument = Converters.ConvertEfMergeDocumentToCoreMergeDocument(selectedMergeDocument);
+                }
+
+                swMergeDocHydrate.Stop();
+                Console.WriteLine($"[CymBuildPerf] Layer=gRPC Method=SharepointDocumentsGet Step=MergeDocumentHydratedOnDemand DocumentGuid={mergeDocument.Guid} ItemCount={mergeDocument.Items.Count} DurationMs={swMergeDocHydrate.ElapsedMilliseconds}");
+            }
+
             //OE: The dataobject gets upserted in here.
             if (!request.AllowExcelOutputOnly)
             {
@@ -1786,7 +1877,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     dataObject.SharePointUrl,
                     request.DocumentId,
                     mergeData,
-                    request.MergeDocument,
+                    mergeDocument,
                     request.OutputType,
                     UserId,
                     false,
@@ -1806,7 +1897,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     dataObject.SharePointUrl,
                     request.DocumentId,
                     mergeData,
-                    request.MergeDocument,
+                    mergeDocument,
                     "Excel",
                     UserId,
                     false,
@@ -1951,14 +2042,20 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
     {
         try
         {
+            UserInfoGetResponse response;
+
             if (string.IsNullOrEmpty(request.Username))
             {
-                return await Functions.GetUserResponseFromCurrentIdentityAsync(_serviceBase);
+                response = await Functions.GetUserResponseFromCurrentIdentityAsync(_serviceBase);
             }
             else
             {
-                return await Functions.GetUserResponseByUsernameAsync(request, _serviceBase);
+                response = await Functions.GetUserResponseByUsernameAsync(request, _serviceBase);
             }
+
+            TriggerCoreEntityTypeWarmup("UserInfoGet");
+
+            return response;
         }
         catch (Exception ex)
         {

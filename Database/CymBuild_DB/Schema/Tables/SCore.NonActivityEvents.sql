@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[NonActivityEvents]')
 GO
-PRINT (N'Create table [SCore].[NonActivityEvents]')
-GO
 CREATE TABLE [SCore].[NonActivityEvents] (
   [ID] [int] IDENTITY,
   [StartTime] [datetime] NULL,

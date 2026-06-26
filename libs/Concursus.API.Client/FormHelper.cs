@@ -1,6 +1,7 @@
 ﻿using Concursus.API.Client.Classes;
 using Concursus.API.Client.Models;
 using Concursus.API.Client.Models.Finance;
+using Concursus.API.Client.Models.JobPerformance;
 using Concursus.API.Client.Models.Monitoring;
 using Concursus.API.Core;
 using Concursus.Common.Shared.Models.Finance;
@@ -10,6 +11,8 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using static Concursus.API.Core.Core;
 
@@ -23,6 +26,46 @@ public partial class FormHelper
     private readonly Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient _sageClient;
     private readonly string _entityTypeGuid;
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+
+    // Phase 1 performance: entity metadata is expensive and stable for the session.
+    // Cache by entity/is-information-view; clone on read/write so callers cannot mutate shared metadata.
+    private static readonly ConcurrentDictionary<string, EntityType> EntityTypeMetadataCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // Phase 2A performance: grid definitions are metadata, not row data. Cache them per user/grid/ForUi.
+    // Grid data remains uncached so grids still show current business data.
+    private static readonly ConcurrentDictionary<string, GridDefinitionListReply> GridDefinitionMetadataCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // Phase 3A performance: dropdown OnRead can be triggered repeatedly by Telerik renders.
+    // Cache lookup replies for a short period by user/request/filter so repeated renders do not hit gRPC/SQL.
+    // This does not replace server-side filtering and does not cache DataObject/grid row data.
+    //
+    // Phase 3B performance: many identical dropdown OnRead requests are fired concurrently before
+    // the first request has had time to populate the cache. Coalesce those in-flight requests so
+    // only one gRPC/SQL call is made for an identical lookup request at a time.
+    private sealed record TimedDropDownReply(DropDownDataListReply Reply, DateTimeOffset CreatedOnUtc);
+
+    private static readonly ConcurrentDictionary<string, TimedDropDownReply> DropDownDataListCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly ConcurrentDictionary<string, Lazy<Task<TimedDropDownReply>>> DropDownDataListInFlight =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly TimeSpan DropDownDataListCacheTtl = TimeSpan.FromMinutes(2);
+
+    private static void LogClientPerf(string method, string step, Stopwatch stopwatch, bool? cacheHit = null, string? extra = null)
+    {
+        try
+        {
+            var cacheText = cacheHit.HasValue ? $" CacheHit={cacheHit.Value}" : string.Empty;
+            Console.WriteLine($"[CymBuildPerf] Layer=FormHelper Method={method} Step={step} DurationMs={stopwatch.ElapsedMilliseconds}{cacheText}{extra}");
+        }
+        catch
+        {
+            // Logging must never affect user workflows.
+        }
+    }
 
     #endregion Private Fields
 
@@ -775,6 +818,116 @@ public partial class FormHelper
         return response.UpdatedCount;
     }
 
+
+    public async Task<JobFinancialOverviewModel> JobFinancialOverviewGetAsync(Guid jobGuid, CancellationToken ct = default)
+    {
+        if (jobGuid == Guid.Empty)
+        {
+            return new JobFinancialOverviewModel();
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var response = await _coreClient.JobFinancialOverviewGetAsync(
+            new JobFinancialOverviewGetRequest
+            {
+                UserId = UserService.UserId,
+                JobGuid = jobGuid.ToString()
+            },
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        LogClientPerf(nameof(JobFinancialOverviewGetAsync), "JobFinancialOverviewGet", stopwatch);
+        return MapJobFinancialOverview(response.Overview);
+    }
+
+    public async Task<JobSummaryModel?> JobSummaryGetAsync(Guid jobGuid, CancellationToken ct = default)
+    {
+        if (jobGuid == Guid.Empty)
+        {
+            return null;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        var response = await _coreClient.JobSummaryGetAsync(
+            new JobSummaryGetRequest
+            {
+                UserId = UserService.UserId,
+                JobGuid = jobGuid.ToString()
+            },
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        if (response.Summary is null || string.IsNullOrWhiteSpace(response.Summary.JobGuid))
+        {
+            return null;
+        }
+
+        LogClientPerf(nameof(JobSummaryGetAsync), "JobSummaryGet", stopwatch);
+
+        return new JobSummaryModel
+        {
+            JobId = response.Summary.JobId,
+            JobGuid = Guid.TryParse(response.Summary.JobGuid, out var parsedJobGuid) ? parsedJobGuid : Guid.Empty,
+            RowStatus = response.Summary.RowStatus,
+            Number = response.Summary.Number ?? string.Empty,
+            DisplayTitle = response.Summary.DisplayTitle ?? string.Empty,
+            JobDescription = response.Summary.JobDescription ?? string.Empty,
+            ClientName = response.Summary.ClientName ?? string.Empty,
+            SurveyorName = response.Summary.SurveyorName ?? string.Empty,
+            CurrentStatusId = response.Summary.CurrentStatusId,
+            CurrentStatusGuid = Guid.TryParse(response.Summary.CurrentStatusGuid, out var statusGuid) ? statusGuid : Guid.Empty,
+            CurrentStatusName = response.Summary.CurrentStatusName ?? string.Empty,
+            IsActive = response.Summary.IsActive,
+            IsComplete = response.Summary.IsComplete,
+            IsCancelled = response.Summary.IsCancelled,
+            CannotBeInvoiced = response.Summary.CannotBeInvoiced,
+            InvoiceProcessingMode = (InvoiceProcessingModeUi)response.Summary.InvoiceProcessingMode,
+            OpenMilestoneCount = response.Summary.OpenMilestoneCount,
+            OpenActivityCount = response.Summary.OpenActivityCount,
+            OpenActionCount = response.Summary.OpenActionCount,
+            PendingInvoiceRequestCount = response.Summary.PendingInvoiceRequestCount,
+            ActiveInvoiceScheduleCount = response.Summary.ActiveInvoiceScheduleCount,
+            CanCreateReplacementInvoiceSchedule = response.Summary.CanCreateReplacementInvoiceSchedule,
+            FinancialOverview = MapJobFinancialOverview(response.Summary.FinancialOverview)
+        };
+    }
+
+    private static JobFinancialOverviewModel MapJobFinancialOverview(JobFinancialOverviewDto? source)
+    {
+        if (source is null)
+        {
+            return new JobFinancialOverviewModel();
+        }
+
+        return new JobFinancialOverviewModel
+        {
+            JobGuid = Guid.TryParse(source.JobGuid, out var jobGuid) ? jobGuid : Guid.Empty,
+            AgreedFeeTotal = Convert.ToDecimal(source.AgreedFeeTotal),
+            AgreedFeeIncludingCap = Convert.ToDecimal(source.AgreedFeeIncludingCap),
+            ScheduledTotal = Convert.ToDecimal(source.ScheduledTotal),
+            InvoiceRequestPendingTotal = Convert.ToDecimal(source.InvoiceRequestPendingTotal),
+            InvoicedNet = Convert.ToDecimal(source.InvoicedNet),
+            InvoicedGross = Convert.ToDecimal(source.InvoicedGross),
+            PaidNet = Convert.ToDecimal(source.PaidNet),
+            PaidGross = Convert.ToDecimal(source.PaidGross),
+            RemainingNet = Convert.ToDecimal(source.RemainingNet),
+            ActiveInvoiceScheduleCount = source.ActiveInvoiceScheduleCount,
+            SystemGeneratedManualScheduleCount = source.SystemGeneratedManualScheduleCount,
+            PendingInvoiceRequestCount = source.PendingInvoiceRequestCount,
+            ReconciliationRequiredInvoiceRequestCount = source.ReconciliationRequiredInvoiceRequestCount,
+            BlockedInvoiceRequestCount = source.BlockedInvoiceRequestCount,
+            CanCreateReplacementInvoiceSchedule = source.CanCreateReplacementInvoiceSchedule
+        };
+    }
+
     public async Task<Guid> JobInvoiceScheduleGuidGetAsync(Guid jobGuid, CancellationToken ct = default)
     {
         var resp = await _coreClient.JobInvoiceSchedulesGetAsync(
@@ -788,6 +941,232 @@ public partial class FormHelper
         // Expected: 1 schedule per job
         var first = resp.Schedules.FirstOrDefault();
         return (first is null || !Guid.TryParse(first.Guid, out var g)) ? Guid.Empty : g;
+    }
+
+    public static void ClearClientMetadataCaches()
+    {
+        EntityTypeMetadataCache.Clear();
+        GridDefinitionMetadataCache.Clear();
+        DropDownDataListCache.Clear();
+        DropDownDataListInFlight.Clear();
+    }
+
+    public async Task<DropDownDataListReply> DropDownDataListGetAsync(
+        DropDownDataListRequest request,
+        CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        if (request is null || string.IsNullOrWhiteSpace(request.Guid))
+        {
+            return new DropDownDataListReply();
+        }
+
+        var cacheKey = BuildDropDownDataListCacheKey(request);
+
+        if (DropDownDataListCache.TryGetValue(cacheKey, out var cached) &&
+            DateTimeOffset.UtcNow - cached.CreatedOnUtc <= DropDownDataListCacheTtl)
+        {
+            LogClientPerf(nameof(DropDownDataListGetAsync), $"DropDownDataList {request.Guid}", stopwatch, cacheHit: true, extra: " InFlight=False");
+            return cached.Reply.Clone();
+        }
+
+        var requestSnapshot = request.Clone();
+        var createdInFlightRequest = false;
+
+        var inFlight = DropDownDataListInFlight.GetOrAdd(
+            cacheKey,
+            _ =>
+            {
+                createdInFlightRequest = true;
+                return new Lazy<Task<TimedDropDownReply>>(
+                    async () =>
+                    {
+                        var reply = await _coreClient.DropDownDataListAsync(requestSnapshot, cancellationToken: CancellationToken.None)
+                            .ConfigureAwait(false);
+
+                        var safeReply = reply ?? new DropDownDataListReply();
+                        var timedReply = new TimedDropDownReply(safeReply.Clone(), DateTimeOffset.UtcNow);
+
+                        DropDownDataListCache[cacheKey] = timedReply;
+
+                        return timedReply;
+                    },
+                    LazyThreadSafetyMode.ExecutionAndPublication);
+            });
+
+        try
+        {
+            var timedReply = await inFlight.Value.ConfigureAwait(false);
+
+            var coalesced = !createdInFlightRequest;
+            LogClientPerf(
+                nameof(DropDownDataListGetAsync),
+                $"DropDownDataList {request.Guid}",
+                stopwatch,
+                cacheHit: coalesced,
+                extra: $" InFlight={coalesced}");
+
+            return timedReply.Reply.Clone();
+        }
+        finally
+        {
+            if (createdInFlightRequest)
+            {
+                DropDownDataListInFlight.TryRemove(cacheKey, out _);
+            }
+        }
+    }
+
+    private string BuildDropDownDataListCacheKey(DropDownDataListRequest request)
+    {
+        var filterKey = string.Join(";", request.Filters.Select(BuildDropDownFilterKey));
+
+        return string.Join("|",
+            $"User={UserService?.UserId ?? -1}",
+            $"Guid={request.Guid}",
+            $"Parent={request.ParentGuid}",
+            $"Record={request.RecordGuid}",
+            $"Selected={request.CurrentSelectedValueGuid}",
+            $"Adding={request.IsAddingAllowed}",
+            $"Filters={filterKey}");
+    }
+
+    private static string BuildDropDownFilterKey(DataObjectCompositeFilter compositeFilter)
+    {
+        if (compositeFilter is null)
+        {
+            return string.Empty;
+        }
+
+        var simpleFilters = string.Join(",", compositeFilter.Filters.Select(filter =>
+            $"{filter.Guid}:{filter.ColumnName}:{filter.Operator}:{filter.DataType}:{filter.Value}"));
+
+        var childFilters = string.Join(",", compositeFilter.CompositeFilters.Select(BuildDropDownFilterKey));
+
+        return $"{compositeFilter.LogicalOperator}[{simpleFilters}][{childFilters}]";
+    }
+
+    /// <summary>
+    /// Reads live grid row data through FormHelper so UI components do not call the gRPC client directly.
+    /// This intentionally does not cache row data; metadata can be cached, but grid data must remain current.
+    /// </summary>
+    public async Task<GridDataListReply> GridDataListAsync(
+        GridDataListRequest request,
+        CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+
+        if (request is null)
+        {
+            return new GridDataListReply();
+        }
+
+        var reply = await _coreClient.GridDataListAsync(
+            request,
+            cancellationToken: ct);
+
+        var safeReply = reply ?? new GridDataListReply();
+
+        LogClientPerf(
+            nameof(GridDataListAsync),
+            $"GridDataList {request.GridCode}/{request.GridViewCode}",
+            stopwatch,
+            cacheHit: false,
+            extra: $" Page={request.Page} PageSize={request.PageSize}");
+
+        return safeReply;
+    }
+    public async Task<GridDefinitionListReply> GridDefinitionListGetAsync(
+        string gridCode,
+        bool forUi = true,
+        CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var normalisedGridCode = (gridCode ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(normalisedGridCode))
+        {
+            return new GridDefinitionListReply();
+        }
+
+        var cacheKey = $"User={UserService?.UserId ?? -1}|Grid={normalisedGridCode.ToUpperInvariant()}|ForUi={forUi}";
+
+        if (GridDefinitionMetadataCache.TryGetValue(cacheKey, out var cachedReply))
+        {
+            LogClientPerf(nameof(GridDefinitionListGetAsync), $"GridDefinitionList {normalisedGridCode}", stopwatch, cacheHit: true);
+            return cachedReply.Clone();
+        }
+
+        var reply = await _coreClient.GridDefinitionListAsync(
+            new GridDefinitionListRequest
+            {
+                Code = normalisedGridCode,
+                ForUi = forUi
+            },
+            cancellationToken: ct);
+
+        var safeReply = reply ?? new GridDefinitionListReply();
+        GridDefinitionMetadataCache[cacheKey] = safeReply.Clone();
+
+        LogClientPerf(nameof(GridDefinitionListGetAsync), $"GridDefinitionList {normalisedGridCode}", stopwatch, cacheHit: false);
+        return safeReply.Clone();
+    }
+
+    public async Task<bool> JobReplacementInvoiceScheduleStateGetAsync(Guid jobGuid, CancellationToken ct = default)
+    {
+        if (jobGuid == Guid.Empty)
+        {
+            return false;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var summary = await JobSummaryGetAsync(jobGuid, ct);
+            return summary?.CanCreateReplacementInvoiceSchedule == true;
+        }
+        finally
+        {
+            LogClientPerf(nameof(JobReplacementInvoiceScheduleStateGetAsync), "JobSummaryGet", stopwatch);
+        }
+    }
+
+    private static bool TryGetBoolColumnValue(GridDataRow row, string columnName)
+    {
+        var column = row.Columns.FirstOrDefault(x =>
+            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        if (column == null || string.IsNullOrWhiteSpace(column.Value))
+        {
+            return false;
+        }
+
+        if (bool.TryParse(column.Value, out var boolValue))
+        {
+            return boolValue;
+        }
+
+        if (int.TryParse(column.Value, out var intValue))
+        {
+            return intValue == 1;
+        }
+
+        return false;
+    }
+
+    private static int? TryGetIntColumnValue(GridDataRow row, string columnName)
+    {
+        var column = row.Columns.FirstOrDefault(x =>
+            string.Equals(x.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        if (column == null || string.IsNullOrWhiteSpace(column.Value))
+        {
+            return null;
+        }
+
+        return int.TryParse(column.Value, out var intValue) ? intValue : null;
     }
     public async Task<InvoiceProcessingModeUi> JobInvoiceProcessingModeGetAsync(Guid jobGuid, CancellationToken ct = default)
     {
@@ -1206,14 +1585,28 @@ public partial class FormHelper
     /// <returns> </returns>
     public async Task LoadMetaDataAsync(bool isInformationPage = false)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var entityTypeGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(_entityTypeGuid).ToString();
+        var cacheKey = $"User={UserService?.UserId ?? -1}|{entityTypeGuid}|InformationView={isInformationPage}";
+
+        if (EntityTypeMetadataCache.TryGetValue(cacheKey, out var cachedEntityType))
+        {
+            EntityType = cachedEntityType.Clone();
+            LogClientPerf(nameof(LoadMetaDataAsync), "EntityTypeGet", stopwatch, cacheHit: true);
+            return;
+        }
+
         // Get the entity metadata
         var entityTypeGetResponse = await _coreClient.EntityTypeGetAsync(new EntityTypeGetRequest
         {
-            Guid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(_entityTypeGuid).ToString(),
+            Guid = entityTypeGuid,
             IsInformationView = isInformationPage
         });
 
-        EntityType = entityTypeGetResponse.EntityType;
+        EntityType = entityTypeGetResponse.EntityType ?? new EntityType();
+        EntityTypeMetadataCache[cacheKey] = EntityType.Clone();
+
+        LogClientPerf(nameof(LoadMetaDataAsync), "EntityTypeGet", stopwatch, cacheHit: false);
     }
 
     //CBLD-260

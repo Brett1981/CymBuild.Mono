@@ -1,52 +1,35 @@
-﻿@inject Helpers.LocalStorageAccessor LocalStorageAccessor
-    
-    @*Notification reference.*@
-    <TelerikNotification 
-        @ref="@notificationRef" 
-        VerticalPosition="NotificationVerticalPosition.Top" 
-        HorizontalPosition="NotificationHorizontalPosition.Center"
-        Class="filterClearedNotification"></TelerikNotification>
+﻿@using Concursus.API.Client
+@inherits ComponentBase
 
+<div class="cb-grid-filter-menu" @onfocusout="HandleFocusOutAsync">
+    <button type="button"
+            class="btn btn-primary btn-sm gridfilterbtn cb-grid-filter-button"
+            title="Filters"
+            aria-haspopup="true"
+            aria-expanded="@_menuOpen"
+            @onclick="ToggleMenu">
+        <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+        Filters
+        <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+    </button>
 
-    <TelerikMenu Data="@MenuItems"
-                 Class="btn gridfilterbtn"
-                 IconField="@(nameof(API.Client.MenuItem.Icon))"
-                 DisabledField="@(nameof(API.Client.MenuItem.IsReadOnly))"
-                 OnClick="@((API.Client.MenuItem item) => OnClickHandler(item))" />
-
-
-<style>
-    .button-menu-container {
-        gap: 10px; /* Adds spacing between flex items */
+    @if (_menuOpen)
+    {
+        <div class="cb-grid-filter-dropdown shadow-sm" role="menu">
+            <button type="button"
+                    class="cb-grid-filter-dropdown-item"
+                    role="menuitem"
+                    @onclick="ClearAllFiltersAsync">
+                <i class="bi bi-x-circle me-2" aria-hidden="true"></i>
+                All Grids [Clear Filters]
+            </button>
+        </div>
     }
+</div>
 
-    .custom-button {
-        background-color: #007bff; /* Custom background color */
-        border-color: #007bff;
-    }
-
-        .custom-button:hover {
-            background-color: #0056b3; /* Darker background color on hover */
-            border-color: #0056b3;
-        }
-
-    @* Telerik 7.1.0 ==> Removing extra padding for the Task button*@
-    .btn-primary .k-item .k-link {
-        padding-block: 0 !important;
-        padding-inline: 0 !important;
-    }
-
-    .gridfilterbtn{
-        background-color: #0d6efd !important;
-        padding: 2px !important;
-        color: #ffffff !important;
-    }
-
-    .gridfilterbtn .k-item{
-        color: #ffffff !important;
-    }
-
-    .filterClearedNotification{
-        margin-top: 20px;
-    }
-</style>
+@if (!string.IsNullOrWhiteSpace(_toastMessage))
+{
+    <div class="cb-grid-filter-toast alert alert-success py-2 px-3 shadow-sm" role="status">
+        @_toastMessage
+    </div>
+}

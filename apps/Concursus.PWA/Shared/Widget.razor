@@ -1,4 +1,4 @@
-﻿@inject Core.CoreClient CoreClient
+@inject Core.CoreClient CoreClient
 @inject NavigationManager Navigation;
 @inject Concursus.API.Client.Models.UserService UserService //To get the UserId.
 @inject IJSRuntime JS
@@ -8,7 +8,6 @@
 @inject UserInteractionTrackerService InteractionTracker
 @inject IToastService Toast
 
-
 @using Concursus.API.Client.Classes;
 @using Concursus.API.Client.Models
 @using Concursus.Components.Shared.Dashbaord
@@ -17,21 +16,17 @@
 @using Newtonsoft.Json
 @using System.Collections
 @using Concursus.PWA.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Routing
 
 @using Telerik.DataSource;
 @using Telerik.DataSource.Extensions;
-@using Telerik.Blazor.Components;
 @using static Concursus.PWA.Shared.MessageDisplay
 
-
-<TelerikNotification @ref="@SaveNotification" Class="MyTelerikNotification" HorizontalPosition="NotificationHorizontalPosition.Center" VerticalPosition="NotificationVerticalPosition.Top"></TelerikNotification>
 <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
 <NavigationLock OnBeforeInternalNavigation=this.OnNavigation />
 
-<TelerikMediaQuery Media="@MediaQuery" OnChange="@((doesMatch) => AdaptToScreenSize(doesMatch))"/>
-
 <div class="@DialogCss" tabindex="-1" z-index="10">
-    <!-- OE - Fix for CBLD-140-->
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -49,94 +44,45 @@
     </div>
 </div>
 
-
-@*  Loading screen while we get the data *@
 @if (isLoading)
 {
     <div class="d-flex flex-column justify-content-center align-items-center vh-100">
-
-        <TelerikLoader
-        Visible    = "@isLoading"
-        Size        = "@ThemeConstants.Loader.Size.Large"
-        ThemeColor  = "@ThemeConstants.Loader.ThemeColor.Tertiary"
-        Type        = "@LoaderType.ConvergingSpinner" />
-
+        <div class="spinner-border text-secondary" role="status" aria-hidden="true"></div>
         <h1 class="mt-2">Loading...</h1>
     </div>
 }
 else
 {
-    <!--
-    ======================================
-    ==             MENU BAR             ==
-    ======================================
-    -->
-    @* Buttons for selecting widgets *@
-    <div class="WidgetContainer d-flex flex-column">
-
-        @if(!IsEditMode)
+    <div class="WidgetContainer d-flex flex-column cb-native-dashboard-shell">
+        @if (!IsEditMode)
         {
-            <!--Edit mode-->
             <div class="d-flex flex-row justify-content-end mb-3">
-                <TelerikButton  OnClick="@ToggleEditMode" Class="btn-secondary editButton"> Edit </TelerikButton>
+                <button type="button" class="btn btn-secondary editButton" @onclick="ToggleEditMode">Edit</button>
             </div>
         }
 
-
-
         @if (IsEditMode)
         {
-            <div class="WidgetOptions @(isSmallScreen ? (MobileFlexColumn +  " mb-5 mt-3" ) : DesktopFlexRow)">
-                <!--Adding Widgets-->
-                <div class="@(isSmallScreen ? MobileFlexColumn : DesktopFlexRow)">
-
-                    @* <TelerikButton Class="mx-1" OnClick="@AddWorkSpace">Add Workspace</TelerikButton> *@
-
-                    @foreach (var widgetType in WidgetTypes)
-                    {
-                        <TelerikDropDownButton @ref="@DropDownButton" class="DropDownButton mx-1" Icon="@SvgIcon.Plus" ShowArrowButton="false" >
-                            <DropDownButtonContent>Add @(@widgetType == "GA" ? "Gauge" : "Grid")</DropDownButtonContent>
-                            <DropDownButtonItems>
-
-                                @foreach (var item in Data.Where(m => m.WidgetType == widgetType))
-                                {
-                                    bool enabled = true;
-
-                                    if (DashboardWidgets.Where(x => x.Title == item.Text).FirstOrDefault() != null)
-                                    {
-                                        enabled = false;
-                                    }
-
-                                    <DropDownButtonItem Enabled="@enabled" OnClick="@(() => AddWidget(item))">@item.Text</DropDownButtonItem>
-                                }
-
-                            </DropDownButtonItems>
-                        </TelerikDropDownButton>
-                    }
+            <div class="WidgetOptions d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
+                <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+                    <label class="form-label mb-0 fw-semibold" for="dashboardWidgetPicker">Add widget</label>
+                    <select id="dashboardWidgetPicker" class="form-select cb-dashboard-widget-picker" @onchange="AddWidgetFromSelect">
+                        <option value="">Select a widget...</option>
+                        @foreach (var item in AvailableWidgetSelections)
+                        {
+                            <option value="@item.Id">@item.Text</option>
+                        }
+                    </select>
                 </div>
 
-
-                <!--Settings-->
-                <div class="d-flex flex-row @(isSmallScreen ? "hideZoomLevelButtons" : "")">
-                    <!--Incrementing Size-->
-                    <TelerikButtonGroup SelectionMode="@ButtonGroupSelectionMode.Single">
-
-                        <TelerikTooltip TargetSelector=".decreaseWidget" />
-                        <ButtonGroupButton class="mr-1 decreaseWidget"  Title="Decrease Widgets Size"  OnClick="@( () => ChangeWidgetAreaSize(-1) )">
-                            <i class="bi bi-dash-circle-fill fs-5"></i>
-                        </ButtonGroupButton>
-
-                        <TelerikTooltip TargetSelector=".increaseWidget" />
-                        <ButtonGroupButton class="increaseWidget" Title="Increase Widgets Size"  OnClick="@( () => ChangeWidgetAreaSize(1) )">
-                            <i class="bi bi-plus-circle-fill fs-5"></i>
-                        </ButtonGroupButton>
-                    </TelerikButtonGroup>
-
-                </div>
-
-                <!-- Save Button -->
-                <div class="@(isSmallScreen ? (MobileXGap + " flex-column mt-5") : "d-flex flex-row")">
-                    <button class="btn btn-success @(isSmallScreen ? "mb-3" : "mx-2")" type="button" @onclick="@(() => this.SaveStateToDB())">
+                <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                    <button type="button" class="btn btn-outline-secondary" title="Decrease Widgets Size" @onclick="@(async () => await ChangeWidgetAreaSize(-1))">
+                        <i class="bi bi-dash-circle-fill"></i> Smaller
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" title="Increase Widgets Size" @onclick="@(async () => await ChangeWidgetAreaSize(1))">
+                        <i class="bi bi-plus-circle-fill"></i> Larger
+                    </button>
+                    <button class="btn btn-success" type="button" @onclick="@(() => this.SaveStateToDB())">
                         <i class="bi bi-save-fill"></i> Save
                     </button>
                     <button class="btn btn-warning" type="button" @onclick="@(() => this.CancelEditMode())">
@@ -146,314 +92,320 @@ else
             </div>
         }
 
-
-        <!--
-        ======================================
-        ==           WIDGET AREA            ==
-        ======================================
-        -->
         <div class="WidgetArea">
-
-            @if(BoardIsEmpty)
+            @if (BoardIsEmpty)
             {
                 <div class="emptyBoard d-flex flex-column justify-content-center text-center" style="background-color: #ffffff">
                     <i class="bi bi-folder" style="font-size: 60px; color: lightblue;"></i>
                     <h1 style="font-size: 40px; color: lightblue;">Start a new dashboard by clicking "Edit".</h1>
                 </div>
             }
-
-            <TelerikTileLayout @ref="@Dashboard"
-            Height="100%"
-            Columns="@(isSmallScreen ? 1 : NumberOfColumns)"
-            RowHeight="@(RowHeight + "px")"
-            ColumnWidth="@(isSmallScreen ? "150px" : ColumnWidth + "px")"
-            Resizable="@IsEditMode"
-            Reorderable="@IsEditMode"
-            Class="@(mobileTileLayout + " " + (BoardIsEmpty ? "hideBoard" : ""))">
-
-                <TileLayoutItems>
-
+            else
+            {
+                <div class="cb-dashboard-grid @(isFullScreen ? "cb-dashboard-grid-fullscreen-active" : "")">
                     @foreach (var Widget in DashboardWidgets)
                     {
+                        <section class="@GetWidgetCardClass(Widget)" style="@GetWidgetCardStyle(Widget)" @key="@Widget.Id">
+                            <header class="cb-widget-header" style="background-color: @Widget.Color">
+                                <div class="d-flex flex-row justify-content-between align-items-center gap-2 w-100">
+                                    <strong class="cb-widget-title">@Widget.Title</strong>
 
-                        //Create an CSS ID for each widget - we will target this to colour the <HeaderTemplate>
-                        //This is needed since we cannot assign an ID to the header template.
-                        var widgetHeaderID = System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Widget.Id));
-
-                        <TileLayoutItem
-                        Class="@(IsWidgetFullScreen(Widget) + " " + MobileScreenClass + " tileBorder")"
-                        HeaderText=""
-                        RowSpan="@Widget.RowSpan"
-                        ColSpan="@Widget.ColSpan"
-                        Id="@(Widget.Id)">
-                            <HeaderTemplate>
-                                <div class="d-flex flex-row justify-content-between mb-2" id="@widgetHeaderID" style="background-color: @(Widget.Color)">
-                                    <strong style="color: #000000">@Widget.Title</strong>
-
-                                    <div class="WidgetButtons ed-flex flex-row">
-
-                                        @if(!IsEditMode)
+                                    <div class="WidgetButtons d-flex flex-row flex-wrap gap-1 justify-content-end align-items-center">
+                                        @if (!IsEditMode)
                                         {
                                             var MyInvoicingId = "41291bdc-7fac-47f0-8517-e2afe51e9ec3";
 
-                                            @if( Widget.Id == MyInvoicingId)
+                                            @if (Widget.Id == MyInvoicingId)
                                             {
-                                                <TelerikTooltip TargetSelector=".tooltip-target">
-                                                    <Template>
-
-                                                        <div>
-                                                            <ul>
-                                                                <li>Grey arrow: Total amount after combining the gross amount of all the invoices generated by the user for the previous month (calculated as gross/1000).</li>
-                                                                <li>Blue arrow: Total amount after combining the gross of all the invoices generated by the user for the current month (calculated as gross/1000).</li>
-                                                                <li>Green bar: Currently, this bar has no specific function.</li>
-                                                            </ul>
-                                                        </div>
-
-                                                    </Template>
-                                                </TelerikTooltip>
-
-
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        title="Grey arrow: previous month gross/1000. Blue arrow: current month gross/1000. Green bar: currently no specific function.">
+                                                    <i class="bi bi-info-circle"></i>
+                                                </button>
                                             }
-                                            <btn class="btn btn-default"   @onclick="() => ToggleFullScreen(Widget)" disabled="@isFullScreen" >
-                                                <i class="bi bi-arrows-angle-expand" />
-                                            </btn>
+
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    title="Toggle full screen"
+                                                    @onclick="() => ToggleFullScreen(Widget)"
+                                                    disabled="@(isFullScreen && !Widget.IsFullScreen)">
+                                                <i class="bi bi-arrows-angle-expand"></i>
+                                            </button>
                                         }
                                         else
                                         {
-                                            <div class="d-flex flex-row justify-content-between">
-                                                <button class="btn btn-danger float-right" title="Delete Widget" onclick="@(() => RemoveWidget(Widget.Title, Widget.WidgetType))">
-                                                    <i class="bi bi-trash" style="color: @(Widget.Color == "#f8f9fa" ? "#000000" : "#ffffff")" />
-                                                </button>
-                                                <TelerikColorPicker ValueFormat="ColorFormat.Hex" @bind-Value="@Widget.Color" OnChange="(color) => SetWidgetColor(Widget, widgetHeaderID, color)">
-                                                    <ColorPickerViews>
-                                                        <ColorPickerPaletteView Colors="ColorPalettePresets.Basic"/>
-                                                    </ColorPickerViews>
-                                                </TelerikColorPicker>
-
-                                            </div>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Move widget left/up" @onclick="@(() => MoveWidget(Widget, -1))">
+                                                <i class="bi bi-arrow-left"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Move widget right/down" @onclick="@(() => MoveWidget(Widget, 1))">
+                                                <i class="bi bi-arrow-right"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Decrease width" @onclick="@(() => ChangeWidgetSpan(Widget, -1, 0))">
+                                                <i class="bi bi-arrows-collapse-vertical"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Increase width" @onclick="@(() => ChangeWidgetSpan(Widget, 1, 0))">
+                                                <i class="bi bi-arrows-expand-vertical"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Decrease height" @onclick="@(() => ChangeWidgetSpan(Widget, 0, -1))">
+                                                <i class="bi bi-dash-lg"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Increase height" @onclick="@(() => ChangeWidgetSpan(Widget, 0, 1))">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                            <input type="color"
+                                                   class="form-control form-control-color cb-widget-colour-input"
+                                                   title="Widget colour"
+                                                   value="@(NormaliseColour(Widget.Color))"
+                                                   @oninput="@(args => SetWidgetColor(Widget, args.Value?.ToString()))" />
+                                            <button class="btn btn-sm btn-danger" title="Delete Widget" @onclick="@(async () => await RemoveWidget(Widget.Title, Widget.WidgetType))">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
                                         }
-
                                     </div>
                                 </div>
-                            </HeaderTemplate>
+                            </header>
 
-                            <!-- Widget Content.-->
-                            <Content>
-                                <div class="d-flex flex-column h-100">
-                                    <div class="d-flex flex-column justify-content-start" style="flex-grow: 1; overflow: auto; ">
-                                        @Widget.Content
-                                    </div>
-                                </div>
-                            </Content>
-                        </TileLayoutItem>
-
-                        @*Set the colour of the outer header.*@
-                        if(Widget.Color != null){
-                            SetWidgetColor(Widget, widgetHeaderID, Widget.Color);
-                        }
+                            <div class="cb-widget-content">
+                                @Widget.Content
+                            </div>
+                        </section>
                     }
-
-                </TileLayoutItems>
-            </TelerikTileLayout>
-
-
+                </div>
+            }
         </div>
     </div>
 }
 
-<script>
-
-    /*
-    Applies colour to the widget header itself.
-    */
-    window.applyColourToWidgetHeader = (ID, Colour) => {
-
-    console.log("Setting header colour!");
-    try
-    {
-    var header = document.getElementById(ID);
-
-    if(header && Colour)
-    {
-    header.parentElement.style.backgroundColor = Colour;
-    console.log("Colour has been set for widget header. [ Colour: " + Colour + " ]");
-
-    }
-
-    console.log("Could not get header from ID: " + ID);
-    }
-    catch(_exception)
-    {
-    console.log(_exception)
-    }
-    };
-</script>
-
-
 <style>
-
-    @* [Ensure the height is auto and the content can grow/shrink] *@
-    .k-tilelayout.telerik-blazor {
-    min-height: 100% !important;
-    height: 100% !important;
-    }
-
     .sticky {
-    position: static !important;
+        position: static !important;
     }
 
-    @* [Hides the Grid View name (like "All Jobs")] *@
-    h5.view-name{
-    display: none;
+    h5.view-name {
+        display: none;
     }
 
-    .WidgetOptions{
-    margin-bottom: 10px;
-    background-color: white;
-    padding: 10px;
-    border-radius: 20px;
+    .WidgetOptions {
+        background-color: white;
+        padding: 10px;
+        border-radius: 20px;
     }
 
-
-    .WidgetBoard{
-    background-color: white;
-    border-radius: 20px;
+    .WidgetBoard,
+    .cb-dashboard-grid {
+        background-color: white;
+        border-radius: 20px;
     }
 
-    .DropDownButton{
-    height: 100%;
+    .cb-dashboard-widget-picker {
+        min-width: 260px;
     }
 
     .show-dialog {
-    display: block;
+        display: block;
     }
 
-    .MyTelerikNotification .k-notification-container .k-notification {
-    margin-top: 20px;
-    width: 600px;
-    height: 100px;
-    font-size: 1.5em;
-    text-align: center;
-    align-items: center;
-    z-index: 101;
+    .editModeOff {
+        background-color: red;
+        color: white;
     }
 
-    @* [Controls the coloring of the button.] *@
-    .editModeOff{
-    background-color: red;
-    color: white;
+    .editModeOn {
+        background-color: green;
+        color: white;
     }
 
-    .editModeOn{
-    background-color: green;
-    color: white;
-    }
-
-    @* [Removes the title from the Gauge - so we do not have it 2x] *@
-    .card-title .mb-0{
-    display: none;
+    .card-title .mb-0 {
+        display: none;
     }
 
     .card-title {
-    justify-content: center !important;
+        justify-content: center !important;
     }
 
-    .allowNewButtonSection{
-    display:none !important;
+    .allowNewButtonSection {
+        display: none !important;
     }
 
-    .fitGridToMobile{
-    max-height: 500px;
-    height: 100%;
-    overflow: auto;
+    .fitGridToMobile {
+        max-height: 500px;
+        height: 100%;
+        overflow: auto;
     }
 
-    .tileBorder{
-    border: 1px solid black;
+    .tileBorder,
+    .cb-widget-card {
+        border: 1px solid black;
     }
 
-    .hideZoomLevelButtons{
-    display: none !important;
+    .hideZoomLevelButtons {
+        display: none !important;
     }
 
-    @* [Full-screen toggle styles] *@
-    .widget {
-    transition: transform 0.3s ease, width 0.3s ease, height 0.3s ease;
-    transform-origin: center;
-    border: 1px solid #ccc;
-    overflow: auto;
+    .widget,
+    .cb-widget-card {
+        transition: transform 0.3s ease, width 0.3s ease, height 0.3s ease;
+        transform-origin: center;
+        overflow: auto;
     }
 
-    .widget.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 9999;
-    transform: scale(1.0);
-    padding: 20px;
+    .widget.fullscreen,
+    .cb-widget-card.cb-widget-fullscreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999;
+        transform: scale(1.0);
+        padding: 20px;
+        background-color: #ffffff;
     }
 
-    @* [Exit full-screen button styling] *@
     .exit-fullscreen {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    padding: 5px 10px;
-    background-color: #f44336;
-    color: white;
-    border: none;
-    cursor: pointer;
-    border-radius: 5px;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 5px 10px;
+        background-color: #f44336;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 5px;
     }
 
-    .editButton{
-    background-color: #565e64 !important;
-    color: #ffffff !important;
+    .editButton {
+        background-color: #565e64 !important;
+        color: #ffffff !important;
     }
 
-    @* [Ensures the tile layout adjusts for full screen toggling] *@
     .fullscreen-tile {
-    position: absolute;
-    width: 100vw;
-    height: 100vh;
-    top: 0;
-    left: 0;
-    z-index: 1000;
+        position: absolute;
+        width: 100vw;
+        height: 100vh;
+        top: 0;
+        left: 0;
+        z-index: 1000;
     }
 
-    @@media (max-width: 768px){
-    .k-table-td{
-    max-width: 120px !important;
-    width: 100% !important;
-    }
-    }
-    .emptyBoard{
-    height: 90vh;
+    .emptyBoard {
+        height: 90vh;
     }
 
-    .hideBoard{
-    visibility: hidden;
-    }
-    .k-tooltip{
-    background-color: grey !important;
+    .hideBoard {
+        visibility: hidden;
     }
 
-    @*Adds spacing to the color picker from the left.*@
-    .k-colorpicker {
-    background-color: #f8f9fa !important;
-    margin-left: 5px !important;
+    .cb-dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+        grid-auto-flow: dense;
+        grid-auto-rows: minmax(190px, auto);
+        gap: 1rem;
+        padding: 1rem;
+        min-height: 70vh;
     }
 
+    .cb-widget-card {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: var(--cb-widget-min-height, 260px);
+        background-color: #ffffff;
+        border-radius: 0.5rem;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+
+    .cb-widget-header {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+        border-top-left-radius: 0.5rem;
+        border-top-right-radius: 0.5rem;
+    }
+
+    .cb-widget-title {
+        color: #000000;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cb-widget-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 0.5rem;
+    }
+
+    .cb-widget-colour-input {
+        width: 38px;
+        height: 32px;
+        padding: 2px;
+    }
+
+    .cb-dashboard-grid-fullscreen-active .cb-widget-card:not(.cb-widget-fullscreen) {
+        opacity: 0.25;
+        pointer-events: none;
+    }
+
+    @@media (max-width: 768px) {
+        .k-table-td {
+            max-width: 120px !important;
+            width: 100% !important;
+        }
+
+        .cb-dashboard-grid {
+            grid-template-columns: 1fr;
+            padding: 0.5rem;
+        }
+
+        .cb-widget-card {
+            grid-column: 1 / -1 !important;
+            min-height: 320px;
+        }
+
+        .WidgetButtons {
+            max-width: 100%;
+        }
+    }
+
+    /* 09F dashboard action button contrast */
+    .cb-widget-header .WidgetButtons .btn:not(.btn-danger),
+    .WidgetOptions .btn-outline-secondary {
+        background-color: rgba(255, 255, 255, 0.94) !important;
+        color: #0f1f37 !important;
+        border: 1px solid rgba(15, 31, 55, 0.35) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+
+    .cb-widget-header .WidgetButtons .btn:not(.btn-danger):hover,
+    .WidgetOptions .btn-outline-secondary:hover {
+        background-color: #ffffff !important;
+        color: #061327 !important;
+        border-color: rgba(15, 31, 55, 0.65) !important;
+    }
+
+    .cb-widget-header .WidgetButtons .btn-danger {
+        border: 1px solid rgba(255, 255, 255, 0.65) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+
+    .cb-widget-colour-input {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(15, 31, 55, 0.45) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
 </style>
-
 
 @code {
 
 
     //TODO: Add this variable "nicely" - and clean this mess up, way too many variables.
-    SavedTileState boardConfigFromDB { get; set; }
+    SavedTileState boardConfigFromDB { get; set; } = new();
 
     private List<CellColouring> MyWorkCSS { get; set; }
     private string MyWorkCSSAsJSON { get; set; }
@@ -489,13 +441,11 @@ else
     private int UserId { get; set; }
     private API.Client.FormHelper? _formHelper;
     private API.Client.Models.UserService userService;
-    public TelerikNotification SaveNotification { get; set; }
     #endregion Database
 
 
     #region Base Parameters
     /* Base parameters. */
-    [CascadingParameter] public DialogFactory Dialogs { get; set; }
     [Parameter] public int NumberOfColumns { get; set; } = 10;
     [Parameter] public int RowHeight { get; set; } = 500;
     [Parameter] public int ColumnWidth { get; set; } = 500;
@@ -506,15 +456,12 @@ else
 
     #region TileLayout Variables
     //TileLayout + Widgets added.
-    public TelerikTileLayout Dashboard { get; set; }
     private List<DashBoardWidget> DashboardWidgets { get; set; } = new List<DashBoardWidget>();
     private bool BoardIsEmpty { get; set; } = false;
 
     //For keeping track of the states across desktop and mobile.
-    private TileLayoutState DashBoardState { get; set; }
     private string DashBoardStateAsJSON { get; set; } = "";
 
-    private List<TileLayoutItem> WidgetItems { get; set; } = new List<TileLayoutItem>();
     private List<DashboardMetric> Metrics { get; set; } = new();
     private string[] WidgetTypes = ["GA", "GR"];
 
@@ -534,8 +481,7 @@ else
 
     #region Dropdown Button Variables
     /* Button variables. */
-    public TelerikDropDownButton DropDownButton { get; set; }
-    private IEnumerable<ButtonSelection> ButtonItems { get; set; }
+    private IEnumerable<ButtonSelection> ButtonItems { get; set; } = Enumerable.Empty<ButtonSelection>();
     private List<ButtonSelection> Data { get; set; } = new List<ButtonSelection>();
     private string selectedWidget { get; set; }
     #endregion Dropdown Button Variales
@@ -563,7 +509,7 @@ else
     {
         public string Text { get; set; } = "";
         public string WidgetType { get; set; } = "";
-        public string Id { get; set; }
+        public string Id { get; set; } = "";
         //To be seperated into its own class.
 
         public string GridCode { get; set; } = "";
@@ -579,14 +525,14 @@ else
     private class DashBoardWidget
     {
         public string Title { get; set; } = "";
-        public string WidgetType { get; set; }
-        public RenderFragment Content { get; set; }
+        public string WidgetType { get; set; } = "";
+        public RenderFragment Content { get; set; } = builder => { };
         public int ColSpan { get; set; }
         public int RowSpan { get; set; }
-        public string Id { get; set; }
-        public string navigateTo { get; set;}
+        public string Id { get; set; } = "";
+        public string navigateTo { get; set;} = "";
         public bool IsFullScreen { get; set; } = false; // Track full-screen state
-        public string Color { get; set; }
+        public string Color { get; set; } = "#f8f9fa";
     }
 
     //Stores the filter settings applied to the grid.
@@ -611,7 +557,7 @@ else
             public int ColSpan  { get; set; }
             public int Order    { get; set; }
             public string Id    { get; set; }
-            public string Color { get; set; }
+            public string Color { get; set; } = "#f8f9fa";
         }
 
         //Holds the CSS for the "My Work" cells.
@@ -627,98 +573,82 @@ else
         public string ClassName { get; set; }
         public string Colour { get; set; }
     }
+#endregion Custom Classes
 
-
-    /*
-    * Extended class of "TileLayoutState".
-    * Used to store additional values that the default TileLayoutState does not have by default.
-    */
-    public class ExtendedTileState : TileLayoutState
+    private Task SetWidgetColor(DashBoardWidget widget, string? newColor)
     {
-        public string Color { get; set; }
+        if (string.IsNullOrWhiteSpace(newColor))
+        {
+            return Task.CompletedTask;
+        }
+
+        widget.Color = NormaliseColour(newColor);
+        HasChanges = true;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
-    #endregion Custom Classes
-
-
-    private async Task SetWidgetColor(DashBoardWidget widget, string widgetHeaderID, object NewColor)
+    private string NormaliseColour(string? colour)
     {
-        widget.Color = (string) NewColor;
-        await JS.InvokeVoidAsync("applyColourToWidgetHeader", widgetHeaderID, (string) NewColor);
-        //await SetWidgetHeaderColor(widgetHeaderID, (string)NewColor);
-
+        return string.IsNullOrWhiteSpace(colour) ? "#f8f9fa" : colour;
     }
+
+    private string GetWidgetCardClass(DashBoardWidget widget)
+    {
+        return $"cb-widget-card widget tileBorder {(widget.IsFullScreen ? "cb-widget-fullscreen fullscreen" : string.Empty)}";
+    }
+
+    private string GetWidgetCardStyle(DashBoardWidget widget)
+    {
+        var colSpan = Math.Clamp(widget.ColSpan <= 0 ? 1 : widget.ColSpan, 1, NumberOfColumns);
+        var rowSpan = Math.Clamp(widget.RowSpan <= 0 ? 1 : widget.RowSpan, 1, 4);
+        var minHeight = Math.Max(220, rowSpan * 240);
+        return $"grid-column: span {colSpan}; --cb-widget-min-height: {minHeight}px;";
+    }
+
+    private IEnumerable<ButtonSelection> AvailableWidgetSelections =>
+        Data.Where(item => DashboardWidgets.All(widget => widget.Id != item.Id && widget.Title != item.Text))
+            .OrderBy(item => item.WidgetType)
+            .ThenBy(item => item.Text);
 
     // ====== [CBLD-611] ======
     // Meant to handle the "The render handle is not yet assigned" error
     //Saves the state (so that the JSON is up to date with the CSS bits) + performs a refresh.
     private void HandleRenderHandleError(Exception ex)
     {
-
         if (ex.Message.Contains("The render handle is not yet assigned"))
         {
             SaveStateToDB(false);
-
-
+            Toast.ShowInfo("Page will be refreshed to prevent update related error - please, ensure all your widgets are present on the board after the page has reloaded.");
             _ = Task.Run(async () =>
             {
-                SaveNotification.Show(new NotificationModel()
-                    {
-                        Text = "Page will be refreshed to prevent update related error - please, ensure all your widgets are present on the board after the page has reloaded.",
-                        ThemeColor = ThemeConstants.Notification.ThemeColor.Info,
-                        Closable = true,
-                        CloseAfter = 3000 //Display for 3 seconds.
-                    });
-
                 await Task.Delay(3000);
-                Navigation.Refresh();
+                await InvokeAsync(() => Navigation.Refresh());
             });
-
         }
     }
+
 
 
 
     [JSInvokable]
-    private async Task SetWidgetHeaderColor(string headerID, string colour){
-        await JS.InvokeVoidAsync("applyColourToWidgetHeader", headerID, colour);
-    }
-
-
-    public async void AdaptToScreenSize(bool toAdapt)
-{
-    isSmallScreen = toAdapt;
-
-    try
+    private Task SetWidgetHeaderColor(string headerID, string colour)
     {
-        if (isSmallScreen)
-        {
-            MobileScreenClass = "fitGridToMobile";
-            mobileTileLayout = "WidgetBoard";
-
-            await JS.InvokeVoidAsync("adjustColumnWidths");
-            await JS.InvokeVoidAsync("registerAdjustFunction");
-        }
-        else
-        {
-            MobileScreenClass = "";
-            mobileTileLayout = "WidgetBoard";
-
-            await RemoveAdjustFunctionSafelyAsync();
-        }
+        // 09D removes Telerik TileLayout header DOM manipulation.
+        return Task.CompletedTask;
     }
-    catch (Exception ex)
+
+
+
+    public Task AdaptToScreenSize(bool toAdapt)
     {
-        HandleRenderHandleError(ex);
-
-        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
-        ex.Data.Add("AdditionalInfo", "Error adapting dashboard to screen size.");
-        ex.Data.Add("PageMethod", "Dashboard/AdaptToScreenSize()");
-        await OnError(ex);
+        isSmallScreen = toAdapt;
+        MobileScreenClass = isSmallScreen ? "fitGridToMobile" : string.Empty;
+        mobileTileLayout = "WidgetBoard";
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
-    StateHasChanged();
-}
 
 
     public async void GetUserId()
@@ -746,27 +676,21 @@ else
     * Here, we load the options into the buttons while we are waiting
     * for the page to load.
     */
-    protected override async Task<Task> OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
             GetUserId();
 
-            //string Layout = await LoadDashBoardLayout();
-            boardConfigFromDB = System.Text.Json.JsonSerializer.Deserialize<SavedTileState>(await LoadDashboardLayout());
+            boardConfigFromDB = System.Text.Json.JsonSerializer.Deserialize<SavedTileState>(await LoadDashboardLayout()) ?? new SavedTileState();
 
-            //Apply colouring to the "My Work" area - if there are any.
             if (boardConfigFromDB.MyWorkCSS != null)
             {
-                MyWorkCSS = boardConfigFromDB.MyWorkCSS; //Must be populated to ensure it does not get lost on save.
+                MyWorkCSS = boardConfigFromDB.MyWorkCSS;
                 MyWorkCSSAsJSON = System.Text.Json.JsonSerializer.Serialize(MyWorkCSS);
             }
 
-
-            AddWidgetsFromConfig();
-
-            await Task.Delay(100);
-
+            await AddWidgetsFromConfigAsync();
             isLoading = false;
         }
         catch (Exception ex)
@@ -776,11 +700,13 @@ else
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "Error loading the dashboard.");
             ex.Data.Add("PageMethod", "Dashboard/OnInitializedAsync()");
-            OnError(ex);
+            await OnError(ex);
+            isLoading = false;
         }
 
-        return base.OnInitializedAsync();
+        await base.OnInitializedAsync();
     }
+
 
 
     private string IsWidgetFullScreen(DashBoardWidget tileItem)
@@ -873,11 +799,13 @@ else
     }
 
 
-    private void ResetDashboard()
+    private async void ResetDashboard()
     {
         DashboardWidgets.Clear();
-        AddWidgetsFromConfig();
+        await AddWidgetsFromConfigAsync();
+        StateHasChanged();
     }
+
 
 
     /*
@@ -1015,56 +943,81 @@ else
     }
 
 
-    private async void ChangeWidgetAreaSize(int val)
+    private Task ChangeWidgetAreaSize(int val)
     {
-
         if (!DashboardWidgets.Any())
+            return Task.CompletedTask;
+
+        foreach (var item in DashboardWidgets)
+        {
+            ChangeWidgetSpan(item, val, 0, refresh: false);
+        }
+
+        HasChanges = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void ChangeWidgetSpan(DashBoardWidget item, int colDelta, int rowDelta, bool refresh = true)
+    {
+        var minColSpan = item.WidgetType == "GR" ? 3 : 2;
+        var maxColSpan = item.WidgetType == "GR" ? NumberOfColumns : 3;
+        item.ColSpan = Math.Clamp(item.ColSpan + colDelta, minColSpan, maxColSpan);
+        item.RowSpan = Math.Clamp(item.RowSpan + rowDelta, 1, 4);
+
+        if (item.WidgetType == "GR")
+        {
+            GridColSpan = item.ColSpan;
+        }
+        else
+        {
+            GaugeColSpan = item.ColSpan;
+        }
+
+        HasChanges = true;
+
+        if (refresh)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void MoveWidget(DashBoardWidget widget, int direction)
+    {
+        var currentIndex = DashboardWidgets.IndexOf(widget);
+        if (currentIndex < 0)
             return;
 
-        foreach(var item in DashboardWidgets)
-        {
-            var NewColSize = (item.ColSpan + val);
+        var targetIndex = Math.Clamp(currentIndex + direction, 0, DashboardWidgets.Count - 1);
+        if (targetIndex == currentIndex)
+            return;
 
-            //Grids - no smaller than 3 cols
-            if(item.WidgetType == "GR")
-            {
-                if (NewColSize >= 3 && NewColSize <= 10)
-                {
-                    item.ColSpan = NewColSize;
-                    GridColSpan = NewColSize;
-                }
-
-            }
-            //Gauges
-            else
-            {
-                if (NewColSize >= 2 && NewColSize <= 3)
-                {
-                    item.ColSpan = NewColSize;
-                    GaugeColSpan = NewColSize;
-                }
-            }
-        }
+        DashboardWidgets.RemoveAt(currentIndex);
+        DashboardWidgets.Insert(targetIndex, widget);
+        HasChanges = true;
         StateHasChanged();
     }
+
 
     /*
     * Removes widget from the board.
     */
-    private async void RemoveWidget(string title, string type)
+    private async Task RemoveWidget(string title, string type)
     {
         try
         {
-            bool isConfirmed = await Dialogs.ConfirmAsync($"Are you sure you would like to delete the \"{title}\" widget?", "Delete Widget");
+            bool isConfirmed = await JS.InvokeAsync<bool>("confirm", $"Are you sure you would like to delete the \"{title}\" widget?");
 
             if (isConfirmed)
             {
-                var WidgetToDelete = DashboardWidgets.Where(m => m.Title == title && m.WidgetType == type).FirstOrDefault();
+                var widgetToDelete = DashboardWidgets.FirstOrDefault(m => m.Title == title && m.WidgetType == type);
+                if (widgetToDelete is not null)
+                {
+                    DashboardWidgets.Remove(widgetToDelete);
+                }
 
-                DashboardWidgets.Remove(WidgetToDelete);
                 HasChanges = true;
 
-                //Show "Board is empty" message if the user has deleted the last item.
                 if (!DashboardWidgets.Any())
                 {
                     BoardIsEmpty = true;
@@ -1080,56 +1033,71 @@ else
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
             ex.Data.Add("AdditionalInfo", "Error deleting the widget.");
             ex.Data.Add("PageMethod", "RemoveWidget()");
-            OnError(ex);
+            await OnError(ex);
         }
     }
+
 
     /*
     * Main function for adding widgets to the board.
     */
-    private async void AddWidget(ButtonSelection item)
-{
-    try
+    private async Task AddWidget(ButtonSelection item, bool deferRender = false)
     {
-        if (BoardIsEmpty)
-            BoardIsEmpty = false;
-
-        DashBoardWidget widget = new DashBoardWidget();
-
-        switch (item.WidgetType)
+        try
         {
-            case "GA":
-                widget = await AddGaugeToBoard(item);
-                break;
+            if (item is null)
+                return;
 
-            case "GR":
-                widget = await AddGridToBoard(item);
-                await JS.InvokeVoidAsync("adjustColumnWidths");
+            if (BoardIsEmpty)
+                BoardIsEmpty = false;
 
-                if (isSmallScreen)
-                {
-                    await JS.InvokeVoidAsync("registerAdjustFunction");
-                }
-                break;
+            DashBoardWidget widget = item.WidgetType switch
+            {
+                "GA" => await AddGaugeToBoard(item),
+                "GR" => await AddGridToBoard(item),
+                _ => new DashBoardWidget()
+            };
+
+            if (string.IsNullOrWhiteSpace(widget.Id))
+                return;
+
+            if (DashboardWidgets.Any(existing => existing.Id == widget.Id))
+                return;
+
+            DashboardWidgets.Add(widget);
+
+            if (IsEditMode)
+                HasChanges = true;
+
+            if (!deferRender)
+            {
+                StateHasChanged();
+            }
         }
+        catch (Exception ex)
+        {
+            HandleRenderHandleError(ex);
 
-        DashboardWidgets.Add(widget);
-
-        if (IsEditMode)
-            HasChanges = true;
-
-        StateHasChanged();
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+            ex.Data.Add("AdditionalInfo", "Error adding the widget to the dashboard.");
+            ex.Data.Add("PageMethod", "Dashboard/AddWidget()");
+            await OnError(ex);
+        }
     }
-    catch (Exception ex)
+
+    private async Task AddWidgetFromSelect(ChangeEventArgs args)
     {
-        HandleRenderHandleError(ex);
+        var selectedId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(selectedId))
+            return;
 
-        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
-        ex.Data.Add("AdditionalInfo", "Error adding the widget to the dashboard.");
-        ex.Data.Add("PageMethod", "Dashboard/AddWidget()");
-        await OnError(ex);
+        var selection = Data.FirstOrDefault(x => x.Id == selectedId);
+        if (selection is not null)
+        {
+            await AddWidget(selection);
+        }
     }
-}
+
 
     private async Task<DashBoardWidget> AddGridToBoard(ButtonSelection item)
     {
@@ -1196,7 +1164,7 @@ else
 
                 Widget = new()
                 {
-                    Content =  @<DynamicTreeListGridView @key="@($"Tree-{TeamInvoicingGvd?.Code}-{Guid.NewGuid()}")" FullGrid="true" GridCode="FINANCE" ViewDefinition="@TeamInvoicingGvd" />,
+                    Content = @<WidgetTeamInvoicing GridCode="FINANCE" ViewDefinition="@TeamInvoicingGvd" ParentDataObjectReference="@DashboardParentDataObjectReference" FetchSize="1500" LoadDelayMs="600" @key="@($"TeamInvoicing-{TeamInvoicingGvd?.Code}")" />,
                     Title = Title,
                     ColSpan = colSpan,
                     RowSpan = RowSpan,
@@ -1274,7 +1242,7 @@ else
                 }
 
                 Content =@<MultiColumnDynamicGridView
-                            @key="@($"Tree-{MyWorkGd.Code}-{Guid.NewGuid()}")"
+                            @key="@($"Tree-{MyWorkGd.Code}-{MyWorkGvd?.Code}")"
                             GridCode="@item.GridCode"
                             CSSFromDB="@MyWorkCSSAsJSON"
                             MyWorkFiltersFromDB="@MyWorkFiltersAsJSON"
@@ -1321,7 +1289,7 @@ else
                         FullGrid="true"
                         ViewDefinition="@gvd"
                         ParentDataObjectReference="@DashboardParentDataObjectReference"
-                        @key="@($"DashboardGrid-{gvd.Code}-{Guid.NewGuid()}")" />;
+                        @key="@($"DashboardGrid-{item.GridCode}-{gvd.Code}")" />;
                     WidgetRowSpan = GridRowSpan;
 
 
@@ -1367,13 +1335,15 @@ else
 
         };
 
+        var savedWidget = boardConfigFromDB.ItemStates?.FirstOrDefault(x => item.Id == x.Id);
+
         Widget.Title        = item.Text;
-        Widget.ColSpan      = GaugeColSpan;
-        Widget.RowSpan      = GaugeRowSpan;
+        Widget.ColSpan      = savedWidget is not null && savedWidget.ColSpan > 0 ? savedWidget.ColSpan : GaugeColSpan;
+        Widget.RowSpan      = savedWidget is not null && savedWidget.RowSpan > 0 ? savedWidget.RowSpan : GaugeRowSpan;
         Widget.WidgetType   = item.WidgetType;
         Widget.Id           = item.Id;
         Widget.navigateTo   = (item.Metric?.PageUri + '/' + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(item.Metric?.Guid).ToString());
-        Widget.Color = boardConfigFromDB.ItemStates?.FirstOrDefault(x => item.Id == x.Id)?.Color ?? "#FFFFFF";
+        Widget.Color        = savedWidget?.Color ?? "#FFFFFF";
 
 
         return Widget;
@@ -1385,63 +1355,34 @@ else
     /*
     * Applies the layout (which is saved by the user to the database).
     */
-    private async void AddWidgetsFromConfig()
+    private async Task AddWidgetsFromConfigAsync()
     {
-
         try
         {
+            DashboardWidgets.Clear();
 
-            //Check if we have any widget to add first.
-            if (boardConfigFromDB.ItemStates.Any())
+            if (boardConfigFromDB?.ItemStates?.Any() == true)
             {
                 var oldMyWorkID = "e61688d5-1acb-4551-9482-cc8bad0d0d48";
-
                 BoardIsEmpty = false;
 
-                //Add widgets.
-                foreach (var widget in boardConfigFromDB.ItemStates)
+                foreach (var widget in boardConfigFromDB.ItemStates.OrderBy(x => x.Order))
                 {
-
-                    //Skip old My Work grid.
                     if (widget.Id == oldMyWorkID)
                         continue;
 
-                    var selection = ButtonItems.Where(x => x.Id == widget.Id).FirstOrDefault();
-
-
-                    if (selection != null)
-                        this.AddWidget(selection);
-                    else
-                        continue; //continue if the widget is not present instead of throwing an error.
-                    // throw new Exception("There was an error applying a widget to the dasboard.");
+                    var selection = ButtonItems?.FirstOrDefault(x => x.Id == widget.Id);
+                    if (selection is not null)
+                    {
+                        await AddWidget(selection, deferRender: true);
+                    }
                 }
 
-                //Without this, TileLayout.GetState() will not return the current configuration.
-                await Task.Delay(500);
-
-                //Next, apply the state to ensure the order in which the widgets are displayed is true to the saved configuration.
-                var ActiveWidgets = Dashboard.GetState();
-                foreach (var widget in ActiveWidgets.ItemStates)
-                {
-                    var NewState = boardConfigFromDB.ItemStates.Where(x => x.Id == widget.Id).FirstOrDefault();
-
-                    widget.Order = NewState.Order;
-                    widget.ColSpan = NewState.ColSpan;
-                    widget.RowSpan = NewState.RowSpan;
-                }
-
-                //Lastly, apply the state to ensure they are in the correct order.
-                Dashboard.SetState(ActiveWidgets);
-
-                await Task.Delay(100);
                 StateHasChanged();
-
                 return;
             }
 
-            //Set flag to true to show the "Board is empty" message.
             BoardIsEmpty = true;
-
         }
         catch(Exception ex)
         {
@@ -1450,46 +1391,40 @@ else
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "Error applying the dashboard layout.");
             ex.Data.Add("PageMethod", "Dashboard/ApplyDashBoardLayout()");
-            OnError(ex);
+            await OnError(ex);
         }
-
     }
+
 
     //Returns the current layout of the board - aka, the widgets present.
     private string GetCurrentDashBoardLayout()
     {
-        Task.Delay(500); //Due to the async nature, this ensures we get the latest state.
-
         try
         {
-            DashBoardState = Dashboard.GetState() ?? new TileLayoutState();
             SavedTileState stateToBeSaved = new SavedTileState();
 
-            //Add the color, so that it is saved to the database.
-            foreach (var widget in DashBoardState.ItemStates)
+            for (int index = 0; index < DashboardWidgets.Count; index++)
             {
-                SavedTileState.ItemState newState = new();
+                var widget = DashboardWidgets[index];
 
-                newState.ColSpan = widget.ColSpan;
-                newState.RowSpan = widget.RowSpan;
-                newState.Id = widget.Id;
-                newState.Order = widget.Order;
-                newState.Color = DashboardWidgets.Where(x => x.Id == widget.Id).FirstOrDefault().Color;
+                SavedTileState.ItemState newState = new()
+                {
+                    ColSpan = widget.ColSpan,
+                    RowSpan = widget.RowSpan,
+                    Id = widget.Id,
+                    Order = index,
+                    Color = widget.Color
+                };
 
                 stateToBeSaved.ItemStates.Add(newState);
             }
 
-            //Add the CSS for the "My Work" grid.
-            if(MyWorkCSS is not null)
+            if (MyWorkCSS is not null)
             {
                 stateToBeSaved.MyWorkCSS = MyWorkCSS;
             }
 
-
-            //string TileStateJSON = System.Text.Json.JsonSerializer.Serialize(Dashboard.GetState() ?? new TileLayoutState());
-            string TileStateJSON = System.Text.Json.JsonSerializer.Serialize(stateToBeSaved, new System.Text.Json.JsonSerializerOptions() { WriteIndented = true });
-
-            return TileStateJSON;
+            return System.Text.Json.JsonSerializer.Serialize(stateToBeSaved, new System.Text.Json.JsonSerializerOptions() { WriteIndented = true });
         }
         catch(Exception ex)
         {
@@ -1498,12 +1433,12 @@ else
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", ex.Message);
             ex.Data.Add("PageMethod", "Dashboard/GetCurrentDashBoardState()");
-            OnError(ex);
+            _ = OnError(ex);
         }
 
         return "{\"ItemStates\": []}";
-
     }
+
 
 
     private  void SaveStateToDB(bool showMsg = true)
@@ -1555,25 +1490,23 @@ else
     //Serves as feedback from the DB - success/failure
     private void ShowDatabaseSaveNotification(bool IsSavedInDB, string Message = "")
     {
+        string successText = (IsSavedInDB && Message == "") ? "Dashboard layout has been successfully saved." : Message;
 
-        string SuccessText          = (IsSavedInDB && Message == "") ? "Dashboard layout has been succesfully saved." : Message;
-        string Color                =  IsSavedInDB  ? ThemeConstants.Notification.ThemeColor.Success : ThemeConstants.Notification.ThemeColor.Error;
-
-
-        SaveNotification.Show(new NotificationModel()
+        if (IsSavedInDB)
         {
-            Text = (Message != "") ? Message : SuccessText,
-            ThemeColor = Color,
-            Closable = true,
-            CloseAfter = 3000 //Display for 3 seconds.
-
-        });
+            Toast.ShowSuccess((Message != "") ? Message : successText);
+        }
+        else
+        {
+            Toast.ShowError((Message != "") ? Message : "Dashboard layout could not be saved.");
+        }
     }
+
     #endregion widgetData
 
 
     //Should also capture the current state of the tile
-    private async void ToggleEditMode()
+    private void ToggleEditMode()
     {
 
         if (BoardIsEmpty)

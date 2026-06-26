@@ -1,7 +1,8 @@
-﻿using Concursus.API.Classes;
+using Concursus.API.Classes;
 using Concursus.API.Core;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
+using System.Diagnostics;
 using System.Data;
 
 namespace Concursus.API.Services;
@@ -115,9 +116,11 @@ public partial class CoreService : Core.Core.CoreBase
     [Authorize(Roles = "User.Read,User.ReadWrite")]
     public override async Task<DropDownDataListReply> DropDownDataList(DropDownDataListRequest request, ServerCallContext context)
     {
-        var message = $"Exception occurred getting DropDownDataList for {Functions.ParseAndReturnEmptyGuidIfInvalid(request.Guid)} - ";
+        var stopwatch = Stopwatch.StartNew();
+        var dropDownGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.Guid);
+        var message = $"Exception occurred getting DropDownDataList for {dropDownGuid} - ";
 
-        if (string.IsNullOrEmpty(Functions.ParseAndReturnEmptyGuidIfInvalid(request.Guid).ToString()))
+        if (string.IsNullOrEmpty(dropDownGuid.ToString()))
         {
             message += "You must provide the Drop Down Guid.";
             _serviceBase.logger.LogError(message);
@@ -129,7 +132,7 @@ public partial class CoreService : Core.Core.CoreBase
             // Prepare EF Request
             var efRequest = new EF.Types.DropDownDataListRequest
             {
-                Guid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.Guid),
+                Guid = dropDownGuid,
                 IsAddingAllowed = request.IsAddingAllowed,
                 ParentGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.ParentGuid),
                 RecordGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.RecordGuid),
@@ -143,6 +146,7 @@ public partial class CoreService : Core.Core.CoreBase
             var result = new DropDownDataListReply();
 
             foreach (var di in efResult.Items)
+            {
                 result.Items.Add(new DropDownDataListItem()
                 {
                     Name = di.Name,
@@ -150,11 +154,25 @@ public partial class CoreService : Core.Core.CoreBase
                     Group = di.Group,
                     ColourHex = di.ColourHex //CBLD-570
                 });
+            }
+
+            stopwatch.Stop();
+
+            if (stopwatch.ElapsedMilliseconds >= 250)
+            {
+                _serviceBase.logger.LogInformation(
+                    $"[CymBuildPerf] Layer=gRPC Method=DropDownDataList Step=Complete Guid={dropDownGuid} DurationMs={stopwatch.ElapsedMilliseconds} RowCount={result.Items.Count} FilterCount={request.Filters.Count} HasSelectedValue={Functions.ParseAndReturnEmptyGuidIfInvalid(request.CurrentSelectedValueGuid) != Guid.Empty} HasParentGuid={Functions.ParseAndReturnEmptyGuidIfInvalid(request.ParentGuid) != Guid.Empty} HasRecordGuid={Functions.ParseAndReturnEmptyGuidIfInvalid(request.RecordGuid) != Guid.Empty}");
+            }
 
             return result;
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+
+            _serviceBase.logger.LogError(
+                $"[CymBuildPerf] Layer=gRPC Method=DropDownDataList Step=Failed Guid={dropDownGuid} DurationMs={stopwatch.ElapsedMilliseconds} FilterCount={request.Filters.Count} Error={ex.Message}");
+
             message += ex.Message;
             _serviceBase.logger.LogError(message);
             throw new RpcException(new Status(StatusCode.Unknown, message));
@@ -262,101 +280,7 @@ public partial class CoreService : Core.Core.CoreBase
     [Authorize(Roles = "User.Read,User.ReadWrite")]
     public override async Task<GridDataListReply> GridDataList(GridDataListRequest request, ServerCallContext context)
     {
-        var gridId = $"{request.GridCode}/{request.GridViewCode}";
-        var baseMsg = $"Exception occurred getting GridDataList for {gridId} - ";
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        if (string.IsNullOrWhiteSpace(request.GridCode))
-        {
-            var msg = baseMsg + "You must provide the Grid Code.";
-            _serviceBase.logger.LogError($"Message - {msg}");
-            throw new RpcException(new Status(StatusCode.InvalidArgument, msg));
-        }
-
-        if (string.IsNullOrWhiteSpace(request.GridViewCode))
-        {
-            var msg = baseMsg + "You must provide the Grid View Code.";
-            _serviceBase.logger.LogError($"Message - {msg}");
-            throw new RpcException(new Status(StatusCode.InvalidArgument, msg));
-        }
-
-        try
-        {
-            // Convert Core → EF request
-            var efRequest = Converters.ConvertCoreGridDataListRequestToEf(request);
-
-            // Filters (only add when present)
-            if (request.Filters != null && request.Filters.Count > 0)
-            {
-                foreach (var f in request.Filters)
-                {
-                    efRequest.Filters.Add(Functions.ConvertToServerFilterRequest(f.CompositeFilters));
-                }
-            }
-
-            // Sorts (only add when present; avoids forcing slow default ORDER BY downstream)
-            if (request.Sort != null && request.Sort.Count > 0)
-            {
-                efRequest.Sort.Add(Functions.ConvertToServerSortRequest(request.Sort));
-            }
-
-            // Optional user override from config
-            var userOverride = _config.GetValue<string>("Environment:UserOverride") ?? string.Empty;
-
-            // Call EF layer (your fixed GridDataList does the heavy lifting)
-            var efResult = await EF.UserInterface.GridDataList(_serviceBase._entityFramework, efRequest, userOverride);
-
-            // Map EF → Core reply
-            var reply = new GridDataListReply { TotalRows = efResult.TotalRows };
-
-            foreach (var gdr in efResult.DataTable)
-            {
-                var row = new GridDataRow();
-                foreach (var col in gdr.Columns)
-                {
-                    row.Columns.Add(Converters.ConvertEfGridDataColumnToCore(col));
-                }
-                reply.DataTable.Add(row);
-            }
-
-            sw.Stop();
-            _serviceBase.logger.LogInformation(
-                $"GridDataList OK for {gridId.ToString()}. Rows={reply.TotalRows.ToString()} in {sw.ElapsedMilliseconds.ToString()}ms");
-
-            return reply;
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-
-            // Try to classify timeouts to a clearer gRPC status
-            StatusCode code = StatusCode.Unknown;
-            var exText = ex.ToString();
-
-            // SQL timeout: SqlException (Number = -2) or TimeoutException
-            if (ex is TimeoutException ||
-                (ex.InnerException is TimeoutException))
-            {
-                code = StatusCode.DeadlineExceeded;
-            }
-#if NET6_0_OR_GREATER
-            else if (ex is Microsoft.Data.SqlClient.SqlException sqlEx && sqlEx.Number == -2)
-            {
-                code = StatusCode.DeadlineExceeded;
-            }
-            else if (ex.InnerException is Microsoft.Data.SqlClient.SqlException sqlExInner && sqlExInner.Number == -2)
-            {
-                code = StatusCode.DeadlineExceeded;
-            }
-#endif
-
-            var msg = baseMsg + ex.Message;
-
-            // Log full details server-side (with elapsed + grid ids); send concise to client
-            _serviceBase.logger.LogError($"GridDataList FAILED for {gridId.ToString()} after {sw.ElapsedMilliseconds.ToString()}ms: {exText} \r\nError: - {ex.Message}");
-
-            throw new RpcException(new Status(code, msg));
-        }
+        return await GridDataListWithInFlightCoalescingAsync(request, context);
     }
 
     [Authorize(Roles = "User.Read,User.ReadWrite")]

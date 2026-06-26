@@ -1,8 +1,7 @@
-﻿@page "/StructureDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/StructureDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @inject Core.CoreClient CoreClient
 @inherits EditPageBase
 @using Google.Protobuf.WellKnownTypes
-@using Telerik.Blazor.Components.Map
 @using Concursus.PWA.Classes
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
@@ -29,15 +28,43 @@
           BrowserTabTitlePrefix="Asset"
           TransientVirtualProperties="@TransientVirtualProperties">
     <FormTitle>
-        <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
+        <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i>
     </FormTitle>
     <FormBody>
-        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-            <TabStripTab Title="Property (UPRN)">
-                <HeaderTemplate>
-                    <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i> Asset
-                </HeaderTemplate>
-                <Content>
+        <div class="cb-structure-detail">
+            <ul class="nav nav-tabs cb-structure-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button type="button"
+                            class="nav-link @GetTabCss(StructureDetailTab.Asset)"
+                            role="tab"
+                            aria-selected="@(ActiveTab == StructureDetailTab.Asset)"
+                            @onclick="@(() => SetActiveTab(StructureDetailTab.Asset))">
+                        <i class="bi bi-buildings-fill me-2" style="font-size: 1.2rem;"></i>Asset
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button type="button"
+                            class="nav-link @GetTabCss(StructureDetailTab.RelatedRecords)"
+                            role="tab"
+                            aria-selected="@(ActiveTab == StructureDetailTab.RelatedRecords)"
+                            @onclick="@(() => SetActiveTab(StructureDetailTab.RelatedRecords))">
+                        <i class="bi bi-book me-2" style="font-size: 1.2rem;"></i>Related Records
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button type="button"
+                            class="nav-link @GetTabCss(StructureDetailTab.ChildAssets)"
+                            role="tab"
+                            aria-selected="@(ActiveTab == StructureDetailTab.ChildAssets)"
+                            @onclick="@(() => SetActiveTab(StructureDetailTab.ChildAssets))">
+                        <i class="bi bi-house-down-fill me-2" style="font-size: 1.2rem;"></i>Child Assets
+                    </button>
+                </li>
+            </ul>
+
+            <div class="cb-structure-tab-panel">
+                @if (ActiveTab == StructureDetailTab.Asset)
+                {
                     <div class="row">
                         <div class="col-md-12 col-lg-6">
                             <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
@@ -50,62 +77,83 @@
                                                 editPageRef="@editPage" />
                         </div>
                         <div class="col-md-12 col-lg-6">
-                            <div class="card shadow-sm p-2 m-2 flex-fill" style="min-width: 250px;">
+                            <div class="card shadow-sm p-2 m-2 flex-fill cb-structure-map-card">
                                 <div class="card-body">
-                                    <TelerikMap @ref="MapRef"
-                                                Center="@MapCenter"
-                                                MinZoom="3"
-                                                MaxZoom="19"
-                                                Zoom="@MapZoom"
-                                                WrapAround="false"
-                                                OnZoomEnd="@OnZoomEnd"
-                                                OnClick="@OnMapClick">
-                                        <MapLayers>
-                                            <MapLayer Type="@MapLayersType.Tile"
-                                                      Attribution="@MapAttribution"
-                                                      Subdomains="@MapSubdomains"
-                                                      UrlTemplate="@MapUrlTemplate">
-                                            </MapLayer>
-                                            <MapLayer Type="@MapLayersType.Marker"
-                                                      Data="@MarkerData"
-                                                      LocationField="@nameof(API.Core.MapMarker.LatLng)"
-                                                      TitleField="@nameof(API.Core.MapMarker.EntityTypeGuid)">
-                                                <MapLayerMarkerSettings>
-                                                    <MapLayerMarkerSettingsTooltip>
-                                                        <Template Context="mapContext">
-                                                            @{
-                                                                var dataItem = mapContext.DataItem as Concursus.API.Core.MapMarker;
-                                                            }
-                                                            <div>@dataItem?.EntityTypeGuid</div>
-                                                        </Template>
-                                                    </MapLayerMarkerSettingsTooltip>
-                                                </MapLayerMarkerSettings>
-                                            </MapLayer>
-                                        </MapLayers>
-                                    </TelerikMap>
+                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                                        <div>
+                                            <h6 class="card-title mb-1">
+                                                <i class="bi bi-geo-alt-fill me-2"></i>Location
+                                            </h6>
+                                            <div class="text-muted small">
+                                                @GetMapStatusText()
+                                            </div>
+                                        </div>
+
+                                        <div class="btn-group btn-group-sm" role="group" aria-label="Map actions">
+                                            <button type="button"
+                                                    class="btn btn-outline-primary"
+                                                    title="Find location from postcode"
+                                                    @onclick="FindFromPostcodeAsync">
+                                                <i class="bi bi-search me-1"></i>Postcode
+                                            </button>
+                                            <button type="button"
+                                                    class="btn btn-outline-secondary"
+                                                    title="Apply the latitude and longitude currently entered on the form"
+                                                    @onclick="ApplyCoordinateFieldsAsync">
+                                                <i class="bi bi-crosshair me-1"></i>Apply coords
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="cb-structure-map-preview">
+                                        <iframe title="Asset location map"
+                                                src="@MapEmbedUrl"
+                                                loading="lazy"
+                                                referrerpolicy="no-referrer-when-downgrade"></iframe>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+                                        <div class="small text-muted">
+                                            Latitude: <strong>@MapCenter[0].ToString("0.000000")</strong>
+                                            <span class="mx-1">|</span>
+                                            Longitude: <strong>@MapCenter[1].ToString("0.000000")</strong>
+                                        </div>
+
+                                        <a class="btn btn-sm btn-outline-secondary"
+                                           href="@OpenStreetMapLink"
+                                           target="_blank"
+                                           rel="noopener noreferrer">
+                                            <i class="bi bi-box-arrow-up-right me-1"></i>Open map
+                                        </a>
+                                    </div>
+
+                                    <div class="alert alert-light border small mt-3 mb-0">
+                                        The Telerik map has been replaced with a native OpenStreetMap preview.
+                                        Use <strong>Postcode</strong> or <strong>Apply coords</strong> to update the stored location.
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </Content>
-            </TabStripTab>
-            <TabStripTab Title="Related Records">
-                <HeaderTemplate>
-                    <i class="bi bi-book me-2" style="font-size: 1.2rem;"></i>Related Records
-                </HeaderTemplate>
-                <Content>
-                    <DynamicGrid GridCode="PROPERTYJOBS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
-            <TabStripTab Title="Child Assets">
-                <HeaderTemplate>
-                    <i class="bi bi-house-down-fill me-2" style="font-size: 1.2rem;"></i>Child Assets
-                </HeaderTemplate>
-                <Content>
-                    <DynamicGrid GridCode="ASSETSCHILDREN" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
-        </TelerikTabStrip>
+                }
+                else if (ActiveTab == StructureDetailTab.RelatedRecords)
+                {
+                    <DynamicGrid GridCode="PROPERTYJOBS"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 TransientVirtualProperties="@TransientVirtualProperties" />
+                }
+                else if (ActiveTab == StructureDetailTab.ChildAssets)
+                {
+                    <DynamicGrid GridCode="ASSETSCHILDREN"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 TransientVirtualProperties="@TransientVirtualProperties" />
+                }
+            </div>
+        </div>
     </FormBody>
 </EditPage>
 
@@ -116,14 +164,17 @@
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
-    private TelerikMap MapRef { get; set; }
-    private double MapZoom { get; set; } = 6; // Default zoom level
+    private enum StructureDetailTab
+    {
+        Asset,
+        RelatedRecords,
+        ChildAssets
+    }
 
-    public string[] MapSubdomains { get; set; } = { "a", "b", "c" };
-    public string MapUrlTemplate { get; set; } = "https://#= subdomain #.tile.openstreetmap.org/#= zoom #/#= x #/#= y #.png";
-    public string MapAttribution { get; set; } = "&copy; <a href='https://osm.org/copyright'>OpenStreetMap contributors</a>";
+    private StructureDetailTab ActiveTab { get; set; } = StructureDetailTab.Asset;
+
     private double[] MapCenter { get; set; } = { 54.0, -2.0 }; // Center of UK
-    private List<Concursus.API.Core.MapMarker> MarkerData { get; set; } = new();
+    private bool HasSpecificLocation { get; set; }
 
     private bool FirstUpdate = false;
     private readonly Geodata _geoData = new();
@@ -136,12 +187,47 @@
     public EventCallback<Exception> OnError { get; set; }
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
 
+    private const string StructureEntityTypeGuid = "2cfbff39-93cd-436b-b8ca-b2fcf7609707";
+    private const string PostcodePropertyGuid = "64e674c3-e42d-4a4b-8747-16212d7db19d";
+    private const string LatitudePropertyGuid = "14bf36ce-da62-4dc3-b832-dd9b485ff32e";
+    private const string LongitudePropertyGuid = "8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba";
+    private const string CountyPropertyGuid = "313686fc-322f-45cd-87bf-8131c333a1a9";
+    private const string CountryPropertyGuid = "a4a1588d-38b5-4a10-9c91-a2fccc2562f9";
+
+    private string MapEmbedUrl
+    {
+        get
+        {
+            var latitude = MapCenter[0];
+            var longitude = MapCenter[1];
+            var latitudePadding = HasSpecificLocation ? 0.006 : 4.5;
+            var longitudePadding = HasSpecificLocation ? 0.010 : 7.5;
+
+            var bbox = string.Join(",",
+                FormatInvariant(longitude - longitudePadding),
+                FormatInvariant(latitude - latitudePadding),
+                FormatInvariant(longitude + longitudePadding),
+                FormatInvariant(latitude + latitudePadding));
+
+            var marker = HasSpecificLocation
+                ? $"&marker={FormatInvariant(latitude)},{FormatInvariant(longitude)}"
+                : string.Empty;
+
+            return $"https://www.openstreetmap.org/export/embed.html?bbox={bbox}&layer=mapnik{marker}";
+        }
+    }
+
+    private string OpenStreetMapLink =>
+        HasSpecificLocation
+            ? $"https://www.openstreetmap.org/?mlat={FormatInvariant(MapCenter[0])}&mlon={FormatInvariant(MapCenter[1])}#map=18/{FormatInvariant(MapCenter[0])}/{FormatInvariant(MapCenter[1])}"
+            : "https://www.openstreetmap.org/#map=6/54.000/-2.000";
 
     public void RefreshPage()
     {
         editPage.SetHasChangedToTrue();
         StateHasChanged();
     }
+
     protected override async Task OnParametersSetAsync()
     {
         try
@@ -161,7 +247,7 @@
 
     protected override void OnInitialized()
     {
-        EntityTypeGuid = "2cfbff39-93cd-436b-b8ca-b2fcf7609707";
+        EntityTypeGuid = StructureEntityTypeGuid;
         base.OnInitialized();
     }
 
@@ -182,11 +268,16 @@
         if (firstRender)
         {
             await InitializeMapAsync();
-            MapRef.Refresh(); // This ensures the map gets refreshed once data is set
         }
         await base.OnAfterRenderAsync(firstRender);
     }
 
+    private void SetActiveTab(StructureDetailTab tab)
+    {
+        ActiveTab = tab;
+    }
+
+    private string GetTabCss(StructureDetailTab tab) => ActiveTab == tab ? "active" : string.Empty;
 
     private async Task InitializeMapAsync()
     {
@@ -196,9 +287,9 @@
             {
                 if (editPage.entityProperties.Count > 0)
                 {
-                    var postcodeProperty = GetEntityPropertyValue<string>("64e674c3-e42d-4a4b-8747-16212d7db19d");
-                    var latitudeProperty = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
-                    var longitudeProperty = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+                    var postcodeProperty = GetEntityPropertyValue<string>(PostcodePropertyGuid);
+                    var latitudeProperty = Math.Round(GetEntityPropertyValue<double>(LatitudePropertyGuid), 6);
+                    var longitudeProperty = Math.Round(GetEntityPropertyValue<double>(LongitudePropertyGuid), 6);
 
                     if (!string.IsNullOrEmpty(postcodeProperty))
                     {
@@ -208,19 +299,13 @@
                         }
                         else
                         {
-                            await SetLocationValues(new MapLocation { Latitude = latitudeProperty, Longitude = longitudeProperty });
+                            await SetLocationValues(new NativeMapLocation { Latitude = latitudeProperty, Longitude = longitudeProperty });
                         }
                     }
                     else
                     {
-                        // Default to UK center
-                        MapCenter = new double[] { 54.0, -2.0 }; // UK center coordinates
-                        MapZoom = 6; // Set the zoom level for UK
-                        MarkerData.Clear();
-                        MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
-
+                        SetDefaultMapLocation();
                     }
-                    MapRef.Refresh(); // Ensure the map refreshes after setting values
                 }
             }
             FirstUpdate = true;
@@ -232,21 +317,13 @@
         StateHasChanged();
     }
 
-    private void OnZoomEnd(MapZoomEndEventArgs args)
-    {
-        MapZoom = args.Zoom; // Update the zoom level
-        Console.WriteLine($"New Zoom Level: {MapZoom}");
-    }
-
-
     protected async void PostCodeChangedPre((API.Client.GeoData.PostcodeInfo postcodeInfo, bool update) p)
     {
         try
         {
             var latitude = Math.Round(p.postcodeInfo.Result[0].Latitude, 6);
             var longitude = Math.Round(p.postcodeInfo.Result[0].Longitude, 6);
-            await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
-            MapRef.Refresh();
+            await SetLocationValues(new NativeMapLocation { Latitude = latitude, Longitude = longitude });
             StateHasChanged();
         }
         catch (Exception ex)
@@ -257,29 +334,22 @@
 
     protected async void FormSubmittedPre((EditContext editContext, bool save, bool exit) p)
     {
-        var postcodeProperty = GetEntityPropertyValue<string>("64e674c3-e42d-4a4b-8747-16212d7db19d") ?? "";
+        var postcodeProperty = GetEntityPropertyValue<string>(PostcodePropertyGuid) ?? "";
 
         if (p.save)
         {
             try
             {
-                var latitude = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
-                var longitude = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+                var latitude = Math.Round(GetEntityPropertyValue<double>(LatitudePropertyGuid), 6);
+                var longitude = Math.Round(GetEntityPropertyValue<double>(LongitudePropertyGuid), 6);
 
-                if (latitude > 0 && longitude > 0)
+                if (latitude != 0 || longitude != 0)
                 {
-                    await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
-                    MapCenter = new double[] { latitude, longitude };
-                    MarkerData.Clear();
-                    MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
-
-                    PWAFunctions.SetDataPropertyValue("14bf36ce-da62-4dc3-b832-dd9b485ff32e", WellKnownType.Double, latitude, editPage);
-                    PWAFunctions.SetDataPropertyValue("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba", WellKnownType.Double, longitude, editPage);
-
-                    if (!string.IsNullOrEmpty(postcodeProperty) && latitude == 0 && longitude == 0)
-                    {
-                        await GetLatLonFromPostCode(postcodeProperty);
-                    }
+                    await SetLocationValues(new NativeMapLocation { Latitude = latitude, Longitude = longitude });
+                }
+                else if (!string.IsNullOrEmpty(postcodeProperty))
+                {
+                    await GetLatLonFromPostCode(postcodeProperty);
                 }
             }
             catch (Exception ex)
@@ -292,12 +362,12 @@
         {
             try
             {
-                var latitude = Math.Round(GetEntityPropertyValue<double>("14bf36ce-da62-4dc3-b832-dd9b485ff32e"), 6);
-                var longitude = Math.Round(GetEntityPropertyValue<double>("8bdb4d5c-ebbf-4db3-86e4-1dd33e5b8bba"), 6);
+                var latitude = Math.Round(GetEntityPropertyValue<double>(LatitudePropertyGuid), 6);
+                var longitude = Math.Round(GetEntityPropertyValue<double>(LongitudePropertyGuid), 6);
 
-                if (latitude > 0 && longitude > 0)
+                if (latitude != 0 || longitude != 0)
                 {
-                    await SetLocationValues(new MapLocation { Latitude = latitude, Longitude = longitude });
+                    await SetLocationValues(new NativeMapLocation { Latitude = latitude, Longitude = longitude });
                 }
             }
             catch (Exception ex)
@@ -305,13 +375,47 @@
                 await HandleErrorAsync(ex, "PropertyDetail/FormSubmittedPre()");
             }
         }
-        MapRef.Refresh();
         StateHasChanged();
     }
 
-    public void OnMapClick(MapClickEventArgs args)
+    private async Task FindFromPostcodeAsync()
     {
-        _ = SetLocationValues(args.Location);
+        try
+        {
+            var postcode = GetEntityPropertyValue<string>(PostcodePropertyGuid) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(postcode))
+            {
+                return;
+            }
+
+            await GetLatLonFromPostCode(postcode.Trim());
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/FindFromPostcodeAsync()");
+        }
+    }
+
+    private async Task ApplyCoordinateFieldsAsync()
+    {
+        try
+        {
+            var latitude = Math.Round(GetEntityPropertyValue<double>(LatitudePropertyGuid), 6);
+            var longitude = Math.Round(GetEntityPropertyValue<double>(LongitudePropertyGuid), 6);
+
+            if (latitude == 0 && longitude == 0)
+            {
+                SetDefaultMapLocation();
+                StateHasChanged();
+                return;
+            }
+
+            await SetLocationValues(new NativeMapLocation { Latitude = latitude, Longitude = longitude });
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/ApplyCoordinateFieldsAsync()");
+        }
     }
 
     private async Task GetLatLonFromPostCode(string postcode)
@@ -323,7 +427,7 @@
 
             var lat = Math.Round(postcodeInfo.Result[0].Latitude, 6);
             var lon = Math.Round(postcodeInfo.Result[0].Longitude, 6);
-            await SetLocationValues(new MapLocation { Latitude = lat, Longitude = lon });
+            await SetLocationValues(new NativeMapLocation { Latitude = lat, Longitude = lon });
         }
         catch (Exception ex)
         {
@@ -331,22 +435,21 @@
         }
     }
 
-    private async Task SetLocationValues(MapLocation location)
+    private async Task SetLocationValues(NativeMapLocation location)
     {
         try
         {
             var roundedLatitude = Math.Round(location.Latitude, 6);
             var roundedLongitude = Math.Round(location.Longitude, 6);
 
-            MarkerData.Clear();
             MapCenter = new double[] { roundedLatitude, roundedLongitude };
-            MapZoom = 19;
-            MarkerData.Add(new Concursus.API.Core.MapMarker { LatLng = { MapCenter } });
+            HasSpecificLocation = roundedLatitude != 0 || roundedLongitude != 0;
 
-            await SetAndRebindAddressFromLocation(new MapLocation { Latitude = roundedLatitude, Longitude = roundedLongitude });
+            PWAFunctions.SetDataPropertyValue(LatitudePropertyGuid, WellKnownType.Double, roundedLatitude, editPage);
+            PWAFunctions.SetDataPropertyValue(LongitudePropertyGuid, WellKnownType.Double, roundedLongitude, editPage);
 
-            // Refresh map after updating values
-            MapRef.Refresh();
+            await SetAndRebindAddressFromLocation(new NativeMapLocation { Latitude = roundedLatitude, Longitude = roundedLongitude });
+
             StateHasChanged();
         }
         catch (Exception ex)
@@ -355,8 +458,7 @@
         }
     }
 
-
-    private async Task SetAndRebindAddressFromLocation(MapLocation location)
+    private async Task SetAndRebindAddressFromLocation(NativeMapLocation location)
     {
         try
         {
@@ -380,13 +482,13 @@
     {
         var tasks = new List<Task>();
 
-        var countyDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == "313686fc-322f-45cd-87bf-8131c333a1a9");
+        var countyDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == CountyPropertyGuid);
         if (countyDropDownList?.DropDownListDefinitionGuid != Guid.Empty.ToString())
         {
             tasks.Add(UpdateDropDownList(countyDropDownList, result.AdminCounty));
         }
 
-        var countryDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == "a4a1588d-38b5-4a10-9c91-a2fccc2562f9");
+        var countryDropDownList = editPage.entityProperties.FirstOrDefault(p => p.Guid == CountryPropertyGuid);
         if (countryDropDownList?.DropDownListDefinitionGuid != Guid.Empty.ToString())
         {
             tasks.Add(UpdateDropDownList(countryDropDownList, result.Country));
@@ -408,6 +510,24 @@
             CoreClient);
     }
 
+    private void SetDefaultMapLocation()
+    {
+        MapCenter = new double[] { 54.0, -2.0 };
+        HasSpecificLocation = false;
+    }
+
+    private string GetMapStatusText()
+    {
+        return HasSpecificLocation
+            ? "Previewing the current asset coordinates."
+            : "No coordinates are set. Showing the UK map.";
+    }
+
+    private static string FormatInvariant(double value)
+    {
+        return value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private async Task HandleErrorAsync(Exception ex, string method)
     {
         ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
@@ -419,5 +539,11 @@
     private T GetEntityPropertyValue<T>(string guid)
     {
         return (T)PWAFunctions.GetValueByEntityPropertyGuid(editPage, guid, typeof(T) == typeof(double) ? WellKnownType.Double : WellKnownType.String);
+    }
+
+    private sealed class NativeMapLocation
+    {
+        public double Latitude { get; init; }
+        public double Longitude { get; init; }
     }
 }

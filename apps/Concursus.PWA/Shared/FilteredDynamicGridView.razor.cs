@@ -174,7 +174,7 @@ public partial class FilteredDynamicGridView : ComponentBase
 
     #region Public Methods
 
-  
+
 
     /// <summary>
     /// Gets the quote threshold, which is used to highlight rows where the amount &gt;= threshold.
@@ -207,7 +207,7 @@ public partial class FilteredDynamicGridView : ComponentBase
             GreenIndicator = _viewDefinition.FilteredListGreenStatusIndicatorTxt;
             OrangeIndicator = _viewDefinition.FilteredListOrangeStatusIndicatorTxt;
         }
-      
+
 
         await base.OnInitializedAsync();
         await GetQuoteThreshold();
@@ -444,7 +444,7 @@ public partial class FilteredDynamicGridView : ComponentBase
 
     protected async Task ReadItems(GridReadEventArgs args)
     {
-       
+
         try
         {
             if (ViewDefinition == null) return;
@@ -498,7 +498,7 @@ public partial class FilteredDynamicGridView : ComponentBase
                 gridDataListRequest.Filters.Add(CompositeFilter);
                 LogCompositeFilter(CompositeFilter);
             }
-           
+
             gridDataListRequest.Sort.AddRange(
                 API.Client.TypeHelpers.GridDataSortFromKendoSortDescriptor(args.Request.Sorts));
 
@@ -524,7 +524,7 @@ public partial class FilteredDynamicGridView : ComponentBase
             args.Data = gridData;
             args.Total = (int)gridDataListReply.TotalRows;
             CurrentGridItems = gridData;
-           
+
             //CBLD-686: Ensure grid is rebinded, otherwise you will have to click the backwards/forwards arrow 2x on the grid (for the page number)
             if (ComingFromModal)
             {

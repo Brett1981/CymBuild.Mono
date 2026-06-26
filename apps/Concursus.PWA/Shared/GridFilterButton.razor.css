@@ -1,0 +1,50 @@
+﻿.cb-grid-filter-menu {
+    position: relative;
+    display: inline-flex;
+}
+
+.cb-grid-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: .15rem;
+    line-height: 1.2;
+}
+
+.cb-grid-filter-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + .35rem);
+    z-index: 1050;
+    min-width: 230px;
+    padding: .35rem;
+    border: 1px solid rgba(0, 0, 0, .12);
+    border-radius: .5rem;
+    background: #fff;
+}
+
+.cb-grid-filter-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    border: 0;
+    border-radius: .35rem;
+    background: transparent;
+    color: #212529;
+    padding: .5rem .65rem;
+    text-align: left;
+}
+
+.cb-grid-filter-dropdown-item:hover,
+.cb-grid-filter-dropdown-item:focus-visible {
+    background: rgba(13, 110, 253, .08);
+    outline: none;
+}
+
+.cb-grid-filter-toast {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    margin: 0;
+}

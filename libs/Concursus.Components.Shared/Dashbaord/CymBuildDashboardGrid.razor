@@ -1,7 +1,8 @@
-﻿@using Concursus.API.Client.Classes
+@using Concursus.API.Client.Classes
 @using Concursus.API.Client.Models
 @using Concursus.API.Core
 @using Newtonsoft.Json
+@using System.Diagnostics
 @using System.Web
 
 @inject Core.CoreClient CoreClient
@@ -84,10 +85,15 @@
     [Parameter, EditorRequired] public GridViewDefinition ViewDefinition { get; set; } = new();
     [Parameter] public bool FullGrid { get; set; }
     [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int FetchSize { get; set; } = 100;
+    [Parameter] public int LoadDelayMs { get; set; }
     [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
 
     private readonly List<Dictionary<string, string>> _rows = new();
     private bool _isLoading;
+    private bool _isLoadInProgress;
+    private bool _hasLoaded;
+    private string? _loadedRequestKey;
     private int _pageNumber = 1;
 
     private List<GridViewColumnDefinition> VisibleColumns =>
@@ -106,26 +112,59 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(GridCode) || string.IsNullOrWhiteSpace(ViewDefinition.Code))
+        if (string.IsNullOrWhiteSpace(GridCode) || string.IsNullOrWhiteSpace(ViewDefinition?.Code))
         {
             return;
         }
 
+        var requestKey = BuildRequestKey();
+
+        if (_hasLoaded && string.Equals(_loadedRequestKey, requestKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await LoadAsync(requestKey);
+    }
+
+    private string BuildRequestKey()
+    {
+        return string.Join("|",
+            GridCode.Trim(),
+            ViewDefinition?.Code?.Trim() ?? string.Empty,
+            FullGrid.ToString(),
+            PageSize.ToString(),
+            FetchSize.ToString(),
+            LoadDelayMs.ToString());
+    }
+
+    private async Task LoadAsync(string requestKey)
+    {
+        if (_isLoadInProgress)
+        {
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=CymBuildDashboardGrid Step=LoadSkippedInFlight GridCode={GridCode} View={ViewDefinition?.Code}");
+            return;
+        }
+
+        _isLoadInProgress = true;
         _isLoading = true;
+        var stopwatch = Stopwatch.StartNew();
 
         try
         {
+            if (LoadDelayMs > 0)
+            {
+                await Task.Delay(LoadDelayMs);
+            }
+
+            var requestedFetchSize = Math.Clamp(FetchSize, 1, 500);
+
             var reply = await CoreClient.GridDataListAsync(new GridDataListRequest
             {
                 GridCode = GridCode,
                 GridViewCode = ViewDefinition.Code,
                 Page = 1,
-                PageSize = 100
+                PageSize = requestedFetchSize
             });
 
             _rows.Clear();
@@ -143,10 +182,16 @@
             }
 
             _pageNumber = 1;
+            _loadedRequestKey = requestKey;
+            _hasLoaded = true;
+
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=CymBuildDashboardGrid Step=LoadComplete GridCode={GridCode} View={ViewDefinition.Code} RowCount={_rows.Count} FetchSize={requestedFetchSize} LoadDelayMs={LoadDelayMs} DurationMs={stopwatch.ElapsedMilliseconds}");
         }
         finally
         {
+            stopwatch.Stop();
             _isLoading = false;
+            _isLoadInProgress = false;
         }
     }
 

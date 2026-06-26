@@ -1,4 +1,4 @@
-﻿syntax = "proto3";
+syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/any.proto";
@@ -13,8 +13,16 @@ package core;
 service Core {
 
   rpc AddressLookupResolve (AddressLookupResolveRequest) returns (AddressLookupResolveResponse);
-
   rpc AddressLookupSearch (AddressLookupSearchRequest) returns (AddressLookupSearchResponse);
+
+  rpc AIAssistantConversationCreate (AIAssistantConversationCreateRequest) returns (AIAssistantConversationCreateResponse);
+  rpc AIAssistantConversationList (AIAssistantConversationListRequest) returns (AIAssistantConversationListResponse);
+  rpc AIAssistantMessageList (AIAssistantMessageListRequest) returns (AIAssistantMessageListResponse);
+  rpc AIAssistantMessageSend (AIAssistantMessageSendRequest) returns (AIAssistantMessageSendResponse);
+  rpc AIAssistantKnowledgeSearch (AIAssistantKnowledgeSearchRequest) returns (AIAssistantKnowledgeSearchResponse);
+  rpc AIAssistantKnowledgeImportRun (AIAssistantKnowledgeImportRunRequest) returns (AIAssistantKnowledgeImportRunResponse);
+  rpc AIAssistantBookmarkCreate (AIAssistantBookmarkCreateRequest) returns (AIAssistantBookmarkCreateResponse);
+  rpc AIAssistantFeedbackCreate (AIAssistantFeedbackCreateRequest) returns (AIAssistantFeedbackCreateResponse);
   // Generic Approve/Reject for AUTHORISATION queue (Quotes/Enquiries/other)
   rpc AuthorisationDecision (AuthorisationDecisionRequest) returns (AuthorisationDecisionResponse); //CBLD-415
   rpc CheckPhotoFilesAtUrl(PhotoFileCheckRequest) returns (PhotoFileCheckResponse);
@@ -83,6 +91,8 @@ service Core {
   // CYB-43 Invoice Processing Mode (Automated/Manual/Paused)
   rpc JobInvoiceProcessingModeGet (JobInvoiceProcessingModeGetRequest) returns (JobInvoiceProcessingModeGetResponse);
   rpc JobInvoiceProcessingModeSet (JobInvoiceProcessingModeSetRequest) returns (JobInvoiceProcessingModeSetResponse);
+  rpc JobFinancialOverviewGet (JobFinancialOverviewGetRequest) returns (JobFinancialOverviewGetResponse);
+  rpc JobSummaryGet (JobSummaryGetRequest) returns (JobSummaryGetResponse);
   rpc JobInvoiceSchedulesGet (JobInvoiceSchedulesGetRequest) returns (JobInvoiceSchedulesGetResponse);
   rpc LogUsage (UsageRequest) returns (UsageResponse);
 
@@ -241,6 +251,170 @@ message AddressLookupSearchResponse {
   repeated LookupAddressSuggestionContract address_suggestions = 1;
   repeated LookupAddressRecordContract postcode_addresses = 2;
   string error_returned = 3;
+}
+
+message AIAssistantConversationCreateRequest {
+  int32 userId = 1;
+  string title = 2;
+  string modeCode = 3;
+  string languageCode = 4;
+  string startedFromWorkflowTemplateGuid = 5;
+}
+
+message AIAssistantConversationCreateResponse {
+  string errorReturned = 1;
+  AIAssistantConversation conversation = 2;
+}
+
+message AIAssistantConversationListRequest {
+  int32 userId = 1;
+  bool includeArchived = 2;
+}
+
+message AIAssistantConversationListResponse {
+  string errorReturned = 1;
+  repeated AIAssistantConversation conversations = 2;
+}
+
+message AIAssistantMessageListRequest {
+  string conversationGuid = 1;
+}
+
+message AIAssistantMessageListResponse {
+  string errorReturned = 1;
+  repeated AIAssistantMessage messages = 2;
+}
+
+message AIAssistantMessageSendRequest {
+  int32 userId = 1;
+  string conversationGuid = 2;
+  string message = 3;
+  string modeCode = 4;
+  string workflowTemplateGuid = 5;
+  string languageCode = 6;
+  repeated string attachedUploadGuids = 7;
+}
+
+message AIAssistantMessageSendResponse {
+  string errorReturned = 1;
+  AIAssistantMessage userMessage = 2;
+  AIAssistantMessage assistantMessage = 3;
+  repeated AIAssistantSource sources = 4;
+  repeated AIAssistantFollowUp followUps = 5;
+}
+
+message AIAssistantKnowledgeSearchRequest {
+  string searchText = 1;
+  string categoryGuid = 2;
+  bool publishedOnly = 3;
+  bool authoritativeFirst = 4;
+}
+
+message AIAssistantKnowledgeSearchResponse {
+  string errorReturned = 1;
+  repeated AIAssistantKnowledgeItem items = 2;
+}
+
+message AIAssistantKnowledgeImportRunRequest {
+  int32 userId = 1;
+  bool publishImmediately = 2;
+  bool authoritative = 3;
+}
+
+message AIAssistantKnowledgeImportRunResponse {
+  string errorReturned = 1;
+  int32 filesFound = 2;
+  int32 filesSkipped = 3;
+  int32 itemsUpserted = 4;
+  int32 failures = 5;
+  repeated AIAssistantKnowledgeImportLogEntryMessage log = 6;
+}
+
+message AIAssistantKnowledgeImportLogEntryMessage {
+  string level = 1;
+  string fileName = 2;
+  string message = 3;
+  string knowledgeItemGuid = 4;
+}
+message AIAssistantBookmarkCreateRequest {
+  int32 userId = 1;
+  string conversationGuid = 2;
+  string messageGuid = 3;
+  string title = 4;
+  string notes = 5;
+  string tagsJson = 6;
+}
+
+message AIAssistantBookmarkCreateResponse {
+  string errorReturned = 1;
+  string bookmarkGuid = 2;
+}
+
+message AIAssistantFeedbackCreateRequest {
+  int32 userId = 1;
+  string conversationGuid = 2;
+  string messageGuid = 3;
+  string feedbackCode = 4;
+  string comment = 5;
+}
+
+message AIAssistantFeedbackCreateResponse {
+  string errorReturned = 1;
+  string feedbackGuid = 2;
+}
+
+message AIAssistantConversation {
+  string guid = 1;
+  int32 userId = 2;
+  string title = 3;
+  string modeCode = 4;
+  string languageCode = 5;
+  string lastActivityUtc = 6;
+  bool isPinned = 7;
+  bool isArchived = 8;
+  string lastMessagePreview = 9;
+}
+
+message AIAssistantMessage {
+  string guid = 1;
+  string conversationGuid = 2;
+  int32 userId = 3;
+  string messageRoleCode = 4;
+  string answerTypeCode = 5;
+  string contentMarkdown = 6;
+  string contentPlainText = 7;
+  string createdUtc = 8;
+  double confidenceScore = 9;
+}
+
+message AIAssistantSource {
+  string title = 1;
+  string typeCode = 2;
+  string url = 3;
+  string knowledgeItemGuid = 4;
+  int32 versionNumber = 5;
+  string excerpt = 6;
+  bool isAuthoritative = 7;
+}
+
+message AIAssistantFollowUp {
+  string text = 1;
+  string prompt = 2;
+}
+
+message AIAssistantKnowledgeItem {
+  string guid = 1;
+  string title = 2;
+  string slug = 3;
+  string categoryName = 4;
+  string contentTypeCode = 5;
+  string sourceTypeCode = 6;
+  string storageUrl = 7;
+  string previewUrl = 8;
+  string summary = 9;
+  bool isAuthoritative = 10;
+  bool isPublished = 11;
+  int32 currentVersionNumber = 12;
 }
 
 message AuthorisationDecisionRequest {
@@ -1584,6 +1758,72 @@ message JobInvoiceProcessingModeSetResponse {
   InvoiceProcessingMode oldMode = 1;
   InvoiceProcessingMode newMode = 2;
   string errorReturned = 99;
+}
+
+
+message JobFinancialOverviewGetRequest {
+  int32 userId = 1;
+  string jobGuid = 2;
+}
+
+message JobFinancialOverviewGetResponse {
+  JobFinancialOverviewDto overview = 1;
+  string errorReturned = 99;
+}
+
+message JobFinancialOverviewDto {
+  string jobGuid = 1;
+  double agreedFeeTotal = 2;
+  double agreedFeeIncludingCap = 3;
+  double scheduledTotal = 4;
+  double invoiceRequestPendingTotal = 5;
+  double invoicedNet = 6;
+  double invoicedGross = 7;
+  double paidNet = 8;
+  double paidGross = 9;
+  double remainingNet = 10;
+  int32 activeInvoiceScheduleCount = 11;
+  int32 systemGeneratedManualScheduleCount = 12;
+  int32 pendingInvoiceRequestCount = 13;
+  int32 reconciliationRequiredInvoiceRequestCount = 14;
+  int32 blockedInvoiceRequestCount = 15;
+  bool canCreateReplacementInvoiceSchedule = 16;
+}
+
+message JobSummaryGetRequest {
+  int32 userId = 1;
+  string jobGuid = 2;
+}
+
+message JobSummaryGetResponse {
+  JobSummaryDto summary = 1;
+  string errorReturned = 99;
+}
+
+message JobSummaryDto {
+  int64 jobId = 1;
+  string jobGuid = 2;
+  int32 rowStatus = 3;
+  string number = 4;
+  string displayTitle = 5;
+  string jobDescription = 6;
+  string clientName = 7;
+  string surveyorName = 8;
+  int32 currentStatusId = 9;
+  string currentStatusGuid = 10;
+  string currentStatusName = 11;
+  bool isActive = 12;
+  bool isComplete = 13;
+  bool isCancelled = 14;
+  bool cannotBeInvoiced = 15;
+  InvoiceProcessingMode invoiceProcessingMode = 16;
+  int32 openMilestoneCount = 17;
+  int32 openActivityCount = 18;
+  int32 openActionCount = 19;
+  int32 pendingInvoiceRequestCount = 20;
+  int32 activeInvoiceScheduleCount = 21;
+  bool canCreateReplacementInvoiceSchedule = 22;
+  JobFinancialOverviewDto financialOverview = 23;
 }
 
 message JobInvoiceScheduleDto {

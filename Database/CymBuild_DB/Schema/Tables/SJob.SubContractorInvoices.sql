@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SJob].[SubContractorInvoices]')
 GO
-PRINT (N'Create table [SJob].[SubContractorInvoices]')
-GO
 CREATE TABLE [SJob].[SubContractorInvoices] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_SubContractorInvoices_RowStatus] DEFAULT (0),

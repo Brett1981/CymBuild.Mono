@@ -1,0 +1,767 @@
+@using Concursus.API.Client.Classes
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Newtonsoft.Json
+@using System.Globalization
+@using System.Web
+
+@inject Core.CoreClient CoreClient
+@inject NavigationManager Navigation
+
+<div class="cb-team-invoicing-widget">
+    <div class="cb-team-toolbar">
+        <div class="cb-team-summary-cards">
+            <div class="cb-team-summary-card">
+                <span class="cb-team-summary-label">Loaded rows</span>
+                <strong>@_rows.Count</strong>
+                @if (_totalRows > _rows.Count)
+                {
+                    <small>of @_totalRows</small>
+                }
+            </div>
+            <div class="cb-team-summary-card">
+                <span class="cb-team-summary-label">Visible total</span>
+                <strong>@FormatCurrency(FilteredRows.Sum(x => x.MonthlyTotal))</strong>
+            </div>
+            <div class="cb-team-summary-card">
+                <span class="cb-team-summary-label">Consultants</span>
+                <strong>@FilteredRows.Select(x => x.Consultant).Distinct(StringComparer.OrdinalIgnoreCase).Count()</strong>
+            </div>
+            <div class="cb-team-summary-card">
+                <span class="cb-team-summary-label">Months</span>
+                <strong>@FilteredRows.Select(x => $"{x.Year}-{x.Month}").Distinct(StringComparer.OrdinalIgnoreCase).Count()</strong>
+            </div>
+        </div>
+
+        <div class="cb-team-filters">
+            <select class="form-select form-select-sm" @bind="_selectedConsultant">
+                <option value="">All consultants</option>
+                @foreach (var consultant in ConsultantOptions)
+                {
+                    <option value="@consultant">@consultant</option>
+                }
+            </select>
+
+            <select class="form-select form-select-sm" @bind="_selectedYear">
+                <option value="">All years</option>
+                @foreach (var year in YearOptions)
+                {
+                    <option value="@year">@year</option>
+                }
+            </select>
+
+            <select class="form-select form-select-sm" @bind="_selectedMonth">
+                <option value="">All months</option>
+                @foreach (var month in MonthOptions)
+                {
+                    <option value="@month">@month</option>
+                }
+            </select>
+
+            <input class="form-control form-control-sm"
+                   placeholder="Search job, client, description..."
+                   @bind="_searchText"
+                   @bind:event="oninput" />
+
+            <button type="button" class="btn btn-sm btn-outline-secondary cb-team-action-btn" @onclick="ResetFilters">
+                Reset
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary cb-team-action-btn" @onclick="RefreshAsync" disabled="@_isLoading">
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="cb-team-loading">
+            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            <span>Loading Team Invoicing summary...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="alert alert-danger mb-0">@_errorMessage</div>
+    }
+    else if (!FilteredRows.Any())
+    {
+        <div class="alert alert-info mb-0">No invoicing records match the current filters.</div>
+    }
+    else
+    {
+        <div class="cb-team-group-tools">
+            <button type="button" class="btn btn-sm btn-outline-secondary cb-team-action-btn" @onclick="ExpandConsultants">Expand consultants</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary cb-team-action-btn" @onclick="CollapseAll">Collapse all</button>
+        </div>
+
+        <div class="cb-team-table-wrap">
+            <table class="cb-team-table">
+                <thead>
+                    <tr>
+                        <th>Group</th>
+                        <th>Year</th>
+                        <th>Month</th>
+                        <th class="text-end">Invoiced</th>
+                        <th class="text-end">Rows</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var consultantGroup in ConsultantGroups)
+                    {
+                        var consultantKey = ConsultantKey(consultantGroup.Consultant);
+                        var consultantExpanded = _expandedConsultants.Contains(consultantKey);
+
+                        <tr class="cb-team-consultant-row">
+                            <td colspan="3">
+                                <button type="button" class="cb-team-toggle" @onclick="() => Toggle(_expandedConsultants, consultantKey)">
+                                    <i class="bi @(consultantExpanded ? "bi-chevron-down" : "bi-chevron-right")"></i>
+                                </button>
+                                <strong>@consultantGroup.Consultant</strong>
+                            </td>
+                            <td class="text-end"><strong>@FormatCurrency(consultantGroup.Total)</strong></td>
+                            <td class="text-end">@consultantGroup.Count</td>
+                            <td></td>
+                        </tr>
+
+                        @if (consultantExpanded)
+                        {
+                            @foreach (var yearGroup in consultantGroup.Years)
+                            {
+                                var yearKey = YearKey(consultantGroup.Consultant, yearGroup.Year);
+                                var yearExpanded = _expandedYears.Contains(yearKey);
+
+                                <tr class="cb-team-year-row">
+                                    <td></td>
+                                    <td colspan="2">
+                                        <button type="button" class="cb-team-toggle" @onclick="() => Toggle(_expandedYears, yearKey)">
+                                            <i class="bi @(yearExpanded ? "bi-chevron-down" : "bi-chevron-right")"></i>
+                                        </button>
+                                        <strong>@yearGroup.Year</strong>
+                                    </td>
+                                    <td class="text-end"><strong>@FormatCurrency(yearGroup.Total)</strong></td>
+                                    <td class="text-end">@yearGroup.Count</td>
+                                    <td></td>
+                                </tr>
+
+                                @if (yearExpanded)
+                                {
+                                    @foreach (var monthGroup in yearGroup.Months)
+                                    {
+                                        var monthKey = MonthKey(consultantGroup.Consultant, yearGroup.Year, monthGroup.Month);
+                                        var monthExpanded = _expandedMonths.Contains(monthKey);
+
+                                        <tr class="cb-team-month-row">
+                                            <td></td>
+                                            <td>@yearGroup.Year</td>
+                                            <td>
+                                                <button type="button" class="cb-team-toggle" @onclick="() => Toggle(_expandedMonths, monthKey)">
+                                                    <i class="bi @(monthExpanded ? "bi-chevron-down" : "bi-chevron-right")"></i>
+                                                </button>
+                                                @monthGroup.Month
+                                            </td>
+                                            <td class="text-end">@FormatCurrency(monthGroup.Total)</td>
+                                            <td class="text-end">@monthGroup.Count</td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary cb-team-action-btn" @onclick="() => Toggle(_expandedMonths, monthKey)">
+                                                    Details
+                                                </button>
+                                            </td>
+                                        </tr>
+
+                                        @if (monthExpanded)
+                                        {
+                                            <tr class="cb-team-details-row">
+                                                <td colspan="6">
+                                                    <div class="cb-team-details-wrap">
+                                                        <table class="cb-team-detail-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Job</th>
+                                                                    <th>Description</th>
+                                                                    <th>Client / Agent</th>
+                                                                    <th>Structure</th>
+                                                                    <th>External Ref</th>
+                                                                    <th class="text-end">Monthly Total</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var row in monthGroup.Rows.Take(DetailRowLimit))
+                                                                {
+                                                                    <tr title="Double click to open transaction" @ondblclick="() => OpenRow(row)">
+                                                                        <td>@row.JobNumber</td>
+                                                                        <td>@row.Description</td>
+                                                                        <td>@row.ClientAgent</td>
+                                                                        <td>@row.Asset</td>
+                                                                        <td>@row.ExternalReference</td>
+                                                                        <td class="text-end">@row.MonthlyTotalDisplay</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+
+                                                        @if (monthGroup.Rows.Count > DetailRowLimit)
+                                                        {
+                                                            <div class="cb-team-detail-limit">
+                                                                Showing first @DetailRowLimit of @monthGroup.Rows.Count rows for this month. Use filters to narrow the list.
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<style>
+    .cb-team-invoicing-widget {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        min-height: 100%;
+    }
+
+    .cb-team-toolbar {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #ffffff;
+        padding-bottom: 0.25rem;
+    }
+
+    .cb-team-summary-cards {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.5rem;
+    }
+
+    .cb-team-summary-card {
+        border: 1px solid #d6e2f5;
+        border-radius: 0.75rem;
+        background: #f8fbff;
+        padding: 0.5rem 0.75rem;
+        min-width: 0;
+    }
+
+    .cb-team-summary-label {
+        display: block;
+        color: #50627f;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .cb-team-summary-card strong {
+        color: #0f1f37;
+        font-size: 1rem;
+    }
+
+    .cb-team-summary-card small {
+        margin-left: 0.25rem;
+        color: #50627f;
+    }
+
+    .cb-team-filters {
+        display: grid;
+        grid-template-columns: minmax(140px, 1fr) minmax(90px, 0.55fr) minmax(110px, 0.65fr) minmax(180px, 1.4fr) auto auto;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .cb-team-group-tools {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .cb-team-loading {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #50627f;
+        padding: 1rem;
+    }
+
+    .cb-team-table-wrap,
+    .cb-team-details-wrap {
+        overflow: auto;
+        border: 1px solid #d6e2f5;
+        border-radius: 0.75rem;
+    }
+
+    .cb-team-table,
+    .cb-team-detail-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+    }
+
+    .cb-team-table th,
+    .cb-team-table td,
+    .cb-team-detail-table th,
+    .cb-team-detail-table td {
+        padding: 0.55rem 0.65rem;
+        border-bottom: 1px solid #e8eef8;
+        vertical-align: middle;
+    }
+
+    .cb-team-table thead th,
+    .cb-team-detail-table thead th {
+        background: #f5f8fc;
+        color: #344762;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+    }
+
+    .cb-team-consultant-row {
+        background: #d8eaff;
+    }
+
+    .cb-team-year-row {
+        background: #fff6cc;
+    }
+
+    .cb-team-month-row {
+        background: #ffffff;
+    }
+
+    .cb-team-details-row td {
+        background: #fbfdff;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .cb-team-detail-table tr:hover {
+        background: #f2f7ff;
+        cursor: pointer;
+    }
+
+    .cb-team-toggle {
+        border: 1px solid #9fc5f8;
+        background: #ffffff;
+        color: #0f5aa6;
+        border-radius: 0.45rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 0.4rem;
+    }
+
+    .cb-team-action-btn {
+        background: #ffffff !important;
+        color: #0f1f37 !important;
+        border-color: #9fb7d9 !important;
+        white-space: nowrap;
+    }
+
+    .cb-team-detail-limit {
+        padding: 0.5rem;
+        color: #50627f;
+        font-size: 0.8rem;
+    }
+
+    @@media (max-width: 992px) {
+        .cb-team-summary-cards {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .cb-team-filters {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .cb-team-summary-cards,
+        .cb-team-filters {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string GridCode { get; set; } = "FINANCE";
+    [Parameter, EditorRequired] public GridViewDefinition ViewDefinition { get; set; } = new();
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+    [Parameter] public int FetchSize { get; set; } = 1500;
+    [Parameter] public int LoadDelayMs { get; set; } = 600;
+    [Parameter] public int DetailRowLimit { get; set; } = 75;
+
+    private readonly List<TeamInvoicingRow> _rows = new();
+    private readonly HashSet<string> _expandedConsultants = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedYears = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedMonths = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _isLoading;
+    private bool _hasLoaded;
+    private bool _isLoadInProgress;
+    private string? _loadedRequestKey;
+    private string? _errorMessage;
+    private int _totalRows;
+
+    private string _selectedConsultant = string.Empty;
+    private string _selectedYear = string.Empty;
+    private string _selectedMonth = string.Empty;
+    private string _searchText = string.Empty;
+
+    private IEnumerable<string> ConsultantOptions =>
+        _rows.Select(x => x.Consultant)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x);
+
+    private IEnumerable<string> YearOptions =>
+        _rows.Select(x => x.Year)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(x => ParseInt(x));
+
+    private IEnumerable<string> MonthOptions =>
+        _rows.Select(x => x.Month)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => MonthSortValue(x));
+
+    private List<TeamInvoicingRow> FilteredRows =>
+        _rows.Where(MatchesFilters).ToList();
+
+    private List<ConsultantGroup> ConsultantGroups =>
+        FilteredRows
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.Consultant) ? "Unassigned" : x.Consultant, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x.Key)
+            .Select(g => new ConsultantGroup
+            {
+                Consultant = g.Key,
+                Count = g.Count(),
+                Total = g.Sum(x => x.MonthlyTotal),
+                Years = g.GroupBy(x => string.IsNullOrWhiteSpace(x.Year) ? "Unknown" : x.Year, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(y => ParseInt(y.Key))
+                    .Select(y => new YearGroup
+                    {
+                        Year = y.Key,
+                        Count = y.Count(),
+                        Total = y.Sum(x => x.MonthlyTotal),
+                        Months = y.GroupBy(x => string.IsNullOrWhiteSpace(x.Month) ? "Unknown" : x.Month, StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(m => MonthSortValue(m.Key))
+                            .Select(m => new MonthGroup
+                            {
+                                Month = m.Key,
+                                Count = m.Count(),
+                                Total = m.Sum(x => x.MonthlyTotal),
+                                Rows = m.OrderBy(x => x.JobNumber).ToList()
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            })
+            .ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(GridCode) || string.IsNullOrWhiteSpace(ViewDefinition?.Code))
+        {
+            return;
+        }
+
+        var requestKey = BuildRequestKey();
+        if (_hasLoaded && string.Equals(_loadedRequestKey, requestKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        await LoadAsync(requestKey, respectDelay: true);
+    }
+
+    private string BuildRequestKey()
+    {
+        return string.Join("|",
+            GridCode.Trim(),
+            ViewDefinition?.Code?.Trim() ?? string.Empty,
+            FetchSize.ToString(CultureInfo.InvariantCulture),
+            LoadDelayMs.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private async Task RefreshAsync()
+    {
+        await LoadAsync(BuildRequestKey(), respectDelay: false);
+    }
+
+    private async Task LoadAsync(string requestKey, bool respectDelay)
+    {
+        if (_isLoadInProgress)
+        {
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=WidgetTeamInvoicing Step=LoadSkippedInFlight GridCode={GridCode} View={ViewDefinition?.Code}");
+            return;
+        }
+
+        _isLoadInProgress = true;
+        _isLoading = true;
+        _errorMessage = null;
+        var stopwatch = global::System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            if (respectDelay && LoadDelayMs > 0)
+            {
+                await Task.Delay(LoadDelayMs);
+            }
+
+            var requestedFetchSize = Math.Clamp(FetchSize, 25, 2500);
+            var reply = await CoreClient.GridDataListAsync(new GridDataListRequest
+            {
+                GridCode = GridCode,
+                GridViewCode = ViewDefinition.Code,
+                Page = 1,
+                PageSize = requestedFetchSize
+            });
+
+            _rows.Clear();
+            _totalRows = reply.TotalRows;
+
+            foreach (var dataRow in reply.DataTable)
+            {
+                var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var column in dataRow.Columns)
+                {
+                    row[column.Name] = column.Value ?? string.Empty;
+                }
+
+                _rows.Add(TeamInvoicingRow.From(row));
+            }
+
+            _expandedConsultants.Clear();
+            foreach (var consultant in ConsultantGroups.Take(4).Select(x => x.Consultant))
+            {
+                _expandedConsultants.Add(ConsultantKey(consultant));
+            }
+
+            _loadedRequestKey = requestKey;
+            _hasLoaded = true;
+
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=WidgetTeamInvoicing Step=LoadComplete GridCode={GridCode} View={ViewDefinition.Code} LoadedRows={_rows.Count} TotalRows={_totalRows} FetchSize={requestedFetchSize} LoadDelayMs={(respectDelay ? LoadDelayMs : 0)} DurationMs={stopwatch.ElapsedMilliseconds}");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=WidgetTeamInvoicing Step=LoadFailed GridCode={GridCode} View={ViewDefinition?.Code} Error={ex.Message}");
+        }
+        finally
+        {
+            stopwatch.Stop();
+            _isLoading = false;
+            _isLoadInProgress = false;
+        }
+    }
+
+    private bool MatchesFilters(TeamInvoicingRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(_selectedConsultant) && !string.Equals(row.Consultant, _selectedConsultant, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_selectedYear) && !string.Equals(row.Year, _selectedYear, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_selectedMonth) && !string.Equals(row.Month, _selectedMonth, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            var search = _searchText.Trim();
+            return Contains(row.JobNumber, search)
+                   || Contains(row.Description, search)
+                   || Contains(row.ClientAgent, search)
+                   || Contains(row.Asset, search)
+                   || Contains(row.ExternalReference, search);
+        }
+
+        return true;
+    }
+
+    private static bool Contains(string? value, string search) =>
+        !string.IsNullOrWhiteSpace(value) && value.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+    private void ResetFilters()
+    {
+        _selectedConsultant = string.Empty;
+        _selectedYear = string.Empty;
+        _selectedMonth = string.Empty;
+        _searchText = string.Empty;
+    }
+
+    private void ExpandConsultants()
+    {
+        foreach (var consultant in ConsultantGroups.Select(x => x.Consultant))
+        {
+            _expandedConsultants.Add(ConsultantKey(consultant));
+        }
+    }
+
+    private void CollapseAll()
+    {
+        _expandedConsultants.Clear();
+        _expandedYears.Clear();
+        _expandedMonths.Clear();
+    }
+
+    private static void Toggle(HashSet<string> set, string key)
+    {
+        if (!set.Add(key))
+        {
+            set.Remove(key);
+        }
+    }
+
+    private void OpenRow(TeamInvoicingRow row)
+    {
+        if (string.IsNullOrWhiteSpace(ViewDefinition?.DetailPageUri) || string.IsNullOrWhiteSpace(row.Guid))
+        {
+            return;
+        }
+
+        var parentReference = ParentDataObjectReference ?? new DataObjectReference("", "");
+        var serializedParentReference = HttpUtility.UrlEncode(JsonConvert.SerializeObject(parentReference));
+        Navigation.NavigateTo($"{ViewDefinition.DetailPageUri}/{row.Guid}/{serializedParentReference}/{HttpUtility.UrlEncode(Navigation.Uri)}");
+    }
+
+    private static string ConsultantKey(string value) => $"C|{value}";
+    private static string YearKey(string consultant, string year) => $"Y|{consultant}|{year}";
+    private static string MonthKey(string consultant, string year, string month) => $"M|{consultant}|{year}|{month}";
+
+    private static int ParseInt(string? value)
+    {
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+    }
+
+    private static int MonthSortValue(string? value)
+    {
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numeric))
+        {
+            return numeric;
+        }
+
+        if (DateTime.TryParseExact(value ?? string.Empty, "MMMM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var monthName))
+        {
+            return monthName.Month;
+        }
+
+        if (DateTime.TryParseExact(value ?? string.Empty, "MMM", CultureInfo.InvariantCulture, DateTimeStyles.None, out var shortMonthName))
+        {
+            return shortMonthName.Month;
+        }
+
+        return 99;
+    }
+
+    private static string FormatCurrency(decimal value) =>
+        value.ToString("C0", CultureInfo.GetCultureInfo("en-GB"));
+
+    private sealed class ConsultantGroup
+    {
+        public string Consultant { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public decimal Total { get; set; }
+        public List<YearGroup> Years { get; set; } = new();
+    }
+
+    private sealed class YearGroup
+    {
+        public string Year { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public decimal Total { get; set; }
+        public List<MonthGroup> Months { get; set; } = new();
+    }
+
+    private sealed class MonthGroup
+    {
+        public string Month { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public decimal Total { get; set; }
+        public List<TeamInvoicingRow> Rows { get; set; } = new();
+    }
+
+    private sealed class TeamInvoicingRow
+    {
+        public string Guid { get; set; } = string.Empty;
+        public string Consultant { get; set; } = string.Empty;
+        public string Year { get; set; } = string.Empty;
+        public string Month { get; set; } = string.Empty;
+        public string MonthlyTotalDisplay { get; set; } = string.Empty;
+        public decimal MonthlyTotal { get; set; }
+        public string JobNumber { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string ClientAgent { get; set; } = string.Empty;
+        public string Asset { get; set; } = string.Empty;
+        public string ExternalReference { get; set; } = string.Empty;
+        public string CreatedOn { get; set; } = string.Empty;
+
+        public static TeamInvoicingRow From(Dictionary<string, string> row)
+        {
+            var amountDisplay = First(row, "MonthlyTotal", "Monthly Total", "MONTHLY TOTAL");
+            return new TeamInvoicingRow
+            {
+                Guid = First(row, "Guid", "RecordGuid", "TransactionGuid"),
+                Consultant = First(row, "Consultant", "CONSULTANT"),
+                Year = First(row, "Year", "YEAR"),
+                Month = First(row, "Month", "MONTH"),
+                MonthlyTotalDisplay = string.IsNullOrWhiteSpace(amountDisplay) ? "£0" : amountDisplay,
+                MonthlyTotal = ParseCurrency(amountDisplay),
+                JobNumber = First(row, "JobNumber", "Job Number", "JOB NUMBER"),
+                Description = First(row, "Description", "DESCRIPTION"),
+                ClientAgent = First(row, "ClientAgent", "Client / Agent", "CLIENT / AGENT"),
+                Asset = First(row, "Asset", "Structure", "STRUCTURE"),
+                ExternalReference = First(row, "ExternalReference", "External Reference", "EXTERNAL REFERENCE"),
+                CreatedOn = First(row, "CreatedOn", "Job Created (Registered)", "JOB CREATED (REGISTERED)")
+            };
+        }
+
+        private static string First(Dictionary<string, string> row, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (row.TryGetValue(key, out var value))
+                {
+                    return value ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static decimal ParseCurrency(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return 0m;
+            }
+
+            var isNegative = value.Contains('(') || value.Contains('-');
+            var cleaned = new string(value.Where(c => char.IsDigit(c) || c == '.' || c == ',').ToArray()).Replace(",", string.Empty);
+
+            if (!decimal.TryParse(cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out var result))
+            {
+                return 0m;
+            }
+
+            return isNegative ? -result : result;
+        }
+    }
+}

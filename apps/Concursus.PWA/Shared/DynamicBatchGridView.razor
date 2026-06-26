@@ -1,20 +1,15 @@
-﻿@using System.Dynamic
+@using System.Dynamic
 @using Concursus.API.Client.Models
 @using Concursus.Components.Shared.Services
-@using Concursus.PWA.Pages
-@using Concursus.PWA.Services
 @using Concursus.PWA.Classes
-@using Telerik.DataSource
-@using Telerik.DataSource.Extensions
+@using Concursus.PWA.Pages
+@using Concursus.PWA.Helpers
+@using Concursus.PWA.Shared.Diagnostics
 
 @inject Core.CoreClient coreClient
 @inject NavigationManager NavManager
 @inject IJSRuntime JsRuntime
 @inject ModalService modalService
-@inject RefreshService refreshService
-@inject Core.CoreClient CoreClient
-@inject AiErrorReporter AiErrorReporter
-@inject UserInteractionTrackerService InteractionTracker
 @inject IToastService Toast
 @inject Helpers.LocalStorageAccessor LocalStorageAccessor
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
@@ -22,523 +17,436 @@
 
 @attribute [Authorize]
 
-<style>
-    .bActionBtn {
-        padding: 0 !important;
-        margin-bottom: 0 !important;
-        margin-left: 5px !important;
-    }
+<MessageDisplay @ref="_messageDisplay"
+                ErrorMessage="@ErrorMessage"
+                PageMethod="@PageMethod"
+                MessageType="MessageType" />
 
-    .dynamic-batch-grid-modal {
-        max-height: 70vh;
-        max-width: 90vw;
-        overflow-y: auto;
-        overflow-x: auto;
-        padding: 1rem;
-    }
-</style>
-
-<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
-
-@if (IsBulkProcessing)
+@if (WindowIsVisible)
 {
-    <h5>Select Items for Bulk Editing</h5>
+    <div class="dynamic-batch-grid-v2-modal-backdrop" @onclick="() => WindowVisibleChangedHandler(false)"></div>
+    <div class="dynamic-batch-grid-v2-modal-shell" role="dialog" aria-modal="true" aria-label="@WindowTitle">
+        <div class="dynamic-batch-grid-v2-modal-card">
+            <div class="dynamic-batch-grid-v2-modal-header">
+                <div>
+                    <h5>@WindowTitle</h5>
+                    <p>Review and update the selected record, then save when ready.</p>
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CloseWindow">
+                    <i class="bi bi-x-lg me-1"></i>
+                    Close
+                </button>
+            </div>
+            <div class="dynamic-batch-grid-v2-modal-body">
+                @if (_detailPageType is not null)
+                {
+                    <DynamicComponent @key="_detailPageComponentKey" Type="@_detailPageType" Parameters="@_detailPageParameters" />
+                }
+                else
+                {
+                    <div class="alert alert-warning mb-0">
+                        Detail page could not be resolved for @ViewDefinition?.DetailPageUri.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (isMergeLoadingScreenVisible)
+{
+    <div class="dynamic-batch-grid-v2-modal-backdrop"></div>
+    <div class="dynamic-batch-grid-v2-merge-loading" role="status" aria-live="polite">
+        <div class="spinner-border text-primary" role="status"></div>
+        <h5>Merging invoice requests</h5>
+        <p>The selected invoice requests are being merged. Please wait...</p>
+    </div>
+}
+
+@if (_showInvoicePreviewModal)
+{
+    <div class="dynamic-batch-grid-v2-modal-backdrop" @onclick="CloseInvoicePreviewWindow"></div>
+    <div class="dynamic-batch-grid-v2-modal-shell dynamic-batch-grid-v2-invoice-preview-shell" role="dialog" aria-modal="true" aria-label="Invoice preview">
+        <div class="dynamic-batch-grid-v2-modal-card dynamic-batch-grid-v2-invoice-preview-card">
+            <div class="dynamic-batch-grid-v2-modal-header">
+                <div>
+                    <h5>Invoice Preview</h5>
+                    <p>
+                        @if (_invoicePreviewModels.Count > 1)
+                        {
+                            <span>Previewing invoice @(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count.</span>
+                        }
+                        else
+                        {
+                            <span>Preview the selected invoice transaction before approving or deleting.</span>
+                        }
+                    </p>
+                </div>
+                <div class="dynamic-batch-grid-v2-modal-actions">
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            @onclick="ShowPreviousInvoicePreview"
+                            disabled="@(_currentInvoicePreviewIndex <= 0)">
+                        <i class="bi bi-chevron-left me-1"></i>
+                        Previous
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            @onclick="ShowNextInvoicePreview"
+                            disabled="@(_currentInvoicePreviewIndex >= _invoicePreviewModels.Count - 1)">
+                        Next
+                        <i class="bi bi-chevron-right ms-1"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CloseInvoicePreviewWindow">
+                        <i class="bi bi-x-lg me-1"></i>
+                        Close
+                    </button>
+                </div>
+            </div>
+
+            <div class="dynamic-batch-grid-v2-modal-body dynamic-batch-grid-v2-invoice-preview-body">
+                @if (_isInvoicePreviewBusy)
+                {
+                    <div class="dynamic-batch-grid-v2-merge-loading-inline">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <span>Loading invoice preview...</span>
+                    </div>
+                }
+                else if (CurrentInvoicePreviewModel is not null)
+                {
+                    <div id="invoice-preview-current-export" class="invoice-preview-host invoice-preview-host-a4">
+                        <InvoicePrintTemplate Model="@CurrentInvoicePreviewModel" />
+                    </div>
+                }
+                else
+                {
+                    <div class="cb-v2-empty-state">
+                        <i class="bi bi-file-earmark-x"></i>
+                        <div>No invoice preview is available.</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 <ErrorBoundary>
     <ChildContent>
-        <div class="d-flex flex-wrap justify-content-between">
-            <div class="p-2">
-                <h5 class="view-name">@ViewDefinition?.Name</h5>
-            </div>
-
-            <div class="p-2 form-buttons">
-                <div class="button-group">
-                    @if (ViewDefinition is not null && !IsBulkProcessing)
-                    {
-                        @if (ShowInvoiceMergeButton)
-                        {
-                            <TelerikWindow Modal="true"
-                                           @bind-Visible="@isMergeLoadingScreenVisible"
-                                           CloseOnOverlayClick="false"
-                                           Width="50%"
-                                           Height="30%">
-                                <WindowContent>
-                                    <div class="loading-container" style="text-align:center; margin:20px;">
-                                        <TelerikLoader Visible="true"
-                                                       Size="@ThemeConstants.Loader.Size.Medium"
-                                                       ThemeColor="@ThemeConstants.Loader.ThemeColor.Tertiary"
-                                                       Type="@LoaderType.ConvergingSpinner" />
-                                        <p style="margin-top:15px;">
-                                            The selected invoice requests are being merged.<br />
-                                            Please wait...
-                                        </p>
-                                    </div>
-                                </WindowContent>
-                            </TelerikWindow>
-
-                            <button class="btn btn-outline-primary mx-2" type="button" @onclick="MergeInvoiceRequests">
-                                <i class="bi bi-arrow-left-right mx-1" style="font-size: 1.2rem;"></i>
-                                Merge (@(SelectedItems?.Count ?? 0)) Invoice Requests
-                            </button>
-                        }
-
-                        @if (ViewDefinition.AllowNew)
-                        {
-                            <button class="btn btn-success" type="button" @onclick="AddNew">
-                                <i class="bi bi-plus-circle-fill me-2" style="font-size: 1.2rem;"></i>
-                                New
-                            </button>
-                        }
-                    }
-
-                    @if (!IsBulkProcessing)
-                    {
-                        <div class="bActionBtn btn btn-primary mb-1">
-                            <BatchButtonMenu @ref="@_buttonMenuRef"
-                                             @bind-GridRef="@ViewDefinition"
-                                             OnError="@OnError"
-                                             PerformGridAction="@PerformAction"
-                                             SelectedItems="@SelectedItems"
-                                             OnRefreshRequested="@reloadGridData" />
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-
         @if (ViewDefinition is not null)
         {
-            <div class="filter-control">
-                <div class="status-explanation">
-                    <ul>
-                        @if (RedIndicator != "")
-                        {
-                            <li><span class="dot red"></span> @RedIndicator</li>
-                        }
-                        else if (GreenIndicator != "")
-                        {
-                            <li><span class="dot green"></span> @GreenIndicator</li>
-                        }
-                    </ul>
-                </div>
+            <div class="cb-v2-shell dynamic-batch-grid-v2-shell">
 
-                <div class="quick-filter-toolbar">
-                    @if (CreatedOnColumn != "")
-                    {
-                        <div>
-                            <TelerikButton Class="@QuickFilter7DaysCSS"
-                                           OnClick="@(() => ShowRecordsFromXDay(-7))">
-                                Last 7 Days
-                            </TelerikButton>
-
-                            <TelerikButton Class="@QuickFilter90DaysCSS"
-                                           OnClick="@(() => ShowRecordsFromXDay(-90))">
-                                Last 90 Days
-                            </TelerikButton>
-
-                            <TelerikButton OnClick="@ToggleCustomRange">
-                                Custom Range...
-                            </TelerikButton>
-
-                            <TelerikButton Class="@QuickFilterGroupByCSS"
-                                           OnClick="@(() => GroupByButton())">
-                                Group by @GroupByColumTranslation
-                            </TelerikButton>
+                <div class="cb-v2-card dynamic-batch-grid-v2-header-card">
+                    <div class="cb-v2-card-body cb-v2-panel-header dynamic-batch-grid-v2-header-body">
+                        <div class="dynamic-batch-grid-v2-header-left">
+                            <div class="cb-v2-icon-wrap">
+                                <i class="bi bi-table"></i>
+                            </div>
+                            <div>
+                                <h4 class="cb-v2-title mb-1">@ViewDefinition.Name</h4>
+                                <div class="cb-v2-subtitle">
+                                    @GetGridSubtitle()
+                                </div>
+                            </div>
                         </div>
-                    }
+
+                        <div class="cb-v2-actions dynamic-batch-grid-v2-header-right">
+                            @if (HasGridActions)
+                            {
+                                <div class="dynamic-batch-grid-v2-action-menu">
+                                    <button type="button"
+                                            class="btn btn-primary dynamic-batch-grid-v2-primary-btn"
+                                            @onclick="ToggleActionMenuAsync"
+                                            disabled="@(IsPerformingGridAction || SelectedItems.Count == 0)">
+                                        <i class="bi bi-lightning-charge me-2"></i>
+                                        @ActionMenuButtonText
+                                        <i class="bi bi-chevron-down ms-2"></i>
+                                    </button>
+
+                                    @if (IsActionMenuOpen)
+                                    {
+                                        <div class="dynamic-batch-grid-v2-action-menu-panel">
+                                            @foreach (var actionItem in GridActionMenuItems)
+                                            {
+                                                <button type="button"
+                                                        class="dynamic-batch-grid-v2-action-menu-item"
+                                                        @onclick="() => OnGridActionClickedAsync(actionItem)">
+                                                    <i class="@actionItem.Icon"></i>
+                                                    <span>@actionItem.Text</span>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (ShowInvoiceMergeButton && ActiveTab == SageFinanceTab.PostingStatus)
+                            {
+                                <button class="btn btn-outline-primary dynamic-batch-grid-v2-primary-btn"
+                                        type="button"
+                                        @onclick="MergeInvoiceRequests"
+                                        disabled="@(isMergeLoadingScreenVisible || SelectedItems.Count < 2)">
+                                    <i class="bi bi-arrow-left-right me-2"></i>
+                                    Merge (@SelectedItems.Count) Invoice Requests
+                                </button>
+                            }
+
+                            @if (IsSageSubmissionMonitorView && ActiveTab == SageFinanceTab.PostingStatus)
+                            {
+                                <button class="btn btn-primary dynamic-batch-grid-v2-primary-btn"
+                                        @onclick="RequeueSelectedSageSubmissionsAsync"
+                                        disabled="@(!CanRequeueSelectedSageSubmissions)">
+                                    <i class="bi bi-arrow-repeat me-2"></i>
+                                    @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
+                                </button>
+
+                                <button class="btn btn-outline-warning dynamic-batch-grid-v2-primary-btn"
+                                        @onclick="ResetFailedSelectedSageSubmissionsAsync"
+                                        disabled="@(!CanResetFailedSelectedSageSubmissions)">
+                                    <i class="bi bi-arrow-counterclockwise me-2"></i>
+                                    @(IsResettingFailedSageSubmission ? "Resetting..." : "Reset Failed Selected")
+                                </button>
+                            }
+
+                            @if (ViewDefinition.AllowNew && !IsBulkProcessing && ActiveTab == SageFinanceTab.PostingStatus)
+                            {
+                                <button class="btn btn-success" @onclick="AddNew">
+                                    <i class="bi bi-plus-circle-fill me-2"></i>
+                                    New
+                                </button>
+                            }
+                        </div>
+                    </div>
                 </div>
 
-                @if (showCustomRange)
+                @if (IsSageSubmissionMonitorView)
                 {
-                    <div class="custom-range-panel">
-                        <label for="StartDate" class="form-label">From:</label>
-                        <TelerikDatePicker Id="StartDate"
-                                           Format="dd/MM/yyyy"
-                                           @bind-Value="@customStartDate" />
+                    <div class="dynamic-batch-grid-v2-tabbar" role="tablist" aria-label="Sage finance views">
+                        <button type="button"
+                                class="dynamic-batch-grid-v2-tab @GetTabClass(SageFinanceTab.PostingStatus)"
+                                role="tab"
+                                aria-selected="@(ActiveTab == SageFinanceTab.PostingStatus)"
+                                @onclick="() => SetActiveTab(SageFinanceTab.PostingStatus)">
+                            <i class="bi bi-send-check"></i>
+                            <span>Posting Status</span>
+                        </button>
 
-                        <label for="EndDate" class="form-label">To:</label>
-                        <TelerikDatePicker Id="EndDate"
-                                           Format="dd/MM/yyyy"
-                                           @bind-Value="@customEndDate" />
-
-                        <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
-                        <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
+                        <button type="button"
+                                class="dynamic-batch-grid-v2-tab @GetTabClass(SageFinanceTab.InboundDiagnostics)"
+                                role="tab"
+                                aria-selected="@(ActiveTab == SageFinanceTab.InboundDiagnostics)"
+                                @onclick="() => SetActiveTab(SageFinanceTab.InboundDiagnostics)">
+                            <i class="bi bi-activity"></i>
+                            <span>Inbound Diagnostics</span>
+                        </button>
                     </div>
                 }
+
+                @if (ActiveTab == SageFinanceTab.InboundDiagnostics)
+                {
+                    <div class="dynamic-batch-grid-v2-embedded-panel">
+                        <SageInboundDiagnosticsV2 @key="ActiveTab" IsEmbedded="true" />
+                    </div>
+                }
+                else
+                {
+                    @if (HasStatusCards)
+                    {
+                        <div class="cb-v2-summary-grid dynamic-batch-grid-v2-summary-grid">
+                            <button type="button"
+                                    class="cb-v2-summary-card dynamic-batch-grid-v2-summary-total @(string.IsNullOrWhiteSpace(ActiveStatusFilter) ? "active" : "")"
+                                    title="Total: @TotalCount record@(TotalCount == 1 ? string.Empty : "s"). All records in this view"
+                                    aria-label="Show all records"
+                                    @onclick="ClearStatusFilterAsync">
+                                <div class="cb-v2-summary-title">
+                                    <i class="bi bi-list-ul me-1"></i>
+                                    Total
+                                </div>
+                                <div class="cb-v2-summary-value">@TotalCount</div>
+                                <div class="cb-v2-summary-subtitle">All records in this view</div>
+                            </button>
+
+                            @foreach (var card in StatusCards)
+                            {
+                                <button type="button"
+                                        class="cb-v2-summary-card @card.CssClass @(IsStatusCardActive(card.FilterCode) ? "active" : "")"
+                                        title="@GetStatusCardTooltip(card)"
+                                        aria-label="@GetStatusCardTooltip(card)"
+                                        @onclick="() => ApplyStatusFilterAsync(card.FilterCode)">
+                                    <div class="cb-v2-summary-title">
+                                        <i class="@card.IconCss me-1"></i>
+                                        <span class="dynamic-batch-grid-v2-summary-title-text">@card.Title</span>
+                                    </div>
+                                    <div class="cb-v2-summary-value">@card.Count</div>
+                                    <div class="cb-v2-summary-subtitle">@card.Subtitle</div>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    <div class="cb-v2-card">
+                        <div class="cb-v2-toolbar dynamic-batch-grid-v2-toolbar">
+                            <div class="cb-v2-toolbar-left dynamic-batch-grid-v2-toolbar-left">
+                                <input class="cb-v2-input dynamic-batch-grid-v2-search"
+                                       placeholder="@GetSearchPlaceholder()"
+                                       @bind="SearchText"
+                                       @bind:event="oninput" />
+                                <button class="cb-v2-btn-secondary" @onclick="ApplySearchAsync">Search</button>
+                                <button class="cb-v2-btn-secondary" @onclick="ClearSearchAsync">Clear</button>
+                            </div>
+
+                            <div class="cb-v2-toolbar-right dynamic-batch-grid-v2-toolbar-right">
+                                @if (!string.IsNullOrWhiteSpace(ActiveStatusFilter))
+                                {
+                                    <div class="cb-v2-stat-pill">
+                                        <span class="cb-v2-pill-label">Filter</span>
+                                        <span class="cb-v2-pill-value">@ActiveStatusFilter</span>
+                                    </div>
+                                }
+
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Rows</span>
+                                    <span class="cb-v2-pill-value">@TotalRows</span>
+                                </div>
+
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Selected</span>
+                                    <span class="cb-v2-pill-value">@SelectedRowGuids.Count</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (IsLoading)
+                    {
+                        <div class="alert alert-info mt-3">Loading data...</div>
+                    }
+                    else
+                    {
+                        <div class="cb-v2-card dynamic-batch-grid-v2-grid-card">
+                            <div class="cb-v2-table-wrap dynamic-batch-grid-v2-grid-wrapper">
+                                <table class="cb-v2-table dynamic-batch-grid-v2-grid-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="dynamic-batch-grid-v2-checkbox-col">
+                                                <input type="checkbox"
+                                                       checked="@IsCurrentPageFullySelected"
+                                                       @onchange="ToggleSelectAllCurrentPage" />
+                                            </th>
+                                            <th>Status</th>
+
+                                            @foreach (var column in VisibleColumns)
+                                            {
+                                                <th class="dynamic-batch-grid-v2-header-cell"
+                                                    @onclick="() => ToggleSortAsync(column.Name)">
+                                                    <span>@GetColumnTitle(column)</span>
+
+                                                    @if (string.Equals(CurrentSortColumn, column.Name, StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        <span class="ms-1 dynamic-batch-grid-v2-sort-indicator">
+                                                            @(IsSortDescending ? "▼" : "▲")
+                                                        </span>
+                                                    }
+                                                </th>
+                                            }
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        @if (Rows.Count == 0)
+                                        {
+                                            <tr>
+                                                <td colspan="@(VisibleColumns.Count + 2)">
+                                                    <div class="cb-v2-empty-state dynamic-batch-grid-v2-empty-state">
+                                                        <i class="bi bi-inbox"></i>
+                                                        <div>No records found.</div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var row in Rows)
+                                            {
+                                                var rowDict = (IDictionary<string, object>)row;
+                                                var rowGuid = GetRowGuid(rowDict);
+                                                var isSelected = rowGuid != Guid.Empty && SelectedRowGuids.Contains(rowGuid);
+
+                                                <tr class="@(isSelected ? "cb-v2-table-row-selected" : "") @GetRowAccentClass(rowDict)"
+                                                    @ondblclick="() => OnRowDoubleClickAsync(row)">
+                                                    <td class="dynamic-batch-grid-v2-checkbox-col">
+                                                        <input type="checkbox"
+                                                               checked="@isSelected"
+                                                               @onchange="args => ToggleRowSelection(rowDict, args.Value)" />
+                                                    </td>
+
+                                                    <td>
+                                                        @{
+                                                            var dynamicStatus = GetStatusText(rowDict);
+                                                            var dynamicStatusDetail = GetStatusDetail(rowDict);
+                                                        }
+                                                        <span class="@GetStatusBadgeClass(rowDict)" title="@GetStatusTooltip(rowDict)" aria-label="@GetStatusTooltip(rowDict)">
+                                                            <span class="dynamic-batch-grid-v2-status-text">@dynamicStatus</span>
+                                                        </span>
+                                                    </td>
+
+                                                    @foreach (var column in VisibleColumns)
+                                                    {
+                                                        var columnsWithTooltip = new List<string>() { "LatestResponseDetail", "LastError", "LatestOutboxError" };
+                                                        var customClass = "";
+                                                        var tooltipTxt = "";
+
+                                                        if (columnsWithTooltip.Contains(column.Name))
+                                                        {
+                                                            customClass = "cb-v2-tooltip-target";
+                                                            tooltipTxt = RenderCellValue(rowDict, column.Name)?.ToString() ?? "";
+
+                                                        }
+
+                                                        <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell @customClass" title="@tooltipTxt" data-tooltip="@tooltipTxt">
+                                                            @if (IsStatusColumn(column.Name))
+                                                            {
+                                                                var statusValue = RenderCellValue(rowDict, column.Name)?.ToString() ?? GetStatusText(rowDict);
+                                                                <span class="@GetStatusBadgeClass(statusValue)">@statusValue</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                @RenderCellValue(rowDict, column.Name)
+                                                            }
+                                                        </td>
+                                                    }
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="dynamic-batch-grid-v2-footer">
+                                <div class="dynamic-batch-grid-v2-footer-left">
+                                    Showing @PageStartRow to @PageEndRow of @TotalRows
+                                </div>
+
+                                <div class="dynamic-batch-grid-v2-footer-right">
+                                    <button class="cb-v2-btn-secondary"
+                                            @onclick="PreviousPageAsync"
+                                            disabled="@(CurrentPage <= 1)">
+                                        Previous
+                                    </button>
+
+                                    <span class="dynamic-batch-grid-v2-page-pill">Page @CurrentPage of @TotalPages</span>
+
+                                    <button class="cb-v2-btn-secondary"
+                                            @onclick="NextPageAsync"
+                                            disabled="@(CurrentPage >= TotalPages)">
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
             </div>
-
-            @if (FullGrid)
-            {
-                <div class="grid-container">
-                    @if (IsSageSubmissionMonitorView)
-                    {
-                        <div class="d-flex justify-content-end mb-2">
-                            <TelerikButton OnClick="@RequeueSelectedSageSubmissionsAsync"
-                                           Enabled="@CanRequeueSelectedSageSubmissions">
-                                <i class="bi bi-arrow-repeat me-2"></i>
-                                @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
-                            </TelerikButton>
-                        </div>
-                    }
-
-                    <TelerikGrid TItem="ExpandoObject"
-                                 OnRead="@ReadItems"
-                                 Pageable="true"
-                                 Sortable="true"
-                                 PageSize="50"
-                                 Height="100%"
-                                 Resizable="true"
-                                 SelectedItems="@SelectedItems"
-                                 SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
-                                 OnRowDoubleClick="@OnRowDoubleClickHandler"
-                                 @ref="@GridRef"
-                                 FilterMode="@GridFilterMode.FilterMenu"
-                                 SelectionMode="@GridSelectionMode.Multiple"
-                                 OnRowRender="@OnRowRenderHandler"
-                                 OnRowClick="@OnRowClickHandler"
-                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
-                        <GridSettings>
-                            <GridPagerSettings InputType="PagerInputType.Input"
-                                               PageSizes="null"
-                                               ButtonCount="5"
-                                               Responsive="true"
-                                               Position="PagerPosition.Bottom">
-                            </GridPagerSettings>
-                        </GridSettings>
-
-                        <GridColumns>
-                            <GridCheckboxColumn Width="30px" />
-
-                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
-                            {
-                                @if (gvcd.Name == "ID")
-                                {
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true">
-                                        <Template>
-                                            @{
-                                                var redLabel = "dot red";
-                                                var greenLabel = "dot green";
-
-                                                var indicatorToAssign = greenLabel;
-                                                var indicatorTitle = string.Empty;
-
-                                                var item = (IDictionary<string, object>)context;
-
-                                                if (string.Equals(ViewDefinition?.Code, "INVOICEREQUESTS", StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    var hasFinanceIssue = false;
-                                                    var hasBatchingIssue = false;
-
-                                                    if (item.TryGetValue("HasFinanceAccountIssue", out var hasFinanceIssueValue)
-                                                        && hasFinanceIssueValue is not null)
-                                                    {
-                                                        TryConvertToBoolean(hasFinanceIssueValue, out hasFinanceIssue);
-                                                    }
-
-                                                    if (item.TryGetValue("HasBatchingIssue", out var hasBatchingIssueValue)
-                                                        && hasBatchingIssueValue is not null)
-                                                    {
-                                                        TryConvertToBoolean(hasBatchingIssueValue, out hasBatchingIssue);
-                                                    }
-
-                                                    if (hasFinanceIssue || hasBatchingIssue)
-                                                    {
-                                                        indicatorToAssign = redLabel;
-
-                                                        var messages = new List<string>();
-
-                                                        if (hasFinanceIssue &&
-                                                            item.TryGetValue("FinanceAccountIssueMessage", out var financeIssueMessageValue) &&
-                                                            financeIssueMessageValue is not null &&
-                                                            !string.IsNullOrWhiteSpace(financeIssueMessageValue.ToString()))
-                                                        {
-                                                            messages.Add(financeIssueMessageValue.ToString()!);
-                                                        }
-
-                                                        if (hasBatchingIssue &&
-                                                            item.TryGetValue("BatchingIssueMessage", out var batchingIssueMessageValue) &&
-                                                            batchingIssueMessageValue is not null &&
-                                                            !string.IsNullOrWhiteSpace(batchingIssueMessageValue.ToString()))
-                                                        {
-                                                            messages.Add(batchingIssueMessageValue.ToString()!);
-                                                        }
-
-                                                        indicatorTitle = string.Join(" ", messages.Distinct());
-                                                    }
-                                                    else
-                                                    {
-                                                        indicatorToAssign = greenLabel;
-                                                        indicatorTitle = "Ready for batching.";
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    var expectedDate = item.ContainsKey("ExpectedDate")
-                                                        ? item["ExpectedDate"]?.ToString()
-                                                        : null;
-
-                                                    if (DateTime.TryParse(expectedDate, out DateTime expDate))
-                                                    {
-                                                        var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
-                                                        indicatorToAssign = daysSinceExpectedDate >= 1 ? redLabel : greenLabel;
-                                                    }
-                                                    else
-                                                    {
-                                                        indicatorToAssign = greenLabel;
-                                                    }
-                                                }
-                                            }
-
-                                            <div class="custom-ellipsis" title="@indicatorTitle">
-                                                <li>
-                                                    <span class="@indicatorToAssign"></span>
-                                                    @item["ID"]
-                                                </li>
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
-                                }
-                                else
-                                {
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="typeof(string)"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true"
-                                                DisplayFormat="@gvcd.DisplayFormat">
-                                        <Template>
-                                            <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
-                                }
-                            }
-                        </GridColumns>
-                    </TelerikGrid>
-                </div>
-
-                <div class="back-to-top-button">
-                    <button class="btn btn-secondary" @onclick="ScrollToTop">
-                        <i class="bi bi-arrow-up-circle"></i> Back To Top
-                    </button>
-                </div>
-            }
-            else
-            {
-                <div class="dynamic-batch-grid-modal">
-                    @if (IsSageSubmissionMonitorView)
-                    {
-                        <div class="d-flex justify-content-end mb-2">
-                            <TelerikButton OnClick="@RequeueSelectedSageSubmissionsAsync"
-                                           Enabled="@CanRequeueSelectedSageSubmissions">
-                                <i class="bi bi-arrow-repeat me-2"></i>
-                                @(IsRequeueingSageSubmission ? "Requeueing..." : "Requeue Selected")
-                            </TelerikButton>
-                        </div>
-                    }
-
-                    <TelerikGrid TItem="ExpandoObject"
-                                 OnRead="@ReadItems"
-                                 Pageable="true"
-                                 Sortable="true"
-                                 PageSize="50"
-                                 Height="100%"
-                                 Resizable="true"
-                                 SelectedItems="@SelectedItems"
-                                 SelectedItemsChanged="@((IEnumerable<ExpandoObject> selection) => SelectedItemsChanged(selection))"
-                                 @ref="@GridRef"
-                                 FilterMode="@GridFilterMode.FilterMenu"
-                                 SelectionMode="@GridSelectionMode.Multiple"
-                                 OnRowRender="@OnRowRenderHandler"
-                                 OnRowClick="@OnRowClickHandler"
-                                 OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                 OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
-                        <GridSettings>
-                            <GridPagerSettings InputType="PagerInputType.Input"
-                                               PageSizes="null"
-                                               ButtonCount="5"
-                                               Responsive="true"
-                                               Position="PagerPosition.Bottom">
-                            </GridPagerSettings>
-                        </GridSettings>
-
-                        <GridColumns>
-                            <GridCheckboxColumn Width="30px" />
-
-                            @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.OrderBy(o => o.ColumnOrder))
-                            {
-                                @if (gvcd.Name == "ID")
-                                {
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true">
-                                        <Template>
-                                            @{
-                                                var redLabel = "dot red";
-                                                var greenLabel = "dot green";
-
-                                                var indicatorToAssign = greenLabel;
-                                                var indicatorTitle = string.Empty;
-
-                                                var item = (IDictionary<string, object>)context;
-
-                                                if (string.Equals(ViewDefinition?.Code, "INVOICEREQUESTS", StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    var hasFinanceIssue = false;
-                                                    var hasBatchingIssue = false;
-
-                                                    if (item.TryGetValue("HasFinanceAccountIssue", out var hasFinanceIssueValue)
-                                                        && hasFinanceIssueValue is not null)
-                                                    {
-                                                        TryConvertToBoolean(hasFinanceIssueValue, out hasFinanceIssue);
-                                                    }
-
-                                                    if (item.TryGetValue("HasBatchingIssue", out var hasBatchingIssueValue)
-                                                        && hasBatchingIssueValue is not null)
-                                                    {
-                                                        TryConvertToBoolean(hasBatchingIssueValue, out hasBatchingIssue);
-                                                    }
-
-                                                    if (hasFinanceIssue || hasBatchingIssue)
-                                                    {
-                                                        indicatorToAssign = redLabel;
-
-                                                        var messages = new List<string>();
-
-                                                        if (hasFinanceIssue &&
-                                                            item.TryGetValue("FinanceAccountIssueMessage", out var financeIssueMessageValue) &&
-                                                            financeIssueMessageValue is not null &&
-                                                            !string.IsNullOrWhiteSpace(financeIssueMessageValue.ToString()))
-                                                        {
-                                                            messages.Add(financeIssueMessageValue.ToString()!);
-                                                        }
-
-                                                        if (hasBatchingIssue &&
-                                                            item.TryGetValue("BatchingIssueMessage", out var batchingIssueMessageValue) &&
-                                                            batchingIssueMessageValue is not null &&
-                                                            !string.IsNullOrWhiteSpace(batchingIssueMessageValue.ToString()))
-                                                        {
-                                                            messages.Add(batchingIssueMessageValue.ToString()!);
-                                                        }
-
-                                                        indicatorTitle = string.Join(" ", messages.Distinct());
-                                                    }
-                                                    else
-                                                    {
-                                                        indicatorToAssign = greenLabel;
-                                                        indicatorTitle = "Ready for batching.";
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    var expectedDate = item.ContainsKey("ExpectedDate")
-                                                        ? item["ExpectedDate"]?.ToString()
-                                                        : null;
-
-                                                    if (DateTime.TryParse(expectedDate, out DateTime expDate))
-                                                    {
-                                                        var daysSinceExpectedDate = (DateTime.Now - expDate).TotalDays;
-                                                        indicatorToAssign = daysSinceExpectedDate >= 1 ? redLabel : greenLabel;
-                                                    }
-                                                    else
-                                                    {
-                                                        indicatorToAssign = greenLabel;
-                                                    }
-                                                }
-                                            }
-
-                                            <div class="custom-ellipsis" title="@indicatorTitle">
-                                                <li>
-                                                    <span class="@indicatorToAssign"></span>
-                                                    @item["ID"]
-                                                </li>
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
-                                }
-                                else
-                                {
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="typeof(string)"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true"
-                                                DisplayFormat="@gvcd.DisplayFormat">
-                                        <Template>
-                                            <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
-                                }
-                            }
-                        </GridColumns>
-                    </TelerikGrid>
-                </div>
-            }
-
-            @if (ViewDefinition.IsDetailWindowed)
-            {
-                <TelerikWindow @ref="ModalWindow"
-                               Class="responsive-window"
-                               Visible="@WindowIsVisible"
-                               Modal="true"
-                               CloseOnOverlayClick="false"
-                               VisibleChanged="@WindowVisibleChangedHandler"
-                               MaxHeight="100vh">
-                    <WindowTitle>@WindowTitle</WindowTitle>
-                    <WindowContent>
-                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{ViewDefinition.DetailPageUri}")" Parameters="@_detailPageParameters" />
-                    </WindowContent>
-                    <WindowActions>
-                        <WindowAction Name="Minimize"></WindowAction>
-                        <WindowAction Name="Maximize"></WindowAction>
-                        <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
-                    </WindowActions>
-                </TelerikWindow>
-            }
-
-            @if (isBulkRecordChangeVisible)
-            {
-                <TelerikWindow @ref="ModalWindow"
-                               Class="responsive-window"
-                               Visible="@isBulkRecordChangeVisible"
-                               Modal="true"
-                               CloseOnOverlayClick="false"
-                               VisibleChanged="@WindowVisibleChangedHandler"
-                               MaxHeight="100vh">
-                    <WindowTitle>Select Items To Change</WindowTitle>
-                    <WindowContent>
-                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.BulkRecordChange")" Parameters="@_detailPageParameters" />
-                    </WindowContent>
-                    <WindowActions>
-                        <WindowAction Name="Minimize"></WindowAction>
-                        <WindowAction Name="Maximize"></WindowAction>
-                        <WindowAction Name="Close" OnClick="@CancelBulkEdit"></WindowAction>
-                    </WindowActions>
-                </TelerikWindow>
-            }
         }
     </ChildContent>
 
@@ -546,148 +454,3 @@
         <ErrorDisplay ErrorMessage="@ex.Message" />
     </ErrorContent>
 </ErrorBoundary>
-
-@if (IsBulkProcessing)
-{
-    <div class="modal-actions">
-        <TelerikButton OnClick="MoveNext" Class="btn btn-primary py-2">Next</TelerikButton>
-        <TelerikButton OnClick="CancelBulkEdit" Class="btn btn-danger py-2 cancelButton">Cancel</TelerikButton>
-    </div>
-}
-
-<style>
-    .view-name {
-        padding: 5px;
-    }
-
-    .width-100 {
-        width: 100%;
-    }
-
-    .grid .k-grid-content tr {
-        line-height: 32px;
-    }
-
-    .custom-ellipsis,
-    .k-grid td.custom-ellipsis,
-    .k-grid tr.custom-ellipsis .k-table-td {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .grid-container {
-        max-width: 100%;
-        overflow-x: auto;
-    }
-
-        .grid-container .k-grid {
-            min-width: 1200px;
-            width: 100%;
-            table-layout: fixed;
-        }
-
-    .back-to-top-button {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1000;
-        opacity: 0.5;
-        transition: opacity 0.3s ease;
-    }
-
-        .back-to-top-button:hover {
-            opacity: 1;
-        }
-
-    .cancelButton {
-        background-color: #c82333 !important;
-        color: white !important;
-    }
-
-    .invalid-row {
-        background-color: #f8d7da;
-        color: #721c24;
-        font-weight: bold;
-        pointer-events: none;
-        opacity: 0.7;
-    }
-
-        .invalid-row .k-checkbox {
-            pointer-events: none;
-        }
-
-    .filter-control {
-        display: flex;
-        flex-direction: column;
-        margin-left: 10px;
-        margin-right: 10px;
-    }
-
-    .quick-filter-toolbar,
-    .custom-range-panel {
-        display: flex;
-        gap: 8px;
-        padding: 12px 0;
-    }
-
-    .quick-filter-toolbar {
-        flex-direction: row;
-        justify-content: space-between;
-    }
-
-    .custom-range-panel {
-        margin-right: 10px;
-        margin-left: 10px;
-    }
-
-    .status-explanation ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .status-explanation li {
-        display: flex;
-        align-items: center;
-        margin-bottom: 4px;
-    }
-
-    .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 6px;
-    }
-
-        .dot.red {
-            background-color: red;
-        }
-
-        .dot.yellow {
-            background-color: gold;
-        }
-
-        .dot.green {
-            background-color: limegreen;
-        }
-
-    .activeButton {
-        background-color: #0d6efd !important;
-        color: white !important;
-    }
-
-    .OverThreshold {
-        background-color: #0d6efd !important;
-        color: white !important;
-    }
-
-    .invoice-request-warning-row {
-        background-color: #fff3cd;
-    }
-
-        .invoice-request-warning-row:hover {
-            background-color: #ffe69c;
-        }
-</style>

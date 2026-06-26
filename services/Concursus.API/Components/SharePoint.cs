@@ -1,4 +1,4 @@
-﻿using Concursus.API.Classes;
+using Concursus.API.Classes;
 using Concursus.API.Core;
 using Concursus.API.Interfaces;
 using Concursus.API.Services;
@@ -424,12 +424,37 @@ public class SharePoint : MSGraphBase, IDisposable
         if (dataObject == null)
             throw new ArgumentNullException(nameof(dataObject));
 
-        await GetSharePointLocation(
+        // SharePoint repair is used by the background outbox worker and manual document resync.
+        // In those paths there is no normal DataObjectUpsert request, but the repaired location
+        // still has to be persisted back to SCore.DataObjects. Otherwise the folders may be
+        // created successfully while the document browser continues to fail with:
+        // "DataObject.SharePointUrl is empty; cannot resolve document location."
+        var repairRequest = new Core.DataObjectUpsertRequest
+        {
+            EntityQueryGuid = Guid.Empty.ToString(),
+            ValidateOnly = false
+        };
+
+        var response = await GetSharePointLocation(
                 dataObject.EntityTypeGuid.ToString(),
                 dataObject,
                 efCore,
-                serviceBase: null!)
+                serviceBase: null!,
+                request: repairRequest)
             .ConfigureAwait(false);
+
+        if (response?.DataObject != null)
+        {
+            dataObject.SharePointUrl = response.DataObject.SharePointUrl;
+            dataObject.SharePointSiteIdentifier = response.DataObject.SharePointSiteIdentifier;
+            dataObject.SharePointFolderPath = response.DataObject.SharePointFolderPath;
+        }
+
+        if (string.IsNullOrWhiteSpace(dataObject.SharePointUrl))
+        {
+            throw new InvalidOperationException(
+                $"SharePoint structure repair completed but did not resolve a SharePointUrl for DataObject {dataObject.Guid}.");
+        }
     }
 
     //CBLD-405: Added param organisationUnit

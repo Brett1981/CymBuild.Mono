@@ -269,13 +269,11 @@
 
                                                         if (columnsWithTooltip.Contains(column.Name))
                                                         {
-                                                            customClass = "tooltip-target";
+                                                            customClass = "cb-v2-tooltip-target";
                                                             tooltipTxt = RenderCellValue(rowDict, column.Name)?.ToString() ?? "";
+}
 
-                                                            <TelerikTooltip TargetSelector=".tooltip-target" />
-                                                        }
-
-                                                        <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell @customClass" title="@tooltipTxt">
+                                                        <td class="cb-v2-ellipsis dynamic-batch-grid-v2-cell @customClass" title="@tooltipTxt" data-tooltip="@tooltipTxt">
                                                             @RenderCellValue(rowDict, column.Name)
                                                         </td>
                                                     }

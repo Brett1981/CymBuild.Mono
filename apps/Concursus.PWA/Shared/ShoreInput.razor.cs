@@ -56,6 +56,7 @@ public partial class ShoreInput : IDisposable
     [Parameter] public bool Disabled { get; set; } = false;
     [Parameter] public EntityProperty EntityProperty { get; set; } = new();
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public FormHelper? FormHelper { get; set; }
     [CascadingParameter] public EditPage? ParentEditPage { get; set; }
 
     private bool EffectiveDisabled =>
@@ -435,6 +436,15 @@ public partial class ShoreInput : IDisposable
     private int DebounceDelay { get; set; } = 100;
     private List<EntityPropertyDependant> Dependents { get; set; } = new();
     private bool HideCurrentUserOnFirstRender { get; set; } = true;
+
+    // Phase 4B performance: Telerik ComboBox invokes OnRead during initial rendering even when
+    // the lookup has no selected value and the user has not opened/searched it yet. In that case
+    // the page only needs to render an empty field, not hydrate the top 10 options for every lookup.
+    // Once the user focuses/clicks the lookup, the component allows the normal OnRead flow and
+    // explicitly rebinds the combo so behaviour is preserved when the dropdown is actually used.
+    private bool _lookupHasUserRequestedData;
+    private bool _lookupInitialEmptyReadDeferred;
+
     private string InputType { get; set; } = "Text";
 
     private bool ModalIsVisible { get; set; } = false;
@@ -1023,6 +1033,86 @@ public partial class ShoreInput : IDisposable
         }
     }
 
+    private async Task HandleLookupUserInteractionAsync()
+    {
+        try
+        {
+            if (_lookupHasUserRequestedData)
+            {
+                return;
+            }
+
+            _lookupHasUserRequestedData = true;
+
+            // If the first render was deliberately deferred, force a rebind now that the user has
+            // actually interacted with the lookup. This keeps the initial page load light while
+            // preserving the existing user-facing dropdown behaviour.
+            if (_lookupInitialEmptyReadDeferred)
+            {
+                await InvokeAsync(() =>
+                {
+                    try
+                    {
+                        Combo?.Rebind();
+                    }
+                    catch
+                    {
+                        // Rebind is a UI convenience only. If Telerik has not finished initialising
+                        // the component yet, the next OnRead will still load normally because the
+                        // lookup has now been marked as user-requested.
+                    }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error while preparing lookup options after user interaction.");
+            ex.Data.Add("PageMethod", "ShoreInput/HandleLookupUserInteractionAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private bool ShouldDeferInitialEmptyLookupRead(ComboBoxReadEventArgs args)
+    {
+        try
+        {
+            if (_lookupHasUserRequestedData)
+            {
+                return false;
+            }
+
+            if (args?.Request?.Filters?.Count > 0)
+            {
+                return false;
+            }
+
+            // If a value is already selected, allow the existing lookup path so the display text
+            // can be resolved and reported back to EditPage for headers/browser title updates.
+            if (GuidValueBinding != Guid.Empty)
+            {
+                return false;
+            }
+
+            // Workflow/status lookups can have side-effect-sensitive parent context and should keep
+            // their existing hydration behaviour.
+            if (string.Equals(
+                    EntityProperty?.DropDownListDefinitionGuid,
+                    "192f12f6-c7b0-4626-8e8d-8c5091456b93",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            // Prefer existing behaviour if the guard cannot be evaluated.
+            return false;
+        }
+    }
+
     private async Task ReadItemsAsync(ComboBoxReadEventArgs args)
     {
         try
@@ -1050,6 +1140,23 @@ public partial class ShoreInput : IDisposable
 
                 if (ParentGuid == Guid.Empty.ToString() || ParentGuid == null)
                     ParentGuid = stateService.OriginalRecordGuid;
+            }
+
+            if (ShouldDeferInitialEmptyLookupRead(args))
+            {
+                _lookupInitialEmptyReadDeferred = true;
+                args.Data = Array.Empty<ComboDataItem>();
+
+                try
+                {
+                    Console.WriteLine($"[CymBuildPerf] Layer=UI Method=ShoreInput Step=DropDownDataListDeferred Guid={EntityProperty.DropDownListDefinitionGuid} Reason=InitialEmptyLookup");
+                }
+                catch
+                {
+                    // Logging must never affect user workflows.
+                }
+
+                return;
             }
 
             var dropDownDataListRequest = new DropDownDataListRequest
@@ -1099,7 +1206,28 @@ public partial class ShoreInput : IDisposable
 
 
 
-            var dropDownDataListReply = await CoreClient.DropDownDataListAsync(dropDownDataListRequest);
+            DropDownDataListReply dropDownDataListReply;
+
+            if (FormHelper is not null)
+            {
+                dropDownDataListReply = await FormHelper.DropDownDataListGetAsync(dropDownDataListRequest);
+            }
+            else
+            {
+                // Compatibility fallback for existing pages that have not yet passed FormHelper through.
+                // New main-record work should pass FormHelper so the UI does not own lookup retrieval.
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                dropDownDataListReply = await CoreClient.DropDownDataListAsync(dropDownDataListRequest);
+
+                try
+                {
+                    Console.WriteLine($"[CymBuildPerf] Layer=UI Method=ShoreInput Step=DropDownDataList Guid={dropDownDataListRequest.Guid} DurationMs={stopwatch.ElapsedMilliseconds} CacheHit=False Boundary=DirectFallback");
+                }
+                catch
+                {
+                    // Logging must never affect user workflows.
+                }
+            }
 
             var comboItems = dropDownDataListReply.Items
     .Select(item => new ComboDataItem(item))
@@ -1193,6 +1321,7 @@ public partial class ShoreInput : IDisposable
                 Combo.ValueChanged.InvokeAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(currentContextVal["OriginalRecordGuid"]));
             }
 
+            _lookupHasUserRequestedData = true;
             Combo.Rebind();
 
             PWAFunctions.ResetStateService(stateService);

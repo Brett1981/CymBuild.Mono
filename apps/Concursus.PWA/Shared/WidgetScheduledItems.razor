@@ -1,9 +1,12 @@
-﻿@using Concursus.API.Client.Classes
+@using System
+@using System.Diagnostics
+@using Concursus.API.Client.Classes
 @using Concursus.API.Core
 @using Concursus.Components.Shared.Modals
 @using Concursus.PWA.Helpers
 @inject Core.CoreClient CoreClient
 @inject CymBuildModalService ModalService
+@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <div class="cb-v2-table-wrap">
@@ -32,7 +35,7 @@
                     </td>
                 </tr>
             }
-            else if (_scheduleItems?.ScheduleItems == null || _scheduleItems.ScheduleItems.Count == 0)
+            else if (_items.Count == 0)
             {
                 <tr>
                     <td colspan="3">
@@ -42,10 +45,10 @@
             }
             else
             {
-                @foreach (var item in _scheduleItems.ScheduleItems)
+                @foreach (var item in _items)
                 {
-                    <tr>
-                        <td>@UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false)</td>
+                    <tr @key="item.Key">
+                        <td>@item.StartDisplay</td>
                         <td>
                             <div class="cb-v2-ellipsis" title="@item.Title">@item.Title</div>
                         </td>
@@ -58,17 +61,37 @@
                         </td>
                     </tr>
                 }
+
+                @if (_isTruncated)
+                {
+                    <tr>
+                        <td colspan="3">
+                            <div class="cb-v2-muted d-flex justify-content-between align-items-center gap-2">
+                                <span>Showing the first @_items.Count scheduled items.</span>
+                                <button type="button"
+                                        class="cb-v2-btn-secondary"
+                                        @onclick="NavigateToSchedule">
+                                    Open Schedule
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
             }
         </tbody>
     </table>
 </div>
 
 @code {
+    private const int InitialLoadDelayMs = 750;
+    private const int MaxDashboardScheduleItems = 25;
+
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-    private ScheduleItemsGetResponse? _scheduleItems;
+    private readonly List<ScheduleDashboardItem> _items = new();
     private bool _hasStartedLoad;
     private bool _isLoading = true;
+    private bool _isTruncated;
     private string? _loadError;
 
     protected override Task OnInitializedAsync()
@@ -84,17 +107,33 @@
         }
 
         _hasStartedLoad = true;
-        _ = LoadAsync(_cancellationTokenSource.Token);
+        _ = LoadDeferredAsync(_cancellationTokenSource.Token);
 
         return Task.CompletedTask;
     }
 
+    private async Task LoadDeferredAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(InitialLoadDelayMs, cancellationToken);
+            await LoadAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
+        var sourceCount = 0;
+
         try
         {
             _isLoading = true;
             _loadError = null;
+            _isTruncated = false;
             await InvokeAsync(StateHasChanged);
 
             var request = new ScheduleItemsGetRequest
@@ -111,24 +150,40 @@
                 return;
             }
 
-            var earlyDate = DateTime.UtcNow.AddDays(-7);
-            var lateDate = DateTime.UtcNow.AddDays(7);
+            if (!string.IsNullOrWhiteSpace(response?.ErrorReturned))
+            {
+                throw new InvalidOperationException(response.ErrorReturned);
+            }
 
-            _scheduleItems = new ScheduleItemsGetResponse();
+            _items.Clear();
 
-            if (response?.ScheduleItems is null)
+            if (response?.ScheduleItems is null || response.ScheduleItems.Count == 0)
             {
                 return;
             }
 
-            foreach (var item in response.ScheduleItems)
-            {
-                var start = item.Start.ToDateTime();
+            sourceCount = response.ScheduleItems.Count;
 
-                if (start.IsBetweenTwoDates(earlyDate, lateDate))
+            var filteredItems = response.ScheduleItems
+                .Select(item => new
                 {
-                    _scheduleItems.ScheduleItems.Add(item);
-                }
+                    Item = item,
+                    Start = SafeToDateTimeUtc(item.Start),
+                    End = SafeToDateTimeUtc(item.End)
+                })
+                // The server already decides which scheduled items belong on the dashboard.
+                // Do not apply an extra client-side date window here; it can hide all valid
+                // server-returned items, which showed up as SourceCount > 0 and RenderCount = 0.
+                .OrderBy(item => item.Start == DateTime.MinValue)
+                .ThenBy(item => item.Start)
+                .Take(MaxDashboardScheduleItems + 1)
+                .ToList();
+
+            _isTruncated = filteredItems.Count > MaxDashboardScheduleItems;
+
+            foreach (var item in filteredItems.Take(MaxDashboardScheduleItems))
+            {
+                _items.Add(ScheduleDashboardItem.FromScheduleItem(item.Item, item.Start, item.End));
             }
         }
         catch (OperationCanceledException)
@@ -136,30 +191,62 @@
         }
         catch (Exception ex)
         {
-            _loadError = $"Unable to load scheduled items: {ex.Message}";
+            _loadError = "Unable to load scheduled items.";
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=WidgetScheduledItems Step=LoadFailed DurationMs={stopwatch.ElapsedMilliseconds} Error={ex.Message}");
         }
         finally
         {
+            stopwatch.Stop();
+
             if (!cancellationToken.IsCancellationRequested)
             {
                 _isLoading = false;
+                Console.WriteLine($"[CymBuildPerf] Layer=UI Method=WidgetScheduledItems Step=LoadComplete SourceCount={sourceCount} RenderCount={_items.Count} Truncated={_isTruncated} DurationMs={stopwatch.ElapsedMilliseconds}");
                 await InvokeAsync(StateHasChanged);
             }
         }
     }
 
-    private async Task OpenScheduleInfoAsync(ScheduleItem item)
+    private static DateTime SafeToDateTimeUtc(object? timestamp)
+    {
+        if (timestamp is null)
+        {
+            return DateTime.MinValue;
+        }
+
+        try
+        {
+            var toDateTime = timestamp.GetType().GetMethod("ToDateTime", Type.EmptyTypes);
+
+            if (toDateTime?.Invoke(timestamp, null) is DateTime value)
+            {
+                return value;
+            }
+        }
+        catch
+        {
+        }
+
+        return DateTime.MinValue;
+    }
+
+    private async Task OpenScheduleInfoAsync(ScheduleDashboardItem item)
     {
         var parameters = new Dictionary<string, object?>
         {
-            { nameof(ScheduleItemView.StartDateTime), UiFormattingHelper.FormatDateForUI(item.Start.ToDateTime(), false) },
-            { nameof(ScheduleItemView.EndDateTime), UiFormattingHelper.FormatDateForUI(item.End.ToDateTime(), false) },
-            { nameof(ScheduleItemView.Title), item.Title ?? string.Empty },
-            { nameof(ScheduleItemView.Description), item.Description ?? string.Empty },
-            { nameof(ScheduleItemView.JobNumber), item.JobNumber ?? string.Empty }
+            { nameof(ScheduleItemView.StartDateTime), item.StartDisplay },
+            { nameof(ScheduleItemView.EndDateTime), item.EndDisplay },
+            { nameof(ScheduleItemView.Title), item.Title },
+            { nameof(ScheduleItemView.Description), item.Description },
+            { nameof(ScheduleItemView.JobNumber), item.JobNumber }
         };
 
         await ModalService.ShowAsync<ScheduleItemView>("Schedule Info", parameters);
+    }
+
+    private void NavigateToSchedule()
+    {
+        Navigation.NavigateTo("/schedule");
     }
 
     public async ValueTask DisposeAsync()
@@ -170,5 +257,40 @@
         }
 
         _cancellationTokenSource.Dispose();
+    }
+
+    private sealed class ScheduleDashboardItem
+    {
+        public string Key { get; private init; } = Guid.NewGuid().ToString();
+        public string StartDisplay { get; private init; } = string.Empty;
+        public string EndDisplay { get; private init; } = string.Empty;
+        public string Title { get; private init; } = string.Empty;
+        public string Description { get; private init; } = string.Empty;
+        public string JobNumber { get; private init; } = string.Empty;
+
+        public static ScheduleDashboardItem FromScheduleItem(ScheduleItem item, DateTime startUtc, DateTime endUtc)
+        {
+            return new ScheduleDashboardItem
+            {
+                Key = BuildKey(item, startUtc),
+                StartDisplay = UiFormattingHelper.FormatDateForUI(startUtc, false),
+                EndDisplay = UiFormattingHelper.FormatDateForUI(endUtc, false),
+                Title = item.Title ?? string.Empty,
+                Description = item.Description ?? string.Empty,
+                JobNumber = item.JobNumber ?? string.Empty
+            };
+        }
+
+        private static string BuildKey(ScheduleItem item, DateTime startUtc)
+        {
+            var rawGuid = Convert.ToString(item.Guid);
+
+            if (Guid.TryParse(rawGuid, out var parsedGuid) && parsedGuid != Guid.Empty)
+            {
+                return parsedGuid.ToString("D");
+            }
+
+            return $"{item.Id}-{startUtc:O}";
+        }
     }
 }

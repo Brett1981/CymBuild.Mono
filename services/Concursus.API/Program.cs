@@ -7,6 +7,7 @@ using Concursus.API.Sage.SOAP;
 using Concursus.API.Sage.SOAP.Client;
 using Concursus.API.Sage.SOAP.Interface;
 using Concursus.API.Services;
+using Concursus.API.Services.AIAssistant;
 using Concursus.API.Services.Finance;
 using Concursus.API.Services.Graph;
 using Concursus.API.Services.InvoiceAutomation;
@@ -82,7 +83,9 @@ try
 
     // Register shared HTTP context accessor once.
     builder.Services.AddHttpContextAccessor();
-
+    //builder.Services.AddCymBuildAIAssistant(builder.Configuration);
+    builder.Services.AddScoped<IKnowledgeTextExtractor, KnowledgeTextExtractor>();
+    builder.Services.AddScoped<IAIAssistantSharePointKnowledgeImporter, AIAssistantSharePointKnowledgeImporter>();
     // -------------------------------------------------------------------------
     // Sage API configuration and validation
     // -------------------------------------------------------------------------

@@ -696,41 +696,33 @@ public class Functions
         return resultSort;
     }
 
-    internal static async Task<DataObjectUpsertResponse> PrepareUpdateToEfDataObjectSharePoint(DataObject dataObject, EF.Core efCore,
+        internal static async Task<DataObjectUpsertResponse> PrepareUpdateToEfDataObjectSharePoint(DataObject dataObject, EF.Core efCore,
         string siteId, string siteUrl, string? requestEntityQueryGuid, bool? requestValidateOnly = false)
     {
         try
         {
-            //Update dataObject SharePoint details
-            dataObject.SharePointUrl = siteUrl;
-            dataObject.SharePointSiteIdentifier = siteId;
-            //get the last part of the string from siteUrl after the third slash excluding https:// '/'
-            dataObject.SharePointFolderPath = GetPartAfterThirdSlash(siteUrl);
-
-            var request = new DataObjectUpsertRequest()
+            if (dataObject == null)
             {
-                DataObject = Converters.ConvertEfDataObjectToCoreDataObject(dataObject),
-                EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(requestEntityQueryGuid).ToString(),
-                ValidateOnly = requestValidateOnly ?? false
-            };
-            var response = await efCore.DataObjectUpsert(
-                new EF.Types.DataObjectUpsertRequest
-                {
-                    DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject),
-                    EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid),
-                    ValidateOnly = request.ValidateOnly,
-                    //As this is just for loading exisiting records and not part of the save process, we can ignore the validation.
-                    SkipValidation = true
-                });
+                return new DataObjectUpsertResponse { DataObject = new DataObject() };
+            }
 
-            dataObject = response.DataObject;
+            dataObject.SharePointUrl = siteUrl ?? string.Empty;
+            dataObject.SharePointSiteIdentifier = siteId ?? string.Empty;
+            dataObject.SharePointFolderPath = GetPartAfterThirdSlash(siteUrl ?? string.Empty);
+
+            if (requestValidateOnly == true)
+            {
+                return new DataObjectUpsertResponse { DataObject = dataObject };
+            }
+
+            await efCore.PersistObjectSharePointPathOnlyAsync(dataObject);
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex);
         }
 
-        return new DataObjectUpsertResponse() { DataObject = dataObject };
+        return new DataObjectUpsertResponse { DataObject = dataObject };
     }
 
     #endregion Internal Methods

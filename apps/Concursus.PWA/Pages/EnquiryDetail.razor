@@ -1,4 +1,4 @@
-﻿@page "/EnquiryDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/EnquiryDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @using Concursus.API.Client.Models
 @using Concursus.Components.Shared.Controls.Documents
 @using Concursus.PWA.Classes
@@ -34,103 +34,116 @@
     </FormTitle>
     <FormBody>
 
-         <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-          <TabStripTab Title="Enquiry Details">
+        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+            <TabStripTab Title="Enquiry Details">
                 <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Enquiry Details
+                    <span @onclick="@(() => RequestTab(EnquiryDetailTab.EnquiryDetails))"><i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Enquiry Details</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid FormHelper="@_formHelper" GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
 
-                   <FlexPropertyGroups
+                    <FlexPropertyGroups
+                        @ref="@editPage.flexPropertyGroups"
+                        entityProperties="@editPage.entityProperties"
+                        entityPropertyGroups="@editPage.entityPropertyGroups"
+                        IsMainRecordContext="@IsMainRecordContext"
+                        FormHelper="@_formHelper"
+                        dataObject="@editPage.dataObject"
+                        RecordGuid="@RecordGuid"
+                        inputUpdated="@editPage.HandleInputUpdated"
+                        editPageRef="@editPage" />
 
-                            @ref="@editPage.flexPropertyGroups"
-                            entityProperties="@editPage.entityProperties"
-                            entityPropertyGroups="@editPage.entityPropertyGroups"
-                                        IsMainRecordContext="@IsMainRecordContext"
-                            dataObject="@editPage.dataObject"
-                            RecordGuid="@RecordGuid"
-                            inputUpdated="@editPage.HandleInputUpdated"
-                            editPageRef="@editPage"/>
-
-                    <DynamicGrid GridCode="ENQUIRYSERVICES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid FormHelper="@_formHelper" GridCode="ENQUIRYSERVICES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                 </Content>
             </TabStripTab>
+
             <TabStripTab Title="Project Details">
                 <HeaderTemplate>
-                    <i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Project Details
+                    <span @onclick="@(() => RequestTab(EnquiryDetailTab.ProjectDetails))"><i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Project Details</span>
                 </HeaderTemplate>
                 <Content>
-                    <div class="card shadow-sm">
-                        <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
-                            <i class="bi bi-info-circle" style=" margin-right: 9px !important; color: #ffffff">  </i>Information
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(EnquiryDetailTab.ProjectDetails)"
+                                      Label="Project Details"
+                                      OnLoadRequested="@(() => RequestTab(EnquiryDetailTab.ProjectDetails))">
+                        <div class="card shadow-sm">
+                            <div class="card-header" style="background-color: #17a2b8; color:#ffffff;">
+                                <i class="bi bi-info-circle" style=" margin-right: 9px !important; color: #ffffff">  </i>Information
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">Project Details are shared across all records linked to this project. Changes you make here will be visible on any Enquiry, Quote or Job for this project, even if they belong to a different Business Unit.</p>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <p class="card-text">Project Details are shared across all records linked to this project. Changes you make here will be visible on any Enquiry, Quote or Job for this project, even if they belong to a different Business Unit.</p>
-
-                        </div>
-                    </div>
-                    <DynamicGrid GridCode="ENQUIRYPROJECTDIRECTORY  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                    <DynamicGrid GridCode="ENQUIRYKEYDATES  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="ENQUIRYPROJECTDIRECTORY  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="ENQUIRYKEYDATES  " ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
+
             <TabStripTab Title="Schedule of Info">
                 <HeaderTemplate>
-                    <i class="bi bi-calendar-range me-2" style="font-size: 1.2rem;"></i> Schedule of Info
+                    <span @onclick="@(() => RequestTab(EnquiryDetailTab.ScheduleOfInfo))"><i class="bi bi-calendar-range me-2" style="font-size: 1.2rem;"></i> Schedule of Info</span>
                 </HeaderTemplate>
                 <Content>
-                    <DynamicGrid GridCode="SCHEDULEOFCLIENTINFO" FullGrid="true" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <CymLazyRecordTab IsLoaded="@IsTabRequested(EnquiryDetailTab.ScheduleOfInfo)"
+                                      Label="Schedule of Info"
+                                      OnLoadRequested="@(() => RequestTab(EnquiryDetailTab.ScheduleOfInfo))">
+                        <DynamicGrid FormHelper="@_formHelper" GridCode="SCHEDULEOFCLIENTINFO" FullGrid="true" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    </CymLazyRecordTab>
                 </Content>
             </TabStripTab>
+
             @if (ShowDocumentsTab)
             {
                 <TabStripTab Title="Documents">
                     <HeaderTemplate>
-                        <i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents
+                        <span @onclick="@(() => RequestTab(EnquiryDetailTab.Documents))"><i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents</span>
                     </HeaderTemplate>
 
                     <Content>
-                        <ErrorBoundary @ref="_docsBoundary">
-                            <ChildContent>
-                                @if (_formHelper is null
-                                    || editPage is null
-                                    || editPage.dataObject is null
-                                    || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
-                                    || editPage.dataObject.Guid == Guid.Empty.ToString())
-                                {
-                                    <div class="alert alert-info mb-0">
-                                        Documents are loading...
-                                    </div>
-                                }
-                                else
-                                {
-                                    <RecordDocumentBrowserV2 FormHelper="_formHelper"
-                                                             DataObject="editPage.dataObject"
-                                                             EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
-                                                             EntityTypeId="83"
-                                                             EntityProperties="editPage.entityProperties"
-                                                             EmailRecordNumberPropertyName="Number"
-                                                             EmailRecordDescriptionPropertyName="DescriptionOfWorks"
-                                                             EmailRecordLocationPropertyName="FormattedAddressComma" />
-                                }
-                            </ChildContent>
+                        <CymLazyRecordTab IsLoaded="@IsTabRequested(EnquiryDetailTab.Documents)"
+                                          Label="Documents"
+                                          OnLoadRequested="@(() => RequestTab(EnquiryDetailTab.Documents))">
+                            <ErrorBoundary @ref="_docsBoundary">
+                                <ChildContent>
+                                    @if (_formHelper is null
+                                         || editPage is null
+                                         || editPage.dataObject is null
+                                         || string.IsNullOrWhiteSpace(editPage.dataObject.Guid)
+                                         || editPage.dataObject.Guid == Guid.Empty.ToString())
+                                    {
+                                        <div class="alert alert-info mb-0">
+                                            Documents are loading...
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <RecordDocumentBrowserV2 FormHelper="_formHelper"
+                                                                 DataObject="editPage.dataObject"
+                                                                 EntityQueryGuid="a29deace-3166-451c-a1ec-0ddf84d0dfa0"
+                                                                 EntityTypeId="83"
+                                                                 EntityProperties="editPage.entityProperties"
+                                                                 EmailRecordNumberPropertyName="Number"
+                                                                 EmailRecordDescriptionPropertyName="DescriptionOfWorks"
+                                                                 EmailRecordLocationPropertyName="FormattedAddressComma" />
+                                    }
+                                </ChildContent>
 
-                            <ErrorContent Context="ex">
-                                <div class="alert alert-danger">
-                                    <strong>Documents tab crashed.</strong><br />
-                                    @ex.Message
+                                <ErrorContent Context="ex">
+                                    <div class="alert alert-danger">
+                                        <strong>Documents tab crashed.</strong><br />
+                                        @ex.Message
 
-                                    <div class="mt-2">
-                                        <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                        <div class="mt-2">
+                                            <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                        </div>
                                     </div>
-                                </div>
-                            </ErrorContent>
-                        </ErrorBoundary>
+                                </ErrorContent>
+                            </ErrorBoundary>
+                        </CymLazyRecordTab>
                     </Content>
                 </TabStripTab>
             }
-         </TelerikTabStrip>
-
+        </TelerikTabStrip>
 
     </FormBody>
 </EditPage>
@@ -149,18 +162,41 @@
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
+    private enum EnquiryDetailTab
+    {
+        EnquiryDetails,
+        ProjectDetails,
+        ScheduleOfInfo,
+        Documents
+    }
+
+    private readonly HashSet<EnquiryDetailTab> _requestedTabs = new()
+    {
+        EnquiryDetailTab.EnquiryDetails
+    };
+
     private API.Client.FormHelper? _formHelper;
     private ErrorBoundary? _docsBoundary;
 
     private bool ShowDocumentsTab =>
         Config.Value.Environment.ShowDocumentsTab;
 
+    private void RequestTab(EnquiryDetailTab tab)
+    {
+        if (_requestedTabs.Add(tab))
+        {
+            Console.WriteLine($"[CymBuildPerf] Layer=UI Method=EnquiryDetail Step=TabRequested Tab={tab}");
+            StateHasChanged();
+        }
+    }
+
+    private bool IsTabRequested(EnquiryDetailTab tab) => _requestedTabs.Contains(tab);
+
     private void RecoverDocumentsTab()
     {
         _docsBoundary?.Recover();
         StateHasChanged();
     }
-
     private void EnsureFormHelper()
     {
         if (_formHelper != null) return;
@@ -168,10 +204,9 @@
         _formHelper = new API.Client.FormHelper(
             coreClient,
             sageIntegrationService,
-            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(),
+            "3b4f2df9-b6cf-4a49-9eed-2206473867a1",
             userService);
     }
-
     protected override async Task OnParametersSetAsync()
     {
         try
@@ -185,7 +220,6 @@
                 await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
             }
 
-            // Ensure FormHelper exists early so Documents tab can work immediately
             EnsureFormHelper();
 
             await base.OnParametersSetAsync();

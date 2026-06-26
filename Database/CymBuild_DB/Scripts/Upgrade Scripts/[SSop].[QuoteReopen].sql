@@ -35,6 +35,7 @@ BEGIN
     DECLARE
         @UserGuid UNIQUEIDENTIFIER,
         @ReopenedStatusGuid UNIQUEIDENTIFIER,
+        @QuotingStatusGuid UNIQUEIDENTIFIER,
         @PreviousStatusGuid UNIQUEIDENTIFIER,
         @CompleteStatusGuid UNIQUEIDENTIFIER,
         @DeclinedStatusGuid UNIQUEIDENTIFIER,
@@ -51,6 +52,13 @@ BEGIN
     WHERE ws.RowStatus NOT IN (0,254)
       AND ws.ShowInQuotes = 1
       AND ws.Name = N'Reopened'
+    ORDER BY ws.ID;
+
+    SELECT TOP (1) @QuotingStatusGuid = ws.Guid
+    FROM SCore.WorkflowStatus AS ws
+    WHERE ws.RowStatus NOT IN (0,254)
+      AND ws.ShowInQuotes = 1
+      AND ws.Name = N'Quoting'
     ORDER BY ws.ID;
 
     SELECT TOP (1) @CompleteStatusGuid = ws.Guid
@@ -80,6 +88,9 @@ BEGIN
     IF (@ReopenedStatusGuid IS NULL)
         THROW 60000, N'Could not resolve Reopened quote status.', 1;
 
+    IF (@QuotingStatusGuid IS NULL)
+        THROW 60000, N'Could not resolve Quoting quote status.', 1;
+
     IF (@CompleteStatusGuid IS NULL OR @DeclinedStatusGuid IS NULL OR @RejectedStatusGuid IS NULL)
         THROW 60000, N'Could not resolve one or more quote statuses required for reopening.', 1;
 
@@ -100,7 +111,8 @@ BEGIN
 
     UPDATE q
     SET q.DeadDate = NULL,
-        q.DateRejected = NULL
+        q.DateRejected = NULL,
+        q.DateDeclinedToQuote = NULL
     FROM SSop.Quotes AS q
     WHERE q.Guid = @Guid
       AND q.RowStatus NOT IN (0,254)
@@ -108,13 +120,26 @@ BEGIN
       (
           q.DeadDate IS NOT NULL
           OR q.DateRejected IS NOT NULL
+          OR q.DateDeclinedToQuote IS NOT NULL
       );
 
     EXEC SCore.DataObjectTransitionUpsert
         @Guid = @DataObjectTransitionGuid,
         @OldStatusGuid = @PreviousStatusGuid,
         @StatusGuid = @ReopenedStatusGuid,
-        @Comment = N'System Imported',
+        @Comment = N'Quote reopened.',
+        @CreatedByUserGuid = @UserGuid,
+        @SurveyorUserGuid = '00000000-0000-0000-0000-000000000000',
+        @DataObjectGuid = @Guid,
+        @IsImported = 1;
+
+    SET @DataObjectTransitionGuid = NEWID();
+
+    EXEC SCore.DataObjectTransitionUpsert
+        @Guid = @DataObjectTransitionGuid,
+        @OldStatusGuid = @ReopenedStatusGuid,
+        @StatusGuid = @QuotingStatusGuid,
+        @Comment = N'Reopened quote returned to quoting.',
         @CreatedByUserGuid = @UserGuid,
         @SurveyorUserGuid = '00000000-0000-0000-0000-000000000000',
         @DataObjectGuid = @Guid,

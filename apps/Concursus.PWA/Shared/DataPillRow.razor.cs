@@ -1,5 +1,7 @@
-﻿using Concursus.API.Core;
+using Concursus.API.Core;
+using Concursus.API.Client.Models;
 using Microsoft.AspNetCore.Components;
+using Google.Protobuf.WellKnownTypes;
 using System.Globalization;
 using System.Text.Json;
 
@@ -19,7 +21,16 @@ public partial class DataPillRow : ComponentBase
     [Parameter] public string DrawerGuid { get; set; } = Guid.Empty.ToString();
 
     // Grid code is configurable but defaults to what you specified
-    [Parameter] public string OverdueGridCode { get; set; } = "FINANCE";
+    [Parameter] public string OverdueGridCode { get; set; } = "JOBOVERDUEINVOICES";
+
+    // Context for the overdue-invoices modal grid. This keeps the flow as:
+    // UI -> FormHelper -> gRPC -> EF -> SQL, and scopes the grid to the current Job.
+    [Parameter] public Concursus.API.Client.FormHelper? FormHelper { get; set; }
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+    [Parameter] public string ParentGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public int ParentRowStatus { get; set; } = -1;
+    [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    [Parameter] public EventCallback OverdueInvoicesActionCompleted { get; set; }
 
     // Optional: parent can also react, but we’ll open modal by default
     [Parameter] public EventCallback ViewOverdueInvoicesRequested { get; set; }
@@ -102,6 +113,14 @@ public partial class DataPillRow : ComponentBase
 
         ShowOverdueModal = true;
         StateHasChanged();
+    }
+
+    private async Task OnOverdueGridActionCompleted()
+    {
+        if (OverdueInvoicesActionCompleted.HasDelegate)
+        {
+            await OverdueInvoicesActionCompleted.InvokeAsync();
+        }
     }
 
     private void CloseOverdueModal()

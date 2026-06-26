@@ -1,0 +1,17 @@
+@using Concursus.API.Client.Models
+
+<ActivityBulkUpdateGrid OnActionCompleted="@OnActionCompleted"
+                        ViewDefinition="@ViewDefinition"
+                        GridCode="@GridCode"
+                        ParentDataObjectReference="@ParentDataObjectReference"
+                        ParentGuid="@ParentGuid"
+                        FullGrid="@FullGrid" />
+
+@code {
+    [Parameter] public EventCallback OnActionCompleted { get; set; }
+    [Parameter] public GridViewDefinition? ViewDefinition { get; set; }
+    [Parameter] public string GridCode { get; set; } = string.Empty;
+    [Parameter] public DataObjectReference ParentDataObjectReference { get; set; } = new("", "");
+    [Parameter] public string ParentGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public bool FullGrid { get; set; }
+}

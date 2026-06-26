@@ -1,6 +1,7 @@
 @page "/dev-v2"
 @using Concursus.Components.Shared.Services
 @using Concursus.PWA.Classes
+@using Concursus.PWA.Pages
 @using Concursus.PWA.Pages.Admin
 @using Concursus.PWA.Pages.Admin.Monitoring
 @using Concursus.PWA.Services
@@ -296,6 +297,11 @@
                 </div>
             }
 
+            @if (SelectedDevV2AdvancedTab == "aiknowledgeimport")
+            {
+                <AIAssistantKnowledgeImportAdmin />
+            }
+
             @if (SelectedDevV2AdvancedTab == "onboarding")
             {
                 <OnboardingMigration />
@@ -339,6 +345,7 @@
         new("sync", "Sync Queue"),
         new("steplogs", "Step Logs"),
         new("postcode", "PostCode Lookup"),
+        new("aiknowledgeimport", "AI Knowledge Import"),
         new("onboarding", "Onboarding Migration"),
         new("metadata", "Metadata Migration")
     };

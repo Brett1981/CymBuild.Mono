@@ -1,7 +1,5 @@
 ﻿PRINT (N'Create table [SCore].[Markets]')
 GO
-PRINT (N'Create table [SCore].[Markets]')
-GO
 CREATE TABLE [SCore].[Markets] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Markets_RowStatus] DEFAULT (0),

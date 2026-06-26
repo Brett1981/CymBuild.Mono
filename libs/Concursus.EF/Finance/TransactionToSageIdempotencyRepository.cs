@@ -147,6 +147,16 @@ WHERE  s.TransactionGuid = @TransactionGuid
     int updatedByUserId,
     CancellationToken cancellationToken = default)
         {
+            if (transactionGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Transaction guid cannot be empty.", nameof(transactionGuid));
+            }
+
+            if (transitionGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Transition guid cannot be empty.", nameof(transitionGuid));
+            }
+
             await using var connection = _entityFramework.CreateConnection();
             await _entityFramework.OpenConnectionAsync(connection);
 
@@ -157,30 +167,91 @@ WHERE  s.TransactionGuid = @TransactionGuid
 
             markSuccessCommand.CommandType = CommandType.StoredProcedure;
 
-            markSuccessCommand.Parameters.Add(new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier) { Value = transactionGuid });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@TransitionGuid", SqlDbType.UniqueIdentifier) { Value = transitionGuid });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderId", SqlDbType.NVarChar, 100) { Value = (object?)sageOrderId ?? DBNull.Value });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderNumber", SqlDbType.NVarChar, 100) { Value = (object?)sageOrderNumber ?? DBNull.Value });
+            markSuccessCommand.Parameters.Add(new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = transactionGuid
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@TransitionGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = transitionGuid
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderId", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(sageOrderId)
+                    ? DBNull.Value
+                    : sageOrderId.Trim()
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@SageOrderNumber", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(sageOrderNumber)
+                    ? DBNull.Value
+                    : sageOrderNumber.Trim()
+            });
+
             markSuccessCommand.Parameters.Add(new SqlParameter("@SageTransactionReference", SqlDbType.NVarChar, 100)
             {
                 Value = string.IsNullOrWhiteSpace(sageTransactionReference)
                     ? DBNull.Value
                     : sageTransactionReference.Trim()
-                        });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseStatus", SqlDbType.NVarChar, 50) { Value = (object?)responseStatus ?? DBNull.Value });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseDetail", SqlDbType.NVarChar) { Value = (object?)responseDetail ?? DBNull.Value });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@RequestPayloadJson", SqlDbType.NVarChar) { Value = (object?)requestPayloadJson ?? DBNull.Value });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponsePayloadJson", SqlDbType.NVarChar) { Value = (object?)responsePayloadJson ?? DBNull.Value });
-            markSuccessCommand.Parameters.Add(new SqlParameter("@UpdatedByUserID", SqlDbType.Int) { Value = updatedByUserId });
+            });
 
-            _ = await markSuccessCommand.ExecuteNonQueryAsync(cancellationToken);
+            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseStatus", SqlDbType.NVarChar, 50)
+            {
+                Value = string.IsNullOrWhiteSpace(responseStatus)
+                    ? DBNull.Value
+                    : responseStatus.Trim()
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponseDetail", SqlDbType.NVarChar)
+            {
+                Value = string.IsNullOrWhiteSpace(responseDetail)
+                    ? DBNull.Value
+                    : responseDetail.Trim()
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@RequestPayloadJson", SqlDbType.NVarChar)
+            {
+                Value = string.IsNullOrWhiteSpace(requestPayloadJson)
+                    ? DBNull.Value
+                    : requestPayloadJson
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@ResponsePayloadJson", SqlDbType.NVarChar)
+            {
+                Value = string.IsNullOrWhiteSpace(responsePayloadJson)
+                    ? DBNull.Value
+                    : responsePayloadJson
+            });
+
+            markSuccessCommand.Parameters.Add(new SqlParameter("@UpdatedByUserID", SqlDbType.Int)
+            {
+                Value = updatedByUserId
+            });
+
+            _ = await markSuccessCommand
+                .ExecuteNonQueryAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            var sageDocumentNo = !string.IsNullOrWhiteSpace(sageOrderNumber)
+                ? sageOrderNumber.Trim()
+                : !string.IsNullOrWhiteSpace(sageTransactionReference)
+                    ? sageTransactionReference.Trim()
+                    : string.Empty;
+
+            var normalisedSageDataSet = string.IsNullOrWhiteSpace(sageDataSet)
+                ? string.Empty
+                : sageDataSet.Trim();
 
             var enqueueTarget = await ResolveInboundEnqueueTargetAsync(
-                connection,
-                transactionGuid,
-                sageOrderNumber,
-                sageDataSet,
-                cancellationToken);
+                    connection,
+                    transactionGuid,
+                    sageDocumentNo,
+                    normalisedSageDataSet,
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             if (enqueueTarget is null)
             {
@@ -195,18 +266,65 @@ WHERE  s.TransactionGuid = @TransactionGuid
 
             enqueueCommand.CommandType = CommandType.StoredProcedure;
 
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildEntityTypeID", SqlDbType.Int) { Value = enqueueTarget.CymBuildEntityTypeId });
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentGuid", SqlDbType.UniqueIdentifier) { Value = enqueueTarget.CymBuildDocumentGuid });
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentID", SqlDbType.BigInt) { Value = enqueueTarget.CymBuildDocumentId });
-            enqueueCommand.Parameters.Add(new SqlParameter("@InvoiceRequestID", SqlDbType.Int) { Value = enqueueTarget.InvoiceRequestId });
-            enqueueCommand.Parameters.Add(new SqlParameter("@TransactionID", SqlDbType.BigInt) { Value = enqueueTarget.TransactionId });
-            enqueueCommand.Parameters.Add(new SqlParameter("@JobID", SqlDbType.Int) { Value = enqueueTarget.JobId });
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30) { Value = enqueueTarget.SageDataset });
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageAccountReference", SqlDbType.NVarChar, 100) { Value = enqueueTarget.SageAccountReference });
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageDocumentNo", SqlDbType.NVarChar, 100) { Value = enqueueTarget.SageDocumentNo });
-            enqueueCommand.Parameters.Add(new SqlParameter("@ForceRequeue", SqlDbType.Bit) { Value = false });
+            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildEntityTypeID", SqlDbType.Int)
+            {
+                Value = enqueueTarget.CymBuildEntityTypeId
+            });
 
-            _ = await enqueueCommand.ExecuteNonQueryAsync(cancellationToken);
+            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = enqueueTarget.CymBuildDocumentGuid
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentID", SqlDbType.BigInt)
+            {
+                Value = enqueueTarget.CymBuildDocumentId
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@InvoiceRequestID", SqlDbType.Int)
+            {
+                Value = enqueueTarget.InvoiceRequestId
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@TransactionID", SqlDbType.BigInt)
+            {
+                Value = enqueueTarget.TransactionId
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@JobID", SqlDbType.Int)
+            {
+                Value = enqueueTarget.JobId
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30)
+            {
+                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDataset)
+                    ? string.Empty
+                    : enqueueTarget.SageDataset.Trim()
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@SageAccountReference", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageAccountReference)
+                    ? string.Empty
+                    : enqueueTarget.SageAccountReference.Trim()
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@SageDocumentNo", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDocumentNo)
+                    ? sageDocumentNo
+                    : enqueueTarget.SageDocumentNo.Trim()
+            });
+
+            enqueueCommand.Parameters.Add(new SqlParameter("@ForceRequeue", SqlDbType.Bit)
+            {
+                Value = false
+            });
+
+            _ = await enqueueCommand
+                .ExecuteNonQueryAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private sealed class SageInboundEnqueueTarget
@@ -223,55 +341,198 @@ WHERE  s.TransactionGuid = @TransactionGuid
         }
 
         private static async Task<SageInboundEnqueueTarget?> ResolveInboundEnqueueTargetAsync(
-            SqlConnection connection,
-            Guid transactionGuid,
-            string sageOrderNumber,
-            string sageDataset,
-            CancellationToken cancellationToken)
+    SqlConnection connection,
+    Guid transactionGuid,
+    string sageOrderNumber,
+    string sageDataset,
+    CancellationToken cancellationToken)
         {
             const string sql = @"
+DECLARE @TransactionEntityTypeID INT = NULL;
+DECLARE @InvoiceRequestEntityTypeID INT = NULL;
+
 SELECT TOP (1)
-    CymBuildEntityTypeID = et.ID,
-    CymBuildDocumentGuid = ir.Guid,
-    CymBuildDocumentID   = CAST(ir.ID AS BIGINT),
-    InvoiceRequestID     = ir.ID,
-    TransactionID        = t.ID,
-    JobID                = ir.JobId,
-    SageDataset          = @SageDataset,
-    SageAccountReference = ISNULL(a.Code, N''),
-    SageDocumentNo       = @SageOrderNumber
-FROM SFin.Transactions AS t
-LEFT JOIN SFin.TransactionDetails AS td
-    ON td.TransactionID = t.ID
-   AND td.RowStatus NOT IN (0,254)
-LEFT JOIN SFin.InvoiceRequestItems AS iri
-    ON iri.ID = td.InvoiceRequestItemId
-   AND iri.RowStatus NOT IN (0,254)
-LEFT JOIN SFin.InvoiceRequests AS ir
-    ON ir.ID = iri.InvoiceRequestId
-   AND ir.RowStatus NOT IN (0,254)
-LEFT JOIN SCrm.Accounts AS a
-    ON a.ID = t.AccountID
-   AND a.RowStatus NOT IN (0,254)
-LEFT JOIN SCore.EntityTypes AS et
-    ON et.Name = N'Invoice Requests'
-   AND et.RowStatus NOT IN (0,254)
-WHERE t.Guid = @TransactionGuid
-  AND t.RowStatus NOT IN (0,254)
-  AND ir.ID > 0;";
+    @TransactionEntityTypeID = et.ID
+FROM SCore.EntityTypes AS et
+WHERE et.RowStatus NOT IN (0, 254)
+  AND et.Name IN (N'Transactions', N'Finance Transactions', N'Transaction')
+ORDER BY
+    CASE et.Name
+        WHEN N'Transactions' THEN 1
+        WHEN N'Finance Transactions' THEN 2
+        WHEN N'Transaction' THEN 3
+        ELSE 4
+    END,
+    et.ID;
+
+SELECT TOP (1)
+    @InvoiceRequestEntityTypeID = et.ID
+FROM SCore.EntityTypes AS et
+WHERE et.RowStatus NOT IN (0, 254)
+  AND et.Name IN (N'Invoice Requests', N'InvoiceRequests', N'Invoice Request')
+ORDER BY
+    CASE et.Name
+        WHEN N'Invoice Requests' THEN 1
+        WHEN N'InvoiceRequests' THEN 2
+        WHEN N'Invoice Request' THEN 3
+        ELSE 4
+    END,
+    et.ID;
+
+;WITH TransactionBase AS
+(
+    SELECT TOP (1)
+        t.ID,
+        t.Guid,
+        t.JobID,
+        t.AccountID,
+        t.Number,
+        t.ReservedInvoiceNumber,
+        t.SageInvoiceNumber,
+        t.SageSalesOrderNumber,
+        t.SageTransactionReference
+    FROM SFin.Transactions AS t
+    WHERE t.Guid = @TransactionGuid
+      AND t.RowStatus NOT IN (0, 254)
+    ORDER BY t.ID DESC
+),
+InvoiceRequestTarget AS
+(
+    SELECT TOP (1)
+        SortOrder             = 1,
+        CymBuildEntityTypeID  = @InvoiceRequestEntityTypeID,
+        CymBuildDocumentGuid  = ir.Guid,
+        CymBuildDocumentID    = CAST(ir.ID AS BIGINT),
+        InvoiceRequestID      = ir.ID,
+        TransactionID         = tb.ID,
+        JobID                 = COALESCE(NULLIF(ir.JobId, -1), NULLIF(tb.JobID, -1), -1),
+        SageDataset           = ISNULL(NULLIF(@SageDataset, N''), N''),
+        SageAccountReference  = ISNULL(a.Code, N''),
+        SageDocumentNo        =
+            COALESCE
+            (
+                NULLIF(@SageOrderNumber, N''),
+                NULLIF(tb.SageSalesOrderNumber, N''),
+                NULLIF(tb.SageInvoiceNumber, N''),
+                NULLIF(tb.ReservedInvoiceNumber, N''),
+                NULLIF(tb.Number, N''),
+                N''
+            )
+    FROM TransactionBase AS tb
+    JOIN SFin.TransactionDetails AS td
+        ON td.TransactionID = tb.ID
+       AND td.RowStatus NOT IN (0, 254)
+    JOIN SFin.InvoiceRequestItems AS iri
+        ON iri.ID = td.InvoiceRequestItemId
+       AND iri.RowStatus NOT IN (0, 254)
+    JOIN SFin.InvoiceRequests AS ir
+        ON ir.ID = iri.InvoiceRequestId
+       AND ir.RowStatus NOT IN (0, 254)
+    LEFT JOIN SCrm.Accounts AS a
+        ON a.ID = tb.AccountID
+       AND a.RowStatus NOT IN (0, 254)
+    WHERE @InvoiceRequestEntityTypeID IS NOT NULL
+),
+TransactionTarget AS
+(
+    SELECT TOP (1)
+        SortOrder             = 2,
+        CymBuildEntityTypeID  = @TransactionEntityTypeID,
+        CymBuildDocumentGuid  = tb.Guid,
+        CymBuildDocumentID    = CAST(tb.ID AS BIGINT),
+        InvoiceRequestID      = -1,
+        TransactionID         = tb.ID,
+        JobID                 = COALESCE(NULLIF(tb.JobID, -1), -1),
+        SageDataset           = ISNULL(NULLIF(@SageDataset, N''), N''),
+        SageAccountReference  = ISNULL(a.Code, N''),
+        SageDocumentNo        =
+            COALESCE
+            (
+                NULLIF(@SageOrderNumber, N''),
+                NULLIF(tb.SageSalesOrderNumber, N''),
+                NULLIF(tb.SageInvoiceNumber, N''),
+                NULLIF(tb.ReservedInvoiceNumber, N''),
+                NULLIF(tb.Number, N''),
+                N''
+            )
+    FROM TransactionBase AS tb
+    LEFT JOIN SCrm.Accounts AS a
+        ON a.ID = tb.AccountID
+       AND a.RowStatus NOT IN (0, 254)
+    WHERE @TransactionEntityTypeID IS NOT NULL
+)
+SELECT TOP (1)
+    r.CymBuildEntityTypeID,
+    r.CymBuildDocumentGuid,
+    r.CymBuildDocumentID,
+    r.InvoiceRequestID,
+    r.TransactionID,
+    r.JobID,
+    r.SageDataset,
+    r.SageAccountReference,
+    r.SageDocumentNo
+FROM
+(
+    SELECT
+        irt.SortOrder,
+        irt.CymBuildEntityTypeID,
+        irt.CymBuildDocumentGuid,
+        irt.CymBuildDocumentID,
+        irt.InvoiceRequestID,
+        irt.TransactionID,
+        irt.JobID,
+        irt.SageDataset,
+        irt.SageAccountReference,
+        irt.SageDocumentNo
+    FROM InvoiceRequestTarget AS irt
+
+    UNION ALL
+
+    SELECT
+        tt.SortOrder,
+        tt.CymBuildEntityTypeID,
+        tt.CymBuildDocumentGuid,
+        tt.CymBuildDocumentID,
+        tt.InvoiceRequestID,
+        tt.TransactionID,
+        tt.JobID,
+        tt.SageDataset,
+        tt.SageAccountReference,
+        tt.SageDocumentNo
+    FROM TransactionTarget AS tt
+) AS r
+WHERE r.CymBuildEntityTypeID IS NOT NULL
+  AND r.CymBuildDocumentGuid IS NOT NULL
+  AND r.TransactionID > 0
+ORDER BY r.SortOrder;";
 
             await using var command = new SqlCommand(sql, connection)
             {
                 CommandType = CommandType.Text
             };
 
-            command.Parameters.Add(new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier) { Value = transactionGuid });
-            command.Parameters.Add(new SqlParameter("@SageOrderNumber", SqlDbType.NVarChar, 100) { Value = (object?)sageOrderNumber ?? string.Empty });
-            command.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30) { Value = (object?)sageDataset ?? string.Empty });
+            command.Parameters.Add(new SqlParameter("@TransactionGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = transactionGuid
+            });
 
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            command.Parameters.Add(new SqlParameter("@SageOrderNumber", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(sageOrderNumber)
+                    ? string.Empty
+                    : sageOrderNumber.Trim()
+            });
 
-            if (!await reader.ReadAsync(cancellationToken))
+            command.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30)
+            {
+                Value = string.IsNullOrWhiteSpace(sageDataset)
+                    ? string.Empty
+                    : sageDataset.Trim()
+            });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 return null;
             }
@@ -283,7 +544,7 @@ WHERE t.Guid = @TransactionGuid
                 CymBuildDocumentId = reader.GetInt64(reader.GetOrdinal("CymBuildDocumentID")),
                 InvoiceRequestId = reader.GetInt32(reader.GetOrdinal("InvoiceRequestID")),
                 TransactionId = reader.GetInt64(reader.GetOrdinal("TransactionID")),
-                JobId = reader.IsDBNull(reader.GetOrdinal("JobID")) ? -1 : reader.GetInt32(reader.GetOrdinal("JobID")),
+                JobId = reader.GetInt32(reader.GetOrdinal("JobID")),
                 SageDataset = reader.GetString(reader.GetOrdinal("SageDataset")),
                 SageAccountReference = reader.GetString(reader.GetOrdinal("SageAccountReference")),
                 SageDocumentNo = reader.GetString(reader.GetOrdinal("SageDocumentNo"))

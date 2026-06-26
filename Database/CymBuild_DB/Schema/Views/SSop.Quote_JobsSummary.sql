@@ -4,6 +4,7 @@ GO
 PRINT (N'Create view [SSop].[Quote_JobsSummary]')
 GO
 
+
 CREATE VIEW [SSop].[Quote_JobsSummary]
 AS
 SELECT
@@ -26,7 +27,11 @@ SELECT
     SUM(CASE WHEN rs.Number = 999 THEN qit.LineNet ELSE 0 END) AS ConstructionStageFee,
 
     ou.Guid AS OrganisationalUnitGuid,
-    quoteJobType.Guid AS JobTypeGuid,
+	COALESCE(
+    quoteJobType.Guid,
+    productJobType.Guid
+	) AS JobTypeGuid,
+    --quoteJobType.Guid AS JobTypeGuid,
     cr.Guid AS ContractGuid,
     '00000000-0000-0000-0000-000000000000' AS IdentityGuid,
     -1 AS QuoteItemId,
@@ -61,7 +66,7 @@ JOIN SJob.JobTypes AS productJobType
     ON productJobType.ID = p2.CreatedJobType
 JOIN SSop.Quotes AS q
     ON q.ID = qi.QuoteId
-JOIN SJob.JobTypes AS quoteJobType
+LEFT JOIN SJob.JobTypes AS quoteJobType
     ON quoteJobType.ID = q.JobTypeId
    AND quoteJobType.RowStatus NOT IN (0,254)
 JOIN SCore.OrganisationalUnits AS ou
@@ -103,7 +108,8 @@ GROUP BY
     crs.Guid,
     ars.Guid,
     q.ValueOfWork,
-    acr.Guid
+    acr.Guid,
+	productJobType.Guid
 
 UNION ALL
 
@@ -127,7 +133,10 @@ SELECT
     CASE WHEN rs.Number = 999 THEN qit.LineNet ELSE 0 END AS ConstructionStageFee,
 
     ou.Guid AS OrganisationalUnitGuid,
-    quoteJobType.Guid AS JobTypeGuid,
+    	COALESCE(
+    quoteJobType.Guid,
+    '00000000-0000-0000-0000-000000000000'
+	) AS JobTypeGuid,
     cr.Guid AS ContractGuid,
     '00000000-0000-0000-0000-000000000000' AS IdentityGuid,
     qi.ID AS QuoteItemId,
@@ -158,7 +167,7 @@ JOIN SJob.RibaStages AS rs
     ON rs.ID = qi.ProvideAtStageID
 JOIN SSop.Quotes AS q
     ON q.ID = qi.QuoteId
-JOIN SJob.JobTypes AS quoteJobType
+LEFT JOIN SJob.JobTypes AS quoteJobType
     ON quoteJobType.ID = q.JobTypeId
    AND quoteJobType.RowStatus NOT IN (0,254)
 JOIN SProd.Products AS prod

@@ -1,4 +1,4 @@
-﻿using Concursus.Common.Shared.Extensions;
+using Concursus.Common.Shared.Extensions;
 using Concursus.Common.Shared.Functions;
 using Concursus.EF.Converters;
 using Concursus.EF.Types;
@@ -32,6 +32,22 @@ namespace Concursus.EF
 
         private const string ZeroGuidLiteral = "'00000000-0000-0000-0000-000000000000'";
         private static readonly ObjectCache _entityTypeCache = MemoryCache.Default;
+
+        // 08B: EntityType metadata is expensive on cold load. Coalesce identical
+        // concurrent requests so dashboard warmup and record open share the same SQL.
+        private static readonly ConcurrentDictionary<string, Lazy<Task<EntityType>>> _entityTypeInFlight = new();
+        private static readonly ConcurrentDictionary<int, Lazy<Task>> _entityTypeWarmupInFlight = new();
+
+        private static readonly (string Name, Guid EntityTypeGuid, bool ForInformationView, bool IncludeEntityQueries)[] CommonEntityTypeWarmupSpecs =
+        {
+            ("Jobs", Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c"), false, true),
+            ("Quotes", Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56"), false, true),
+            ("Enquiries", Guid.Parse("3b4f2df9-b6cf-4a49-9eed-2206473867a1"), false, true),
+            ("Job CDM Merge Info", Guid.Parse("c0ef3e19-f59e-4a8d-ae7a-756924930005"), false, true),
+            ("Jobs MergeDocumentDefinitions", Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c"), false, false),
+            ("Quotes MergeDocumentDefinitions", Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56"), false, false),
+            ("Enquiries MergeDocumentDefinitions", Guid.Parse("3b4f2df9-b6cf-4a49-9eed-2206473867a1"), false, false)
+        };
 
         // ------- Merge Document Definition Cache (per EntityTypeGuid + User) -------
         private static readonly ObjectCache _mergeDocCache = MemoryCache.Default;
@@ -1448,15 +1464,160 @@ WHERE i.RowStatus NOT IN (0,254)
             if (_entityTypeCache.Get(key) is EntityType cached)
                 return cached; // treat as read-only
 
-            var fresh = await GetEntityType(guid, connection, userId,
-                                            forRead, forWrite, forProcessingOnly,
-                                            forInformationView, includeEntityQueries);
+            var candidate = new Lazy<Task<EntityType>>(
+                () => LoadEntityTypeCachedCoreAsync(
+                    key,
+                    guid,
+                    connection,
+                    userId,
+                    forRead,
+                    forWrite,
+                    forProcessingOnly,
+                    forInformationView,
+                    includeEntityQueries),
+                System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
 
-            // Cache for 5 minutes (tune as needed). If you change metadata, clear this cache.
+            var lazy = _entityTypeInFlight.GetOrAdd(key, candidate);
+            var coalesced = !ReferenceEquals(lazy, candidate);
+
+            if (coalesced)
+            {
+                Console.WriteLine($"[CymBuildPerf] Layer=EF Method=GetEntityTypeCached Step=InFlightCoalesced EntityTypeGuid={guid} UserId={userId} ForInformationView={forInformationView} IncludeEntityQueries={includeEntityQueries}");
+            }
+
+            try
+            {
+                var result = await lazy.Value;
+
+                if (coalesced)
+                {
+                    Console.WriteLine($"[CymBuildPerf] Layer=EF Method=GetEntityTypeCached Step=InFlightReturned EntityTypeGuid={guid} UserId={userId} ForInformationView={forInformationView} IncludeEntityQueries={includeEntityQueries}");
+                }
+
+                return result;
+            }
+            finally
+            {
+                if (lazy.IsValueCreated && lazy.Value.IsCompleted)
+                {
+                    _entityTypeInFlight.TryRemove(key, out _);
+                }
+            }
+        }
+
+        private static async Task<EntityType> LoadEntityTypeCachedCoreAsync(
+            string key,
+            Guid guid,
+            SqlConnection connection,
+            int userId,
+            bool forRead,
+            bool forWrite,
+            bool forProcessingOnly,
+            bool forInformationView,
+            bool includeEntityQueries)
+        {
+            var sw = Stopwatch.StartNew();
+
+            var fresh = await GetEntityType(
+                guid,
+                connection,
+                userId,
+                forRead,
+                forWrite,
+                forProcessingOnly,
+                forInformationView,
+                includeEntityQueries);
+
+            sw.Stop();
+
+            // Cache for 5 minutes. If metadata changes, clear/recycle as per existing behaviour.
             _entityTypeCache.Set(key, fresh, DateTimeOffset.UtcNow.AddMinutes(5));
+
+            Console.WriteLine($"[CymBuildPerf] Layer=EF Method=GetEntityTypeCached Step=Loaded EntityTypeGuid={guid} UserId={userId} ForInformationView={forInformationView} IncludeEntityQueries={includeEntityQueries} DurationMs={sw.ElapsedMilliseconds}");
+
             return fresh;
         }
 
+        public async Task WarmCommonEntityTypeCacheAsync()
+        {
+            int userId;
+
+            using (var connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+                await QueryBuilder.SetReadCommittedAsync(connection);
+                userId = _userId;
+            }
+
+            if (userId <= 0)
+            {
+                Console.WriteLine("[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=Skipped Reason=NoUserId");
+                return;
+            }
+
+            var candidate = new Lazy<Task>(
+                () => WarmCommonEntityTypeCacheCoreAsync(userId),
+                System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+
+            var lazy = _entityTypeWarmupInFlight.GetOrAdd(userId, candidate);
+            var coalesced = !ReferenceEquals(lazy, candidate);
+
+            if (coalesced)
+            {
+                Console.WriteLine($"[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=InFlightCoalesced UserId={userId}");
+            }
+
+            try
+            {
+                await lazy.Value;
+            }
+            finally
+            {
+                if (lazy.IsValueCreated && lazy.Value.IsCompleted)
+                {
+                    _entityTypeWarmupInFlight.TryRemove(userId, out _);
+                }
+            }
+        }
+
+        private async Task WarmCommonEntityTypeCacheCoreAsync(int userId)
+        {
+            var swTotal = Stopwatch.StartNew();
+            Console.WriteLine($"[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=Start UserId={userId} EntityCount={CommonEntityTypeWarmupSpecs.Length}");
+
+            foreach (var spec in CommonEntityTypeWarmupSpecs)
+            {
+                var sw = Stopwatch.StartNew();
+
+                try
+                {
+                    using var connection = CreateConnection();
+                    await OpenConnectionAsync(connection);
+                    await QueryBuilder.SetReadCommittedAsync(connection);
+
+                    await GetEntityTypeCached(
+                        spec.EntityTypeGuid,
+                        connection,
+                        userId,
+                        forRead: true,
+                        forWrite: false,
+                        forProcessingOnly: true,
+                        forInformationView: spec.ForInformationView,
+                        includeEntityQueries: spec.IncludeEntityQueries);
+
+                    sw.Stop();
+                    Console.WriteLine($"[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=EntityWarmComplete Name={spec.Name} EntityTypeGuid={spec.EntityTypeGuid} UserId={userId} ForInformationView={spec.ForInformationView} IncludeEntityQueries={spec.IncludeEntityQueries} DurationMs={sw.ElapsedMilliseconds}");
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    Console.WriteLine($"[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=EntityWarmFailed Name={spec.Name} EntityTypeGuid={spec.EntityTypeGuid} UserId={userId} DurationMs={sw.ElapsedMilliseconds} Error={ex.Message}");
+                }
+            }
+
+            swTotal.Stop();
+            Console.WriteLine($"[CymBuildPerf] Layer=EF Method=EntityTypeWarmup Step=Complete UserId={userId} DurationMs={swTotal.ElapsedMilliseconds}");
+        }
         //CBLD-408: OE - Added WidgetLayout field
         public static async Task<UserPreferences> GetUserPreferences(int userId, SqlConnection connection, SqlTransaction transaction)
         {
@@ -2273,6 +2434,194 @@ WHERE i.RowStatus NOT IN (0,254)
             return results;
         }
 
+
+        public async Task<JobFinancialOverviewRow> GetJobFinancialOverviewAsync(
+            int userId,
+            Guid jobGuid,
+            CancellationToken ct = default)
+        {
+            var result = new JobFinancialOverviewRow
+            {
+                JobGuid = jobGuid
+            };
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(ct);
+
+            await using var cmd = new SqlCommand("SJob.JobFinancialOverviewGet", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 30
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = userId });
+            cmd.Parameters.Add(new SqlParameter("@JobGuid", SqlDbType.UniqueIdentifier) { Value = jobGuid });
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                return result;
+            }
+
+            return ReadJobFinancialOverview(reader, jobGuid);
+        }
+
+        public async Task<JobSummaryRow?> GetJobSummaryAsync(
+            int userId,
+            Guid jobGuid,
+            CancellationToken ct = default)
+        {
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(ct);
+
+            await using var cmd = new SqlCommand("SJob.JobSummaryGet", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 30
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = userId });
+            cmd.Parameters.Add(new SqlParameter("@JobGuid", SqlDbType.UniqueIdentifier) { Value = jobGuid });
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                return null;
+            }
+
+            var financialOverview = new JobFinancialOverviewRow
+            {
+                JobGuid = GetGuid(reader, "JobGuid", jobGuid),
+                AgreedFeeTotal = GetDecimal(reader, "AgreedFeeTotal"),
+                AgreedFeeIncludingCap = GetDecimal(reader, "AgreedFeeIncludingCap"),
+                ScheduledTotal = GetDecimal(reader, "ScheduledTotal"),
+                InvoiceRequestPendingTotal = GetDecimal(reader, "InvoiceRequestPendingTotal"),
+                InvoicedNet = GetDecimal(reader, "InvoicedNet"),
+                InvoicedGross = GetDecimal(reader, "InvoicedGross"),
+                PaidNet = GetDecimal(reader, "PaidNet"),
+                PaidGross = GetDecimal(reader, "PaidGross"),
+                RemainingNet = GetDecimal(reader, "RemainingNet"),
+                ActiveInvoiceScheduleCount = GetInt32(reader, "ActiveInvoiceScheduleCount"),
+                SystemGeneratedManualScheduleCount = GetInt32(reader, "SystemGeneratedManualScheduleCount"),
+                PendingInvoiceRequestCount = GetInt32(reader, "PendingInvoiceRequestCount"),
+                ReconciliationRequiredInvoiceRequestCount = GetInt32(reader, "ReconciliationRequiredInvoiceRequestCount"),
+                BlockedInvoiceRequestCount = GetInt32(reader, "BlockedInvoiceRequestCount"),
+                CanCreateReplacementInvoiceSchedule = GetBool(reader, "CanCreateReplacementInvoiceSchedule")
+            };
+
+            return new JobSummaryRow
+            {
+                JobId = GetInt64(reader, "JobId"),
+                JobGuid = GetGuid(reader, "JobGuid", jobGuid),
+                RowStatus = GetInt32(reader, "RowStatus"),
+                Number = GetString(reader, "Number"),
+                DisplayTitle = GetString(reader, "DisplayTitle"),
+                JobDescription = GetString(reader, "JobDescription"),
+                ClientName = GetString(reader, "ClientName"),
+                SurveyorName = GetString(reader, "SurveyorName"),
+                CurrentStatusId = GetInt32(reader, "CurrentStatusId"),
+                CurrentStatusGuid = GetGuid(reader, "CurrentStatusGuid", Guid.Empty),
+                CurrentStatusName = GetString(reader, "CurrentStatusName"),
+                IsActive = GetBool(reader, "IsActive"),
+                IsComplete = GetBool(reader, "IsComplete"),
+                IsCancelled = GetBool(reader, "IsCancelled"),
+                CannotBeInvoiced = GetBool(reader, "CannotBeInvoiced"),
+                InvoiceProcessingMode = GetInt32(reader, "InvoiceProcessingMode"),
+                OpenMilestoneCount = GetInt32(reader, "OpenMilestoneCount"),
+                OpenActivityCount = GetInt32(reader, "OpenActivityCount"),
+                OpenActionCount = GetInt32(reader, "OpenActionCount"),
+                PendingInvoiceRequestCount = GetInt32(reader, "PendingInvoiceRequestCount"),
+                ActiveInvoiceScheduleCount = GetInt32(reader, "ActiveInvoiceScheduleCount"),
+                CanCreateReplacementInvoiceSchedule = GetBool(reader, "CanCreateReplacementInvoiceSchedule"),
+                FinancialOverview = financialOverview
+            };
+        }
+
+        private static JobFinancialOverviewRow ReadJobFinancialOverview(SqlDataReader reader, Guid fallbackJobGuid)
+        {
+            return new JobFinancialOverviewRow
+            {
+                JobGuid = GetGuid(reader, "JobGuid", fallbackJobGuid),
+                AgreedFeeTotal = GetDecimal(reader, "AgreedFeeTotal"),
+                AgreedFeeIncludingCap = GetDecimal(reader, "AgreedFeeIncludingCap"),
+                ScheduledTotal = GetDecimal(reader, "ScheduledTotal"),
+                InvoiceRequestPendingTotal = GetDecimal(reader, "InvoiceRequestPendingTotal"),
+                InvoicedNet = GetDecimal(reader, "InvoicedNet"),
+                InvoicedGross = GetDecimal(reader, "InvoicedGross"),
+                PaidNet = GetDecimal(reader, "PaidNet"),
+                PaidGross = GetDecimal(reader, "PaidGross"),
+                RemainingNet = GetDecimal(reader, "RemainingNet"),
+                ActiveInvoiceScheduleCount = GetInt32(reader, "ActiveInvoiceScheduleCount"),
+                SystemGeneratedManualScheduleCount = GetInt32(reader, "SystemGeneratedManualScheduleCount"),
+                PendingInvoiceRequestCount = GetInt32(reader, "PendingInvoiceRequestCount"),
+                ReconciliationRequiredInvoiceRequestCount = GetInt32(reader, "ReconciliationRequiredInvoiceRequestCount"),
+                BlockedInvoiceRequestCount = GetInt32(reader, "BlockedInvoiceRequestCount"),
+                CanCreateReplacementInvoiceSchedule = GetBool(reader, "CanCreateReplacementInvoiceSchedule")
+            };
+        }
+
+        private static int GetOrdinalOrNegative(SqlDataReader reader, string name)
+        {
+            for (var i = 0; i < reader.FieldCount; i++)
+            {
+                if (string.Equals(reader.GetName(i), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static string GetString(SqlDataReader reader, string name)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            return ordinal < 0 || reader.IsDBNull(ordinal) ? string.Empty : Convert.ToString(reader.GetValue(ordinal)) ?? string.Empty;
+        }
+
+        private static int GetInt32(SqlDataReader reader, string name)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            return ordinal < 0 || reader.IsDBNull(ordinal) ? 0 : Convert.ToInt32(reader.GetValue(ordinal));
+        }
+
+        private static long GetInt64(SqlDataReader reader, string name)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            return ordinal < 0 || reader.IsDBNull(ordinal) ? 0L : Convert.ToInt64(reader.GetValue(ordinal));
+        }
+
+        private static decimal GetDecimal(SqlDataReader reader, string name)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            return ordinal < 0 || reader.IsDBNull(ordinal) ? 0m : Convert.ToDecimal(reader.GetValue(ordinal));
+        }
+
+        private static bool GetBool(SqlDataReader reader, string name)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            return ordinal >= 0 && !reader.IsDBNull(ordinal) && Convert.ToBoolean(reader.GetValue(ordinal));
+        }
+
+        private static Guid GetGuid(SqlDataReader reader, string name, Guid fallback)
+        {
+            var ordinal = GetOrdinalOrNegative(reader, name);
+            if (ordinal < 0 || reader.IsDBNull(ordinal))
+            {
+                return fallback;
+            }
+
+            var value = reader.GetValue(ordinal);
+            if (value is Guid guid)
+            {
+                return guid;
+            }
+
+            return Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : fallback;
+        }
+
         public async Task<ExecuteEntityQueryResponse> ExecuteEntityQuery(ExecuteEntityQueryRequest request)
         {
             ExecuteEntityQueryResponse response = new();
@@ -2697,11 +3046,11 @@ WHERE i.RowStatus NOT IN (0,254)
 
         public async Task<object?> GetEntityPropertyDefault(EntityProperty entityProperty, Guid ParentGuid, Guid RecordGuid)
         {
-            // 1) If there’s a fixed default, just return it
+            // 1) If thereâ€™s a fixed default, just return it
             if (!string.IsNullOrEmpty(entityProperty.FixedDefaultValue))
                 return entityProperty.FixedDefaultValue;
 
-            // 2) If there’s a SQL default, execute it with parameters
+            // 2) If thereâ€™s a SQL default, execute it with parameters
             if (!string.IsNullOrEmpty(entityProperty.SqlDefaultValueStatement))
             {
                 SqlConnection? connection = null;
@@ -5941,8 +6290,11 @@ EXECUTE SCore.UserCreate
             var progressTask = Timed("ReadProgressData", () =>
                 WithConnection(c => ReadProgressData(entityType, dataObject, c, null)));
 
-            var mergeDocsTask = Timed("ReadMergeDocumentsWithChildren", () =>
-                WithConnection(c => ReadMergeDocumentsWithChildren(entityType, c, null)));
+            // 08A: load only merge-document headers during initial record hydration.
+            // Loading every merge-document item/include can add ~2 seconds to cold Job loads
+            // and is only required when the user actually generates a document.
+            var mergeDocsTask = Timed("ReadMergeDocumentsDeferredChildren", () =>
+                WithConnection(c => ReadMergeDocuments(entityType, c, null)));
 
             var actionsTask = Timed("ReadActionMenuItems", () =>
                 WithConnection(c => ReadActionMenuItems(entityType, c, null)));
@@ -5954,7 +6306,7 @@ EXECUTE SCore.UserCreate
                 return await WithConnection(async c =>
                 {
                     using var cmd = QueryBuilder.CreateCommand(sql, c);
-                    cmd.CommandTimeout = 120; // harmless if you’ve centralized timeouts
+                    cmd.CommandTimeout = 120; // harmless if youâ€™ve centralized timeouts
                     cmd.Parameters.Add(new SqlParameter("@Guid", objectGuid));
                     cmd.Parameters.Add(new SqlParameter("@UserId", _userId));
                     try
@@ -6045,6 +6397,55 @@ EXECUTE SCore.UserCreate
             Console.WriteLine($"[PopulateAdditionalDetails] TOTAL {swTotal.ElapsedMilliseconds} ms for object {objectGuid}");
         }
 
+
+        public async Task<DataObject> PersistObjectSharePointPathOnlyAsync(DataObject dataObject)
+        {
+            if (dataObject == null)
+            {
+                throw new ArgumentNullException(nameof(dataObject));
+            }
+
+            if (dataObject.Guid == Guid.Empty)
+            {
+                return dataObject;
+            }
+
+            if (string.IsNullOrWhiteSpace(dataObject.SharePointSiteIdentifier) ||
+                string.IsNullOrWhiteSpace(dataObject.SharePointFolderPath))
+            {
+                return dataObject;
+            }
+
+            using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            using var transaction = QueryBuilder.BeginTransaction(connection, IsolationLevel.ReadCommitted);
+
+            try
+            {
+                const string docQuery = "EXEC SCore.UpsertObjectSharePointPath @ObjectGuid, @SharePointSiteIdentifier, @FolderPath";
+
+                using var docCommand = QueryBuilder.CreateCommand(docQuery, connection, transaction);
+                docCommand.Parameters.Add(new SqlParameter("@ObjectGuid", dataObject.Guid));
+                docCommand.Parameters.Add(new SqlParameter("@SharePointSiteIdentifier", dataObject.SharePointSiteIdentifier));
+                docCommand.Parameters.Add(new SqlParameter("@FolderPath", dataObject.SharePointFolderPath));
+
+                await docCommand.ExecuteScalarAsync();
+
+                await QueryBuilder.CommitTransactionAsync(transaction);
+
+                Console.WriteLine(
+                    $"SHAREPOINT PATH PERSISTED WITHOUT BUSINESS UPSERT Guid={dataObject.Guid} " +
+                    $"RowVersion={dataObject.RowVersion}");
+
+                return dataObject;
+            }
+            catch
+            {
+                await QueryBuilder.RollbackTransactionAsync(transaction);
+                throw;
+            }
+        }
         private async Task PopulateSharePointDetails(SqlConnection connection, Guid objectGuid, DataObject dataObject)
         {
             var sharepointStatement = "SELECT SharePointSiteIdentifier, FolderPath, FullSharePointUrl FROM SCore.ObjectSharePointPaths WHERE (ObjectGuid = @ObjectGuid)";
@@ -6548,6 +6949,54 @@ EXECUTE SCore.UserCreate
         }
 
         #endregion Private Methods
+    }
+
+
+    public sealed class JobFinancialOverviewRow
+    {
+        public Guid JobGuid { get; set; }
+        public decimal AgreedFeeTotal { get; set; }
+        public decimal AgreedFeeIncludingCap { get; set; }
+        public decimal ScheduledTotal { get; set; }
+        public decimal InvoiceRequestPendingTotal { get; set; }
+        public decimal InvoicedNet { get; set; }
+        public decimal InvoicedGross { get; set; }
+        public decimal PaidNet { get; set; }
+        public decimal PaidGross { get; set; }
+        public decimal RemainingNet { get; set; }
+        public int ActiveInvoiceScheduleCount { get; set; }
+        public int SystemGeneratedManualScheduleCount { get; set; }
+        public int PendingInvoiceRequestCount { get; set; }
+        public int ReconciliationRequiredInvoiceRequestCount { get; set; }
+        public int BlockedInvoiceRequestCount { get; set; }
+        public bool CanCreateReplacementInvoiceSchedule { get; set; }
+    }
+
+    public sealed class JobSummaryRow
+    {
+        public long JobId { get; set; }
+        public Guid JobGuid { get; set; }
+        public int RowStatus { get; set; }
+        public string Number { get; set; } = string.Empty;
+        public string DisplayTitle { get; set; } = string.Empty;
+        public string JobDescription { get; set; } = string.Empty;
+        public string ClientName { get; set; } = string.Empty;
+        public string SurveyorName { get; set; } = string.Empty;
+        public int CurrentStatusId { get; set; }
+        public Guid CurrentStatusGuid { get; set; }
+        public string CurrentStatusName { get; set; } = string.Empty;
+        public bool IsActive { get; set; }
+        public bool IsComplete { get; set; }
+        public bool IsCancelled { get; set; }
+        public bool CannotBeInvoiced { get; set; }
+        public int InvoiceProcessingMode { get; set; }
+        public int OpenMilestoneCount { get; set; }
+        public int OpenActivityCount { get; set; }
+        public int OpenActionCount { get; set; }
+        public int PendingInvoiceRequestCount { get; set; }
+        public int ActiveInvoiceScheduleCount { get; set; }
+        public bool CanCreateReplacementInvoiceSchedule { get; set; }
+        public JobFinancialOverviewRow FinancialOverview { get; set; } = new();
     }
 
     public sealed class InvoiceScheduleConfigurationTotalsRow

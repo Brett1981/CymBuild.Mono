@@ -1,4 +1,4 @@
-﻿@*
+@*
     ───────────────────────────────────────────────────────────────────────────────
     CymBuild EditPage
     ───────────────────────────────────────────────────────────────────────────────
@@ -266,8 +266,15 @@
                 string.Equals(EntityTypeGuid, "63542427-46ab-4078-abd1-1d583c24315c", StringComparison.OrdinalIgnoreCase);
             }
 
-            <DataPillRow DataPills="@dataObject.DataPills.ToList()"
+                        <DataPillRow DataPills="@dataObject.DataPills.ToList()"
                          ShowFinancialOverview="@showFinancialOverview"
+                         FormHelper="@ActiveFormHelper"
+                         ParentGuid="@RecordGuid"
+                         ParentDataObjectReference="@(MyDataObjectReference ?? new Concursus.API.Client.Models.DataObjectReference(string.Empty, string.Empty))"
+                         ParentRowStatus="@dataObject.RowStatus"
+                         TransientVirtualProperties="@TransientVirtualProperties"
+                         OverdueGridCode="JOBOVERDUEINVOICES"
+                         OverdueInvoicesActionCompleted="@GridUpdated"
                          InvoiceProcessingModeText="@InvoiceProcessingModeText"
                          InvoiceProcessingModeCss="@InvoiceProcessingModeCss"
                          InvoiceProcessingModeTooltip="@InvoiceProcessingModeTooltip" />

@@ -1,4 +1,4 @@
-﻿.invoice-print-root {
+.invoice-print-root {
     background: #f3f5f7;
     padding: 12px;
 }
@@ -16,12 +16,24 @@
 }
 
 .invoice-page__inner {
+    /* Column sizing must be defined on the active page container.
+       Without these values the browser distributes all six columns equally,
+       making the Description column too narrow and forcing invoice rows to
+       grow vertically until the footer overlaps the next A4 page. */
+    --col-desc: 57%;
+    --col-qty: 6%;
+    --col-unit: 8%;
+    --col-amount: 10%;
+    --col-code: 4%;
+    --col-vat: 15%;
+
     padding: 8mm 10mm 8mm 10mm;
     display: grid;
     grid-template-rows: auto auto auto 1fr auto auto;
     height: 297mm;
     min-height: 297mm;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
     .invoice-page:last-child {
@@ -125,11 +137,13 @@
 }
 
 .invoice-detail-table--standard {
-    min-height: 178mm;
+    /* Leaves room for header, invoice meta, continuation/footer and page number. */
+    min-height: 154mm;
 }
 
 .invoice-detail-table--last {
-    min-height: 138mm;
+    /* Last page needs extra space for totals/legal/remittance footer. */
+    min-height: 116mm;
 }
 
 .invoice-detail-table {
@@ -298,10 +312,10 @@
 }
 
     .detail-data-row td {
-        min-height: 10mm;
-        height: 10mm;
-        padding: 1.5mm 2mm;
-        font-size: 8.4pt;
+        min-height: 7mm;
+        height: auto;
+        padding: 1mm 1.6mm;
+        font-size: 8.2pt;
         vertical-align: top;
     }
 
@@ -329,7 +343,10 @@
 }
 
 .blank-row td {
-    height: 10mm;
+    height: 4.5mm !important;
+    min-height: 4.5mm !important;
+    padding: 0 !important;
+    line-height: 1 !important;
     color: transparent;
 }
 
@@ -337,9 +354,9 @@
     display: grid;
     grid-template-columns: 1fr 88mm;
     column-gap: 10mm;
-    margin-top: 3mm;
+    margin-top: 2mm;
     align-items: end;
-    min-height: 30mm;
+    min-height: 22mm;
 }
 
 .invoice-bottom--continuation {
@@ -371,7 +388,7 @@
 }
 
 .invoice-footer {
-    margin-top: 3mm;
+    margin-top: 2mm;
 }
 
 .invoice-footer__top-line {
@@ -403,7 +420,7 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    margin-top: 12mm;
+    margin-top: 6mm;
     font-size: 8pt;
 }
 

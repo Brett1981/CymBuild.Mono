@@ -1,14 +1,11 @@
 ﻿using Concursus.API.Client;
 using Concursus.API.Client.Models;
 using Concursus.PWA.Classes;
-using DocumentFormat.OpenXml.ExtendedProperties;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Newtonsoft.Json;
-using Org.BouncyCastle.Asn1.X509.Qualified;
 using System.Dynamic;
-using System.Security.Cryptography.Xml;
 using System.Web;
 
 
@@ -17,25 +14,7 @@ namespace Concursus.PWA.Shared;
 
 public partial class DynamicBatchGridView
 {
-
-    private bool ShowInvoiceMergeButton { get; set; } = false;
-    private bool isMergeLoadingScreenVisible { get; set; } = false;
-    private List<Guid> InvoiceReqsToMerge { get; set; } = new List<Guid>();
-
-
-    private static class EntityPropertiesToCopy
-    {
-        public const string JobID       = "dddabd42-c753-48fa-800f-a73c88fcadcd";
-        public const string Notes       = "f22eb049-a999-4485-9838-751b3f577293";
-        public const string Consultant  = "8c1f4236-36a8-44ed-af70-c43f56840943";
-
-    }
-
-
-
-
-
-    /// <summary>
+/// <summary>
     /// After each selection, the function checks if the records can be merged into one (new) record. 
     /// </summary>
     /// <param name="SelectedItemsInList">List of selected items</param>
@@ -263,8 +242,7 @@ public partial class DynamicBatchGridView
 
             ResetGrid();
 
-            //Rebind grid.
-            GridRef?.Rebind();
+            await RefreshMe();
 
             //Open new invoice request.
             OpenMergedInvoiceRequest(NewInvoiceReqDataObject.Guid);
@@ -283,14 +261,10 @@ public partial class DynamicBatchGridView
     /// </summary>
     private async void ResetGrid()
     {
-
-
-        //Close loading screen & hide merge button..
         isMergeLoadingScreenVisible = false;
         ShowInvoiceMergeButton = false;
-
-        //Reset items
-        SelectedItems = new List<ExpandoObject>(); ;
+        SelectedItems = new List<ExpandoObject>();
+        SelectedRowGuids.Clear();
         InvoiceReqsToMerge = new List<Guid>();
 
         await RefreshMe();
