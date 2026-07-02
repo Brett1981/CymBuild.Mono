@@ -1,0 +1,274 @@
+@using Concursus.API.Client
+@using Concursus.API.Core
+@using System.Globalization
+
+<div class="cb-schedule-shell">
+    <div class="cb-schedule-toolbar">
+        <div class="cb-schedule-toolbar__primary">
+            <button type="button" class="btn btn-outline-primary" @onclick="PreviousAsync" title="Previous period">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <input type="date"
+                   class="form-control cb-schedule-date"
+                   value="@StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                   @onchange="OnDateInputChangedAsync" />
+            <button type="button" class="btn btn-outline-primary" @onclick="TodayAsync">Today</button>
+            <button type="button" class="btn btn-outline-primary" @onclick="NextAsync" title="Next period">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+
+        <div class="cb-schedule-toolbar__views" role="group" aria-label="Schedule view selector">
+            <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Day)" @onclick="() => SetViewAsync(NativeScheduleViewMode.Day)">Day</button>
+            <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Week)" @onclick="() => SetViewAsync(NativeScheduleViewMode.Week)">Week</button>
+            <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.MultiDay)" @onclick="() => SetViewAsync(NativeScheduleViewMode.MultiDay)">10 Days</button>
+            <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Month)" @onclick="() => SetViewAsync(NativeScheduleViewMode.Month)">Month</button>
+        </div>
+
+        <div class="cb-schedule-toolbar__actions">
+            <span class="cb-schedule-pill">Items @Items.Count</span>
+            <button type="button" class="btn btn-primary" @onclick="CreateAsync">
+                <i class="bi bi-plus-circle me-1"></i> New
+            </button>
+            <button type="button" class="btn btn-outline-primary" @onclick="RefreshAsync">
+                <i class="bi bi-arrow-clockwise me-1"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    <div class="cb-schedule-range-title">
+        <span>@RangeTitle</span>
+    </div>
+
+    <div class="cb-schedule-board" style="--cb-schedule-days:@VisibleDays.Count">
+        @foreach (var day in VisibleDays)
+        {
+            <section class="cb-schedule-day-card" @key="day">
+                <header class="cb-schedule-day-card__header">
+                    <div>
+                        <div class="cb-schedule-day-name">@day.ToString("ddd", CultureInfo.CurrentCulture)</div>
+                        <div class="cb-schedule-day-date">@day.ToString("dd MMM", CultureInfo.CurrentCulture)</div>
+                    </div>
+                    <NavLink class="cb-schedule-map-link" href="@($"daymap/{day.ToBinary()}")" title="Open day map">
+                        <i class="bi bi-geo-alt"></i>
+                    </NavLink>
+                </header>
+
+                <div class="cb-schedule-day-card__body">
+                    @{
+                        var itemsForDay = GetItemsForDay(day).ToList();
+                    }
+                    @if (itemsForDay.Count == 0)
+                    {
+                        <div class="cb-schedule-empty">No scheduled items</div>
+                    }
+                    else
+                    {
+                        @foreach (var item in itemsForDay)
+                        {
+                            <article class="cb-schedule-item" style="@GetItemStyle(item)" @key="item.Id">
+                                <div class="cb-schedule-item__time">@GetTimeText(item)</div>
+                                <div class="cb-schedule-item__title">@item.Title</div>
+                                @if (!string.IsNullOrWhiteSpace(item.JobNumber))
+                                {
+                                    <div class="cb-schedule-item__meta">Job @item.JobNumber</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(item.Description))
+                                {
+                                    <div class="cb-schedule-item__description">@item.Description</div>
+                                }
+                                <div class="cb-schedule-item__badges">
+                                    @if (!string.IsNullOrWhiteSpace(GetStatusName(item)))
+                                    {
+                                        <span class="cb-schedule-badge">@GetStatusName(item)</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(GetTypeName(item)))
+                                    {
+                                        <span class="cb-schedule-badge cb-schedule-badge--muted">@GetTypeName(item)</span>
+                                    }
+                                </div>
+                                <div class="cb-schedule-item__actions">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => UpdateAsync(item)">Edit</button>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(item)">Delete</button>
+                                </div>
+                            </article>
+                        }
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ScheduleViewItem> Items { get; set; } = Array.Empty<ScheduleViewItem>();
+    [Parameter] public IReadOnlyList<ScheduleItemStatus> Statuses { get; set; } = Array.Empty<ScheduleItemStatus>();
+    [Parameter] public IReadOnlyList<ScheduleItemType> Types { get; set; } = Array.Empty<ScheduleItemType>();
+    [Parameter] public DateTime StartDate { get; set; }
+    [Parameter] public EventCallback<DateTime> StartDateChanged { get; set; }
+    [Parameter] public NativeScheduleViewMode View { get; set; } = NativeScheduleViewMode.Week;
+    [Parameter] public EventCallback<NativeScheduleViewMode> ViewChanged { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback<ScheduleViewItem> OnUpdate { get; set; }
+    [Parameter] public EventCallback<ScheduleViewItem> OnDelete { get; set; }
+
+    private IReadOnlyList<DateTime> VisibleDays => BuildVisibleDays().ToList();
+
+    private string RangeTitle
+    {
+        get
+        {
+            var days = VisibleDays;
+            if (days.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return days.Count == 1
+                ? days[0].ToString("dddd, dd MMMM yyyy", CultureInfo.CurrentCulture)
+                : $"{days[0]:dd MMM yyyy} - {days[^1]:dd MMM yyyy}";
+        }
+    }
+
+    private IEnumerable<DateTime> BuildVisibleDays()
+    {
+        var start = View switch
+        {
+            NativeScheduleViewMode.Day => StartDate.Date,
+            NativeScheduleViewMode.Week => GetWeekStart(StartDate),
+            NativeScheduleViewMode.MultiDay => StartDate.Date,
+            NativeScheduleViewMode.Month => new DateTime(StartDate.Year, StartDate.Month, 1),
+            _ => GetWeekStart(StartDate)
+        };
+
+        var count = View switch
+        {
+            NativeScheduleViewMode.Day => 1,
+            NativeScheduleViewMode.Week => 7,
+            NativeScheduleViewMode.MultiDay => 10,
+            NativeScheduleViewMode.Month => DateTime.DaysInMonth(StartDate.Year, StartDate.Month),
+            _ => 7
+        };
+
+        for (var index = 0; index < count; index++)
+        {
+            yield return start.AddDays(index);
+        }
+    }
+
+    private static DateTime GetWeekStart(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return date.Date.AddDays(-diff);
+    }
+
+    private IEnumerable<ScheduleViewItem> GetItemsForDay(DateTime day)
+    {
+        return Items
+            .Where(item => item.Start.Date <= day.Date && item.End.Date >= day.Date)
+            .OrderBy(item => item.Start)
+            .ThenBy(item => item.Title);
+    }
+
+    private string GetTimeText(ScheduleViewItem item)
+    {
+        if (item.IsAllDay)
+        {
+            return "All day";
+        }
+
+        return item.Start.Date == item.End.Date
+            ? $"{item.Start:HH:mm} - {item.End:HH:mm}"
+            : $"{item.Start:dd MMM HH:mm} - {item.End:dd MMM HH:mm}";
+    }
+
+    private string GetStatusName(ScheduleViewItem item)
+    {
+        return Statuses.FirstOrDefault(status => status.Id == item.StatusId)?.Name ?? string.Empty;
+    }
+
+    private string GetTypeName(ScheduleViewItem item)
+    {
+        return Types.FirstOrDefault(type => type.Id == item.TypeId)?.Name ?? string.Empty;
+    }
+
+    private string GetItemStyle(ScheduleViewItem item)
+    {
+        var statusColour = Statuses.FirstOrDefault(status => status.Id == item.StatusId)?.Color;
+        var typeColour = Types.FirstOrDefault(type => type.Id == item.TypeId)?.Color;
+        var accent = !string.IsNullOrWhiteSpace(statusColour) ? statusColour : typeColour;
+        return string.IsNullOrWhiteSpace(accent) ? string.Empty : $"--cb-schedule-accent:{accent};";
+    }
+
+    private string GetViewButtonClass(NativeScheduleViewMode view)
+    {
+        return View == view ? "btn btn-primary" : "btn btn-outline-primary";
+    }
+
+    private async Task SetViewAsync(NativeScheduleViewMode view)
+    {
+        View = view;
+        await ViewChanged.InvokeAsync(view);
+    }
+
+    private async Task OnDateInputChangedAsync(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var date))
+        {
+            StartDate = date.Date;
+            await StartDateChanged.InvokeAsync(StartDate);
+        }
+    }
+
+    private async Task PreviousAsync()
+    {
+        await MoveAsync(-1);
+    }
+
+    private async Task NextAsync()
+    {
+        await MoveAsync(1);
+    }
+
+    private async Task TodayAsync()
+    {
+        StartDate = DateTime.Today;
+        await StartDateChanged.InvokeAsync(StartDate);
+    }
+
+    private async Task MoveAsync(int direction)
+    {
+        var delta = View switch
+        {
+            NativeScheduleViewMode.Day => 1,
+            NativeScheduleViewMode.Week => 7,
+            NativeScheduleViewMode.MultiDay => 10,
+            NativeScheduleViewMode.Month => DateTime.DaysInMonth(StartDate.Year, StartDate.Month),
+            _ => 7
+        };
+
+        StartDate = StartDate.Date.AddDays(direction * delta);
+        await StartDateChanged.InvokeAsync(StartDate);
+    }
+
+    private Task RefreshAsync()
+    {
+        return OnRefresh.InvokeAsync();
+    }
+
+    private Task CreateAsync()
+    {
+        return OnCreate.InvokeAsync();
+    }
+
+    private Task UpdateAsync(ScheduleViewItem item)
+    {
+        return OnUpdate.InvokeAsync(item);
+    }
+
+    private Task DeleteAsync(ScheduleViewItem item)
+    {
+        return OnDelete.InvokeAsync(item);
+    }
+}

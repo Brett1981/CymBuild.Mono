@@ -17,8 +17,13 @@ SELECT  p.ID,
         p.Code,
         p.Description,
 		p.Code + N' - ' + p.Description AS ListName,
-		p.CreatedJobType
+		p.CreatedJobType,
+		ou.Name AS Department,
+		ou2.Name AS BusinessUnit
 FROM    SProd.Products p
+JOIN	SJob.JobTypes AS jt ON (jt.ID = p.CreatedJobType)
+JOIN	SCore.OrganisationalUnits AS ou ON jt.OrganisationalUnitID = ou.ID
+JOIN	SCore.OrganisationalUnits as ou2 ON ou.ParentID = ou2.ID
 WHERE   (p.RowStatus NOT IN (0, 254))
 	AND	(p.ID > 0)
 AND	(EXISTS

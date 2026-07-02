@@ -1,0 +1,41 @@
+.cb-scheduler-modal-backdrop {
+    align-items: center;
+    background: rgba(15, 23, 42, .45);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 1rem;
+    position: fixed;
+    z-index: 2500;
+}
+
+.cb-scheduler-modal {
+    background: #ffffff;
+    border: 1px solid var(--cb-v2-border, #9caecb);
+    border-radius: var(--cb-v2-radius-md, 14px);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
+    display: flex;
+    flex-direction: column;
+    max-height: 96vh;
+    max-width: min(96vw, 980px);
+    overflow: hidden;
+    width: 860px;
+}
+
+.cb-scheduler-modal__header {
+    align-items: center;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid var(--cb-v2-border-soft, #dbe4f0);
+    display: flex;
+    justify-content: space-between;
+    padding: .85rem 1rem;
+}
+
+.cb-scheduler-modal__header h5 {
+    margin: 0;
+}
+
+.cb-scheduler-modal__body {
+    overflow: auto;
+    padding: 1rem;
+}

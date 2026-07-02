@@ -1,4 +1,4 @@
-﻿using Concursus.API.Client;
+using Concursus.API.Client;
 using Concursus.API.Core;
 using Concursus.Common.Shared.Models.Finance;
 using Concursus.PWA.Classes;
@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using System.Dynamic;
 using System.Text;
-using Telerik.Blazor.Components;
 using static Concursus.PWA.Shared.MessageDisplay;
 
 namespace Concursus.PWA.Shared;
@@ -19,15 +18,13 @@ public partial class BatchButtonMenu
 
     public GridActionMenuItem? ClickedItem { get; set; }
     public List<GridActionMenuItem>? MenuItems { get; set; }
-    public TelerikWindow ModalWindow { get; set; }
-
-    [Parameter] public EventCallback<Exception> OnError { get; set; }
+[Parameter] public EventCallback<Exception> OnError { get; set; }
 
     private GridViewDefinition _value;
 
     [Parameter] public GridViewDefinition GridRef { get; set; }
 
-    [Parameter] public TelerikGrid<ExpandoObject>? GridReference { get; set; }
+    [Parameter] public object? GridReference { get; set; }
     [Parameter] public EventCallback OnRefreshRequested { get; set; }
 
     [Parameter] public EventCallback<GridViewDefinition> GridRefChanged { get; set; }
@@ -42,8 +39,22 @@ public partial class BatchButtonMenu
     private string HeaderText { get; set; } = "";
     private string? LoadPageUrl { get; set; }
     private bool ModalWindowIsVisible { get; set; } = false;
+    private bool _batchModalIsMaximized;
+    private bool _invoicePreviewModalIsMaximized;
+
+    private string GeneralBatchModalCss => _batchModalIsMaximized
+        ? "batch-native-modal-card is-maximized"
+        : "batch-native-modal-card";
+
+    private string InvoicePreviewModalCss => _invoicePreviewModalIsMaximized
+        ? "batch-native-modal-card batch-invoice-preview-modal is-maximized"
+        : "batch-native-modal-card batch-invoice-preview-modal";
     private bool windowIsClosable { get; set; } = true;
     private string? WindowTitle { get; set; }
+
+    private bool _batchActionMenuOpen;
+
+    private GridActionMenuItem? _batchActionMenuRootItem;
 
     private bool _isBusy = false;
 
@@ -62,7 +73,78 @@ public partial class BatchButtonMenu
         _currentInvoicePreviewIndex >= 0 && _currentInvoicePreviewIndex < _invoicePreviewModels.Count
             ? _invoicePreviewModels[_currentInvoicePreviewIndex]
             : null;
+    private static IEnumerable<GridActionMenuItem> GetVisibleBatchMenuItems(IEnumerable<GridActionMenuItem>? items)
+    {
+        if (items is null)
+        {
+            yield break;
+        }
 
+        foreach (var item in items)
+        {
+            if (item is null)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(item.Text) || HasChildBatchMenuItems(item))
+            {
+                yield return item;
+            }
+        }
+    }
+
+    private static bool HasChildBatchMenuItems(GridActionMenuItem? item)
+    {
+        return item?.Items is not null && GetVisibleBatchMenuItems(item.Items).Any();
+    }
+
+    private void ToggleBatchActionMenu(GridActionMenuItem item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        if (!HasChildBatchMenuItems(item))
+        {
+            _ = OnNativeBatchActionMenuItemClicked(item);
+            return;
+        }
+
+        if (_batchActionMenuOpen && ReferenceEquals(_batchActionMenuRootItem, item))
+        {
+            CloseBatchActionMenu();
+            return;
+        }
+
+        _batchActionMenuRootItem = item;
+        _batchActionMenuOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseBatchActionMenu()
+    {
+        _batchActionMenuOpen = false;
+        _batchActionMenuRootItem = null;
+        StateHasChanged();
+    }
+
+    private async Task OnNativeBatchActionMenuItemClicked(GridActionMenuItem item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.Text))
+        {
+            return;
+        }
+
+        CloseBatchActionMenu();
+
+        var continuation = await OnClickHandler(item);
+        if (continuation is not null)
+        {
+            await continuation;
+        }
+    }
     private Task ShowMessageAsync(string message, ShowMessageType messageType, string pageMethod = "BatchButtonMenu")
     {
         var ex = new Exception(message);
@@ -73,9 +155,21 @@ public partial class BatchButtonMenu
         return OnError.InvokeAsync(ex);
     }
 
+    private void ToggleBatchNativeModalMaximized()
+    {
+        _batchModalIsMaximized = !_batchModalIsMaximized;
+        StateHasChanged();
+    }
+
+    private void ToggleInvoicePreviewNativeModalMaximized()
+    {
+        _invoicePreviewModalIsMaximized = !_invoicePreviewModalIsMaximized;
+        StateHasChanged();
+    }
     protected void CloseWindowCross()
     {
         ModalWindowIsVisible = false;
+        _batchModalIsMaximized = false;
         ResetInvoicePreviewState();
     }
 
@@ -103,7 +197,7 @@ public partial class BatchButtonMenu
                     _ = OnError.InvokeAsync(ex);
                 }
             }
-            else if (item.Text == "Invoice Request → Create Invoice (Batch)")
+            else if (item.Text == "Invoice Request ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Create Invoice (Batch)")
             {
                 var infoMessage = PWAFunctions.GetMessageDisplayFromGridViewAction(item, new Exception(), ShowMessageType.Information);
                 await OnError.InvokeAsync(infoMessage);
@@ -414,6 +508,7 @@ public partial class BatchButtonMenu
     private void ResetInvoicePreviewState()
     {
         _showInvoicePreviewModal = false;
+        _invoicePreviewModalIsMaximized = false;
         _currentInvoicePreviewIndex = 0;
         _previewTransactionGuids.Clear();
         _invoicePreviewModels.Clear();
@@ -574,7 +669,7 @@ public partial class BatchButtonMenu
                         string icon = "";
                         if (item.Title == "Create Invoice")
                             icon = "bi bi-currency-dollar";
-                        else if (item.Title == "Invoice Request → Create Invoice (Batch)")
+                        else if (item.Title == "Invoice Request ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Create Invoice (Batch)")
                             icon = "bi bi-receipt";
                         else if (item.Title == "Batch Delete")
                             icon = "bi bi-trash";

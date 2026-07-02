@@ -2,68 +2,90 @@
 @attribute [Authorize]
 @using Concursus.API.Core
 @using Concursus.API.Client
-@using Google.Protobuf.WellKnownTypes
+@using System.Globalization
 @inject Core.CoreClient coreClient
 
-<h4>Schedule Day Map</h4>
-
-<div class="card shadow-sm p-2 m-2 flex-fill" style="min-width: 250px;">
-    <div class="card-body">
-        <div class="d-flex justify-content-around">
-            <TelerikDatePicker @bind-Value="@SelectedDate"
-                               Min="@Min"
-                               Max="@Max"
-                               DebounceDelay="@DebounceDelay"
-                               ShowWeekNumbers="true"
-                               Id="select-date">
-            </TelerikDatePicker>
-            <TelerikMultiSelect Data="@Users"
-                                @bind-Value="@SelectedUserIds"
-                                ValueField="@nameof(API.Core.User.Guid)"
-                                TextField="@nameof(API.Core.User.FullName)"
-                                OnChange="@LoadData"
-                                Placeholder="Select Users"
-                                DebounceDelay="@DebounceDelay"
-                                Id="u-multiselect" Width="100%">
-            </TelerikMultiSelect>
-            <TelerikMultiSelect Data="@OrganisationalUnits"
-                                @bind-Value="@SelectedOrganisationalUnitsIds"
-                                ValueField="@nameof(OrganisationalUnit.Guid)"
-                                TextField="@nameof(OrganisationalUnit.Name)"
-                                OnChange="@LoadData"
-                                DebounceDelay="@DebounceDelay"
-                                Placeholder="Select Org. Units"
-                                Id="ou-multiselect" Width="100%">
-            </TelerikMultiSelect>
+<div class="cb-daymap-page">
+    <div class="cb-daymap-header">
+        <div class="cb-daymap-header__icon">
+            <i class="bi bi-map"></i>
         </div>
-        <TelerikMap @ref="MapRef"
-                    Center="@MapCenter"
-                    Height="80vh"
-                    MinZoom="3"
-                    Zoom="5">
-            <MapLayers>
-                <MapLayer Type="@MapLayersType.Tile"
-                          Attribution="@MapAttribution"
-                          Subdomains="@MapSubdomains"
-                          UrlTemplate="@MapUrlTemplate">
-                </MapLayer>
-                <MapLayer Type="@MapLayersType.Marker"
-                          Data="@MarkerData"
-                          LocationField="@nameof(API.Core.MapMarker.LatLng)"
-                          TitleField="@nameof(API.Core.MapMarker.EntityTypeGuid)">
-                    <MapLayerMarkerSettings>
-                        <MapLayerMarkerSettingsTooltip>
-                            <Template Context="mapContext">
-                                @{
-                                    var dataItem = mapContext.DataItem as Concursus.API.Core.MapMarker;
-                                }
+        <div>
+            <h4>Schedule Day Map</h4>
+            <p>Review map context for the selected day.</p>
+        </div>
+    </div>
 
-                                <div>@dataItem.EntityTypeGuid</div>
-                            </Template>
-                        </MapLayerMarkerSettingsTooltip>
-                    </MapLayerMarkerSettings>
-                </MapLayer>
-            </MapLayers>
-        </TelerikMap>
+    <div class="cb-daymap-filter-card">
+        <div class="cb-daymap-field">
+            <label for="select-date">Date</label>
+            <input id="select-date"
+                   class="form-control"
+                   type="date"
+                   min="@Min.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                   max="@Max.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                   value="@SelectedDateValue"
+                   @onchange="OnSelectedDateChangedAsync" />
+        </div>
+
+        <div class="cb-daymap-field">
+            <label for="u-multiselect">Users</label>
+            <select id="u-multiselect"
+                    class="form-select cb-daymap-multi-select"
+                    multiple
+                    @onchange="OnUsersChangedAsync">
+                @foreach (var user in Users)
+                {
+                    <option value="@user.Guid" selected="@IsSelectedUser(user.Guid)">@user.FullName</option>
+                }
+            </select>
+        </div>
+
+        <div class="cb-daymap-field">
+            <label for="ou-multiselect">Organisational Units</label>
+            <select id="ou-multiselect"
+                    class="form-select cb-daymap-multi-select"
+                    multiple
+                    @onchange="OnOrganisationalUnitsChangedAsync">
+                @foreach (var organisationalUnit in OrganisationalUnits)
+                {
+                    <option value="@organisationalUnit.Guid" selected="@IsSelectedOrganisationalUnit(organisationalUnit.Guid)">@organisationalUnit.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="cb-daymap-card">
+        <div class="cb-daymap-map-wrap">
+            <iframe title="Schedule day map"
+                    class="cb-daymap-map"
+                    src="@MapEmbedUrl"
+                    loading="lazy"
+                    referrerpolicy="no-referrer-when-downgrade"></iframe>
+        </div>
+
+        <div class="cb-daymap-marker-panel">
+            <div class="cb-daymap-marker-panel__header">
+                <strong>Map markers</strong>
+                <span>@MarkerData.Count</span>
+            </div>
+
+            @if (MarkerData.Count == 0)
+            {
+                <div class="cb-daymap-empty">No markers have been returned for the current filter.</div>
+            }
+            else
+            {
+                <div class="cb-daymap-marker-list">
+                    @foreach (var marker in MarkerData)
+                    {
+                        <div class="cb-daymap-marker-item" @key="marker.EntityTypeGuid">
+                            <div class="cb-daymap-marker-item__title">@marker.EntityTypeGuid</div>
+                            <div class="cb-daymap-marker-item__meta">@FormatMarkerLocation(marker)</div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
     </div>
 </div>

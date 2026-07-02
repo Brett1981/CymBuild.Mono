@@ -1,0 +1,117 @@
+﻿@using Concursus.API.Core
+@inject DeveloperInspectorState InspectorState
+@inject AppConfiguration AppConfiguration
+@implements IDisposable
+
+@if (IsAvailable)
+{
+<div class="developer-inspector-toggle" title="Developer Inspector: Ctrl+Shift+I">
+    <button type="button" class="btn btn-sm @(InspectorState.IsEnabled ? "btn-warning" : "btn-outline-secondary")" @onclick="InspectorState.Toggle">
+        <i class="bi bi-bug"></i>
+        Inspector @(InspectorState.IsEnabled ? "On" : "Off")
+    </button>
+</div>
+}
+
+@if (IsAvailable && InspectorState.IsPanelOpen && InspectorState.CurrentResult is not null)
+{
+    var result = InspectorState.CurrentResult;
+    <aside class="developer-inspector-panel" role="complementary" aria-label="CymBuild Developer Inspector">
+        <div class="developer-inspector-panel-header">
+            <div>
+                <div class="developer-inspector-title">CymBuild Inspector</div>
+                <div class="developer-inspector-subtitle">@result.ComponentName</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-light" @onclick="InspectorState.ClosePanel" aria-label="Close inspector">×</button>
+        </div>
+
+        @if (!result.IsSuccess)
+        {
+            <div class="alert alert-warning m-3">@result.Message</div>
+        }
+        else
+        {
+            <section>
+                <h6>Field</h6>
+                <dl>
+                    <dt>Label</dt><dd>@result.Field?.Label</dd>
+                    <dt>Property</dt><dd>@result.Field?.PropertyName</dd>
+                    <dt>Entity</dt><dd>@result.Field?.EntityTypeName</dd>
+                    <dt>Entity Property Guid</dt><dd>@result.Field?.EntityPropertyGuid</dd>
+                    <dt>Entity Type Guid</dt><dd>@result.Field?.EntityTypeGuid</dd>
+                    <dt>Record Guid</dt><dd>@result.Field?.RecordGuid</dd>
+                    <dt>Data Type</dt><dd>@result.Field?.DataTypeName</dd>
+                    <dt>Current Value</dt><dd>@result.Field?.CurrentValuePreview</dd>
+                    <dt>Client State</dt><dd>@result.Field?.FieldState</dd>
+                    <dt>Required</dt><dd>@YesNo(result.Field?.IsCompulsory)</dd>
+                    <dt>Read Only</dt><dd>@YesNo(result.Field?.IsReadOnly)</dd>
+                    <dt>Hidden</dt><dd>@YesNo(result.Field?.IsHidden)</dd>
+                    <dt>Virtual</dt><dd>@YesNo(result.Field?.IsVirtual)</dd>
+                    <dt>Max Length</dt><dd>@FormatInt(result.Field?.MaxLength)</dd>
+                </dl>
+            </section>
+
+            <section>
+                <h6>SQL</h6>
+                <dl>
+                    <dt>Source</dt><dd>@result.Sql?.FullName</dd>
+                    <dt>SQL Type</dt><dd>@result.Sql?.SqlType</dd>
+                    <dt>Nullable</dt><dd>@YesNo(result.Sql?.IsNullable)</dd>
+                    <dt>Max Length</dt><dd>@FormatInt(result.Sql?.MaxLength)</dd>
+                    <dt>Precision / Scale</dt><dd>@FormatPrecisionScale(result.Sql)</dd>
+                    <dt>Resolved</dt><dd>@YesNo(result.Sql?.ColumnFound)</dd>
+                </dl>
+            </section>
+
+            <section>
+                <h6>Metadata</h6>
+                <dl>
+                    <dt>HoBT</dt><dd>@result.Metadata?.EntityHobtName</dd>
+                    <dt>HoBT Guid</dt><dd>@result.Metadata?.EntityHobtGuid</dd>
+                    <dt>Group</dt><dd>@result.Metadata?.EntityPropertyGroupName</dd>
+                    <dt>Dropdown Guid</dt><dd>@result.Metadata?.DropDownListDefinitionGuid</dd>
+                    <dt>Dropdown</dt><dd>@result.Metadata?.DropDownListDefinitionName</dd>
+                    <dt>Detail Page</dt><dd>@result.Metadata?.DetailPageUri</dd>
+                    <dt>Information Page</dt><dd>@result.Metadata?.InformationPageUri</dd>
+                </dl>
+            </section>
+
+            <section>
+                <h6>Workflow / DataObject</h6>
+                <dl>
+                    <dt>DataObject Found</dt><dd>@YesNo(result.Workflow?.DataObjectFound)</dd>
+                    <dt>RowStatus</dt><dd>@result.Workflow?.DataObjectRowStatus</dd>
+                    <dt>Current Status</dt><dd>@result.Workflow?.CurrentStatusName</dd>
+                    <dt>Status Guid</dt><dd>@result.Workflow?.CurrentStatusGuid</dd>
+                    <dt>Transition On</dt><dd>@result.Workflow?.CurrentTransitionOnUtc</dd>
+                </dl>
+            </section>
+        }
+    </aside>
+}
+
+@code {
+    private bool IsAvailable => IsDeveloperEnvironment(AppConfiguration.EnvironmentType);
+
+    private static bool IsDeveloperEnvironment(string? environmentType)
+    {
+        return string.Equals(environmentType, "DEV", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environmentType, "QA", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environmentType, "TEST", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environmentType, "UAT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected override void OnInitialized()
+    {
+        InspectorState.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        InspectorState.OnChange -= StateHasChanged;
+    }
+
+    private static string YesNo(bool? value) => value == true ? "Yes" : "No";
+    private static string FormatInt(int? value) => value.GetValueOrDefault() <= 0 ? "" : value.Value.ToString();
+    private static string FormatPrecisionScale(DeveloperInspectorSqlInfo? sql) => sql is null ? string.Empty : $"{sql.Precision} / {sql.Scale}";
+}

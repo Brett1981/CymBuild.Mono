@@ -2,22 +2,21 @@
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using System.Dynamic;
-using Telerik.DataSource;
 
 namespace Concursus.PWA.Shared
 {
     public partial class FilteredDynamicGridViewV2 : ComponentBase
     {
-        //Shows the custom range section
+        // Shows the custom range section
         private bool showCustomRange { get; set; } = false;
 
-        //Custom start date
+        // Custom start date
         private DateOnly? customStartDate { get; set; }
 
-        //Custom end date
+        // Custom end date
         private DateOnly? customEndDate { get; set; }
 
-        //FilteredList Variables
+        // FilteredList Variables
         private string CreatedOnColumn { get; set; } = "";
         private string GroupBy { get; set; } = "";
 
@@ -31,24 +30,24 @@ namespace Concursus.PWA.Shared
         private string QuickFilter90DaysCSS { get; set; } = "";
         private string QuickFilterGroupByCSS { get; set; } = "";
 
-        private DataCompositeFilter QuickFilters { get; set; }
+        private DataCompositeFilter? QuickFilters { get; set; }
 
         //==============================================
         //=             RANGE FILTERS                  =
         //==============================================
         private bool RangeFiltersActive { get; set; } = false;
-        private DataCompositeFilter RangeFilters { get; set; }
+        private DataCompositeFilter? RangeFilters { get; set; }
 
         //==============================================
         //=             GROUP BY FILTERS               =
         //==============================================
         private class OrderByItem
         {
-            public string Id { get; set; }
+            public string Id { get; set; } = string.Empty;
             public string Text { get; set; } = string.Empty;
         }
 
-        private string SortByOption { get; set; }
+        private string SortByOption { get; set; } = string.Empty;
 
         private IEnumerable<OrderByItem> OrderByOptions { get; set; } = new List<OrderByItem>
         {
@@ -58,63 +57,44 @@ namespace Concursus.PWA.Shared
             new OrderByItem() { Id = "Amount_asc",     Text = "Value (Lowest First)" }
         };
 
-        private async Task OrderData(string SortByOption)
+        private async Task OrderData(string sortByOption)
         {
             const string SentDesc = "SentDate_desc";
             const string SentAsc = "SentDate_asc";
             const string AmountDesc = "Amount_desc";
             const string AmountAsc = "Amount_asc";
 
-            string member = "";
-            ListSortDirection direction = ListSortDirection.Ascending;
+            var member = string.Empty;
+            var descending = false;
 
-            if (GridRef != null)
+            switch (sortByOption)
             {
-                var gridState = GridRef.GetState();
-
-                if (string.IsNullOrWhiteSpace(SortByOption))
-                {
-                    gridState.SortDescriptors.Clear();
-                    await GridRef.SetStateAsync(gridState);
-                    return;
-                }
-
-                gridState.SortDescriptors.Clear();
-
-                switch (SortByOption)
-                {
-                    case SentAsc:
-                        member = "Date";
-                        direction = ListSortDirection.Ascending;
-                        break;
-                    case SentDesc:
-                        member = "Date";
-                        direction = ListSortDirection.Descending;
-                        break;
-                    case AmountDesc:
-                        member = "TotalNet";
-                        direction = ListSortDirection.Descending;
-                        break;
-                    case AmountAsc:
-                        member = "TotalNet";
-                        direction = ListSortDirection.Ascending;
-                        break;
-                }
-
-                if (!string.IsNullOrWhiteSpace(member))
-                {
-                    gridState.SortDescriptors.Add(new GroupDescriptor()
-                    {
-                        Member = member,
-                        SortDirection = direction
-                    });
-
-                    await GridRef.SetStateAsync(gridState);
-                }
+                case SentAsc:
+                    member = "Date";
+                    descending = false;
+                    break;
+                case SentDesc:
+                    member = "Date";
+                    descending = true;
+                    break;
+                case AmountDesc:
+                    member = "TotalNet";
+                    descending = true;
+                    break;
+                case AmountAsc:
+                    member = "TotalNet";
+                    descending = false;
+                    break;
             }
+
+            NativeSortColumn = member;
+            NativeSortDescending = descending;
+            NativePage = 1;
+            await PersistNativeGridStateAsync();
+            await ReloadNativeGridAsync(1);
         }
 
-        private void ToggleCustomRange()
+        private async Task ToggleCustomRange()
         {
             if (ActiveQuickFilterDays != null)
             {
@@ -126,10 +106,10 @@ namespace Concursus.PWA.Shared
             if (RangeFilters != null)
                 RangeFilters = null;
 
-            GridRef?.Rebind();
+            await ReloadNativeGridAsync(1);
         }
 
-        private void ApplyCustomRange()
+        private async Task ApplyCustomRange()
         {
             try
             {
@@ -140,11 +120,11 @@ namespace Concursus.PWA.Shared
 
                 var customFilter = new DataCompositeFilter
                 {
-                    LogicalOperator = "AND"
+                    LogicalOperator = "and"
                 };
 
-                DateOnly startDate = (DateOnly)customStartDate;
-                DateOnly endDate = (DateOnly)customEndDate;
+                DateOnly startDate = customStartDate.Value;
+                DateOnly endDate = customEndDate.Value;
 
                 // Make today inclusive by pushing end date out one day.
                 if (endDate == DateOnly.FromDateTime(DateTime.Today))
@@ -154,7 +134,7 @@ namespace Concursus.PWA.Shared
 
                 var dateRangeFilter = new DataCompositeFilter
                 {
-                    LogicalOperator = "AND"
+                    LogicalOperator = "and"
                 };
 
                 dateRangeFilter.Filters.Add(new DataFilter
@@ -174,11 +154,10 @@ namespace Concursus.PWA.Shared
                 });
 
                 customFilter.CompositeFilters.Add(dateRangeFilter);
-
                 RangeFilters = customFilter;
+                NativePage = 1;
 
-                StateHasChanged();
-                GridRef?.Rebind();
+                await ReloadNativeGridAsync(1);
             }
             catch (Exception ex)
             {
@@ -186,7 +165,7 @@ namespace Concursus.PWA.Shared
             }
         }
 
-        private void GroupByButton()
+        private async Task GroupByButton()
         {
             if (GroupByColumn)
                 QuickFilterGroupByCSS = "";
@@ -194,105 +173,117 @@ namespace Concursus.PWA.Shared
                 QuickFilterGroupByCSS = "activeButton";
 
             GroupByColumn = !GroupByColumn;
-
-            GridRef?.Rebind();
+            await ReloadNativeGridAsync(NativePage);
         }
 
         /// <summary>
-        /// Returns records from the last X days (where X is the input).
+        /// Returns records from the last X days where X is the input.
         /// Example usage: ShowRecordsFromXDay(-7) for last 7 days.
         /// </summary>
-        /// <param name="days">Number of days to back (negative integer)</param>
         private void ShowRecordsFromXDay(int days)
         {
-            // Reset custom range state
-            customStartDate = null;
-            customEndDate = null;
-            RangeFilters = null;
-
-            // Hide range section if currently shown
-            if (showCustomRange)
-                showCustomRange = false;
-
-            // Toggle behaviour: pressing the same button again disables it
-            if (ActiveQuickFilterDays == days)
+            _ = InvokeAsync(async () =>
             {
-                ActiveQuickFilterDays = null;
-                QuickFilter7DaysCSS = "";
-                QuickFilter90DaysCSS = "";
-                QuickFilters = null;
-
-                StateHasChanged();
-                GridRef?.Rebind();
-                return;
-            }
-
-            // Clear any active range filter
-            if (RangeFilters != null)
-            {
-                RangeFiltersActive = false;
+                customStartDate = null;
+                customEndDate = null;
                 RangeFilters = null;
-            }
 
-            // Activate the quick filter
-            ActiveQuickFilterDays = days;
+                if (showCustomRange)
+                    showCustomRange = false;
 
-            // Apply CSS class based on which button was clicked
-            if (days == -7)
-            {
-                QuickFilter7DaysCSS = "activeButton";
-                QuickFilter90DaysCSS = "";
-            }
-            else if (days == -90)
-            {
-                QuickFilter90DaysCSS = "activeButton";
-                QuickFilter7DaysCSS = "";
-            }
+                // Toggle behaviour: pressing the same button again disables it
+                if (ActiveQuickFilterDays == days)
+                {
+                    ActiveQuickFilterDays = null;
+                    QuickFilter7DaysCSS = "";
+                    QuickFilter90DaysCSS = "";
+                    QuickFilters = null;
 
-            // Build the filter
-            var customFilter = new DataCompositeFilter
-            {
-                LogicalOperator = "AND"
-            };
+                    await ReloadNativeGridAsync(1);
+                    return;
+                }
 
-            DateTime startDate = DateTime.Today.AddDays(days);
-            DateTime endDate = DateTime.Today.AddDays(1); // include today
+                if (RangeFilters != null)
+                {
+                    RangeFiltersActive = false;
+                    RangeFilters = null;
+                }
 
-            var dateRangeFilter = new DataCompositeFilter
-            {
-                LogicalOperator = "AND"
-            };
+                ActiveQuickFilterDays = days;
 
-            // >= startDate
-            dateRangeFilter.Filters.Add(new DataFilter
-            {
-                ColumnName = CreatedOnColumn,
-                Operator = "ge",
-                Guid = Guid.NewGuid().ToString(),
-                Value = Value.ForString(startDate.ToString("yyyy-MM-dd"))
+                if (days == -7)
+                {
+                    QuickFilter7DaysCSS = "activeButton";
+                    QuickFilter90DaysCSS = "";
+                }
+                else if (days == -90)
+                {
+                    QuickFilter90DaysCSS = "activeButton";
+                    QuickFilter7DaysCSS = "";
+                }
+
+                var customFilter = new DataCompositeFilter
+                {
+                    LogicalOperator = "and"
+                };
+
+                DateTime startDate = DateTime.Today.AddDays(days);
+                DateTime endDate = DateTime.Today.AddDays(1);
+
+                var dateRangeFilter = new DataCompositeFilter
+                {
+                    LogicalOperator = "and"
+                };
+
+                dateRangeFilter.Filters.Add(new DataFilter
+                {
+                    ColumnName = CreatedOnColumn,
+                    Operator = "ge",
+                    Guid = Guid.NewGuid().ToString(),
+                    Value = Value.ForString(startDate.ToString("yyyy-MM-dd"))
+                });
+
+                dateRangeFilter.Filters.Add(new DataFilter
+                {
+                    ColumnName = CreatedOnColumn,
+                    Operator = "le",
+                    Guid = Guid.NewGuid().ToString(),
+                    Value = Value.ForString(endDate.ToString("yyyy-MM-dd"))
+                });
+
+                customFilter.CompositeFilters.Add(dateRangeFilter);
+                QuickFilters = customFilter;
+
+                await ReloadNativeGridAsync(1);
             });
+        }
 
-            // <= endDate
-            dateRangeFilter.Filters.Add(new DataFilter
-            {
-                ColumnName = CreatedOnColumn,
-                Operator = "le",
-                Guid = Guid.NewGuid().ToString(),
-                Value = Value.ForString(endDate.ToString("yyyy-MM-dd"))
-            });
+        private string DateOnlyToInputValue(DateOnly? value)
+        {
+            return value?.ToString("yyyy-MM-dd") ?? string.Empty;
+        }
 
-            customFilter.CompositeFilters.Add(dateRangeFilter);
+        private void OnCustomStartDateChanged(ChangeEventArgs args)
+        {
+            customStartDate = TryParseDateOnly(args.Value?.ToString());
+        }
 
-            QuickFilters = customFilter;
+        private void OnCustomEndDateChanged(ChangeEventArgs args)
+        {
+            customEndDate = TryParseDateOnly(args.Value?.ToString());
+        }
 
-            StateHasChanged();
-            GridRef?.Rebind();
+        private static DateOnly? TryParseDateOnly(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            return DateOnly.TryParse(value, out var parsed) ? parsed : null;
         }
 
         /// <summary>
         /// Applies grouping to the grid data if GroupByColumn is enabled.
-        /// Note: This method currently flattens the grouped data back to a single list
-        /// to preserve compatibility with the existing grid binding.
+        /// This method still flattens grouped data to preserve the existing rendering behaviour.
         /// </summary>
         private List<ExpandoObject> GroupByField(List<ExpandoObject> gridData)
         {
@@ -300,7 +291,6 @@ namespace Concursus.PWA.Shared
             {
                 string groupColumn = GroupBy;
 
-                // Extract unique values for UI options (if used elsewhere)
                 GroupByOptions = gridData
                     .Select(row =>
                     {
@@ -311,9 +301,8 @@ namespace Concursus.PWA.Shared
                     })
                     .Where(v => !string.IsNullOrWhiteSpace(v))
                     .Distinct()
-                    .ToList();
+                    .ToList()!;
 
-                // Group and then flatten (preserves original rendering behaviour)
                 var grouped = gridData
                     .GroupBy(row =>
                     {

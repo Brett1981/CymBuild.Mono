@@ -7,7 +7,6 @@ using Grpc.Core;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
-using Telerik.Blazor.Components;
 using static Concursus.PWA.Shared.MessageDisplay;
 using EntityProperty = Concursus.API.Core.EntityProperty;
 
@@ -16,6 +15,8 @@ namespace Concursus.PWA.Shared;
 public partial class ButtonMenu
 {
     protected FormHelper? formHelper;
+
+    private static readonly Guid QuoteEntityTypeGuid = Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56");
 
     private IDictionary<string, object> DetailPageParameters = new Dictionary<string, object>();
 
@@ -29,7 +30,6 @@ public partial class ButtonMenu
     [Parameter] public EventCallback GridUpdated { get; set; }
     [Parameter] public bool IsLoaded { get; set; } = true;
     public List<API.Client.MenuItem>? MenuItems { get; set; }
-    public TelerikWindow ModalWindow { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     // [Parameter] public EventCallback<Exception> OnError { get; set; }
@@ -62,6 +62,11 @@ public partial class ButtonMenu
     private bool ModalWindowIsVisible { get; set; } = false;
     private bool windowIsClosable { get; set; } = true;
     private string? WindowTitle { get; set; }
+    private bool IsTaskMenuOpen { get; set; }
+    private bool NativeModalIsMaximized { get; set; }
+    private string NativeModalCardCss => NativeModalIsMaximized
+        ? "cb-task-modal-card is-maximized"
+        : "cb-task-modal-card";
 
     //CBLD-384 - "Cache" the URL instead of assigning it to the dataObject in OnParameterSet.
     private string sharePointUrl { get; set; } = "";
@@ -104,14 +109,227 @@ public partial class ButtonMenu
         }
     }
 
-    public async Task ShowModal()
+    public Task ShowModal()
     {
+        NativeModalIsMaximized = false;
         ModalWindowIsVisible = true;
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     protected void CloseWindowCross()
     {
         ModalWindowIsVisible = false;
+        NativeModalIsMaximized = false;
+        StateHasChanged();
+    }
+
+    private void ToggleNativeModalMaximized()
+    {
+        NativeModalIsMaximized = !NativeModalIsMaximized;
+        StateHasChanged();
+    }
+
+    private async Task OnRootMenuClicked(API.Client.MenuItem item)
+    {
+        if (item is null || item.IsReadOnly == true)
+        {
+            return;
+        }
+
+        if (HasChildMenuItems(item))
+        {
+            IsTaskMenuOpen = !IsTaskMenuOpen;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await OnNativeMenuItemClicked(item);
+    }
+
+    private async Task OnNativeMenuItemClicked(API.Client.MenuItem item)
+    {
+        if (!CanInvokeNativeMenuItem(item))
+        {
+            return;
+        }
+
+        CloseTaskMenu();
+        await OnClickHandler(item);
+    }
+
+    private void CloseTaskMenu()
+    {
+        IsTaskMenuOpen = false;
+        StateHasChanged();
+    }
+
+    private static bool CanInvokeNativeMenuItem(API.Client.MenuItem? item)
+    {
+        return item is not null
+            && item.IsReadOnly != true
+            && item.IsSeparator != true
+            && !string.IsNullOrWhiteSpace(item.Text);
+    }
+
+    private static IEnumerable<API.Client.MenuItem> GetVisibleMenuItems(IEnumerable<API.Client.MenuItem>? items)
+    {
+        if (items is null)
+        {
+            yield break;
+        }
+
+        foreach (var item in items)
+        {
+            if (item is null)
+            {
+                continue;
+            }
+
+            if (item.IsSeparator == true || !string.IsNullOrWhiteSpace(item.Text) || HasChildMenuItems(item))
+            {
+                yield return item;
+            }
+        }
+    }
+
+    private static bool HasChildMenuItems(API.Client.MenuItem? item)
+    {
+        return item?.Items is not null && GetVisibleMenuItems(item.Items).Any(x => x.IsSeparator != true);
+    }
+
+    private static string GetMenuItemText(API.Client.MenuItem? item, string fallback = "")
+    {
+        return string.IsNullOrWhiteSpace(item?.Text) ? fallback : item.Text.Trim();
+    }
+
+    private static string GetMenuItemIconCss(API.Client.MenuItem? item)
+    {
+        var icon = item?.Icon?.ToString()?.Trim();
+        return string.IsNullOrWhiteSpace(icon) ? "bi bi-list" : icon;
+    }
+
+    private static string GetReadOnlyTitle(API.Client.MenuItem? item)
+    {
+        return item?.IsReadOnly == true ? "Save the record before running this task." : string.Empty;
+    }
+
+    private static System.Type? ResolveLoadPageType(string? loadPageUrl)
+    {
+        var trimmedLoadPageUrl = loadPageUrl?.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedLoadPageUrl))
+        {
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            trimmedLoadPageUrl,
+            $"{trimmedLoadPageUrl}, Concursus.PWA"
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var type = System.Type.GetType(candidate, throwOnError: false, ignoreCase: false);
+
+            if (type is not null)
+            {
+                return type;
+            }
+        }
+
+        return AppDomain.CurrentDomain
+            .GetAssemblies()
+            .Select(assembly => assembly.GetType(trimmedLoadPageUrl, throwOnError: false, ignoreCase: false))
+            .FirstOrDefault(type => type is not null);
+    }
+
+
+
+    private bool IsQuoteCreateJobMenuItem(API.Client.MenuItem? item)
+    {
+        var text = item?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var isCreateJobText = text.Equals("Create Job", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("Create Jobs", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("Create Job(s)", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Create Job", StringComparison.OrdinalIgnoreCase);
+
+        if (!isCreateJobText)
+        {
+            return false;
+        }
+
+        var pageEntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid);
+        var dataObjectEntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject?.EntityTypeGuid ?? string.Empty);
+
+        return pageEntityTypeGuid == QuoteEntityTypeGuid || dataObjectEntityTypeGuid == QuoteEntityTypeGuid;
+    }
+
+    private async Task<bool> ValidateQuoteCreateJobsStageScheduleAsync()
+    {
+        if (formHelper is null || dataObject is null)
+        {
+            return true;
+        }
+
+        var quoteGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.Guid);
+        if (quoteGuid == Guid.Empty)
+        {
+            return true;
+        }
+
+        var validation = await formHelper.QuoteCreateJobsStageScheduleValidateAsync(
+            quoteGuid,
+            allowQuoteItemStageFallback: false);
+
+        if (validation.IsValid)
+        {
+            return true;
+        }
+
+        var message = string.IsNullOrWhiteSpace(validation.Message)
+            ? validation.ErrorReturned
+            : validation.Message;
+
+        if (validation.RequiresQuoteItemStageFallbackConfirmation)
+        {
+            var continueWithQuoteItemFallback = await JSRuntime.InvokeAsync<bool>("confirm", message);
+            if (!continueWithQuoteItemFallback)
+            {
+                var cancelMessage = new Exception("Create Job cancelled. No Job has been created.");
+                cancelMessage.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+                cancelMessage.Data.Add("AdditionalInfo", "Create Job cancelled after the Invoice Schedule stage warning prompt.");
+                cancelMessage.Data.Add("PageMethod", "ButtonMenu/ValidateQuoteCreateJobsStageScheduleAsync(Cancelled)");
+                await OnError.InvokeAsync(cancelMessage);
+                return false;
+            }
+
+            var fallbackValidation = await formHelper.QuoteCreateJobsStageScheduleValidateAsync(
+                quoteGuid,
+                allowQuoteItemStageFallback: true);
+
+            if (fallbackValidation.IsValid)
+            {
+                return true;
+            }
+
+            message = string.IsNullOrWhiteSpace(fallbackValidation.Message)
+                ? fallbackValidation.ErrorReturned
+                : fallbackValidation.Message;
+        }
+
+        var validationError = new Exception(message);
+        validationError.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+        validationError.Data.Add("AdditionalInfo", message);
+        validationError.Data.Add("PageMethod", "ButtonMenu/ValidateQuoteCreateJobsStageScheduleAsync(Blocked)");
+        await OnError.InvokeAsync(validationError);
+        return false;
     }
 
     protected async Task<ExecuteMenuItemResponse> OnClickHandler(API.Client.MenuItem item)
@@ -154,7 +372,7 @@ public partial class ButtonMenu
                 DetailPageParameters.Clear();
                 DetailPageParameters.Add("SerializedDataObjectReference", serializedParentDataObjectReference);
                 DetailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
-                DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
+                DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindowCross));
                 DetailPageParameters.Add("OnError", EventCallback.Factory.Create(this, OnError));
                 DetailPageParameters.Add("RecordGuid", item.RecordGuid);
                 LoadPageUrl = " Concursus.PWA.Shared.Permissions";
@@ -176,7 +394,7 @@ public partial class ButtonMenu
                 DetailPageParameters.Clear();
                 DetailPageParameters.Add("SerializedDataObjectReference", serializedParentDataObjectReference);
                 DetailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
-                DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
+                DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindowCross));
                 DetailPageParameters.Add("OnError", EventCallback.Factory.Create(this, OnError));
                 DetailPageParameters.Add("RecordGuid", item.RecordGuid);
                 LoadPageUrl = " Concursus.PWA.Shared.RecordHistory";
@@ -249,7 +467,7 @@ public partial class ButtonMenu
                     DetailPageParameters.Add("ListOfMergeDocuments", dataObject.MergeDocuments);
                     DetailPageParameters.Add("EntityTypeGuid", PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString());
                     DetailPageParameters.Add("Windowed", true);
-                    // DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
+                    // DetailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindowCross));
                     DetailPageParameters.Add("RecordGuid", PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(item.RecordGuid).ToString());
                     DetailPageParameters.Add("SerializedDataObjectReference", serializedParentDataObjectReference);
                     DetailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
@@ -480,6 +698,16 @@ public partial class ButtonMenu
                     await PWAFunctions.DisplayMessageAsync("Record saved successfully....", ShowMessageType.Success);
                     // Removed the line below as it was causing the dataObject to lose its values
                     //dataObject = saveResponse.Value.Item2;
+
+                    if (IsQuoteCreateJobMenuItem(item))
+                    {
+                        var canCreateJob = await ValidateQuoteCreateJobsStageScheduleAsync();
+                        if (!canCreateJob)
+                        {
+                            return new ExecuteMenuItemResponse() { DataObject = dataObject };
+                        }
+                    }
+
                     var response = await formHelper.MenuItemPostAsync(item.EntityQueryGuid, dataObject);
                     if (!string.IsNullOrEmpty(response.ErrorReturned) && item.EntityQueryGuid != Guid.Empty.ToString())
                     {
@@ -691,7 +919,7 @@ public partial class ButtonMenu
 
        var IsDeletablePropertyValue = await formHelper.GetEntityType();
            IsDeletable = IsDeletablePropertyValue.IsDeletable;
-        
+
 
         MenuItems = new List<API.Client.MenuItem>
             {
@@ -737,7 +965,7 @@ public partial class ButtonMenu
                         {
                             IsSeparator = true
                         },
-                        
+
                         //If Development environment, show Modal Collection
                         appConfiguration.EnvironmentType == "DEV" ? new()
                         {
@@ -980,3 +1208,4 @@ public partial class ButtonMenu
         ModalWindowIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
     }
 }
+

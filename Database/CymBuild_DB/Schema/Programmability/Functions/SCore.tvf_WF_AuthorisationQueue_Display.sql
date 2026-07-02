@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create function [SCore].[tvf_WF_AuthorisationQueue_Display]')
 GO
-
 CREATE FUNCTION  [SCore].[tvf_WF_AuthorisationQueue_Display]
 (
     @UserId INT = NULL
@@ -30,6 +29,7 @@ SELECT
 
     aq.OrganisationalUnitId,
     ou.Name AS DisciplineName,
+	ou2.Name AS Department,
 
     aq.WorkflowId,
 
@@ -98,6 +98,8 @@ SELECT
 FROM SCore.tvf_WF_AuthorisationQueue(@UserId, -1) aq
 JOIN SCore.EntityTypes et ON et.ID = aq.EntityTypeId
 LEFT JOIN SCore.OrganisationalUnits ou ON ou.ID = aq.OrganisationalUnitId
+LEFT JOIN SCore.OrganisationalUnits ou2 ON (ou.ParentID = ou2.ID)
+
 
 LEFT JOIN SJob.Jobs j
     ON j.Guid = aq.DataObjectGuid AND j.RowStatus NOT IN (0,254)

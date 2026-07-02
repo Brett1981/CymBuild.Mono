@@ -78,6 +78,10 @@ public sealed class MetadataMigrationStagedRowModel
     public string TargetPayloadJson { get; set; } = string.Empty;
     public Dictionary<string, string> SourceValues { get; set; } = new();
     public Dictionary<string, string> TargetValues { get; set; } = new();
+    public bool IsSelected { get; set; }
+    public bool IsIgnored { get; set; }
+    public string IgnoreReason { get; set; } = string.Empty;
+    public string IgnoredOnUtcText { get; set; } = string.Empty;
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
 }
 
@@ -90,7 +94,49 @@ public sealed class MetadataMigrationDiffRowModel
     public Dictionary<string, string> SourceValues { get; set; } = new();
     public Dictionary<string, string> TargetValues { get; set; } = new();
     public List<string> DifferingColumns { get; set; } = new();
+    public bool IsSelected { get; set; }
+    public bool IsIgnored { get; set; }
+    public string IgnoreReason { get; set; } = string.Empty;
+    public string IgnoredOnUtcText { get; set; } = string.Empty;
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
+}
+
+public sealed class MetadataMigrationSelectionItemModel
+{
+    public string SchemaName { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public Guid SourceRowGuid { get; set; }
+    public string DifferenceType { get; set; } = string.Empty;
+    public bool IsSelected { get; set; }
+}
+
+public sealed class MetadataMigrationSelectionResultModel
+{
+    public int SelectedCount { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+public sealed class MetadataMigrationIgnoreResultModel
+{
+    public int IgnoredCount { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+public sealed class MetadataMigrationIgnoredRecordModel
+{
+    public Guid Guid { get; set; }
+    public string DatabaseName { get; set; } = string.Empty;
+    public string SchemaName { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public Guid SourceRowGuid { get; set; }
+    public string StableRecordKey { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public int IgnoredByUserId { get; set; }
+    public string IgnoredOnUtcText { get; set; } = string.Empty;
+    public string UnignoredOnUtcText { get; set; } = string.Empty;
+    public int RowStatus { get; set; }
+    public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
+    public bool IsActive => RowStatus != 0 && RowStatus != 254;
 }
 
 public sealed class MetadataMigrationDashboardModel
@@ -104,6 +150,8 @@ public sealed class MetadataMigrationDashboardModel
     public int NoChangeCount { get; set; }
     public int MapRows { get; set; }
     public int MissingTargetRows { get; set; }
+    public int SelectedCount { get; set; }
+    public int IgnoredCount { get; set; }
     public List<MetadataMigrationTableCountModel> StagedCounts { get; set; } = new();
     public List<MetadataMigrationValidationIssueModel> ValidationIssues { get; set; } = new();
     public List<MetadataMigrationIdentityMapModel> IdentityMap { get; set; } = new();

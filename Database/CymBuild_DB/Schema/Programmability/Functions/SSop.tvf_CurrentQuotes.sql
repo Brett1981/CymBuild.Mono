@@ -22,7 +22,8 @@ SELECT  q.ID,
 		qcf.QuoteStatus,
 		i.FullName AS QuotingConsultant,
 		q.RevisionNumber,
-		ou.Name AS OrganisationalUnitName,
+		ou.Name AS Department,
+		ou2.Name As BusinessUnit,
 		q.ExternalReference
 FROM    SSop.Quotes q
 JOIN	SSop.Quote_CalculatedFields qcf ON (qcf.ID = q.ID)
@@ -31,6 +32,7 @@ JOIN	SCrm.Accounts agent ON (agent.ID = q.AgentAccountId)
 JOIN	SJob.Assets uprn ON (uprn.ID = q.UprnId)
 JOIN	SCore.Identities i ON (i.ID = q.QuotingConsultantId)
 JOIN    SCore.OrganisationalUnits ou ON q.OrganisationalUnitID = ou.ID
+JOIN	SCore.OrganisationalUnits ou2 ON ou.ParentID = ou2.ID
 WHERE   (q.RowStatus NOT IN (0, 254))
 	AND	(q.ID > 0)
 AND	(EXISTS

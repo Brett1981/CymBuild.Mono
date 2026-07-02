@@ -1,29 +1,29 @@
-﻿@* @using  = Concursus.PWA.Shared.Scheduler.Classes.MenuItems *@
-@using Concursus.API.Client;
+﻿@using Concursus.API.Client;
 @using Concursus.API.Client.Models;
 @using Concursus.PWA.Classes
 @using _AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
 
-
-
-<div class="SchedulerModal">
-    <TelerikWindow @ref="ModalWindow"
-    Class="responsive-window"
-    Visible="@ModalShowing"
-    Modal="true"
-    CloseOnOverlayClick="false"
-    MaxHeight="100vh">
-        <WindowTitle>"My Absences"</WindowTitle>
-        <WindowContent>
-            <DynamicComponent Type="@System.Type.GetType($"Concursus.PWA.Pages.ScheduleTeamAbsence")" Parameters="@_detailPageParameters" />
-        </WindowContent>
-        <WindowActions>
-            <WindowAction Name="Close" OnClick="@CloseModal"></WindowAction>
-        </WindowActions>
-    </TelerikWindow>
-</div>
-
-
+@if (ModalShowing)
+{
+    <div class="cb-scheduler-modal-backdrop" role="presentation">
+        <div class="cb-scheduler-modal" role="dialog" aria-modal="true" aria-labelledby="cb-scheduler-modal-title">
+            <div class="cb-scheduler-modal__header">
+                <h5 id="cb-scheduler-modal-title">My Absences</h5>
+                <button type="button" class="btn-close" aria-label="Close" @onclick="CloseModal"></button>
+            </div>
+            <div class="cb-scheduler-modal__body">
+                @if (ScheduleTeamAbsenceType != null)
+                {
+                    <DynamicComponent Type="@ScheduleTeamAbsenceType" Parameters="@_detailPageParameters" />
+                }
+                else
+                {
+                    <div class="alert alert-danger mb-0">ScheduleTeamAbsence component could not be resolved.</div>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public int UserID { get; set; }
@@ -40,9 +40,9 @@
     [Parameter] public bool ModalShowing { get; set; } = false;
     [Parameter] public IDictionary<string, object> _detailPageParameters { get; set; }
 
+    private static readonly Type? ScheduleTeamAbsenceType = Type.GetType("Concursus.PWA.Pages.ScheduleTeamAbsence");
 
-    private string EntityTypeGuid { get; set; } = "8899e76e-31bd-492b-9739-eb100610e92d"; //Non-Availablity Events
-    private TelerikWindow? ModalWindow { get; set; }
+    private string EntityTypeGuid { get; set; } = "8899e76e-31bd-492b-9739-eb100610e92d";
 
     private string Title { get; set; }
     private string StartTime { get; set; }
@@ -64,18 +64,14 @@
         base.OnParametersSet();
     }
 
-    public async void CloseModal()
+    public async Task CloseModal()
     {
         ModalShowing = false;
         await CloseModalCllback.InvokeAsync();
     }
 
-
-
     protected override Task OnParametersSetAsync()
     {
         return base.OnParametersSetAsync();
     }
-
-  
 }

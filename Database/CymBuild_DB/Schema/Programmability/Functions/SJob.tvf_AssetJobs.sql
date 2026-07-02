@@ -3,10 +3,6 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_AssetJobs]')
 GO
-
-
-
-
 CREATE FUNCTION [SJob].[tvf_AssetJobs] 
 (
     @UserId INT,
@@ -25,11 +21,15 @@ SELECT  j.ID,
         j.JobTypeID,
         jt.Name AS JobTypeName,
 		i.Guid SurveyorGuid,
-		i.FullName AS SurveyorName
+		i.FullName AS SurveyorName,
+		ou.Name AS Department,
+		ou2.Name AS BusinessUnit
 FROM    SJob.Jobs j
 JOIN	SJob.Assets p ON (p.ID = j.UprnID)
 JOIN    SJob.JobTypes jt ON (j.JobTypeID = jt.ID)
 JOIN    SCore.Identities i ON (j.SurveyorID = i.ID)
+LEFT JOIN SCore.OrganisationalUnits AS ou ON (j.OrganisationalUnitID = ou.ID)
+LEFT JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 WHERE   (j.RowStatus  NOT IN (0, 254))
 	AND	(j.Id > 0)
 AND	(EXISTS

@@ -1,4 +1,4 @@
-using Azure.Identity;
+﻿using Azure.Identity;
 using Concursus.API.Classes;
 using Concursus.API.Components;
 using Concursus.API.Interfaces;
@@ -83,7 +83,7 @@ try
 
     // Register shared HTTP context accessor once.
     builder.Services.AddHttpContextAccessor();
-    //builder.Services.AddCymBuildAIAssistant(builder.Configuration);
+    builder.Services.AddCymBuildAIAssistant(builder.Configuration);
     builder.Services.AddScoped<IKnowledgeTextExtractor, KnowledgeTextExtractor>();
     builder.Services.AddScoped<IAIAssistantSharePointKnowledgeImporter, AIAssistantSharePointKnowledgeImporter>();
     // -------------------------------------------------------------------------

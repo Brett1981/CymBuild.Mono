@@ -8,7 +8,7 @@ CREATE FUNCTION [SJob].[tvf_Jobs_AllActivitiesByUser]
     @UserId INT
 )
 RETURNS TABLE
-        --WITH SCHEMABINDING
+         --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -21,12 +21,15 @@ RETURN
         j.Number,
         actS.Name AS ActivityStatus,
         actT.Name AS ActivityType,
-        CONVERT(VARCHAR(10), act.Date, 103) AS [Date]
+        CONVERT(VARCHAR(10), act.Date, 103) AS [Date],
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Activities AS act
     INNER JOIN SJob.Jobs AS j ON (act.JobID = j.ID)
     JOIN SJob.ActivityStatus AS actS ON (actS.ID = act.ActivityStatusID)
     JOIN SJob.ActivityTypes  AS actT ON (actT.ID = act.ActivityTypeID)
-
+	JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     -- Latest workflow status for the parent Job (if any) - rowstatus safe
     OUTER APPLY
     (

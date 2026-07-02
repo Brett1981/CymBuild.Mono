@@ -47,13 +47,49 @@
     </FormTitle>
 
     <FormBody>
-        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+        <div class="cb-native-tabstrip cb-job-detail-tabs">
+            <div class="cb-native-tab-list" role="tablist" aria-label="Job detail tabs">
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.Job)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Job)" @onclick="@(() => SelectNativeTab(JobDetailTab.Job))">
+                    <i class="bi bi-briefcase"></i>
+                    <span>Job</span>
+                </button>
 
-            <TabStripTab Title="Job">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Job))"><i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Job</span>
-                </HeaderTemplate>
-                <Content>
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.Fees)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Fees)" @onclick="@(() => SelectNativeTab(JobDetailTab.Fees))">
+                    <i class="bi bi-cash-stack"></i>
+                    <span>Fees</span>
+                </button>
+
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.ProjectDetails)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.ProjectDetails)" @onclick="@(() => SelectNativeTab(JobDetailTab.ProjectDetails))">
+                    <i class="bi bi-journal-medical"></i>
+                    <span>Project Details</span>
+                </button>
+
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.Milestones)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Milestones)" @onclick="@(() => SelectNativeTab(JobDetailTab.Milestones))">
+                    <i class="bi bi-signpost-split-fill"></i>
+                    <span>Milestones</span>
+                </button>
+
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.Activity)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Activity)" @onclick="@(() => SelectNativeTab(JobDetailTab.Activity))">
+                    <i class="bi bi-activity"></i>
+                    <span>Activities</span>
+                </button>
+
+                <button type="button" class="@NativeTabButtonCss(JobDetailTab.Actions)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Actions)" @onclick="@(() => SelectNativeTab(JobDetailTab.Actions))">
+                    <i class="bi bi-card-checklist"></i>
+                    <span>Actions</span>
+                </button>
+
+                @if (ShowDocumentsTab)
+                {
+                    <button type="button" class="@NativeTabButtonCss(JobDetailTab.Documents)" role="tab" aria-selected="@IsNativeTabActive(JobDetailTab.Documents)" @onclick="@(() => SelectNativeTab(JobDetailTab.Documents))">
+                        <i class="bi bi-folder2-open"></i>
+                        <span>Documents</span>
+                    </button>
+                }
+            </div>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Job))">
+
                     <div class="row">
                         <JobProgress @ref="jobProgressRef" DataObject="@editPage.dataObject" />
                     </div>
@@ -126,17 +162,14 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     </div>
-                </Content>
-            </TabStripTab>
 
-            <TabStripTab Title="Fees">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Fees))"><i class="bi bi-cash-stack me-2" style="font-size: 1.2rem;"></i> Fees</span>
-                </HeaderTemplate>
-                <Content>
+            </section>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Fees))">
+
                     @if (IsTabRequested(JobDetailTab.Fees))
                     {
-                    @if (ShowReplacementInvoiceScheduleButton)
+@*                     @if (ShowReplacementInvoiceScheduleButton)
                     {
                         <div class="mb-2">
                             <button class="btn btn-primary"
@@ -144,7 +177,7 @@
                                 New Invoice Schedule
                             </button>
                         </div>
-                    }
+                    } *@
                     <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFEES"
                                  OnActionCompleted="RefreshJobProgressAndInvoiceScheduleActions"
                                  ParentGuid="@RecordGuid"
@@ -233,14 +266,11 @@
                     {
                         @RenderLazyTabPlaceholder(JobDetailTab.Fees, "Fees")
                     }
-                </Content>
-            </TabStripTab>
 
-            <TabStripTab Title="Project Details">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.ProjectDetails))"><i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Details</span>
-                </HeaderTemplate>
-                <Content>
+            </section>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.ProjectDetails))">
+
                     <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.ProjectDetails)"
                                       Label="Project Details"
                                       OnLoadRequested="@(() => RequestTab(JobDetailTab.ProjectDetails))">
@@ -269,14 +299,11 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     </CymLazyRecordTab>
-                </Content>
-            </TabStripTab>
 
-            <TabStripTab Title="Milestones">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Milestones))"><i class="bi bi-signpost-split-fill me-2" style="font-size: 1.2rem;"></i> Milestones</span>
-                </HeaderTemplate>
-                <Content>
+            </section>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Milestones))">
+
                     <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Milestones)"
                                       Label="Milestones"
                                       OnLoadRequested="@(() => RequestTab(JobDetailTab.Milestones))">
@@ -286,14 +313,11 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     </CymLazyRecordTab>
-                </Content>
-            </TabStripTab>
 
-            <TabStripTab Title="Activity">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Activity))"><i class="bi bi-activity me-2" style="font-size: 1.2rem;"></i> Activities</span>
-                </HeaderTemplate>
-                <Content>
+            </section>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Activity))">
+
                     <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Activity)"
                                       Label="Activities"
                                       OnLoadRequested="@(() => RequestTab(JobDetailTab.Activity))">
@@ -303,14 +327,11 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     </CymLazyRecordTab>
-                </Content>
-            </TabStripTab>
 
-            <TabStripTab Title="Actions">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Actions))"><i class="bi bi-card-checklist me-2" style="font-size: 1.2rem;"></i> Actions</span>
-                </HeaderTemplate>
-                <Content>
+            </section>
+
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Actions))">
+
                     <CymLazyRecordTab IsLoaded="@IsTabRequested(JobDetailTab.Actions)"
                                       Label="Actions"
                                       OnLoadRequested="@(() => RequestTab(JobDetailTab.Actions))">
@@ -320,16 +341,13 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     </CymLazyRecordTab>
-                </Content>
-            </TabStripTab>
+
+            </section>
             @if (ShowDocumentsTab)
 {
-            <TabStripTab Title="Documents">
-                <HeaderTemplate>
-                    <span @onclick="@(() => RequestTab(JobDetailTab.Documents))"><i class="bi bi-folder2-open me-2" style="font-size: 1.2rem;"></i> Documents</span>
-                </HeaderTemplate>
+            <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(JobDetailTab.Documents))">
 
-                <Content>
+
                     @if (IsTabRequested(JobDetailTab.Documents))
                     {
                     <ErrorBoundary @ref="_docsBoundary">
@@ -364,7 +382,7 @@
                                 @ex.Message
 
                                 <div class="mt-2">
-                                    <TelerikButton OnClick="@RecoverDocumentsTab">Recover</TelerikButton>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RecoverDocumentsTab">Recover</button>
                                 </div>
                             </div>
                         </ErrorContent>
@@ -375,103 +393,101 @@
                     {
                         @RenderLazyTabPlaceholder(JobDetailTab.Documents, "Documents")
                     }
-                </Content>
-            </TabStripTab>
+
+            </section>
             }
-        </TelerikTabStrip>
+        </div>
 
-        <TelerikWindow @bind-Visible="@_showConfirmModeChange"
-                       Modal="true"
-                       Width="520px">
+        @if (_showConfirmModeChange)
+        {
+            <div class="cb-job-native-modal-backdrop"></div>
+            <div class="cb-job-native-modal-shell" role="dialog" aria-modal="true" aria-labelledby="job-confirm-mode-title">
+                <div class="cb-job-native-modal-card cb-job-native-modal-card-sm">
+                    <div class="cb-job-native-modal-header">
+                        <div>
+                            <div id="job-confirm-mode-title" class="cb-job-native-modal-title">Confirm invoicing mode change</div>
+                            <div class="cb-job-native-modal-subtitle">Review the change before applying it to this job.</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Close" @onclick="CloseConfirmModeChangeModal">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="cb-job-native-modal-body">
+                        <p class="mb-2">
+                            You are about to change this jobâ€™s invoicing mode to:
+                            <strong>@GetModeLabel(_pendingNewMode)</strong>
+                        </p>
 
-            <WindowTitle>
-                Confirm invoicing mode change
-            </WindowTitle>
+                        <div class="alert alert-warning mb-0">
+                            <strong>Warning:</strong>
+                            Changing this affects whether invoice requests are generated automatically.
+                        </div>
+                    </div>
+                    <div class="cb-job-native-modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CancelModeChange">
+                            Cancel
+                        </button>
 
-            <WindowActions>
-                <WindowAction Name="Close" />
-            </WindowActions>
-
-            <WindowContent>
-                <p class="mb-2">
-                    You are about to change this jobâ€™s invoicing mode to:
-                    <strong>@GetModeLabel(_pendingNewMode)</strong>
-                </p>
-
-                <div class="alert alert-warning mb-3">
-                    <strong>Warning:</strong>
-                    Changing this affects whether invoice requests are generated automatically.
+                        <button type="button" class="btn btn-primary" @onclick="ConfirmModeChangeAsync">
+                            Confirm
+                        </button>
+                    </div>
                 </div>
+            </div>
+        }
 
-                <div class="d-flex justify-content-end gap-2">
-                    <TelerikButton OnClick="@CancelModeChange">
-                        Cancel
-                    </TelerikButton>
+        @if (_showPausedGeneratePrompt)
+        {
+            <div class="cb-job-native-modal-backdrop"></div>
+            <div class="cb-job-native-modal-shell" role="dialog" aria-modal="true" aria-labelledby="job-paused-generate-title">
+                <div class="cb-job-native-modal-card cb-job-native-modal-card-md">
+                    <div class="cb-job-native-modal-header">
+                        <div>
+                            <div id="job-paused-generate-title" class="cb-job-native-modal-title">Invoicing is paused</div>
+                            <div class="cb-job-native-modal-subtitle">Confirm whether invoice requests should still be generated.</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Close" @onclick="ClosePausedGeneratePrompt">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="cb-job-native-modal-body">
+                        <p>
+                            This jobâ€™s invoicing is paused.
+                            There are <strong>@_pendingTriggerCount</strong> completed item(s) that could generate invoice requests.
+                        </p>
 
-                    <TelerikButton ThemeColor="ThemeColor.Primary"
-                                   OnClick="@ConfirmModeChangeAsync">
-                        Confirm
-                    </TelerikButton>
+                        <div class="alert alert-info mb-0">
+                            â€œThis jobâ€™s invoicing is paused. Do you still want to generate an invoice request?â€
+                        </div>
+                    </div>
+                    <div class="cb-job-native-modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CancelGenerateInvoicesWhilePaused">
+                            No
+                        </button>
+
+                        <button type="button" class="btn btn-primary" @onclick="ConfirmGenerateInvoicesWhilePausedAsync">
+                            Yes, generate invoice requests
+                        </button>
+                    </div>
                 </div>
-            </WindowContent>
+            </div>
+        }
+        @if (_showAutomationReenableModal)
+        {
+            <div class="cb-job-native-modal-backdrop"></div>
+            <div class="cb-job-native-modal-shell cb-job-native-modal-shell-lg" role="dialog" aria-modal="true" aria-labelledby="job-automation-reenable-title">
+                <div class="cb-job-native-modal-card cb-job-native-modal-card-lg">
+                    <div class="cb-job-native-modal-header">
+                        <div>
+                            <div id="job-automation-reenable-title" class="cb-job-native-modal-title">Review invoicing schedule before re-enabling automation</div>
+                            <div class="cb-job-native-modal-subtitle">Confirm the remaining pre-scheduled dates before automation is enabled.</div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="Close" @onclick="CloseAutomationReenableModal">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
 
-        </TelerikWindow>
-
-        <TelerikWindow @bind-Visible="@_showPausedGeneratePrompt"
-                       Modal="true"
-                       Width="560px">
-
-            <WindowTitle>
-                Invoicing is paused
-            </WindowTitle>
-
-            <WindowActions>
-                <WindowAction Name="Close" />
-            </WindowActions>
-
-            <WindowContent>
-                <p>
-                    This jobâ€™s invoicing is paused.
-                    There are <strong>@_pendingTriggerCount</strong> completed item(s) that could generate invoice requests.
-                </p>
-
-                <div class="alert alert-info">
-                    â€œThis jobâ€™s invoicing is paused. Do you still want to generate an invoice request?â€
-                </div>
-
-                <div class="d-flex justify-content-end gap-2">
-                    <TelerikButton OnClick="@CancelGenerateInvoicesWhilePaused">
-                        No
-                    </TelerikButton>
-
-                    <TelerikButton ThemeColor="ThemeColor.Primary"
-                                   OnClick="@ConfirmGenerateInvoicesWhilePausedAsync">
-                        Yes, generate invoice requests
-                    </TelerikButton>
-                </div>
-            </WindowContent>
-
-        </TelerikWindow>
-        <TelerikWindow @bind-Visible="@_showAutomationReenableModal"
-                       Modal="true"
-                       Width="980px"
-                       Height="90vh"
-                       MaxHeight="90vh">
-
-            <WindowTitle>
-                Review invoicing schedule before re-enabling automation
-            </WindowTitle>
-
-            <WindowActions>
-                <WindowAction Name="Close" />
-            </WindowActions>
-
-            <WindowContent>
-                <div class="automation-modal-container">
-
-                    <!-- Scrollable Content Area -->
-                    <div class="automation-modal-body">
-
+                    <div class="cb-job-native-modal-body automation-modal-body">
                         <div class="alert alert-warning">
                             <strong>As Automation is being turned on whilst a Job is Active</strong>, you must ensure the remaining pre-scheduled dates are correct and expected.
                             <br /><br />
@@ -482,7 +498,9 @@
                         @if (_loadingScheduleForAutomation)
                         {
                             <div class="d-flex justify-content-center py-4">
-                                <TelerikLoader Type="LoaderType.InfiniteSpinner" />
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
                             </div>
                         }
                         else if (_jobInvoiceScheduleGuid == Guid.Empty)
@@ -506,26 +524,23 @@
                                                          TransientVirtualProperties="@TransientVirtualProperties" />
                             </div>
                         }
-
                     </div>
 
-                    <!-- Sticky Footer -->
-                    <div class="automation-modal-footer d-flex justify-content-end gap-2">
-                        <TelerikButton OnClick="@CancelAutomationReenableAsync">
+                    <div class="cb-job-native-modal-footer automation-modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CancelAutomationReenableAsync">
                             Cancelled - Manual Mode
-                        </TelerikButton>
+                        </button>
 
-                        <TelerikButton ThemeColor="ThemeColor.Primary"
-                                       OnClick="@AcceptAutomationReenableAsync"
-                                       Enabled="@(!_loadingScheduleForAutomation && _jobInvoiceScheduleGuid != Guid.Empty)">
+                        <button type="button"
+                                class="btn btn-primary"
+                                @onclick="AcceptAutomationReenableAsync"
+                                disabled="@(_loadingScheduleForAutomation || _jobInvoiceScheduleGuid == Guid.Empty)">
                             Accepted - Re-enable Automations
-                        </TelerikButton>
+                        </button>
                     </div>
-
                 </div>
-            </WindowContent>
-
-        </TelerikWindow>
+            </div>
+        }
     </FormBody>
 </EditPage>
 
@@ -554,6 +569,19 @@
     {
         JobDetailTab.Job
     };
+
+    private JobDetailTab _nativeActiveTab = JobDetailTab.Job;
+
+    private void SelectNativeTab(JobDetailTab tab)
+    {
+        _nativeActiveTab = tab;
+        RequestTab(tab);
+    }
+
+    private bool IsNativeTabActive(JobDetailTab tab) => _nativeActiveTab == tab;
+
+    private string NativeTabButtonCss(JobDetailTab tab) =>
+        IsNativeTabActive(tab) ? "cb-native-tab-button active" : "cb-native-tab-button";
 
     private void RequestTab(JobDetailTab tab)
     {
@@ -1044,6 +1072,24 @@ private async Task CancelAutomationReenableAsync()
     await RefreshJobShellAsync(updateReplacementScheduleButton: true);
     StateHasChanged();
 }
+
+    private void CloseConfirmModeChangeModal()
+    {
+        _showConfirmModeChange = false;
+        StateHasChanged();
+    }
+
+    private void ClosePausedGeneratePrompt()
+    {
+        _showPausedGeneratePrompt = false;
+        StateHasChanged();
+    }
+
+    private void CloseAutomationReenableModal()
+    {
+        _showAutomationReenableModal = false;
+        StateHasChanged();
+    }
 
     private async Task ConfirmModeChangeAsync()
     {

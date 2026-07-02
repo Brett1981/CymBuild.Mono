@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[UserGroups]')
 GO
+PRINT (N'Create table [SCore].[UserGroups]')
+GO
 CREATE TABLE [SCore].[UserGroups] (
   [ID] [int] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_UserGroups_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -21,18 +23,6 @@ PRINT (N'Create index [IX_UQ_UserGroups_Guid] on table [SCore].[UserGroups]')
 GO
 CREATE UNIQUE INDEX [IX_UQ_UserGroups_Guid]
   ON [SCore].[UserGroups] ([Guid])
-  WITH (FILLFACTOR = 90)
-  ON [PRIMARY]
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_UQ_UserGroups_Identity_Group] on table [SCore].[UserGroups]')
-GO
-CREATE UNIQUE INDEX [IX_UQ_UserGroups_Identity_Group]
-  ON [SCore].[UserGroups] ([IdentityID], [GroupID], [RowStatus])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
   WITH (FILLFACTOR = 90)
   ON [PRIMARY]
 GO

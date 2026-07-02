@@ -9,7 +9,11 @@ public static class AIAssistantServiceRegistration
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        services.Configure<BlueGenOptions>(configuration.GetSection(BlueGenOptions.SectionName));
+        services.Configure<BlueGenOptions>(options =>
+        {
+            configuration.GetSection(BlueGenOptions.SectionName).Bind(options);
+            options.ApplyEnvironmentOverrides();
+        });
 
         services.AddHttpClient<IBlueGenClient, BlueGenClient>();
 

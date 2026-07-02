@@ -1,19 +1,15 @@
-﻿using Concursus.API.Client;
+using Concursus.API.Client;
 using Concursus.API.Core;
 using Concursus.PWA.Classes;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using System.Dynamic;
-using Telerik.Blazor.Components;
-
 
 namespace Concursus.PWA.Shared
 {
     public partial class FilteredDynamicGridViewV2 : ComponentBase
     {
-
-
-        //CBLD-393
+        // CBLD-393
         private static string dataObjGuid = "";
 
         private IDictionary<string, object> _detailPageParameters = new Dictionary<string, object>();
@@ -22,18 +18,17 @@ namespace Concursus.PWA.Shared
 
         private MessageDisplay _messageDisplay = new();
 
-        private List<string> _operationsWithMultipleStateChanged = new List<string>() {
+        private List<string> _operationsWithMultipleStateChanged = new List<string>()
+        {
             "FilterDescriptors",
             "GroupDescriptors",
             "SearchFilter"
         };
 
-
         private List<ExpandoObject> gridData = new List<ExpandoObject>();
 
         // Ensure this is unique for each modal instance
         private string modalId = Guid.Empty.ToString();
-
 
         protected string ErrorMessage { get; set; } = "";
         protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
@@ -41,9 +36,8 @@ namespace Concursus.PWA.Shared
         protected FormHelper? formHelper;
 
         // -------------------------
-        // Detail Window (same pattern as DynamicGridView)
+        // Detail Window (native shell, same behaviour as previous windowed detail)
         // -------------------------
-        private TelerikWindow? ModalWindow { get; set; }
         private bool WindowIsClosable { get; set; } = true;
         private bool WindowIsVisible { get; set; }
         private string? WindowTitle { get; set; }
@@ -51,20 +45,31 @@ namespace Concursus.PWA.Shared
         private GridViewDefinition? _viewDefinition;
         private string _detailPageTypeName = "";
 
-
         private bool BatchGridVisible { get; set; } = false;
-        private IEnumerable<ExpandoObject>? CurrentGridItems { get; set; } // Exposes the grid data
+        private IEnumerable<ExpandoObject>? CurrentGridItems { get; set; }
         private bool DoubleStateChanged { get; set; }
-        private TelerikGrid<ExpandoObject>? GridRef { get; set; }
         private string GridStateChangedProperty { get; set; } = string.Empty;
         private string GridStateChangedPropertyClass { get; set; } = string.Empty;
         private string GridStateString { get; set; } = string.Empty;
         private int OnStateChangedCount { get; set; }
         private bool ComingFromModal { get; set; } = false;
 
+        // -------------------------
+        // Native grid state
+        // -------------------------
+        private string _nativeGridParameterKey = string.Empty;
+        private int NativePage { get; set; } = 1;
+        private int NativePageSize { get; set; } = 50;
+        private int NativeTotalRows { get; set; }
+        private bool NativeIsLoading { get; set; }
+        private string NativeSortColumn { get; set; } = string.Empty;
+        private bool NativeSortDescending { get; set; }
+        private string NativeSearchText { get; set; } = string.Empty;
+        private bool NativeFilterPanelOpen { get; set; } = false;
+        private Dictionary<string, string> NativeColumnFilters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
         /* =============================================================================
-           Authoriser Closure Review Queue (NEW)
-           These fields/methods MUST exist in the same partial class used by the razor.
+           Authoriser Closure Review Queue
         ============================================================================= */
 
         private const string ClosureReviewQueueGridCode = "AUTHOREVIEW";
@@ -80,8 +85,8 @@ namespace Concursus.PWA.Shared
 
         private Guid _closureRecordGuid = Guid.Empty;
 
-        private string _closureEntityTypeName = "";     // "Jobs" / "Quotes" / "Enquiries"
-        private string _closureNumber = "";             // canonical Number (#.)
+        private string _closureEntityTypeName = "";
+        private string _closureNumber = "";
         private string _closureStatus = "";
         private string _closureDiscipline = "";
         private string _closureLastUpdated = "";
@@ -91,30 +96,22 @@ namespace Concursus.PWA.Shared
         private string _closureAgent = "";
         private string _closureAddress = "";
 
-        /* Jobs */
         private string _closureJobDescription = "";
         private string _closureJobType = "";
 
-        /* Quotes */
         private string _closureQuoteAgreedFee = "";
         private string _closureQuoteNet = "";
         private string _closureQuoteDateAccepted = "";
 
-        /* Enquiries */
         private string _closureEnquiryTotalFee = "";
 
-
-
-        //Values which we can group data by.
+        // Values which we can group data by.
         private IEnumerable<string> GroupByOptions { get; set; } = new List<string>();
         private bool GroupByColumn { get; set; } = false;
-        //We will get the translation (e.g. set in the dev) for the column we filter by. (e.g. OrgUnit = "Organisation Unit")
         private string GroupByColumTranslation { get; set; } = "";
 
-
-        private double Threshold { get; set; } = -1; //Set it to -1 for now.
+        private double Threshold { get; set; } = -1;
         private int OrganisationalUnitID { get; set; } = -1;
-
 
         // -------------------------
         // Modal open/close handlers
@@ -123,18 +120,10 @@ namespace Concursus.PWA.Shared
             => OpenClosureModalInternal(row, "Review ");
 
         private void OpenClosureApproveModal(IDictionary<string, object> row)
-        {
-            var entityType = TryGetStringFromRow(row, "EntityTypeName");
-
-            OpenClosureModalInternal(row, "Approve ");
-        }
+            => OpenClosureModalInternal(row, "Approve ");
 
         private void OpenClosureRejectModal(IDictionary<string, object> row)
-        {
-            var entityType = TryGetStringFromRow(row, "EntityTypeName");
-
-            OpenClosureModalInternal(row, "Reject ");
-        }
+            => OpenClosureModalInternal(row, "Reject ");
 
         private void OpenClosureModalInternal(IDictionary<string, object> row, string title)
         {
@@ -143,8 +132,8 @@ namespace Concursus.PWA.Shared
 
             _closureRecordGuid = TryGetGuidFromRow(row, "Guid");
 
-            _closureEntityTypeName = TryGetStringFromRow(row, "EntityTypeName"); // Jobs/Quotes/Enquiries
-            _closureNumber = TryGetStringFromRow(row, "Number");                // #.
+            _closureEntityTypeName = TryGetStringFromRow(row, "EntityTypeName");
+            _closureNumber = TryGetStringFromRow(row, "Number");
             _closureStatus = TryGetStringFromRow(row, "LatestWorkflowStatusName");
             _closureDiscipline = TryGetStringFromRow(row, "DisciplineName");
             _closureLastUpdated = TryGetStringFromRow(row, "LatestTransitionLocal");
@@ -154,28 +143,22 @@ namespace Concursus.PWA.Shared
             _closureAgent = TryGetStringFromRow(row, "DisplayAgentName");
             _closureAddress = TryGetStringFromRow(row, "DisplayAddress");
 
-            // Jobs
             _closureJobDescription = TryGetStringFromRow(row, "JobDescription");
             _closureJobType = TryGetStringFromRow(row, "JobTypeName");
 
-            // Quotes
             _closureQuoteAgreedFee = TryGetStringFromRow(row, "QuoteAgreedFee");
             _closureQuoteNet = TryGetStringFromRow(row, "QuoteNet");
             _closureQuoteDateAccepted = TryGetStringFromRow(row, "QuoteDateAccepted");
 
-            // Enquiries
             _closureEnquiryTotalFee = TryGetStringFromRow(row, "EnquiryTotalFee");
 
-            // Title
             var typeLabel = string.IsNullOrWhiteSpace(_closureEntityTypeName) ? "Record" : _closureEntityTypeName.Trim();
             var numberLabel = string.IsNullOrWhiteSpace(_closureNumber) ? "" : $" {_closureNumber}";
             _closureModalTitle = $"{title + _closureStatus}: {typeLabel}{numberLabel}";
 
-            _closureComment = ""; // Approve may be empty; reject validated later
+            _closureComment = "";
             _closureModalVisible = true;
         }
-
-
 
         private void CloseClosureModal()
         {
@@ -213,7 +196,6 @@ namespace Concursus.PWA.Shared
             if (!row.TryGetValue(key, out var v) || v is null) return false;
 
             if (v is bool b) return b;
-
             if (v is byte by) return by != 0;
             if (v is sbyte sby) return sby != 0;
             if (v is short sh) return sh != 0;
@@ -228,7 +210,6 @@ namespace Concursus.PWA.Shared
                 || s.Equals("yes", StringComparison.OrdinalIgnoreCase);
         }
 
-
         // -------------------------
         // Navigation
         // -------------------------
@@ -238,7 +219,6 @@ namespace Concursus.PWA.Shared
             {
                 if (_closureRecordGuid == Guid.Empty || ViewDefinition is null) return;
 
-                // Map entity -> detail page component name
                 _detailPageTypeName = _closureEntityTypeName switch
                 {
                     "Enquiries" => "EnquiryDetail",
@@ -254,7 +234,6 @@ namespace Concursus.PWA.Shared
                 var (parentDataObjectReference, serializedParentDataObjectReference) =
                     PWAFunctions.ProcessDataObjectReference(modalService, ParentDataObjectReference, guid, ViewDefinition.EntityTypeGuid);
 
-                // If configured as windowed, open the modal windowed detail
                 if (ViewDefinition.IsDetailWindowed)
                 {
                     _ = GetScrollBarPos();
@@ -281,7 +260,6 @@ namespace Concursus.PWA.Shared
                     return;
                 }
 
-                // Fallback: normal navigation if not windowed
                 var returnUri = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
                 var url = $"{_detailPageTypeName}/{guid}/{serializedParentDataObjectReference}/{returnUri}";
                 NavManager.NavigateTo(url, false);
@@ -311,11 +289,7 @@ namespace Concursus.PWA.Shared
 
                 WindowIsVisible = false;
 
-                // Rebind the grid after closing the detail modal
-                GridRef?.Rebind();
-                await RefreshMe();
-
-                // Restore scroll position if you want same behaviour as DynamicGridView
+                await ReloadNativeGridAsync(NativePage);
                 await SetScrollBarPos();
             }
             catch (Exception ex)
@@ -330,8 +304,7 @@ namespace Concursus.PWA.Shared
         {
             try
             {
-                GridRef?.Rebind();
-                await RefreshMe();
+                await ReloadNativeGridAsync(NativePage);
             }
             catch (Exception ex)
             {
@@ -340,7 +313,6 @@ namespace Concursus.PWA.Shared
                 await OnError(ex);
             }
         }
-
 
         // -------------------------
         // Submit actions (Approve/Reject)
@@ -394,7 +366,6 @@ namespace Concursus.PWA.Shared
             {
                 if (isJobs)
                 {
-                    // Keep existing job-specific behaviour (no regression)
                     var req = new JobClosureDecisionRequest
                     {
                         UserId = userService.UserId,
@@ -419,7 +390,6 @@ namespace Concursus.PWA.Shared
                 }
                 else
                 {
-                    // generic authorisation decision (Quotes/Enquiries)
                     var req = new AuthorisationDecisionRequest
                     {
                         UserId = userService.UserId,
@@ -463,35 +433,25 @@ namespace Concursus.PWA.Shared
             }
         }
 
-
-        /// <summary>
-        /// Safe grid refresh:
-        /// - Prefer TelerikGrid.Rebind()
-        /// - Fallback to RefreshService.RequestGridRefresh(GridCode)
-        /// </summary>
         private async Task RebindGridSafeAsync()
         {
             try
             {
-                if (GridRef is not null)
-                {
-                    GridRef.Rebind();
-                    return;
-                }
-
-                // Fallback: ask global grid system to refresh this grid code
-                // (DynamicGrid listens to RefreshService in some setups)
-             refreshservice?.RequestGridRefresh(GridCode);
+                await ReloadNativeGridAsync(NativePage);
             }
             catch
             {
-                // best-effort refresh
+                try
+                {
+                    refreshservice?.RequestGridRefresh(GridCode);
+                }
+                catch
+                {
+                    // best-effort refresh
+                }
             }
         }
 
-        // -------------------------
-        // Row helpers (fix “does not exist” compile errors)
-        // -------------------------
         private static string TryGetStringFromRow(IDictionary<string, object> row, string key)
         {
             if (row is null) return "";

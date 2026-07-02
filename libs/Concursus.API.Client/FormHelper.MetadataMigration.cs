@@ -135,11 +135,149 @@ public partial class FormHelper
                 RunGuid = runGuid.ToString(),
                 ForceApply = forceApply,
                 TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                ApplySelectedOnly = false
             },
             cancellationToken: cancellationToken);
 
         return reply.Message ?? string.Empty;
+    }
+
+    public async Task<string> MetadataMigrationApplySelectedAsync(
+        Guid runGuid,
+        bool forceApply,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationApplyAsync(
+            new MetadataMigrationApplyRequest
+            {
+                RunGuid = runGuid.ToString(),
+                ForceApply = forceApply,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                ApplySelectedOnly = true
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Message ?? string.Empty;
+    }
+
+    public async Task<MetadataMigrationSelectionResultModel> MetadataMigrationSelectionClearAsync(
+        Guid runGuid,
+        string schemaName = "",
+        string tableName = "",
+        string differenceType = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationSelectionClearAsync(
+            new MetadataMigrationSelectionClearRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                DifferenceType = differenceType ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationSelectionResultModel
+        {
+            SelectedCount = reply.SelectedCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+    public async Task<MetadataMigrationSelectionResultModel> MetadataMigrationSelectionUpsertAsync(
+        Guid runGuid,
+        IReadOnlyCollection<MetadataMigrationSelectionItemModel> items,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var request = new MetadataMigrationSelectionUpsertRequest
+        {
+            RunGuid = runGuid.ToString(),
+            TargetServerName = targetServerName ?? string.Empty,
+            TargetDatabaseName = targetDatabaseName ?? string.Empty
+        };
+
+        foreach (var item in items ?? Array.Empty<MetadataMigrationSelectionItemModel>())
+        {
+            request.Items.Add(new MetadataMigrationSelectionItem
+            {
+                SchemaName = item.SchemaName ?? string.Empty,
+                TableName = item.TableName ?? string.Empty,
+                SourceRowGuid = item.SourceRowGuid.ToString(),
+                DifferenceType = item.DifferenceType ?? string.Empty,
+                IsSelected = item.IsSelected
+            });
+        }
+
+        var reply = await _coreClient.MetadataMigrationSelectionUpsertAsync(request, cancellationToken: cancellationToken);
+
+        return new MetadataMigrationSelectionResultModel
+        {
+            SelectedCount = reply.SelectedCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+
+    public async Task<MetadataMigrationIgnoreResultModel> MetadataMigrationIgnoreUpsertAsync(
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        Guid sourceRowGuid,
+        bool isIgnored,
+        string reason = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIgnoreUpsertAsync(
+            new MetadataMigrationIgnoreUpsertRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                SourceRowGuid = sourceRowGuid.ToString(),
+                IsIgnored = isIgnored,
+                Reason = reason ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationIgnoreResultModel
+        {
+            IgnoredCount = reply.IgnoredCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+    public async Task<List<MetadataMigrationIgnoredRecordModel>> MetadataMigrationIgnoredRecordsAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        bool includeInactive = false,
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIgnoredRecordsAsync(
+            new MetadataMigrationIgnoredRecordsRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeInactive = includeInactive
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Records.Select(MapIgnoredRecord).ToList();
     }
 
     public async Task<MetadataMigrationDashboardModel> MetadataMigrationDashboardAsync(
@@ -168,6 +306,8 @@ public partial class FormHelper
             NoChangeCount = reply.NoChangeCount,
             MapRows = reply.MapRows,
             MissingTargetRows = reply.MissingTargetRows,
+            SelectedCount = reply.SelectedCount,
+            IgnoredCount = reply.IgnoredCount,
             StagedCounts = reply.StagedCounts.Select(MapTableCount).ToList(),
             ValidationIssues = reply.ValidationIssues.Select(MapValidationIssue).ToList(),
             IdentityMap = reply.IdentityMap.Select(MapIdentityMap).ToList(),
@@ -182,6 +322,7 @@ public partial class FormHelper
         string differenceType,
         string targetServerName = "",
         string targetDatabaseName = "",
+        bool includeIgnored = false,
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.MetadataMigrationStagedRowsAsync(
@@ -192,7 +333,8 @@ public partial class FormHelper
                 TableName = tableName ?? string.Empty,
                 DifferenceType = differenceType ?? string.Empty,
                 TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeIgnored = includeIgnored
             },
             cancellationToken: cancellationToken);
 
@@ -206,7 +348,11 @@ public partial class FormHelper
             SourcePayloadJson = x.SourcePayloadJson,
             TargetPayloadJson = x.TargetPayloadJson,
             SourceValues = x.SourceValues.ToDictionary(k => k.Key, v => v.Value),
-            TargetValues = x.TargetValues.ToDictionary(k => k.Key, v => v.Value)
+            TargetValues = x.TargetValues.ToDictionary(k => k.Key, v => v.Value),
+            IsSelected = x.IsSelected,
+            IsIgnored = x.IsIgnored,
+            IgnoreReason = x.IgnoreReason,
+            IgnoredOnUtcText = x.IgnoredOnUtc
         }).ToList();
     }
 
@@ -217,6 +363,7 @@ public partial class FormHelper
         string differenceType,
         string targetServerName = "",
         string targetDatabaseName = "",
+        bool includeIgnored = false,
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.MetadataMigrationDiffAsync(
@@ -227,7 +374,8 @@ public partial class FormHelper
                 TableName = tableName ?? string.Empty,
                 DifferenceType = differenceType ?? string.Empty,
                 TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeIgnored = includeIgnored
             },
             cancellationToken: cancellationToken);
 
@@ -240,6 +388,10 @@ public partial class FormHelper
                 TableName = row.TableName,
                 SourceRowGuid = Guid.TryParse(row.SourceRowGuid, out var parsedGuid) ? parsedGuid : Guid.Empty,
                 DifferenceType = row.DifferenceType,
+                IsSelected = row.IsSelected,
+                IsIgnored = row.IsIgnored,
+                IgnoreReason = row.IgnoreReason,
+                IgnoredOnUtcText = row.IgnoredOnUtc,
                 SourceValues = row.SourceValues.ToDictionary(k => k.Key, v => v.Value),
                 TargetValues = row.TargetValues.ToDictionary(k => k.Key, v => v.Value)
             };
@@ -313,4 +465,20 @@ public partial class FormHelper
         DetailsJson = row.DetailsJson,
         CreatedOnUtcText = row.CreatedOnUtc
     };
+
+    private static MetadataMigrationIgnoredRecordModel MapIgnoredRecord(MetadataMigrationIgnoredRecord row) => new()
+    {
+        Guid = Guid.TryParse(row.Guid, out var guid) ? guid : Guid.Empty,
+        DatabaseName = row.DatabaseName,
+        SchemaName = row.SchemaName,
+        TableName = row.TableName,
+        SourceRowGuid = Guid.TryParse(row.SourceRowGuid, out var sourceGuid) ? sourceGuid : Guid.Empty,
+        StableRecordKey = row.StableRecordKey,
+        Reason = row.Reason,
+        IgnoredByUserId = row.IgnoredByUserId,
+        IgnoredOnUtcText = row.IgnoredOnUtc,
+        UnignoredOnUtcText = row.UnignoredOnUtc,
+        RowStatus = row.RowStatus
+    };
+
 }

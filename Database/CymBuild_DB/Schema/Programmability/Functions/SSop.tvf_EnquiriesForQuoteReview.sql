@@ -22,10 +22,11 @@ SELECT  e.ID,
 		CASE WHEN client.Name <> N'' THEN client.Name ELSE e.ClientName END + N' / ' + CASE WHEN agent.Name <> N'' THEN agent.Name ELSE e.AgentName END  AS ClientAgentAccount,
 		CASE WHEN uprn.AssetNumber > 0 THEN uprn.FormattedAddressComma ELSE e.PropertyNameNumber + N' ' + e.PropertyAddressLine1 END AS Property,
 		ecf.EnquiryStatus,
-		org.Name AS OrgUnit,
+		org2.Name AS OrgUnit,
 		e.Date,
 		ISNULL(ServiceTypes.Name, N'Multi Discipline') AS Disciplines,
-		e.QuotingDeadlineDate AS Deadline
+		e.QuotingDeadlineDate AS Deadline,
+		org.Name AS Department
 FROM    SSop.Enquiries e
 JOIN	SCrm.Accounts acc ON (acc.ID = e.ClientAccountID)
 JOIN	SSop.Enquiry_CalculatedFields AS ecf ON (ecf.ID = e.ID)
@@ -33,6 +34,7 @@ JOIN	SCrm.Accounts client ON (client.ID = e.ClientAccountID)
 JOIN	SCrm.Accounts agent ON (agent.ID = e.AgentAccountId)
 JOIN	SJob.Assets uprn ON (uprn.ID = e.PropertyId)
 JOIN	SCore.OrganisationalUnits AS org ON (org.ID = e.OrganisationalUnitID)
+LEFT JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 OUTER APPLY (
 	SELECT	jt.Name
 	FROM	SJob.JobTypes AS jt

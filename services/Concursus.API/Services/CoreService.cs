@@ -1,4 +1,4 @@
-using Concursus.API.Classes;
+﻿using Concursus.API.Classes;
 using Concursus.API.Components;
 using Concursus.API.Core;
 using Concursus.API.Interfaces;
@@ -44,7 +44,8 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly IDelegatedGraphClientFactory _delegatedGraphClientFactory;
     private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
-    private readonly IAIAssistantAnswerService _aiAssistantAnswerService;
+    private readonly IAIAssistantAnswerService? _aiAssistantAnswerService;
+    private readonly IBlueGenClient? _blueGenClient;
 
     private static readonly Guid JobEntityTypeGuid =
     Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
@@ -68,7 +69,8 @@ public partial class CoreService : Core.Core.CoreBase
         IDelegatedGraphClientFactory delegatedGraphClientFactory,
         ISageInboundPaymentSyncService sageInboundPaymentSyncService,
         ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository,
-        IAIAssistantAnswerService? aiAssistantAnswerService = null)
+        IAIAssistantAnswerService? aiAssistantAnswerService = null,
+        IBlueGenClient? blueGenClient = null)
     {
         _config = config;
         _serviceBase = new ServiceBase(config, httpContextAccessor, new Logging(logger, config));
@@ -81,6 +83,7 @@ public partial class CoreService : Core.Core.CoreBase
         _sageInboundPaymentSyncService = sageInboundPaymentSyncService ?? throw new ArgumentNullException(nameof(sageInboundPaymentSyncService));
         _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository ?? throw new ArgumentNullException(nameof(sageInboundDiagnosticsRepository));
         _aiAssistantAnswerService = aiAssistantAnswerService;
+        _blueGenClient = blueGenClient;
 
         _serviceBase.logger.LogTrace("Core Service Initialised");
     }
@@ -88,6 +91,52 @@ public partial class CoreService : Core.Core.CoreBase
 
     #region Public Methods
 
+
+
+
+    public override async Task<QuoteCreateJobsStageScheduleValidationResponse> QuoteCreateJobsStageScheduleValidate(
+        QuoteCreateJobsStageScheduleValidationRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.QuoteGuid, out var quoteGuid) || quoteGuid == Guid.Empty)
+            {
+                const string invalidMessage = "A valid Quote Guid is required before creating a Job.";
+                return new QuoteCreateJobsStageScheduleValidationResponse
+                {
+                    IsValid = false,
+                    Message = invalidMessage,
+                    ErrorReturned = invalidMessage
+                };
+            }
+
+            var result = await _serviceBase._entityFramework
+                .QuoteCreateJobsStageScheduleValidateAsync(
+                    quoteGuid,
+                    request.AllowQuoteItemStageFallback,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new QuoteCreateJobsStageScheduleValidationResponse
+            {
+                IsValid = result.IsValid,
+                RequiresQuoteItemStageFallbackConfirmation = result.RequiresQuoteItemStageFallbackConfirmation,
+                Message = result.Message ?? string.Empty,
+                ErrorReturned = result.ErrorReturned ?? string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "QuoteCreateJobsStageScheduleValidate failed.");
+            return new QuoteCreateJobsStageScheduleValidationResponse
+            {
+                IsValid = false,
+                Message = ex.Message,
+                ErrorReturned = ex.Message
+            };
+        }
+    }
 
     public override async Task<GetWaitStatsDashboardResponse> GetWaitStatsDashboard(
     GetWaitStatsDashboardRequest request,
@@ -1350,6 +1399,79 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
             };
         }
     }
+
+
+    public override async Task<BusinessUnitsGetResponse> BusinessUnitsGet(
+       BusinessUnitsGetRequest request, ServerCallContext context)
+    {
+        //Ensure the UserId never equals to -1.
+        if (string.IsNullOrEmpty(request.UserId.ToString()) || request.UserId == -1 || request.UserId == 0)
+        {
+            request.UserId = _serviceBase._entityFramework.UserId;
+        }
+        try
+        {
+            var efResult = await _serviceBase._entityFramework.BusinessUnitsGet(request.UserId);
+
+            BusinessUnitsGetResponse rsl = new();
+
+            foreach (var ou in efResult)
+                rsl.OrganisationalUnits.Add(Converters.ConvertEfBusinessUnitToCoreBusinessUnit(ou));
+
+            return rsl;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex);
+            return new BusinessUnitsGetResponse() { ErrorReturned = ex.Message };
+        }
+    }
+
+    public override async Task<DepartmentsGetResponse> DepartmentsGet(
+      DepartmentsGetRequest request, ServerCallContext context)
+    {
+        //Ensure the UserId never equals to -1.
+        if (string.IsNullOrEmpty(request.UserId.ToString()) || request.UserId == -1 || request.UserId == 0)
+        {
+            request.UserId = _serviceBase._entityFramework.UserId;
+        }
+        try
+        {
+            var efResult = await _serviceBase._entityFramework.DepartmentsGet(request.UserId, request.BusinessUnitGuid);
+
+            DepartmentsGetResponse rsl = new();
+
+            foreach (var ou in efResult)
+                rsl.Department.Add(Converters.ConvertEfDepartmentToCoreDepartment(ou));
+
+            return rsl;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex);
+            return new DepartmentsGetResponse() { ErrorReturned = ex.Message };
+        }
+    }
+
+    public override async Task<GetUsersForDepartmentResponse> GetUsersForDepartment(GetUsersForDepartmentRequest request, ServerCallContext context)
+    {
+        try
+        {
+            var efResult = await _serviceBase._entityFramework.GetUsersForDepartment(request.DepartmentGuid);
+
+            GetUsersForDepartmentResponse rsl = new();
+
+            foreach (var ou in efResult) rsl.Users.Add(Converters.ConvertEfUserToCoreUser(ou));
+
+            return rsl;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex);
+            return new GetUsersForDepartmentResponse() { ErrorReturned = ex.Message };
+        }
+    }
+
 
     [Authorize(Roles = "User.Read,User.ReadWrite")]
     public override async Task<GetMergeDocumentItemTypesResponse> GetMergeDocumentItemTypes(

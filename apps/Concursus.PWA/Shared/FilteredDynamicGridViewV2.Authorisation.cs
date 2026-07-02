@@ -1,4 +1,4 @@
-﻿using Concursus.API.Core;
+using Concursus.API.Core;
 using Concursus.PWA.Classes;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
@@ -6,7 +6,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Telerik.DataSource;
 
 namespace Concursus.PWA.Shared
 {
@@ -39,14 +38,10 @@ namespace Concursus.PWA.Shared
         private DataCompositeFilter? AuthorisationFilters { get; set; } = null;
 
         // CSS helpers
-        private string AuthorisationAllCss => _authorisationFilter == AuthorisationEntityFilter.All ? "k-button k-primary" : "k-button";
-        private string AuthorisationEnquiriesCss => _authorisationFilter == AuthorisationEntityFilter.Enquiries ? "k-button k-primary" : "k-button";
-        private string AuthorisationQuotesCss => _authorisationFilter == AuthorisationEntityFilter.Quotes ? "k-button k-primary" : "k-button";
-        private string AuthorisationJobsCss => _authorisationFilter == AuthorisationEntityFilter.Jobs ? "k-button k-primary" : "k-button";
-
-        // Switch callback
-        private EventCallback<bool> AuthorisationMyItemsChanged =>
-            EventCallback.Factory.Create<bool>(this, ToggleAuthorisationMyItemsAsync);
+        private string AuthorisationAllCss => _authorisationFilter == AuthorisationEntityFilter.All ? "btn btn-primary btn-sm" : "btn btn-outline-primary btn-sm";
+        private string AuthorisationEnquiriesCss => _authorisationFilter == AuthorisationEntityFilter.Enquiries ? "btn btn-primary btn-sm" : "btn btn-outline-primary btn-sm";
+        private string AuthorisationQuotesCss => _authorisationFilter == AuthorisationEntityFilter.Quotes ? "btn btn-primary btn-sm" : "btn btn-outline-primary btn-sm";
+        private string AuthorisationJobsCss => _authorisationFilter == AuthorisationEntityFilter.Jobs ? "btn btn-primary btn-sm" : "btn btn-outline-primary btn-sm";
 
         // Concurrency / cancellation (prevents stacking / looping / races)
         private readonly SemaphoreSlim _authRefreshLock = new(1, 1);
@@ -143,10 +138,10 @@ namespace Concursus.PWA.Shared
 
                 BuildAuthorisationFilters();
 
-                // Rebind ONCE (reloads grid data)
-                GridRef?.Rebind();
+                // Reload ONCE (reloads grid data)
+                await ReloadNativeGridAsync(1);
 
-                // Refresh KPIs (no grid rebind here)
+                // Refresh KPIs (no duplicate grid reload here)
                 await RefreshAuthorisationKpisAsync(force: true, ct: ct);
 
                 StateHasChanged();

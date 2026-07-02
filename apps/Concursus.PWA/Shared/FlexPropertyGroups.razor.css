@@ -1,2 +1,102 @@
-﻿body {
+﻿/* 14S-R16 property group placement repair.
+   Metadata remains the source of truth:
+   - Row groups span the full grid row.
+   - Column groups occupy one grid cell so multiple groups can share a row.
+
+   R16 intentionally restores the inline grid style on FlexPropertyGroups.razor because the
+   runtime page showed the isolated CSS was not winning consistently after the R15 changes.
+   The CSS remains here as the maintainable source and as a fallback for future markup cleanup. */
+.flexpropertygroups {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)) !important;
+    gap: 0.75rem !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    grid-auto-flow: row !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
 }
+
+.flexpropertygroups ::deep .flexpropertygroup {
+    display: flex !important;
+    flex-direction: column !important;
+    align-self: stretch !important;
+    justify-self: stretch !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroups ::deep .flexpropertygroup.is-layout-row,
+.flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Row"] {
+    grid-column: 1 / -1 !important;
+}
+
+.flexpropertygroups ::deep .flexpropertygroup.is-layout-column,
+.flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Column"] {
+    grid-column: auto !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroups {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 0.65rem !important;
+    }
+
+    .flexpropertygroups ::deep .flexpropertygroup.is-layout-row,
+    .flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Row"],
+    .flexpropertygroups ::deep .flexpropertygroup.is-layout-column,
+    .flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Column"] {
+        grid-column: 1 / -1 !important;
+    }
+}
+
+/* BEGIN 14S-R17 property group wider column cells */
+/* Column groups were technically sharing rows again, but the 20rem grid cell from R16 made the
+   cards too narrow for real metadata content.  Widen the column cells while preserving metadata:
+   Row groups still span the full row, Column groups still occupy normal grid cells. */
+.flexpropertygroups {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)) !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    grid-auto-flow: row !important;
+}
+
+.flexpropertygroups ::deep .flexpropertygroup.is-layout-row,
+.flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Row"] {
+    grid-column: 1 / -1 !important;
+}
+
+.flexpropertygroups ::deep .flexpropertygroup.is-layout-column,
+.flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Column"] {
+    grid-column: auto !important;
+    align-self: stretch !important;
+    justify-self: stretch !important;
+}
+
+.flexpropertygroups ::deep .flexpropertygroup.is-layout-column > .card-body,
+.flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Column"] > .card-body {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroups {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .flexpropertygroups ::deep .flexpropertygroup.is-layout-row,
+    .flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Row"],
+    .flexpropertygroups ::deep .flexpropertygroup.is-layout-column,
+    .flexpropertygroups ::deep .flexpropertygroup[data-property-group-layout="Column"] {
+        grid-column: 1 / -1 !important;
+    }
+}
+/* END 14S-R17 property group wider column cells */
+

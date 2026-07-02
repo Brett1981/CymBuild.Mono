@@ -3,9 +3,6 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_SageExports]')
 GO
-
-
-
 CREATE FUNCTION [SFin].[tvf_SageExports] 
 (
     @UserId INT
@@ -19,11 +16,13 @@ SELECT  se.ID,
         se.RowVersion,
         se.Guid,
 		se.InclusiveToDate,
-        ou.Name AS OrganisationalUnit,
+        ou.Name AS Department,
+		ou2.Name AS BusinessUnit,
 		COUNT(setr.ID) AS IncludedTransactions
 FROM    SFin.SageExports se
 LEFT JOIN	SFin.SageExportTransactions AS setr ON (setr.SageExportID = se.ID)
 JOIN	SCore.OrganisationalUnits AS ou ON (ou.ID = se.OrganisationalUnitId)
+JOIN	SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 WHERE   (se.RowStatus  NOT IN (0, 254))
 	AND	(se.Id > 0)
 AND	(EXISTS
@@ -42,5 +41,5 @@ AND	(EXISTS
 			SCore.ObjectSecurityForUser_CanRead(ou.Guid, @UserId) oscr
 			)
 		) OR ou.ID < 0)
-	GROUP BY se.ID, se.RowStatus, SE.RowVersion, se.Guid, se.InclusiveToDate, ou.Name
+	GROUP BY se.ID, se.RowStatus, SE.RowVersion, se.Guid, se.InclusiveToDate, ou.Name, ou2.Name
 GO

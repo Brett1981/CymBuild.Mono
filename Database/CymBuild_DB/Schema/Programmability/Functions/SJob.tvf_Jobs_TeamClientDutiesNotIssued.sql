@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_TeamClientDutiesNotIssued]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_TeamClientDutiesNotIssued]
 (
     @UserId INT
 )
 RETURNS TABLE
-           --WITH SCHEMABINDING
+            --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -27,6 +26,8 @@ RETURN
         js.IsSubjectToNDA,
         j.ExternalReference,
         client.Name + N' / ' + agent.Name AS ClientAgent,
+    COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnit,
+    COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS Department,
         asset.FormattedAddressComma AS Asset,
         j.CreatedOn
     FROM SJob.Jobs AS j
@@ -35,8 +36,34 @@ RETURN
     JOIN SCore.Identities AS i ON (j.SurveyorID = i.ID)
     JOIN SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
+    JOIN SCore.OrganisationalUnits AS ou ON ou.ID = j.OrganisationalUnitID
     JOIN SJob.Assets AS asset ON (asset.ID = j.UprnID)
-
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsBusinessUnit, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS businessUnit
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsDepartment, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS department
     -- Latest workflow status for this job (if any)
     OUTER APPLY
     (

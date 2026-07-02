@@ -1,4 +1,4 @@
-﻿@page "/ModalCollection"
+@page "/ModalCollection"
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 
@@ -9,91 +9,98 @@
 
 @inherits EditPageBase
 @attribute [Authorize]
-<div class="d-flex justify-content-around">
 
-    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup" style="width:790px">
-        <div class="card-body">
-            <h5 class="card-title">Filter by Name</h5>
-            <TelerikGrid Class="grid"
-                         Data=@ModalList
-                         OnUpdate="@UpdateHandler"
-                         OnDelete="@DeleteHandler"
-                         ConfirmDelete="true"
-                         Pageable="true"
-                         Groupable="true"
-                         Sortable="true"
-                         FilterMode="GridFilterMode.FilterMenu"
-                         Resizable="true"
-                         Reorderable="true"
-                         EditMode="GridEditMode.Popup"
-                         SelectionMode="GridSelectionMode.Multiple"
-                         OnStateInit="@((GridStateEventArgs<ModalModel> args) => OnStateInit(args))"
-                         PageSize="10"
-                         Navigable="true">
-                <GridColumns>
-                    <GridCheckboxColumn></GridCheckboxColumn>
-                    <GridColumn Field="@nameof(ModalModel.DataObjectGuid)" Title="Data Object Guid" />
-                    <GridColumn Field="@nameof(ModalModel.EntityTypeGuid)" Title="EntityType Guid" />
-                    <GridColumn Field="@nameof(ModalModel.Timestamp)" Title="Timestamp" />
-                    <GridCommandColumn Width="260px">
-                                        <GridCommandButton Command="Edit" Icon="@SvgIcon.Pencil" ThemeColor="@ThemeConstants.Button.ThemeColor.Primary">Edit</GridCommandButton>
-                        <GridCommandButton Command="Delete" Icon="@SvgIcon.Trash">Delete</GridCommandButton>
-                    </GridCommandColumn>
-                </GridColumns>
-            </TelerikGrid>
+<section class="cb-v2-page cb-native-dev-page">
+    <div class="cb-v2-card cb-native-dev-card">
+        <div class="cb-v2-card-body">
+            <div class="cb-v2-panel-header cb-native-dev-header">
+                <div class="cb-native-dev-title-wrap">
+                    <div class="cb-v2-icon-wrap"><i class="bi bi-window-stack"></i></div>
+                    <div>
+                        <h3 class="cb-v2-title mb-1">Modal Collection</h3>
+                        <div class="cb-v2-description">Review and manage currently registered CymBuild modal windows.</div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-outline-secondary" @onclick="LoadData">
+                    <i class="bi bi-arrow-clockwise"></i>
+                    Refresh
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="alert alert-danger mt-3">@ErrorMessage</div>
+            }
+
+            @if (ModalList is null || ModalList.Count == 0)
+            {
+                <div class="cb-native-dev-empty mt-3">No open modals are currently registered.</div>
+            }
+            else
+            {
+                <div class="cb-native-dev-table-wrap mt-3">
+                    <table class="table cb-v2-table cb-native-dev-table">
+                        <thead>
+                            <tr>
+                                <th>Modal ID</th>
+                                <th>Data Object Guid</th>
+                                <th>Entity Type Guid</th>
+                                <th>Timestamp</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var modal in ModalList)
+                            {
+                                <tr>
+                                    @if (IsEditing(modal))
+                                    {
+                                        <td>@modal.ModalId</td>
+                                        <td>
+                                            <input class="form-control form-control-sm" @bind="editDataObjectGuid" />
+                                        </td>
+                                        <td>
+                                            <input class="form-control form-control-sm" @bind="editEntityTypeGuid" />
+                                        </td>
+                                        <td>@modal.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                        <td class="text-end">
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="Modal edit actions">
+                                                <button type="button" class="btn btn-primary" @onclick="() => SaveEdit(modal)">
+                                                    <i class="bi bi-check-lg"></i>
+                                                    Save
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </td>
+                                    }
+                                    else
+                                    {
+                                        <td>@modal.ModalId</td>
+                                        <td>@modal.DataObjectGuid</td>
+                                        <td>@modal.EntityTypeGuid</td>
+                                        <td>@modal.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                        <td class="text-end">
+                                            <div class="btn-group btn-group-sm" role="group" aria-label="Modal actions">
+                                                <button type="button" class="btn btn-outline-primary" @onclick="() => BeginEdit(modal)">
+                                                    <i class="bi bi-pencil"></i>
+                                                    Edit
+                                                </button>
+                                                <button type="button" class="btn btn-outline-danger" @onclick="() => DeleteModal(modal)">
+                                                    <i class="bi bi-trash"></i>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
     </div>
-
-</div>
-
-<style>
-    .k-listview-header {
-        padding: 20px 28px;
-        text-transform: uppercase;
-    }
-
-    .k-card {
-        width: 100%; /* Set the width to 100% or adjust it to your desired width */
-        max-width: 800px; /* Set the maximum width if needed */
-        margin: 0 auto; /* Center the card horizontally */
-        padding: 20px; /* Adjust padding as needed */
-        border-width: 0 0 1px 0;
-        border-radius: 0;
-        box-shadow: none;
-    }
-
-        .k-card .k-card-body,
-        .k-card .k-card-actions {
-            padding: 0 8px;
-        }
-
-        .k-card .k-card-image {
-            max-width: unset;
-        }
-
-    .k-card-horizontal > .k-card-image:last-child {
-        border-radius: 0;
-    }
-
-    .k-card .k-card-title {
-        padding: 0;
-        font-size: 1.285em;
-        font-weight: bold;
-        line-height: normal;
-    }
-
-    .k-card-subtitle {
-        font-size: 1em;
-    }
-
-    .card-date {
-        font-size: 0.85em;
-        color: #bababa;
-    }
-
-    .multi-select {
-        width: 100%;
-        max-width: 680px;
-        margin: 10px 0 0 0;
-    }
-</style>
+</section>

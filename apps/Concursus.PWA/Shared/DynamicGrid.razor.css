@@ -221,3 +221,139 @@
         white-space: normal;
     }
 }
+
+/* 14D-R5 border completion for DynamicGrid drawer/tab shell. */
+.cb-dynamic-grid-card,
+.cb-drawer-layout,
+.cb-tabs,
+.cb-tab,
+.cb-tab-panel {
+    border-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.cb-dynamic-grid-card {
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.cb-drawer-nav {
+    border-right-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.cb-drawer-item {
+    border-bottom-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.cb-drawer-item.selected {
+    border-left: 3px solid var(--cb-v2-control-border-focus, var(--cb-v2-primary, #2563eb));
+}
+
+.custom-toolbar,
+.cb-dynamic-grid-toolbar {
+    border-bottom-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+/* 14D-R6 Native dynamic grid toolbar rounded border completion. */
+.custom-toolbar,
+.cb-dynamic-grid-toolbar {
+    border: 1px solid var(--cb-v2-control-border-dark, #8ea0bb) !important;
+    border-radius: var(--cb-v2-radius-lg, 18px) !important;
+    background: var(--cb-v2-bg, #ffffff) !important;
+    overflow: visible !important;
+}
+
+.custom-toolbar .btn:not(.btn-link),
+.cb-dynamic-grid-toolbar .btn:not(.btn-link),
+.custom-toolbar button:not(.btn-link),
+.cb-dynamic-grid-toolbar button:not(.btn-link),
+.cb-drawer-toggle,
+.cb-tab {
+    border: 1px solid var(--cb-v2-control-border-dark, #8ea0bb) !important;
+}
+
+.custom-toolbar .btn:not(.btn-link):hover,
+.cb-dynamic-grid-toolbar .btn:not(.btn-link):hover,
+.custom-toolbar button:not(.btn-link):hover,
+.cb-dynamic-grid-toolbar button:not(.btn-link):hover,
+.cb-drawer-toggle:hover,
+.cb-tab:hover {
+    border-color: var(--cb-v2-control-border-dark-hover, #64748b) !important;
+}
+
+/* 14D-R7 clean nested borders for DynamicGrid.
+   Keep one rounded outer surface and square-off joined child surfaces to avoid overlapping arcs. */
+.cb-dynamic-grid-card {
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    border-radius: var(--cb-v2-radius-md, 16px) !important;
+    overflow: hidden !important;
+    background: var(--cb-v2-bg, #ffffff) !important;
+    box-shadow: var(--cb-v2-shadow-sm, 0 6px 18px rgba(15, 23, 42, .05));
+}
+
+.cb-dynamic-grid-card > .custom-toolbar,
+.cb-dynamic-grid-card > .cb-dynamic-grid-toolbar {
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: var(--cb-v2-bg-soft, #f8fafc) !important;
+}
+
+.cb-dynamic-grid-card .cb-drawer-layout,
+.cb-dynamic-grid-card .cb-drawer-content,
+.cb-dynamic-grid-card .cb-tab-panel,
+.cb-dynamic-grid-card .dg-host {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+
+.cb-dynamic-grid-card .cb-drawer-nav {
+    border: 0 !important;
+    border-right: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    border-radius: 0 !important;
+}
+
+.cb-dynamic-grid-card .cb-drawer-item {
+    border: 0 !important;
+    border-bottom: 1px solid var(--cb-v2-border-soft, #e2e8f0) !important;
+    border-radius: 0 !important;
+}
+
+.cb-dynamic-grid-card .cb-drawer-item.selected {
+    border-left: 3px solid var(--cb-v2-control-border-focus, var(--cb-v2-primary, #2563eb)) !important;
+}
+
+.cb-dynamic-grid-card .cb-tabs {
+    border: 0 !important;
+    border-bottom: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    border-radius: 0 !important;
+    margin: 0 0 .75rem 0 !important;
+}
+
+.cb-dynamic-grid-card .cb-tab {
+    border: 1px solid transparent !important;
+    border-bottom: 0 !important;
+    border-radius: var(--cb-v2-radius-sm, 10px) var(--cb-v2-radius-sm, 10px) 0 0 !important;
+}
+
+.cb-dynamic-grid-card .cb-tab.active {
+    border-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.cb-dynamic-grid-card .cb-drawer-toggle,
+.cb-dynamic-grid-card .custom-toolbar .btn:not(.btn-link),
+.cb-dynamic-grid-card .cb-dynamic-grid-toolbar .btn:not(.btn-link),
+.cb-dynamic-grid-card .custom-toolbar button:not(.btn-link),
+.cb-dynamic-grid-card .cb-dynamic-grid-toolbar button:not(.btn-link) {
+    border: 1px solid var(--cb-v2-control-border-dark, #8ea0bb) !important;
+    border-radius: var(--cb-v2-radius-sm, 10px) !important;
+}
+
+@media (max-width: 768px) {
+    .cb-dynamic-grid-card .cb-drawer-nav {
+        border-right: 0 !important;
+        border-bottom: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    }
+}
+

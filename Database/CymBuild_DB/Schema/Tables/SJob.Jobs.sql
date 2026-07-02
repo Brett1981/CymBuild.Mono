@@ -3,6 +3,11 @@ GO
 
 PRINT (N'Create table [SJob].[Jobs]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SJob].[Jobs]')
+GO
 CREATE TABLE [SJob].[Jobs] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Jobs_RowStatus] DEFAULT (1),
@@ -251,88 +256,6 @@ BEGIN
 				VALUES(1, @SchemaName, @TableName, N'AgentAccountID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 93)
 			END 
 			
-
-
-			/* ------------------------------------------------------------
-			   InvoiceProcessingMode (tinyint) -> friendly text
-			   NOTE: EntityPropertyID placeholder = -1 until you add metadata
-			------------------------------------------------------------ */
-			SELECT
-				  @PreviousValue =
-						CASE ISNULL(d.[InvoiceProcessingMode], 1)
-							WHEN 0 THEN N'Automated'
-							WHEN 1 THEN N'Manual'
-							WHEN 2 THEN N'Paused'
-							ELSE CONCAT(N'Unknown (', CONVERT(NVARCHAR(10), d.[InvoiceProcessingMode]), N')')
-						END,
-				  @NewValue =
-						CASE ISNULL(i.[InvoiceProcessingMode], 1)
-							WHEN 0 THEN N'Automated'
-							WHEN 1 THEN N'Manual'
-							WHEN 2 THEN N'Paused'
-							ELSE CONCAT(N'Unknown (', CONVERT(NVARCHAR(10), i.[InvoiceProcessingMode]), N')')
-						END
-			FROM Inserted i
-			JOIN Deleted  d ON (i.[ID] = d.[ID])
-			WHERE (i.[ID] = @CurrentInsertedID)
-			  AND (d.[InvoiceProcessingMode] IS DISTINCT FROM i.[InvoiceProcessingMode]);
-
-			IF (@@ROWCOUNT > 0)
-			BEGIN
-				INSERT SCore.RecordHistory
-				(
-					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid,
-					UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
-				)
-				VALUES
-				(
-					1, @SchemaName, @TableName, N'InvoiceProcessingMode',
-					@CurrentInsertedID, @CurrentInsertedGuid, @UserID,
-					@PreviousValue, @NewValue, SYSTEM_USER,
-					2597
-				);
-			END
-
-
-
-			/* ------------------------------------------------------------
-			   ManualInvoicingEnabled (bit) -> friendly text
-			   NOTE: EntityPropertyID placeholder = -1 until you add metadata
-			------------------------------------------------------------ */
-			SELECT
-				  @PreviousValue =
-						CASE ISNULL(d.[ManualInvoicingEnabled], 0)
-							WHEN 1 THEN N'Yes'
-							ELSE N'No'
-						END,
-				  @NewValue =
-						CASE ISNULL(i.[ManualInvoicingEnabled], 0)
-							WHEN 1 THEN N'Yes'
-							ELSE N'No'
-						END
-			FROM Inserted i
-			JOIN Deleted  d ON (i.[ID] = d.[ID])
-			WHERE (i.[ID] = @CurrentInsertedID)
-			  AND (d.[ManualInvoicingEnabled] IS DISTINCT FROM i.[ManualInvoicingEnabled]);
-
-			IF (@@ROWCOUNT > 0)
-			BEGIN
-				INSERT SCore.RecordHistory
-				(
-					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid,
-					UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
-				)
-				VALUES
-				(
-					1, @SchemaName, @TableName, N'ManualInvoicingEnabled',
-					@CurrentInsertedID, @CurrentInsertedGuid, @UserID,
-					@PreviousValue, @NewValue, SYSTEM_USER,
-					2598
-				);
-			END
-
-
-
 			SELECT	
 					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[AgentAddressID]), N''),
 					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[AgentAddressID]), N'')
@@ -712,6 +635,24 @@ BEGIN
 			END 
 			
 			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[DataClassificationID]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[DataClassificationID]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[DataClassificationID] IS DISTINCT FROM i.[DataClassificationID])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'DataClassificationID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2840)
+			END 
+			
+			SELECT	
 					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[DeadDate]), N''),
 					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[DeadDate]), N'')
 			FROM	Inserted i
@@ -817,6 +758,24 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'FinanceContactID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 1157)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[InvoiceProcessingMode]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[InvoiceProcessingMode]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[InvoiceProcessingMode] IS DISTINCT FROM i.[InvoiceProcessingMode])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'InvoiceProcessingMode', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2597)
 			END 
 			
 			SELECT	
@@ -979,6 +938,24 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'LegacyID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 602)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[ManualInvoicingEnabled]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[ManualInvoicingEnabled]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[ManualInvoicingEnabled] IS DISTINCT FROM i.[ManualInvoicingEnabled])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'ManualInvoicingEnabled', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2598)
 			END 
 			
 			SELECT	
@@ -1285,6 +1262,24 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'SectorId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2558)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[SecurityClassificationID]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[SecurityClassificationID]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[SecurityClassificationID] IS DISTINCT FROM i.[SecurityClassificationID])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'SecurityClassificationID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2841)
 			END 
 			
 			SELECT	

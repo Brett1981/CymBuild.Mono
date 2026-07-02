@@ -1,0 +1,50 @@
+.legend-panel {
+    background: #f8fafc;
+    border: 1px solid var(--cb-v2-border-soft, #dbe4f0);
+    border-radius: var(--cb-v2-radius-sm, 8px);
+    padding: .65rem .75rem;
+}
+
+.legend-panel strong {
+    display: block;
+    margin-bottom: .25rem;
+}
+
+.legend-box {
+    border-radius: 3px;
+    display: inline-block;
+    height: 15px;
+    margin-right: 6px;
+    vertical-align: middle;
+    width: 20px;
+}
+
+.legend-box.absence-am {
+    background-color: #ffc107;
+    border: 1px solid #c82333;
+}
+
+.legend-box.absence-pm {
+    background-color: #ff0000;
+    border: 1px solid #c82333;
+}
+
+.legend-box.absence-full {
+    background-color: #808080;
+    border: 1px solid #c82333;
+}
+
+.legend-box.scheduled-work {
+    background-color: #328ca8;
+    border: 1px solid #87ceeb;
+}
+
+.legend-box.scheduler-weekend {
+    background-color: lightgray;
+    border: 1px solid #ccc;
+}
+
+.legend-box.scheduler-holiday {
+    background-color: #ffe5e5;
+    border: 1px dashed #dc3545;
+}

@@ -3,8 +3,6 @@ GO
 
 PRINT (N'Create function [SSop].[tvf_QuotesNotIssued]')
 GO
-
-
 CREATE FUNCTION [SSop].[tvf_QuotesNotIssued]
 (
     @UserId INT
@@ -28,7 +26,9 @@ RETURN
         q.ExternalReference,
         jt.Name AS JobType,
         q.Date AS CreatedOn,
-        q.ExpiryDate
+        q.ExpiryDate,
+		ou2.Name AS BusinessUnit,
+		ou.Name AS Department
     FROM SSop.Quotes AS q
 
     OUTER APPLY
@@ -47,7 +47,8 @@ RETURN
     JOIN SJob.Assets AS uprn ON (uprn.ID = q.UprnId)
     JOIN SCore.Identities AS qc ON (qc.ID = q.QuotingConsultantId)
     JOIN SJob.JobTypes AS jt ON (jt.ID = q.JobTypeId)
-
+	JOIN SCore.OrganisationalUnits AS ou ON (q.OrganisationalUnitID = ou.ID)
+	JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
     -- Latest workflow status for this quote (if any) - rowstatus safe
     OUTER APPLY
     (

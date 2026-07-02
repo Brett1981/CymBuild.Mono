@@ -242,12 +242,15 @@ ORDER BY r.ID DESC;", cn)
 
             cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
             cmd.Parameters.Add(new SqlParameter("@ForceApply", SqlDbType.Bit) { Value = request.ForceApply });
+            cmd.Parameters.Add(new SqlParameter("@ApplySelectedOnly", SqlDbType.Bit) { Value = request.ApplySelectedOnly });
 
             await cmd.ExecuteNonQueryAsync(context.CancellationToken);
 
             return new MetadataMigrationApplyResponse
             {
-                Message = "Metadata apply completed successfully."
+                Message = request.ApplySelectedOnly
+                    ? "Selected metadata records applied successfully."
+                    : "Metadata apply completed successfully."
             };
         }
         catch (SqlException ex)
@@ -256,37 +259,248 @@ ORDER BY r.ID DESC;", cn)
         }
     }
 
+    public override async Task<MetadataMigrationSelectionResponse> MetadataMigrationSelectionClear(
+        MetadataMigrationSelectionClearRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromSelectionClearRequestAsync(request, context.CancellationToken);
+            await using var cmd = new SqlCommand("SMigration.MetadataRunSelection_Clear", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = request.SchemaName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = request.TableName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@DifferenceType", SqlDbType.NVarChar, 30) { Value = request.DifferenceType ?? string.Empty });
+
+            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+            var selectedCount = await CountSelectedRowsAsync(cn, runGuid, context.CancellationToken);
+
+            return new MetadataMigrationSelectionResponse
+            {
+                SelectedCount = selectedCount,
+                Message = selectedCount == 0
+                    ? "Metadata migration selection cleared."
+                    : $"Metadata migration selection cleared. {selectedCount} selected record(s) remain."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata selection clear SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationSelectionResponse> MetadataMigrationSelectionUpsert(
+        MetadataMigrationSelectionUpsertRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromSelectionUpsertRequestAsync(request, context.CancellationToken);
+            await using var txBase = await cn.BeginTransactionAsync(context.CancellationToken);
+            var tx = (SqlTransaction)txBase;
+
+            try
+            {
+                foreach (var item in request.Items)
+                {
+                    var sourceRowGuid = ParseGuid(item.SourceRowGuid, "sourceRowGuid");
+
+                    await using var cmd = new SqlCommand("SMigration.MetadataRunSelection_Upsert", cn, tx)
+                    {
+                        CommandType = CommandType.StoredProcedure,
+                        CommandTimeout = 300
+                    };
+
+                    cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+                    cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = item.SchemaName ?? string.Empty });
+                    cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = item.TableName ?? string.Empty });
+                    cmd.Parameters.Add(new SqlParameter("@SourceRowGuid", SqlDbType.UniqueIdentifier) { Value = sourceRowGuid });
+                    cmd.Parameters.Add(new SqlParameter("@DifferenceType", SqlDbType.NVarChar, 30) { Value = item.DifferenceType ?? string.Empty });
+                    cmd.Parameters.Add(new SqlParameter("@IsSelected", SqlDbType.Bit) { Value = item.IsSelected });
+
+                    await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+                }
+
+                await tx.CommitAsync(context.CancellationToken);
+            }
+            catch
+            {
+                await tx.RollbackAsync(context.CancellationToken);
+                throw;
+            }
+
+            var selectedCount = await CountSelectedRowsAsync(cn, runGuid, context.CancellationToken);
+
+            return new MetadataMigrationSelectionResponse
+            {
+                SelectedCount = selectedCount,
+                Message = $"Metadata migration selection saved. {selectedCount} selected record(s)."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata selection SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIgnoreResponse> MetadataMigrationIgnoreUpsert(
+        MetadataMigrationIgnoreUpsertRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var sourceRowGuid = ParseGuid(request.SourceRowGuid, "sourceRowGuid");
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromIgnoreUpsertRequestAsync(request, context.CancellationToken);
+            await using var cmd = new SqlCommand("SMigration.MetadataIgnoredRecord_Upsert", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = request.SchemaName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = request.TableName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@SourceRowGuid", SqlDbType.UniqueIdentifier) { Value = sourceRowGuid });
+            cmd.Parameters.Add(new SqlParameter("@Reason", SqlDbType.NVarChar, 500) { Value = request.Reason ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@IsIgnored", SqlDbType.Bit) { Value = request.IsIgnored });
+
+            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+            var ignoredCount = await CountIgnoredRowsAsync(cn, runGuid, context.CancellationToken);
+
+            return new MetadataMigrationIgnoreResponse
+            {
+                IgnoredCount = ignoredCount,
+                Message = request.IsIgnored
+                    ? $"Metadata record ignored. {ignoredCount} ignored record(s) for this run scope."
+                    : $"Metadata record unignored. {ignoredCount} ignored record(s) for this run scope."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata ignore SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIgnoredRecordsResponse> MetadataMigrationIgnoredRecords(
+        MetadataMigrationIgnoredRecordsRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var response = new MetadataMigrationIgnoredRecordsResponse();
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromIgnoredRecordsRequestAsync(request, context.CancellationToken);
+            if (!await IgnoreTableExistsAsync(cn, context.CancellationToken))
+            {
+                return response;
+            }
+
+            await using var cmd = new SqlCommand("SMigration.MetadataIgnoredRecords_List", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@IncludeInactive", SqlDbType.Bit) { Value = request.IncludeInactive });
+
+            await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
+            while (await reader.ReadAsync(context.CancellationToken))
+            {
+                var record = new MetadataMigrationIgnoredRecord
+                {
+                    Guid = Convert.ToString(reader["Guid"]) ?? string.Empty,
+                    DatabaseName = Convert.ToString(reader["DatabaseName"]) ?? string.Empty,
+                    SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                    TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
+                    SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
+                    StableRecordKey = Convert.ToString(reader["StableRecordKey"]) ?? string.Empty,
+                    Reason = Convert.ToString(reader["Reason"]) ?? string.Empty,
+                    IgnoredByUserId = reader["IgnoredByUserId"] == DBNull.Value ? -1 : Convert.ToInt32(reader["IgnoredByUserId"]),
+                    IgnoredOnUtc = Convert.ToString(reader["IgnoredOnUtc"]) ?? string.Empty,
+                    UnignoredOnUtc = Convert.ToString(reader["UnignoredOnUtc"]) ?? string.Empty,
+                    RowStatus = reader["RowStatus"] == DBNull.Value ? 0 : Convert.ToInt32(reader["RowStatus"])
+                };
+
+                response.Records.Add(record);
+            }
+
+            response.IgnoredCount = response.Records.Count(x => x.RowStatus != 0 && x.RowStatus != 254);
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata ignored records SQL failed: {ex.Message}"));
+        }
+    }
+
     public override async Task<MetadataMigrationDashboardResponse> MetadataMigrationDashboard(
         MetadataMigrationRunRequest request,
         ServerCallContext context)
     {
         var runGuid = ParseGuid(request.RunGuid, "runGuid");
-        await using var cn = await OpenTargetSqlFromRequestAsync(request, context.CancellationToken);
 
-        var validation = await ReadValidationAsync(cn, runGuid, context.CancellationToken);
-        var identityMap = await ReadIdentityMapAsync(cn, runGuid, context.CancellationToken);
-        var stagedCounts = await ReadStagedCountsAsync(cn, runGuid, context.CancellationToken);
-        var executionLog = await ReadExecutionLogAsync(cn, runGuid, context.CancellationToken);
-
-        var response = new MetadataMigrationDashboardResponse
+        try
         {
-            Run = await ReadRunSummaryAsync(cn, runGuid, context.CancellationToken),
-            FailCount = validation.FailCount,
-            WarnCount = validation.WarnCount,
-            InfoCount = validation.InfoCount,
-            InsertCount = stagedCounts.Where(x => x.DifferenceType == "Insert").Sum(x => x.Count),
-            UpdateCount = stagedCounts.Where(x => x.DifferenceType == "Update").Sum(x => x.Count),
-            NoChangeCount = stagedCounts.Where(x => x.DifferenceType == "NoChange").Sum(x => x.Count),
-            MapRows = identityMap.Sum(x => x.MapRows),
-            MissingTargetRows = identityMap.Sum(x => x.MissingTargetRows)
-        };
+            await using var cn = await OpenTargetSqlFromRequestAsync(request, context.CancellationToken);
 
-        response.ValidationIssues.AddRange(validation.ValidationIssues);
-        response.IdentityMap.AddRange(identityMap);
-        response.StagedCounts.AddRange(stagedCounts);
-        response.ExecutionLog.AddRange(executionLog);
+            var validation = await ReadValidationAsync(cn, runGuid, context.CancellationToken);
+            var identityMap = await ReadIdentityMapAsync(cn, runGuid, context.CancellationToken);
+            var stagedCounts = await ReadStagedCountsAsync(cn, runGuid, context.CancellationToken);
+            var executionLog = await ReadExecutionLogAsync(cn, runGuid, context.CancellationToken);
+            var selectedCount = await CountSelectedRowsAsync(cn, runGuid, context.CancellationToken);
+            var ignoredCount = await CountIgnoredRowsAsync(cn, runGuid, context.CancellationToken);
 
-        return response;
+            var response = new MetadataMigrationDashboardResponse
+            {
+                Run = await ReadRunSummaryAsync(cn, runGuid, context.CancellationToken),
+                FailCount = validation.FailCount,
+                WarnCount = validation.WarnCount,
+                InfoCount = validation.InfoCount,
+                InsertCount = stagedCounts.Where(x => x.DifferenceType == "Insert").Sum(x => x.Count),
+                UpdateCount = stagedCounts.Where(x => x.DifferenceType == "Update").Sum(x => x.Count),
+                NoChangeCount = stagedCounts.Where(x => x.DifferenceType == "NoChange").Sum(x => x.Count),
+                MapRows = identityMap.Sum(x => x.MapRows),
+                MissingTargetRows = identityMap.Sum(x => x.MissingTargetRows),
+                SelectedCount = selectedCount,
+                IgnoredCount = ignoredCount
+            };
+
+            response.ValidationIssues.AddRange(validation.ValidationIssues);
+            response.IdentityMap.AddRange(identityMap);
+            response.StagedCounts.AddRange(stagedCounts);
+            response.ExecutionLog.AddRange(executionLog);
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata dashboard SQL failed: {ex.Message}"));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException is null
+                ? ex.Message
+                : $"{ex.Message} Inner: {ex.InnerException.Message}";
+
+            throw new RpcException(new Status(StatusCode.Internal, $"Metadata dashboard failed: {message}"));
+        }
     }
 
     public override async Task<MetadataMigrationStagedRowsResponse> MetadataMigrationStagedRows(
@@ -296,8 +510,31 @@ ORDER BY r.ID DESC;", cn)
         var runGuid = ParseGuid(request.RunGuid, "runGuid");
         var response = new MetadataMigrationStagedRowsResponse();
 
-        await using var cn = await OpenTargetSqlFromRowsRequestAsync(request, context.CancellationToken);
-        await using var cmd = new SqlCommand(@"
+        try
+        {
+            await using var cn = await OpenTargetSqlFromRowsRequestAsync(request, context.CancellationToken);
+            var hasSelectionTable = await SelectionTableExistsAsync(cn, context.CancellationToken);
+            var hasIgnoreTable = await IgnoreTableExistsAsync(cn, context.CancellationToken);
+
+            var selectionJoin = hasSelectionTable
+                ? @"
+            LEFT JOIN SMigration.Metadata_RunSelections AS sel
+                ON sel.RunGuid = sr.RunGuid
+               AND sel.RegistryGuid = sr.RegistryGuid
+               AND sel.SourceRowGuid = sr.SourceRowGuid
+               AND sel.RowStatus NOT IN (0,254)"
+                : string.Empty;
+
+            var ignoreJoin = hasIgnoreTable
+                ? @"
+            LEFT JOIN SMigration.Metadata_IgnoredRecords AS ign
+                ON ign.DatabaseName = r.TargetDatabaseName
+               AND ign.RegistryGuid = sr.RegistryGuid
+               AND ign.SourceRowGuid = sr.SourceRowGuid
+               AND ign.RowStatus NOT IN (0,254)"
+                : string.Empty;
+
+            var sql = $@"
             SELECT TOP (500)
                 tr.SchemaName,
                 tr.TableName,
@@ -305,44 +542,64 @@ ORDER BY r.ID DESC;", cn)
                 sr.SourceRowId,
                 sr.DifferenceType,
                 sr.SourcePayloadJson,
-                sr.TargetPayloadJson
+                sr.TargetPayloadJson,
+                CONVERT(bit, {(hasSelectionTable ? "CASE WHEN sel.ID IS NULL THEN 0 ELSE 1 END" : "0")}) AS IsSelected,
+                CONVERT(bit, {(hasIgnoreTable ? "CASE WHEN ign.ID IS NULL THEN 0 ELSE 1 END" : "0")}) AS IsIgnored,
+                {(hasIgnoreTable ? "ISNULL(ign.Reason, N'')" : "CONVERT(nvarchar(500), N'')")} AS IgnoreReason,
+                {(hasIgnoreTable ? "CONVERT(nvarchar(30), ign.IgnoredOnUtc, 126)" : "CONVERT(nvarchar(30), N'')")} AS IgnoredOnUtc
             FROM SMigration.Metadata_StagedRows AS sr
             INNER JOIN SMigration.Metadata_TableRegistry AS tr
                 ON tr.Guid = sr.RegistryGuid
                AND tr.RowStatus NOT IN (0,254)
+            INNER JOIN SMigration.Metadata_Run AS r
+                ON r.Guid = sr.RunGuid
+               AND r.RowStatus NOT IN (0,254){selectionJoin}{ignoreJoin}
             WHERE sr.RunGuid = @RunGuid
               AND sr.RowStatus NOT IN (0,254)
               AND (@SchemaName = N'' OR tr.SchemaName = @SchemaName)
               AND (@TableName = N'' OR tr.TableName = @TableName)
               AND (@DifferenceType = N'' OR sr.DifferenceType = @DifferenceType)
-            ORDER BY tr.SchemaName, tr.TableName, sr.SourceRowId;", cn)
-        {
-            CommandType = CommandType.Text,
-            CommandTimeout = 300
-        };
+              AND (@IncludeIgnored = 1 OR {(hasIgnoreTable ? "ign.ID IS NULL" : "1 = 1")})
+            ORDER BY tr.SchemaName, tr.TableName, sr.SourceRowId;";
 
-        AddRowsFilterParameters(cmd, runGuid, request.SchemaName, request.TableName, request.DifferenceType);
-
-        await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
-        while (await reader.ReadAsync(context.CancellationToken))
-        {
-            var row = new MetadataMigrationStagedRow
+            await using var cmd = new SqlCommand(sql, cn)
             {
-                SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
-                TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
-                SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
-                SourceRowId = reader["SourceRowId"] == DBNull.Value ? 0 : Convert.ToInt64(reader["SourceRowId"]),
-                DifferenceType = Convert.ToString(reader["DifferenceType"]) ?? string.Empty,
-                SourcePayloadJson = Convert.ToString(reader["SourcePayloadJson"]) ?? "{}",
-                TargetPayloadJson = Convert.ToString(reader["TargetPayloadJson"]) ?? "{}"
+                CommandType = CommandType.Text,
+                CommandTimeout = 300
             };
 
-            CopyDictionary(ParseJsonDictionary(row.SourcePayloadJson), row.SourceValues);
-            CopyDictionary(ParseJsonDictionary(row.TargetPayloadJson), row.TargetValues);
-            response.Rows.Add(row);
-        }
+            AddRowsFilterParameters(cmd, runGuid, request.SchemaName, request.TableName, request.DifferenceType);
+            cmd.Parameters.Add(new SqlParameter("@IncludeIgnored", SqlDbType.Bit) { Value = request.IncludeIgnored });
 
-        return response;
+            await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
+            while (await reader.ReadAsync(context.CancellationToken))
+            {
+                var row = new MetadataMigrationStagedRow
+                {
+                    SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                    TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
+                    SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
+                    SourceRowId = reader["SourceRowId"] == DBNull.Value ? 0 : Convert.ToInt64(reader["SourceRowId"]),
+                    DifferenceType = Convert.ToString(reader["DifferenceType"]) ?? string.Empty,
+                    SourcePayloadJson = Convert.ToString(reader["SourcePayloadJson"]) ?? "{}",
+                    TargetPayloadJson = Convert.ToString(reader["TargetPayloadJson"]) ?? "{}",
+                    IsSelected = reader["IsSelected"] != DBNull.Value && Convert.ToBoolean(reader["IsSelected"]),
+                    IsIgnored = reader["IsIgnored"] != DBNull.Value && Convert.ToBoolean(reader["IsIgnored"]),
+                    IgnoreReason = Convert.ToString(reader["IgnoreReason"]) ?? string.Empty,
+                    IgnoredOnUtc = Convert.ToString(reader["IgnoredOnUtc"]) ?? string.Empty
+                };
+
+                CopyDictionary(ParseJsonDictionary(row.SourcePayloadJson), row.SourceValues);
+                CopyDictionary(ParseJsonDictionary(row.TargetPayloadJson), row.TargetValues);
+                response.Rows.Add(row);
+            }
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata staged rows SQL failed: {ex.Message}"));
+        }
     }
 
     public override async Task<MetadataMigrationDiffResponse> MetadataMigrationDiff(
@@ -359,7 +616,11 @@ ORDER BY r.ID DESC;", cn)
                 SchemaName = stagedRow.SchemaName,
                 TableName = stagedRow.TableName,
                 SourceRowGuid = stagedRow.SourceRowGuid,
-                DifferenceType = stagedRow.DifferenceType
+                DifferenceType = stagedRow.DifferenceType,
+                IsSelected = stagedRow.IsSelected,
+                IsIgnored = stagedRow.IsIgnored,
+                IgnoreReason = stagedRow.IgnoreReason,
+                IgnoredOnUtc = stagedRow.IgnoredOnUtc
             };
 
             foreach (var kvp in stagedRow.SourceValues)
@@ -474,6 +735,54 @@ ORDER BY r.ID DESC;", cn)
 
     private async Task<SqlConnection> OpenTargetSqlFromApplyRequestAsync(
         MetadataMigrationApplyRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            cancellationToken);
+    }
+
+    private async Task<SqlConnection> OpenTargetSqlFromSelectionClearRequestAsync(
+        MetadataMigrationSelectionClearRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            cancellationToken);
+    }
+
+    private async Task<SqlConnection> OpenTargetSqlFromSelectionUpsertRequestAsync(
+        MetadataMigrationSelectionUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            cancellationToken);
+    }
+
+    private async Task<SqlConnection> OpenTargetSqlFromIgnoreUpsertRequestAsync(
+        MetadataMigrationIgnoreUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            cancellationToken);
+    }
+
+    private async Task<SqlConnection> OpenTargetSqlFromIgnoredRecordsRequestAsync(
+        MetadataMigrationIgnoredRecordsRequest request,
         CancellationToken cancellationToken)
     {
         await using var templateConnection = await OpenSqlAsync(cancellationToken);
@@ -1242,7 +1551,25 @@ WHERE r.Guid = @RunGuid
     private static async Task<RepeatedField<MetadataMigrationTableCount>> ReadStagedCountsAsync(SqlConnection cn, Guid runGuid, CancellationToken cancellationToken)
     {
         var rows = new RepeatedField<MetadataMigrationTableCount>();
-        await using var cmd = new SqlCommand(@"
+        var hasIgnoreTable = await IgnoreTableExistsAsync(cn, cancellationToken);
+
+        var ignoreJoin = hasIgnoreTable
+            ? @"
+            INNER JOIN SMigration.Metadata_Run AS r
+                ON r.Guid = sr.RunGuid
+               AND r.RowStatus NOT IN (0,254)
+            LEFT JOIN SMigration.Metadata_IgnoredRecords AS ign
+                ON ign.DatabaseName = r.TargetDatabaseName
+               AND ign.RegistryGuid = sr.RegistryGuid
+               AND ign.SourceRowGuid = sr.SourceRowGuid
+               AND ign.RowStatus NOT IN (0,254)"
+            : string.Empty;
+
+        var ignoreFilter = hasIgnoreTable
+            ? " AND ign.ID IS NULL"
+            : string.Empty;
+
+        var sql = $@"
             SELECT
                 tr.SchemaName,
                 tr.TableName,
@@ -1251,11 +1578,13 @@ WHERE r.Guid = @RunGuid
             FROM SMigration.Metadata_StagedRows AS sr
             INNER JOIN SMigration.Metadata_TableRegistry AS tr
                 ON tr.Guid = sr.RegistryGuid
-               AND tr.RowStatus NOT IN (0,254)
+               AND tr.RowStatus NOT IN (0,254){ignoreJoin}
             WHERE sr.RunGuid = @RunGuid
-              AND sr.RowStatus NOT IN (0,254)
+              AND sr.RowStatus NOT IN (0,254){ignoreFilter}
             GROUP BY tr.SchemaName, tr.TableName, sr.DifferenceType
-            ORDER BY tr.SchemaName, tr.TableName, sr.DifferenceType;", cn)
+            ORDER BY tr.SchemaName, tr.TableName, sr.DifferenceType;";
+
+        await using var cmd = new SqlCommand(sql, cn)
         {
             CommandType = CommandType.Text,
             CommandTimeout = 300
@@ -1276,10 +1605,141 @@ WHERE r.Guid = @RunGuid
         return rows;
     }
 
+    private static async Task<bool> SelectionTableExistsAsync(SqlConnection cn, CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand(@"
+SELECT
+    CONVERT(bit, CASE WHEN OBJECT_ID(N'SMigration.Metadata_RunSelections', N'U') IS NULL THEN 0 ELSE 1 END) AS TableExists;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 30
+        };
+
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        return value != null && value != DBNull.Value && Convert.ToBoolean(value);
+    }
+
+    private static async Task<bool> IgnoreTableExistsAsync(SqlConnection cn, CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand(@"
+SELECT
+    CONVERT(bit, CASE WHEN OBJECT_ID(N'SMigration.Metadata_IgnoredRecords', N'U') IS NULL THEN 0 ELSE 1 END) AS TableExists;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 30
+        };
+
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        return value != null && value != DBNull.Value && Convert.ToBoolean(value);
+    }
+
+    private static async Task<int> CountSelectedRowsAsync(SqlConnection cn, Guid runGuid, CancellationToken cancellationToken)
+    {
+        if (!await SelectionTableExistsAsync(cn, cancellationToken))
+        {
+            return 0;
+        }
+
+        var hasIgnoreTable = await IgnoreTableExistsAsync(cn, cancellationToken);
+        var sql = hasIgnoreTable
+            ? @"
+SELECT
+    COUNT_BIG(1) AS SelectedCount
+FROM SMigration.Metadata_RunSelections AS sel
+INNER JOIN SMigration.Metadata_StagedRows AS sr
+    ON sr.RunGuid = sel.RunGuid
+   AND sr.RegistryGuid = sel.RegistryGuid
+   AND sr.SourceRowGuid = sel.SourceRowGuid
+   AND sr.RowStatus NOT IN (0,254)
+INNER JOIN SMigration.Metadata_Run AS r
+    ON r.Guid = sr.RunGuid
+   AND r.RowStatus NOT IN (0,254)
+LEFT JOIN SMigration.Metadata_IgnoredRecords AS ign
+    ON ign.DatabaseName = r.TargetDatabaseName
+   AND ign.RegistryGuid = sr.RegistryGuid
+   AND ign.SourceRowGuid = sr.SourceRowGuid
+   AND ign.RowStatus NOT IN (0,254)
+WHERE sel.RunGuid = @RunGuid
+  AND sel.RowStatus NOT IN (0,254)
+  AND sr.DifferenceType IN (N'Insert', N'Update')
+  AND ign.ID IS NULL;"
+            : @"
+SELECT
+    COUNT_BIG(1) AS SelectedCount
+FROM SMigration.Metadata_RunSelections AS sel
+INNER JOIN SMigration.Metadata_StagedRows AS sr
+    ON sr.RunGuid = sel.RunGuid
+   AND sr.RegistryGuid = sel.RegistryGuid
+   AND sr.SourceRowGuid = sel.SourceRowGuid
+   AND sr.RowStatus NOT IN (0,254)
+WHERE sel.RunGuid = @RunGuid
+  AND sel.RowStatus NOT IN (0,254)
+  AND sr.DifferenceType IN (N'Insert', N'Update');";
+
+        await using var cmd = new SqlCommand(sql, cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        return value == null || value == DBNull.Value ? 0 : Convert.ToInt32(value);
+    }
+
+    private static async Task<int> CountIgnoredRowsAsync(SqlConnection cn, Guid runGuid, CancellationToken cancellationToken)
+    {
+        if (!await IgnoreTableExistsAsync(cn, cancellationToken))
+        {
+            return 0;
+        }
+
+        await using var cmd = new SqlCommand(@"
+SELECT
+    COUNT_BIG(1) AS IgnoredCount
+FROM SMigration.Metadata_StagedRows AS sr
+INNER JOIN SMigration.Metadata_Run AS r
+    ON r.Guid = sr.RunGuid
+   AND r.RowStatus NOT IN (0,254)
+INNER JOIN SMigration.Metadata_IgnoredRecords AS ign
+    ON ign.DatabaseName = r.TargetDatabaseName
+   AND ign.RegistryGuid = sr.RegistryGuid
+   AND ign.SourceRowGuid = sr.SourceRowGuid
+   AND ign.RowStatus NOT IN (0,254)
+WHERE sr.RunGuid = @RunGuid
+  AND sr.RowStatus NOT IN (0,254);", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        var value = await cmd.ExecuteScalarAsync(cancellationToken);
+        return value == null || value == DBNull.Value ? 0 : Convert.ToInt32(value);
+    }
+
     private static async Task<MetadataMigrationValidateResponse> ReadValidationAsync(SqlConnection cn, Guid runGuid, CancellationToken cancellationToken)
     {
         var response = new MetadataMigrationValidateResponse();
-        await using var cmd = new SqlCommand(@"
+        var hasIgnoreTable = await IgnoreTableExistsAsync(cn, cancellationToken);
+
+        var ignoreJoin = hasIgnoreTable
+            ? @"
+LEFT JOIN SMigration.Metadata_Run AS r
+    ON r.Guid = vi.RunGuid
+   AND r.RowStatus NOT IN (0,254)
+LEFT JOIN SMigration.Metadata_IgnoredRecords AS ign
+    ON ign.DatabaseName = r.TargetDatabaseName
+   AND ign.RegistryGuid = vi.RegistryGuid
+   AND ign.SourceRowGuid = vi.SourceRowGuid
+   AND ign.RowStatus NOT IN (0,254)"
+            : string.Empty;
+
+        var ignoreFilter = hasIgnoreTable
+            ? " AND ign.ID IS NULL"
+            : string.Empty;
+
+        var sql = $@"
 SELECT
     vi.Guid,
     vi.RegistryGuid,
@@ -1293,10 +1753,12 @@ SELECT
 FROM SMigration.Metadata_ValidationIssues AS vi
 LEFT JOIN SMigration.Metadata_TableRegistry AS tr
     ON tr.Guid = vi.RegistryGuid
-   AND tr.RowStatus NOT IN (0,254)
+   AND tr.RowStatus NOT IN (0,254){ignoreJoin}
 WHERE vi.RunGuid = @RunGuid
-  AND vi.RowStatus NOT IN (0,254)
-ORDER BY vi.Severity DESC, tr.SchemaName, tr.TableName, vi.IssueCode;", cn)
+  AND vi.RowStatus NOT IN (0,254){ignoreFilter}
+ORDER BY vi.Severity DESC, tr.SchemaName, tr.TableName, vi.IssueCode;";
+
+        await using var cmd = new SqlCommand(sql, cn)
         {
             CommandType = CommandType.Text,
             CommandTimeout = 300

@@ -3,12 +3,14 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_InvoiceRequests]')
 GO
+PRINT (N'Create function [SFin].[tvf_InvoiceRequests]')
+GO
 CREATE FUNCTION [SFin].[tvf_InvoiceRequests]
 (
     @UserId INT
 )
 RETURNS TABLE
-    --WITH SCHEMABINDING
+     --WITH SCHEMABINDING
 AS
 RETURN
 SELECT
@@ -73,7 +75,9 @@ SELECT
         WHEN SUM(IRI.Net) <= 0
             THEN N'Invoice request value is zero or negative and cannot be converted into a transaction.'
         ELSE N''
-    END AS BatchingIssueMessage
+    END AS BatchingIssueMessage,
+	OrgUnit.Name AS Department,
+	OrgUnit2.Name AS BusinessUnit
 FROM SFin.InvoiceRequests AS ir
 JOIN SJob.Jobs AS j
     ON j.ID = ir.JobId
@@ -81,6 +85,8 @@ JOIN SCore.Identities AS i
     ON i.ID = ir.RequesterUserId
 JOIN SCore.OrganisationalUnits AS OrgUnit
     ON OrgUnit.ID = j.OrganisationalUnitID
+JOIN SCore.OrganisationalUnits AS OrgUnit2
+	ON OrgUnit.ParentID = OrgUnit2.ID
 INNER JOIN SFin.InvoiceRequestItems AS IRI
     ON IRI.InvoiceRequestId = ir.ID
 INNER JOIN SJob.Activities AS Act
@@ -173,5 +179,6 @@ GROUP BY
     Acc.Name,
     j.BillingInstruction,
     FinAcc.BillingInstruction,
-    OrgUnit.Name;
+    OrgUnit.Name,
+	OrgUnit2.Name
 GO

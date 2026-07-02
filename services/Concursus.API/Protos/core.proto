@@ -11,18 +11,29 @@ option csharp_namespace = "Concursus.API.Core";
 package core;
 
 service Core {
+  rpc DeveloperInspectorGet (DeveloperInspectorRequest) returns (DeveloperInspectorResult);
+  rpc UniversalSearch (UniversalSearchRequest) returns (UniversalSearchReply);
 
   rpc AddressLookupResolve (AddressLookupResolveRequest) returns (AddressLookupResolveResponse);
   rpc AddressLookupSearch (AddressLookupSearchRequest) returns (AddressLookupSearchResponse);
 
   rpc AIAssistantConversationCreate (AIAssistantConversationCreateRequest) returns (AIAssistantConversationCreateResponse);
   rpc AIAssistantConversationList (AIAssistantConversationListRequest) returns (AIAssistantConversationListResponse);
+
+  rpc BusinessUnitsGet (BusinessUnitsGetRequest) returns (BusinessUnitsGetResponse);
+  rpc DepartmentsGet (DepartmentsGetRequest) returns (DepartmentsGetResponse);
+  rpc GetUsersForDepartment (GetUsersForDepartmentRequest) returns (GetUsersForDepartmentResponse);
+
+
   rpc AIAssistantMessageList (AIAssistantMessageListRequest) returns (AIAssistantMessageListResponse);
   rpc AIAssistantMessageSend (AIAssistantMessageSendRequest) returns (AIAssistantMessageSendResponse);
   rpc AIAssistantKnowledgeSearch (AIAssistantKnowledgeSearchRequest) returns (AIAssistantKnowledgeSearchResponse);
   rpc AIAssistantKnowledgeImportRun (AIAssistantKnowledgeImportRunRequest) returns (AIAssistantKnowledgeImportRunResponse);
   rpc AIAssistantBookmarkCreate (AIAssistantBookmarkCreateRequest) returns (AIAssistantBookmarkCreateResponse);
   rpc AIAssistantFeedbackCreate (AIAssistantFeedbackCreateRequest) returns (AIAssistantFeedbackCreateResponse);
+  rpc AIAssistantUploadPresign (AIAssistantUploadPresignRequest) returns (AIAssistantUploadPresignResponse);
+  rpc AIAssistantUploadComplete (AIAssistantUploadCompleteRequest) returns (AIAssistantUploadCompleteResponse);
+  rpc AIAssistantUploadList (AIAssistantUploadListRequest) returns (AIAssistantUploadListResponse);
   // Generic Approve/Reject for AUTHORISATION queue (Quotes/Enquiries/other)
   rpc AuthorisationDecision (AuthorisationDecisionRequest) returns (AuthorisationDecisionResponse); //CBLD-415
   rpc CheckPhotoFilesAtUrl(PhotoFileCheckRequest) returns (PhotoFileCheckResponse);
@@ -53,6 +64,7 @@ service Core {
   rpc EntityTypeGet (EntityTypeGetRequest) returns (EntityTypeGetResponse);
   rpc ExecuteGridMenuAction(ExecuteGridMenuItemRequest) returns (ExecuteGridMenuItemResponse);
   rpc ExecuteMenuItemPost (ExecuteMenuItemRequest) returns (ExecuteMenuItemResponse);
+  rpc QuoteCreateJobsStageScheduleValidate (QuoteCreateJobsStageScheduleValidationRequest) returns (QuoteCreateJobsStageScheduleValidationResponse);
   rpc GetAutomatedInvoicingKPI(AutomatedInvoicingKPIReq) returns (AutomatedInvoicingKPIRes);
   rpc GetCymBuildSchemaDashboard (GetCymBuildSchemaDashboardRequest) returns (GetCymBuildSchemaDashboardResponse);
 
@@ -100,6 +112,10 @@ service Core {
   rpc MetadataMigrationBuildIdentityMap (MetadataMigrationRunRequest) returns (MetadataMigrationBuildIdentityMapResponse);
   rpc MetadataMigrationDashboard (MetadataMigrationRunRequest) returns (MetadataMigrationDashboardResponse);
   rpc MetadataMigrationDiff (MetadataMigrationRowsRequest) returns (MetadataMigrationDiffResponse);
+  rpc MetadataMigrationIgnoredRecords (MetadataMigrationIgnoredRecordsRequest) returns (MetadataMigrationIgnoredRecordsResponse);
+  rpc MetadataMigrationIgnoreUpsert (MetadataMigrationIgnoreUpsertRequest) returns (MetadataMigrationIgnoreResponse);
+  rpc MetadataMigrationSelectionClear (MetadataMigrationSelectionClearRequest) returns (MetadataMigrationSelectionResponse);
+  rpc MetadataMigrationSelectionUpsert (MetadataMigrationSelectionUpsertRequest) returns (MetadataMigrationSelectionResponse);
   rpc MetadataMigrationRunCreate (MetadataMigrationRunCreateRequest) returns (MetadataMigrationRunResponse);
   rpc MetadataMigrationRunGet (MetadataMigrationRunRequest) returns (MetadataMigrationRunResponse);
   rpc MetadataMigrationRuns (MetadataMigrationRunsRequest) returns (MetadataMigrationRunsResponse);
@@ -189,6 +205,113 @@ enum TransactionInvoiceRenderModeMessage {
   TRANSACTION_INVOICE_RENDER_MODE_FINAL = 1;
 }
 
+message DeveloperInspectorRequest {
+  string entity_property_guid = 1;
+  string entity_type_guid = 2;
+  string record_guid = 3;
+  string component_name = 4;
+  string property_name = 5;
+  string label = 6;
+  string drop_down_list_definition_guid = 7;
+  string route = 8;
+  string current_value_preview = 9;
+  string field_state = 10;
+}
+
+message DeveloperInspectorResult {
+  bool is_enabled = 1;
+  bool is_success = 2;
+  string message = 3;
+  string environment_type = 4;
+  string component_name = 5;
+  string route = 6;
+  DeveloperInspectorFieldInfo field = 7;
+  DeveloperInspectorSqlInfo sql = 8;
+  DeveloperInspectorMetadataInfo metadata = 9;
+  DeveloperInspectorWorkflowInfo workflow = 10;
+}
+
+message DeveloperInspectorFieldInfo {
+  string label = 1;
+  string property_name = 2;
+  string entity_property_guid = 3;
+  string entity_type_guid = 4;
+  string entity_type_name = 5;
+  string record_guid = 6;
+  string data_type_name = 7;
+  bool is_compulsory = 8;
+  bool is_read_only = 9;
+  bool is_hidden = 10;
+  bool is_virtual = 11;
+  int32 max_length = 12;
+  int32 precision = 13;
+  int32 scale = 14;
+  string current_value_preview = 15;
+  string field_state = 16;
+}
+
+message DeveloperInspectorSqlInfo {
+  string schema_name = 1;
+  string object_name = 2;
+  string column_name = 3;
+  string full_name = 4;
+  string sql_type = 5;
+  int32 max_length = 6;
+  int32 precision = 7;
+  int32 scale = 8;
+  bool is_nullable = 9;
+  bool column_found = 10;
+  string source = 11;
+}
+
+message DeveloperInspectorMetadataInfo {
+  string entity_hobt_guid = 1;
+  string entity_hobt_name = 2;
+  string entity_property_group_name = 3;
+  string drop_down_list_definition_guid = 4;
+  string drop_down_list_definition_name = 5;
+  string drop_down_list_sql = 6;
+  string detail_page_uri = 7;
+  string information_page_uri = 8;
+  string external_search_page_url = 9;
+  string help_text = 10;
+}
+
+message DeveloperInspectorWorkflowInfo {
+  bool data_object_found = 1;
+  string data_object_guid = 2;
+  int32 data_object_row_status = 3;
+  string current_status_guid = 4;
+  string current_status_name = 5;
+  string current_transition_on_utc = 6;
+}
+
+message UniversalSearchRequest {
+  string search_text = 1;
+  repeated string module_filters = 2;
+  int32 take = 3;
+  int32 user_id = 4;
+}
+
+message UniversalSearchReply {
+  bool is_success = 1;
+  string message = 2;
+  repeated UniversalSearchRow results = 3;
+}
+
+message UniversalSearchRow {
+  string module_key = 1;
+  string module_display_name = 2;
+  string record_guid = 3;
+  string entity_type_guid = 4;
+  string entity_type_name = 5;
+  string detail_page_uri = 6;
+  string primary_text = 7;
+  string secondary_text = 8;
+  string tertiary_text = 9;
+  int32 search_rank = 10;
+}
+
 message ActionMenuItem {
 	string Label = 1;
 	string IconCss = 2;
@@ -199,6 +322,62 @@ message ActionMenuItem {
 	int32 Id = 7;
 	int32 SortOrder = 8;
 	bool RedirectToTargetGuid = 9;
+}
+
+message BusinessUnit {
+	int32 Id = 1;
+	string Guid = 2;
+	string Name = 3;
+}
+
+message BusinessUnitsGetRequest {
+	int32 UserId = 1;
+}
+
+message BusinessUnitsGetResponse {
+	repeated BusinessUnit OrganisationalUnits = 1;
+	string ErrorReturned = 2;
+}
+
+
+message Department {
+	int32 Id = 1;
+	string Guid = 2;
+	string Name = 3;
+}
+
+message DepartmentsGetRequest {
+	int32 UserId = 1;
+	string BusinessUnitGuid = 2;
+}
+
+message DepartmentsGetResponse {
+	repeated Department Department = 1;
+	string ErrorReturned = 2;
+}
+
+message UsersForDepartment{
+	int32 UserId = 1;
+	string Email = 2;
+	string FirstName = 3;
+	string LastName = 4;
+	bool OnHoliday = 5;
+	string MobileNo = 6;
+	string Guid = 7;
+	repeated UserGroup UserGroups = 8;
+	string FullName = 9;
+	string JobTitle = 10;
+	double BillableRate = 11;
+	bytes Signature = 12;
+}
+
+message GetUsersForDepartmentRequest{
+	string DepartmentGuid = 1;
+}
+
+message GetUsersForDepartmentResponse{
+	repeated User Users = 1;
+	string ErrorReturned = 2;
 }
 
 message ActiveWaitContract {
@@ -363,6 +542,66 @@ message AIAssistantFeedbackCreateResponse {
   string feedbackGuid = 2;
 }
 
+message AIAssistantUploadPresignRequest {
+  int32 userId = 1;
+  string fileName = 2;
+  string contentType = 3;
+  int64 fileSizeBytes = 4;
+  string uploadPurposeCode = 5;
+  string conversationGuid = 6;
+  string knowledgeItemGuid = 7;
+}
+
+message AIAssistantUploadPresignResponse {
+  string errorReturned = 1;
+  string uploadGuid = 2;
+  string uploadUrl = 3;
+  string storageUrl = 4;
+  map<string, string> uploadHeaders = 5;
+}
+
+message AIAssistantUploadCompleteRequest {
+  int32 userId = 1;
+  string uploadGuid = 2;
+  string conversationGuid = 3;
+  string knowledgeItemGuid = 4;
+  string storageUrl = 5;
+  string fileName = 6;
+  string contentType = 7;
+  int64 fileSizeBytes = 8;
+  string uploadPurposeCode = 9;
+  string processingStatusCode = 10;
+}
+
+message AIAssistantUploadCompleteResponse {
+  string errorReturned = 1;
+  AIAssistantUpload upload = 2;
+}
+
+message AIAssistantUploadListRequest {
+  int32 userId = 1;
+}
+
+message AIAssistantUploadListResponse {
+  string errorReturned = 1;
+  repeated AIAssistantUpload uploads = 2;
+}
+
+message AIAssistantUpload {
+  string guid = 1;
+  int32 userId = 2;
+  string conversationGuid = 3;
+  string knowledgeItemGuid = 4;
+  string storageUrl = 5;
+  string fileName = 6;
+  string contentType = 7;
+  int64 fileSizeBytes = 8;
+  string uploadPurposeCode = 9;
+  string processingStatusCode = 10;
+  string visionSummary = 11;
+  string createdUtc = 12;
+}
+
 message AIAssistantConversation {
   string guid = 1;
   int32 userId = 2;
@@ -385,6 +624,12 @@ message AIAssistantMessage {
   string contentPlainText = 7;
   string createdUtc = 8;
   double confidenceScore = 9;
+  string modelCode = 10;
+  string provenanceCode = 11;
+  string provenanceLabel = 12;
+  bool usedBlueGen = 13;
+  bool usedInternalKnowledge = 14;
+  bool usedAttachments = 15;
 }
 
 message AIAssistantSource {
@@ -1281,6 +1526,18 @@ message ExecuteMenuItemResponse {
 	string ErrorReturned = 3;
 }
 
+message QuoteCreateJobsStageScheduleValidationRequest {
+	string QuoteGuid = 1;
+	bool AllowQuoteItemStageFallback = 2;
+}
+
+message QuoteCreateJobsStageScheduleValidationResponse {
+	bool IsValid = 1;
+	bool RequiresQuoteItemStageFallbackConfirmation = 2;
+	string Message = 3;
+	string ErrorReturned = 4;
+}
+
 message FileHashes {
   int32 crc32_hash = 1;
   string quick_xor_hash = 2;
@@ -1910,6 +2167,7 @@ message MetadataMigrationApplyRequest {
   bool forceApply = 2;
   string targetServerName = 3;
   string targetDatabaseName = 4;
+  bool applySelectedOnly = 5;
 }
 
 message MetadataMigrationApplyResponse {
@@ -1934,6 +2192,8 @@ message MetadataMigrationDashboardResponse {
   repeated MetadataMigrationValidationIssue validationIssues = 11;
   repeated MetadataMigrationIdentityMapRow identityMap = 12;
   repeated MetadataMigrationExecutionLogItem executionLog = 13;
+  int32 selectedCount = 14;
+  int32 ignoredCount = 15;
 }
 
 message MetadataMigrationDiffResponse {
@@ -1948,6 +2208,10 @@ message MetadataMigrationDiffRow {
   map<string, string> sourceValues = 5;
   map<string, string> targetValues = 6;
   repeated string differingColumns = 7;
+  bool isSelected = 8;
+  bool isIgnored = 9;
+  string ignoreReason = 10;
+  string ignoredOnUtc = 11;
 }
 
 message MetadataMigrationExecutionLogItem {
@@ -1965,6 +2229,48 @@ message MetadataMigrationIdentityMapRow {
   int32 missingTargetRows = 4;
 }
 
+message MetadataMigrationIgnoredRecord {
+  string guid = 1;
+  string databaseName = 2;
+  string schemaName = 3;
+  string tableName = 4;
+  string sourceRowGuid = 5;
+  string stableRecordKey = 6;
+  string reason = 7;
+  int32 ignoredByUserId = 8;
+  string ignoredOnUtc = 9;
+  string unignoredOnUtc = 10;
+  int32 rowStatus = 11;
+}
+
+message MetadataMigrationIgnoredRecordsRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  bool includeInactive = 4;
+}
+
+message MetadataMigrationIgnoredRecordsResponse {
+  repeated MetadataMigrationIgnoredRecord records = 1;
+  int32 ignoredCount = 2;
+}
+
+message MetadataMigrationIgnoreResponse {
+  int32 ignoredCount = 1;
+  string message = 2;
+}
+
+message MetadataMigrationIgnoreUpsertRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  string sourceRowGuid = 4;
+  bool isIgnored = 5;
+  string reason = 6;
+  string targetServerName = 7;
+  string targetDatabaseName = 8;
+}
+
 message MetadataMigrationRowsRequest {
   string runGuid = 1;
   string schemaName = 2;
@@ -1972,6 +2278,36 @@ message MetadataMigrationRowsRequest {
   string differenceType = 4;
   string targetServerName = 5;
   string targetDatabaseName = 6;
+  bool includeIgnored = 7;
+}
+
+message MetadataMigrationSelectionClearRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  string differenceType = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+}
+
+message MetadataMigrationSelectionItem {
+  string schemaName = 1;
+  string tableName = 2;
+  string sourceRowGuid = 3;
+  string differenceType = 4;
+  bool isSelected = 5;
+}
+
+message MetadataMigrationSelectionResponse {
+  int32 selectedCount = 1;
+  string message = 2;
+}
+
+message MetadataMigrationSelectionUpsertRequest {
+  string runGuid = 1;
+  repeated MetadataMigrationSelectionItem items = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
 }
 
 message MetadataMigrationRunCreateRequest {
@@ -2034,6 +2370,10 @@ message MetadataMigrationStagedRow {
   string targetPayloadJson = 7;
   map<string, string> sourceValues = 8;
   map<string, string> targetValues = 9;
+  bool isSelected = 10;
+  bool isIgnored = 11;
+  string ignoreReason = 12;
+  string ignoredOnUtc = 13;
 }
 
 message MetadataMigrationStagedRowsResponse {

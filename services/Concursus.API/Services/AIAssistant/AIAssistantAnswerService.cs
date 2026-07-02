@@ -1,5 +1,6 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Concursus.API.Core;
+using static Concursus.API.Services.AIAssistant.AIAssistantAnswerService;
 
 namespace Concursus.API.Services.AIAssistant;
 
@@ -10,6 +11,7 @@ public interface IAIAssistantAnswerService
         string modeCode,
         string? languageCode,
         IReadOnlyList<AIAssistantKnowledgeItem> knowledgeItems,
+        IReadOnlyList<BlueGenFileReference> attachedFiles,
         CancellationToken cancellationToken);
 }
 
@@ -33,6 +35,7 @@ public sealed class AIAssistantAnswerService : IAIAssistantAnswerService
         string modeCode,
         string? languageCode,
         IReadOnlyList<AIAssistantKnowledgeItem> knowledgeItems,
+        IReadOnlyList<BlueGenFileReference> attachedFiles,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userQuestion))
@@ -40,28 +43,47 @@ public sealed class AIAssistantAnswerService : IAIAssistantAnswerService
             throw new ArgumentException("A user question is required.", nameof(userQuestion));
         }
 
+        var safeKnowledgeItems = knowledgeItems ?? Array.Empty<AIAssistantKnowledgeItem>();
+        var safeAttachedFiles = attachedFiles ?? Array.Empty<BlueGenFileReference>();
+
         var prompt = _promptBuilder.BuildPrompt(new AIAssistantPromptContext
         {
             UserQuestion = userQuestion,
             ModeCode = modeCode,
             LanguageCode = languageCode,
-            KnowledgeItems = knowledgeItems
+            KnowledgeItems = safeKnowledgeItems,
+            AttachedFiles = safeAttachedFiles
         });
 
         var blueGenResult = await _blueGenClient
-            .SendChatAsync(prompt, Array.Empty<BlueGenFileReference>(), cancellationToken)
+            .SendChatAsync(prompt, safeAttachedFiles, cancellationToken)
             .ConfigureAwait(false);
 
-        var sources = knowledgeItems.Take(5).Select(item => new AIAssistantSource
+        var knowledgeSources = safeKnowledgeItems.Take(5).Select(item => new AIAssistantSource
         {
             Title = item.Title,
             TypeCode = item.ContentTypeCode,
-            Url = item.StorageUrl,
+            Url = !string.IsNullOrWhiteSpace(item.PreviewUrl)
+                ? item.PreviewUrl
+                : item.StorageUrl,
             KnowledgeItemGuid = item.Guid,
             VersionNumber = item.CurrentVersionNumber,
             Excerpt = item.Summary,
             IsAuthoritative = item.IsAuthoritative
         }).ToList();
+
+        var attachmentSources = safeAttachedFiles.Select(file => new AIAssistantSource
+        {
+            Title = string.IsNullOrWhiteSpace(file.FileName) ? "Attached file" : $"Attached: {file.FileName}",
+            TypeCode = "ATTACHMENT",
+            Url = file.Url,
+            KnowledgeItemGuid = string.Empty,
+            VersionNumber = 0,
+            Excerpt = string.IsNullOrWhiteSpace(file.ContentType) ? "User attachment" : file.ContentType,
+            IsAuthoritative = false
+        }).ToList();
+
+        var sources = knowledgeSources.Concat(attachmentSources).ToList();
 
         var followUps = new List<AIAssistantFollowUp>
         {
@@ -70,41 +92,82 @@ public sealed class AIAssistantAnswerService : IAIAssistantAnswerService
             new() { Text = "Show the admin view", Prompt = "Explain this from an admin/support perspective." }
         };
 
+        var answerTypeCode = ResolveAnswerTypeCode(knowledgeSources.Count > 0, attachmentSources.Count > 0);
+
         return new AIAssistantAnswerResult
         {
-            AnswerTypeCode = sources.Count > 0 ? "TRUSTED_KNOWLEDGE" : "GENERATED_SUGGESTION",
+            AnswerTypeCode = answerTypeCode,
             ContentMarkdown = blueGenResult.AnswerMarkdown,
             ContentPlainText = blueGenResult.AnswerPlainText,
-            ConfidenceScore = blueGenResult.ConfidenceScore ?? (sources.Count > 0 ? 0.82d : 0.45d),
+            ConfidenceScore = blueGenResult.ConfidenceScore ?? ResolveFallbackConfidence(answerTypeCode),
             Sources = sources,
             FollowUps = followUps,
             SourcesJson = JsonSerializer.Serialize(sources, JsonOptions),
             FollowUpsJson = JsonSerializer.Serialize(followUps, JsonOptions),
-            ModelCode = blueGenResult.ModelCode,
+            ModelCode = NormaliseBlueGenModelCode(blueGenResult.ModelCode),
             RawProviderJson = blueGenResult.RawJson
         };
     }
-}
 
-public sealed class AIAssistantAnswerResult
-{
-    public string AnswerTypeCode { get; init; } = "GENERATED_SUGGESTION";
+    private static string ResolveAnswerTypeCode(bool hasKnowledgeSources, bool hasAttachmentSources)
+    {
+        if (hasKnowledgeSources)
+        {
+            return "TRUSTED_KNOWLEDGE";
+        }
 
-    public string ContentMarkdown { get; init; } = string.Empty;
+        if (hasAttachmentSources)
+        {
+            return "ATTACHMENT_ANALYSIS";
+        }
 
-    public string ContentPlainText { get; init; } = string.Empty;
+        return "GENERATED_SUGGESTION";
+    }
 
-    public double ConfidenceScore { get; init; }
+    private static double ResolveFallbackConfidence(string answerTypeCode)
+    {
+        return answerTypeCode switch
+        {
+            "TRUSTED_KNOWLEDGE" => 0.82d,
+            "ATTACHMENT_ANALYSIS" => 0.68d,
+            _ => 0.45d
+        };
+    }
 
-    public string SourcesJson { get; init; } = "[]";
+    private static string NormaliseBlueGenModelCode(string? modelCode)
+    {
+        if (string.IsNullOrWhiteSpace(modelCode))
+        {
+            return "BLUEGEN";
+        }
 
-    public string FollowUpsJson { get; init; } = "[]";
+        var trimmed = modelCode.Trim();
 
-    public IReadOnlyList<AIAssistantSource> Sources { get; init; } = Array.Empty<AIAssistantSource>();
+        return trimmed.StartsWith("BLUEGEN", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : $"BLUEGEN:{trimmed}";
+    }
 
-    public IReadOnlyList<AIAssistantFollowUp> FollowUps { get; init; } = Array.Empty<AIAssistantFollowUp>();
+    public sealed class AIAssistantAnswerResult
+    {
+        public string AnswerTypeCode { get; init; } = "GENERATED_SUGGESTION";
 
-    public string ModelCode { get; init; } = "BLUEGEN";
+        public string ContentMarkdown { get; init; } = string.Empty;
 
-    public string RawProviderJson { get; init; } = string.Empty;
+        public string ContentPlainText { get; init; } = string.Empty;
+
+        public double ConfidenceScore { get; init; }
+
+        public string SourcesJson { get; init; } = "[]";
+
+        public string FollowUpsJson { get; init; } = "[]";
+
+        public IReadOnlyList<AIAssistantSource> Sources { get; init; } = Array.Empty<AIAssistantSource>();
+
+        public IReadOnlyList<AIAssistantFollowUp> FollowUps { get; init; } = Array.Empty<AIAssistantFollowUp>();
+
+        public string ModelCode { get; init; } = "BLUEGEN";
+
+        public string RawProviderJson { get; init; } = string.Empty;
+    }
 }

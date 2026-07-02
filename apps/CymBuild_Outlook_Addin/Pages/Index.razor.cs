@@ -520,14 +520,16 @@ namespace CymBuild_Outlook_Addin.Pages
 
         private async Task OnRecordClick(RecordSearchResult record)
         {
-            if (record == null || selectedRecords.Any(r => r.ID == record.ID))
+            if (record == null)
                 return;
 
-            selectedRecords = selectedRecords.Append(record).ToList();
+            selectedRecords = new List<RecordSearchResult> { record };
 
-            // Get the folders in the background after the record has been selected.
+            // Get the folders after the record has been selected.
             await GetFoldersForFilingLocation();
         }
+
+
         private void RemoveSelectedItem(RecordSearchResult record)
                     => selectedRecords = selectedRecords.Where(r => r.ID != record.ID).ToList();
 

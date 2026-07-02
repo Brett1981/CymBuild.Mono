@@ -1,10 +1,9 @@
-﻿@using System.Dynamic
+@using System.Dynamic
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Concursus.PWA.Services
-@using Telerik.DataSource
-@using Telerik.DataSource.Extensions
 @using Concursus.Components.Shared.Services
+@using Microsoft.AspNetCore.Components.Web
 
 @inject UserService userService
 @inject Core.CoreClient coreClient
@@ -16,577 +15,323 @@
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject UserInteractionTrackerService InteractionTracker
 @inject AiErrorReporter AiErrorReporter
-@inject UserInteractionTrackerService InteractionTracker
 @inject IToastService Toast
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
 
 @attribute [Authorize]
 
-@*  CBLD-540  *@
-@inject Helpers.LocalStorageAccessor LocalStorageAccessor
-
-
 <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
 <ErrorBoundary>
     <ChildContent>
+        @if (ViewDefinition is not null)
+        {
+            <div class="cb-filtered-grid-shell @(Disabled ? "is-disabled" : string.Empty)">
+                <div class="cb-v2-card cb-filtered-grid-toolbar-card">
+                    <div class="cb-v2-toolbar cb-filtered-grid-toolbar">
+                        <div class="cb-v2-toolbar-left">
+                            <input class="cb-v2-input cb-filtered-grid-search"
+                                   placeholder="@NativeSearchPlaceholder"
+                                   value="@NativeSearchText"
+                                   @oninput="OnNativeSearchChanged"
+                                   @onkeydown="OnNativeSearchKeyDown"
+                                   disabled="@NativeIsLoading" />
 
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ApplyNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Search
+                            </button>
 
-        <!--CBLD-408: Added -> allowNewButtonSection so we can hide the button on widgets
-            <div class="d-flex flex-wrap justify-content-between allowNewButtonSection">
-                        <div class="p-2 d-flex flex-row">
-                            <h5 class="view-name">@ViewDefinition?.Name</h5>
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Clear
+                            </button>
 
-                               
+                            <button type="button"
+                                    class="cb-v2-btn-secondary cb-filtered-grid-filter-toggle @(NativeFilterPanelOpen ? "is-active" : string.Empty)"
+                                    @onclick="ToggleNativeFilterPanel"
+                                    disabled="@NativeIsLoading">
+                                <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+                                Filters
+                                @if (NativeActiveFilterCount > 0)
+                                {
+                                    <span class="cb-filtered-grid-filter-count">@NativeActiveFilterCount</span>
+                                }
+                            </button>
+
+                            @if (ViewDefinition.AllowBulkChange && CurrentGridItems is not null && CurrentGridItems.Any())
+                            {
+                                <GridButtonMenu ViewDefinition="@ViewDefinition"
+                                                OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                            }
                         </div>
 
-                        <div class="p-2">
-                            <div class="button-group d-flex flex-row">
-                                @if (ViewDefinition is not null)
+                        <div class="cb-v2-toolbar-right">
+                            @if (HasActiveNativeSearch)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Search</span>
+                                    <span class="cb-v2-pill-value">Active</span>
+                                </div>
+                            }
+
+                            @if (HasActiveNativeColumnFilters)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filters</span>
+                                    <span class="cb-v2-pill-value">@NativeActiveFilterCount</span>
+                                </div>
+                            }
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@NativeTotalRows</span>
+                            </div>
+
+                            <label class="cb-filtered-grid-page-size-label" for="legacy-filtered-grid-page-size-@ViewDefinition.Code">
+                                Rows per page
+                            </label>
+                            <select id="legacy-filtered-grid-page-size-@ViewDefinition.Code"
+                                    class="cb-v2-input cb-filtered-grid-page-size-select"
+                                    value="@NativePageSize"
+                                    @onchange="ChangeNativePageSizeAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="cb-filtered-grid-quick-row">
+                        <div class="cb-filtered-grid-quick-left">
+                            <button type="button"
+                                    class="btn btn-outline-primary @QuickFilter7DaysCSS"
+                                    @onclick="() => ShowRecordsFromXDay(-7)"
+                                    disabled="@NativeIsLoading">
+                                Last 7 Days
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-primary @QuickFilter90DaysCSS"
+                                    @onclick="() => ShowRecordsFromXDay(-90)"
+                                    disabled="@NativeIsLoading">
+                                Last 90 Days
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    @onclick="ToggleCustomRange"
+                                    disabled="@NativeIsLoading">
+                                Custom Range...
+                            </button>
+                        </div>
+
+                        <div class="cb-filtered-grid-quick-right">
+                            <label class="form-label mb-0" for="legacy-filtered-grid-sort-@ViewDefinition.Code">Order by</label>
+                            <select id="legacy-filtered-grid-sort-@ViewDefinition.Code"
+                                    class="form-select form-select-sm cb-filtered-grid-order-select"
+                                    value="@SelectedSortBy"
+                                    @onchange="OnGroupDataChangedAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="">Default</option>
+                                @foreach (var option in GroupByOptions)
                                 {
-                                    @* [OE: CBLD-260] + [CBLD-515] *@
-                                    @if (ViewDefinition.AllowBulkChange && (CurrentGridItems != null && CurrentGridItems.Any()))
-                                    {
-                                                <GridButtonMenu
-                                                    ViewDefinition="@ViewDefinition"
-                                                    OnOpenBatchGrid="@OpenDynamicBatchGrid" />
-                                    }
+                                    <option value="@option.Id">@option.Text</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
 
+                    @if (showCustomRange)
+                    {
+                        <div class="cb-filtered-grid-range-panel">
+                            <label for="@($"legacy-filtered-grid-start-date-{ViewDefinition.Code}")" class="form-label">From</label>
+                            <InputDate id="@($"legacy-filtered-grid-start-date-{ViewDefinition.Code}")"
+                                       class="form-control form-control-sm"
+                                       @bind-Value="customStartDate" />
 
-                                           
-                                    @if (FullGrid)
-                                    {
-                                        <div class="button-menu-container d-flex flex-row align-items-center">
-                                            <GridFilterButton GridRef="@GridRef" />
-                                            @* Button for exporting CSV. *@
-                                            <CSVExportButton 
-                                                ShowButton="@ShowCSVButton"
-                                                GridRef="@GridRef"
-                                                GridCode="@GridCode"
-                                                ViewDefinition="@ViewDefinition"
-                                                EnableRangeFiltering="false"
-                                                OnError="@OnError"
-                                                @bind-ParentGuid="@ParentGuid"
-                                                @bind-QuickFilters="@QuickFilters"
-                                                @bind-RangeFilters="@RangeFilters"
-                                                @bind-CompositeFilter="@CompositeFilter"
-                                                />
-                                          
+                            <label for="@($"legacy-filtered-grid-end-date-{ViewDefinition.Code}")" class="form-label">To</label>
+                            <InputDate id="@($"legacy-filtered-grid-end-date-{ViewDefinition.Code}")"
+                                       class="form-control form-control-sm"
+                                       @bind-Value="customEndDate" />
 
+                            <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyCustomRange">Apply</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ToggleCustomRange">Cancel</button>
+                        </div>
+                    }
+
+                    @if (NativeFilterPanelOpen)
+                    {
+                        <div class="cb-filtered-grid-filter-panel cb-v2-card shadow-sm">
+                            <div class="cb-filtered-grid-filter-panel-header">
+                                <div class="cb-filtered-grid-filter-panel-title">
+                                    <span class="cb-filtered-grid-filter-panel-icon">
+                                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="cb-filtered-grid-filter-panel-heading">Column filters</div>
+                                        <div class="cb-filtered-grid-filter-panel-subtitle">Refine the current grid view, then apply when ready.</div>
+                                    </div>
+                                </div>
+                                <div class="cb-filtered-grid-filter-panel-summary">@NativeActiveFilterCount active</div>
+                            </div>
+
+                            <div class="cb-filtered-grid-filter-grid">
+                                @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
+                                {
+                                    <div class="cb-filtered-grid-filter-field">
+                                        <label class="form-label" for="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                        <div class="cb-filtered-grid-filter-input-shell input-group">
+                                            <i class="bi bi-search" aria-hidden="true"></i>
+                                            <input id="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                   class="form-control cb-v2-input cb-filtered-grid-filter-input"
+                                                   placeholder="Filter @column.Title..."
+                                                   value="@GetNativeFilterValue(column.Name)"
+                                                   aria-label="Filter @column.Title"
+                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                   @onkeydown="OnNativeFilterKeyDown"
+                                                   disabled="@NativeIsLoading" />
                                         </div>
-                                    }
+                                    </div>
                                 }
                             </div>
-                        </div>
 
-            </div>
+                            <div class="cb-filtered-grid-filter-actions">
+                                <button type="button"
+                                        class="btn btn-primary cb-v2-btn-primary d-inline-flex align-items-center gap-2"
+                                        @onclick="ApplyNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                    Apply Filters
+                                </button>
 
-            @if (ViewDefinition is not null)
-            {
-                    <div class="filter-control">
-
-                        <div class="quick-filter-toolbar">
-                            <div>
-                                <TelerikButton Class="@QuickFilter7DaysCSS" OnClick="@(() => ShowRecordsFromXDay(-7))">Last 7 Days</TelerikButton>
-                                <TelerikButton Class="@QuickFilter90DaysCSS" OnClick="@(() => ShowRecordsFromXDay(-90))">Last 90 Days</TelerikButton>
-                                <TelerikButton OnClick="@ToggleCustomRange">Custom Range...</TelerikButton>
-                            </div>
-
-                            <div class="quick-filter-group-by">
-                              <TelerikDropDownList
-                                 DefaultText="Order By:"
-                                 Data="@GroupByOptions"
-                                 ValueChanged="@(async(string val) => await GroupData(val))"
-                                 TextField="@nameof(OrderByItem.Text)"
-                                 ValueField="@nameof(OrderByItem.Id)"
-                                 Width="14em"
-                                 AdaptiveMode="@AdaptiveMode.Auto"/>
+                                <button type="button"
+                                        class="btn btn-outline-secondary cb-v2-btn-secondary d-inline-flex align-items-center gap-2"
+                                        @onclick="ClearAllNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    Clear Filters
+                                </button>
                             </div>
                         </div>
+                    }
+                </div>
 
-                        @if (showCustomRange)
+                <div class="cb-v2-card cb-filtered-grid-card">
+                    <div class="cb-filtered-grid-status-line">
+                        <span>@NativeGridSummaryText</span>
+                        @if (NativeIsLoading)
                         {
-                            <div class="custom-range-panel">
-                                <label for="StartDate" class="form-label">From:</label>
-                                <TelerikDatePicker Id="StartDate" Format="dd/MM/yyyy"   @bind-Value="@customStartDate" />
-
-                                <label for="EndDate" class="form-label">To:</label>
-                                <TelerikDatePicker Id="EndDate" Format="dd/MM/yyyy" @bind-Value="@customEndDate" />
-
-                                <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
-                                <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
-                            </div>
+                            <span class="cb-filtered-grid-loading" role="status" aria-live="polite">
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                Loading…
+                            </span>
                         }
                     </div>
-                       
-                    <div class="grid-container">
-                                <TelerikGrid 
-                                    TItem="ExpandoObject"
-                                    OnRead="@ReadItems"
-                                    Pageable="true"
-                                    Sortable="true"
-                                    PageSize="50"
-                                    Height="100%"
-                                    Width="100%"
-                                    Resizable="true"
-                                    OnRowDoubleClick="@OnRowDoubleClickHandler"
-                                    @ref="@GridRef"
-                                    OnRowRender="@OnRowRenderHandler"
-                                    FilterMode="@GridFilterMode.FilterMenu"
-                                    SelectionMode="GridSelectionMode.Single"
-                                    OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                                    ScrollMode="@GridScrollMode.Scrollable"
-                                    OnStateChanged="@( (GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args) )">
-                        <GridSettings>
-                            <GridPagerSettings InputType="PagerInputType.Input"
-                                                PageSizes=null
-                                                ButtonCount="5"
-                                                Responsive="true"
-                                                Position="PagerPosition.Bottom">
-                            </GridPagerSettings>
-                        </GridSettings>
-                        <GridColumns>
 
-
-                        @{
-                                    //OE: [CBLD-348]: Variables to ensure that only the first column gets locked.
-                                    int index = 0;
-                                    bool isLocked = false;
-                                    int numOfItems = ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder).Count();
-                        }
-
-                        
-                        @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns.Where(o => !o.IsHidden).OrderBy(o => o.ColumnOrder))
-                        {
-
-                            
-                                      
-                            if (!isLocked && !gvcd.IsHidden)
-                            {
-
-
-                                if (string.IsNullOrEmpty(gvcd.Width) || gvcd.Width.StartsWith('0'))
+                    <div class="cb-filtered-grid-scroll">
+                        <table class="cb-v2-table cb-filtered-grid-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var column in VisibleGridColumns)
+                                    {
+                                        <th style="@GetColumnWidthStyle(column.Width)">
+                                            <button type="button"
+                                                    class="cb-filtered-grid-sort-button @GetNativeSortCss(column.Name)"
+                                                    title="Sort by @column.Title"
+                                                    @onclick="async () => await SortNativeGridAsync(column.Name)">
+                                                <span>@column.Title</span>
+                                                <span class="cb-filtered-grid-sort-indicator">@GetNativeSortIndicator(column.Name)</span>
+                                            </button>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!NativeGridItems.Any())
                                 {
-                                    gvcd.Width = "240px";
-                                }
-
-                                //Set it to locked.
-                                if (numOfItems > 1)
-                                        isLocked = true;
-
-                                //Status Indicator labels
-                                var chaseOverdueLabel = "dot red";
-                                var chaseDueThisWeekLabel = "dot yellow";
-                                var noChaseDateNeededLabel = "dot green";
-                                var labelToAssign = "";
-
-                                if (gvcd.Name == "QuoteStatus")
-                                {
-                                        <GridColumn
-                                            Field="@gvcd.Name"
-                                            Title="@gvcd.Title"
-                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                            Visible="gvcd.IsHidden != true"
-                                            Filterable="@gvcd.IsFiltered"
-                                            Width="@gvcd.Width"
-                                            Sortable="true"
-                                            Resizable="true">
-                                            <Template>
-                                            @{
-
-
-                                                var item = (IDictionary<string, object>)context;
-                                                var chaseDateStr = item["QuoteSentDate"].ToString();
-                                                var status = item["QuoteStatus"].ToString();
-
-                                                string[] statusesToExclude = ["Expired", "Complete", "Rejected", "Dead", "Accepted"];
-
-
-                                                if (DateTime.TryParse(chaseDateStr, out DateTime chaseDate))
-                                                {
-                                                    //Number of days passed since chase date 1
-                                                    var daysSinceChaseDate = (DateTime.Now - chaseDate).TotalDays;
-
-                                                    if (daysSinceChaseDate >= 14)
-                                                        labelToAssign = chaseOverdueLabel;
-                                                    else
-                                                        labelToAssign = noChaseDateNeededLabel;
-
-                                                    Console.WriteLine($"LabelToAssign:{labelToAssign}");
-                                                }
-                                                else
-                                                {
-                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
-                                                    labelToAssign = noChaseDateNeededLabel;
-                                                }
-
-
-                                                }
-                                                <div class="custom-ellipsis">
-                                                    @if (!statusesToExclude.Contains(status))
-                                                    {
-                                                    <li><span class="@labelToAssign"></span> @item["QuoteStatus"]</li>
-                                                    } else
-                                                    {
-                                                                @item["QuoteStatus"]
-                                                    }
-                                                 </div>
-                                                
-                                            </Template>
-                                    </GridColumn>
-
-                                }
-                                else if (gvcd.Name == "Date")
-                                {
-                                        <GridColumn
-                                            Field="@gvcd.Name"
-                                            Title="@gvcd.Title"
-                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                            Visible="gvcd.IsHidden != true"
-                                            Filterable="@gvcd.IsFiltered"
-                                            Width="@gvcd.Width"
-                                            Sortable="true"
-                                            Resizable="true">
-                                            <Template>
-                                            @{
-                                                var item = (IDictionary<string, object>)context;
-                                                //If the IsOverdue <> "", it means it needs to be chased.
-                                                var IsOverdue = item["IsOverdue"].ToString();
-
-
-                                                //Check if it is overdue
-                                                if (IsOverdue != "")
-                                                    labelToAssign = chaseOverdueLabel;
-                                                else
-                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
-                                                    labelToAssign = noChaseDateNeededLabel;
-
-                                                //Next, get the Sage status
-                                                var SageIcon = "";
-                                                var SageStatus = item["SageStatusCode"].ToString();
-                                                var SageReference = item["SageTransactionReference"].ToString();
-                                                var HasSagereference = (SageReference != String.Empty ? true : false);
-                                                var SageBadgeColour = "";
-
-                                                switch (SageStatus)
-                                                {
-                                                    case "Succeeded":
-                                                        SageBadgeColour = "badge rounded-pill m-2 bg-success";
-                                                        break;
-                                                    case "Pending":
-                                                        SageBadgeColour = "badge rounded-pill m-2 bg-primary";
-                                                        break;
-                                                    case "InProgress":
-                                                        SageStatus = "In Progress";
-                                                        SageBadgeColour = "badge rounded-pill m-2 bg-secondary";
-                                                        break;
-                                                    case "FailedRetryable":
-                                                        SageStatus = "In Progress";
-                                                        SageBadgeColour = "badge rounded-pill m-2 bg-warning";
-                                                        break;
-                                                    case "Not Sent":
-                                                        if (HasSagereference)
-                                                        {
-                                                            SageStatus = "Sent (Legacy)";
-                                                            SageBadgeColour = "badge rounded-pill m-2 bg-sageLegacyCustom";
-                                                        }
-                                                        else
-                                                        {
-                                                            SageStatus = "Not Sent";
-                                                            SageBadgeColour = "badge rounded-pill m-2 bg-info";
-                                                        }
-                                                        break;
-                                                    default:
-                                                        SageStatus = "Not Sent";
-                                                        SageBadgeColour = "badge rounded-pill m-2 bg-info";
-                                                        break;
-                                                }
-
-                                                
-                                        
-                                            }
-                                                <div class="custom-ellipsis">
-                                                    @if (IsOverdue != "")
-                                                    {
-                                                        <div class="d-flex flex-row justify-content-between">
-                                                            <div class="d-flex flex-row">
-                                                                <span class="badge rounded-pill bg-danger d-inline-flex align-items-center" style="margin: 6px;">
-                                                                  <i class="bi bi-exclamation-circle me-1" style="font-size:16px;"></i>
-                                                                    Overdue
-                                                                </span>
-                                                                 <span class="@SageBadgeColour d-inline-flex align-items-center">
-                                                                    @if (!HasSagereference)
-                                                                    {
-                                                                            <img src="sage-icon.png" alt="" width="16" height="16" class="me-1">
-                                                                    }
-
-                                                                    @SageStatus
-                                                                </span> 
-                                                            </div>
-                                                            <div>
-                                                                @item["Date"]
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <div class="d-flex flex-row justify-content-between">
-                                                        <div class="d-flex flex-row">
-                                                                <span class="" style="width: 80px;"></span>
-                                                                <span class="@SageBadgeColour d-inline-flex align-items-center">
-                                                                    @if (!HasSagereference)
-                                                                    {
-                                                                        <img src="sage-icon.png" alt="" width="16" height="16" class="me-1">
-                                                                    }
-                                                                
-                                                                    @SageStatus
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                @item["Date"]
-                                                            </div>
-                                                        </div>
-                                                    }
-
-                                                </div>
-                                            </Template>
-                                    </GridColumn>
+                                    <tr>
+                                        <td colspan="@NativeGridColumnCount" class="text-muted text-center py-4">No records found.</td>
+                                    </tr>
                                 }
                                 else
                                 {
-                                    <GridColumn 
-                                        Field="@gvcd.Name"
-                                        Title="@gvcd.Title"
-                                        FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                        Visible="gvcd.IsHidden != true"
-                                        Filterable="@gvcd.IsFiltered"
-                                        Width="@gvcd.Width"
-                                        Sortable="true"
-                                        Resizable="true">
-                                        <Template>
-                                                <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
+                                    @foreach (var row in NativeGridItems)
+                                    {
+                                        <tr class="@GetNativeRowCssClass(row)" @ondblclick="() => OnRowDoubleClickHandler(row)">
+                                            @foreach (var column in VisibleGridColumns)
+                                            {
+                                                <td style="@GetColumnWidthStyle(column.Width)">
+                                                    <div class="custom-ellipsis">@GetNativeCellValue(row, column.Name)</div>
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
                                 }
-                               
-                            }
-                            else
-                            {
+                            </tbody>
+                        </table>
+                    </div>
 
-                                        <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true">
-                                        <Template>
-                                            <div class="custom-ellipsis">
-                                                    @(GetColumnTemplate(gvcd.Name)(context))
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
+                    <div class="cb-filtered-grid-pager">
+                        <div class="cb-filtered-grid-pager-left">
+                            <span>Page @NativePage of @NativeTotalPages</span>
+                            <span class="text-muted">@NativeGridSummaryText</span>
+                        </div>
+                        <div class="cb-filtered-grid-pager-right">
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary"
+                                    @onclick="GoToPreviousNativePageAsync"
+                                    disabled="@(!CanGoPreviousPage)">
+                                Previous
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary"
+                                    @onclick="GoToNextNativePageAsync"
+                                    disabled="@(!CanGoNextPage)">
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-                            }
-
-                            if (!gvcd.IsHidden)
-                                index++;
-
-                        }
-                    </GridColumns>
-                </TelerikGrid>
-            </div>
-            <div class="back-to-top-button">
-                <button class="btn btn-secondary" @onclick="ScrollToTop">
-                    <i class="bi bi-arrow-up-circle"></i> Back To Top
-                </button>
+                <div class="back-to-top-button">
+                    <button class="btn btn-secondary" @onclick="ScrollToTop">
+                        <i class="bi bi-arrow-up-circle"></i> Back To Top
+                    </button>
+                </div>
             </div>
 
-                    }
-
-        </ChildContent>
-        <ErrorContent Context="ex">
-            <ErrorDisplay ErrorMessage="@ex.Message"/>
-        </ErrorContent>
-    </ErrorBoundary>
-
-
-
-
-<script>
-        //Add event listener to when the page is loaded.
-    document.addEventListener("keypress", function (e) {
-
-
-        // Select the filter button by class
-        const filterButton = document.querySelector(".k-button-solid-primary");
-        const enterPressed = (e.key === 'Enter');
-
-        if (enterPressed) {
-            console.log("Enter has been pressed down!");
-            if (filterButton) filterButton.click();
+            @if (BatchGridVisible)
+            {
+                <div class="cb-filtered-grid-modal-backdrop" role="presentation">
+                    <div class="cb-filtered-grid-modal" role="dialog" aria-modal="true" aria-label="Batch records">
+                        <div class="cb-filtered-grid-modal-header">
+                            <div>
+                                <h5 class="mb-0">Batch records</h5>
+                                <small class="text-muted">Review and update selected grid records.</small>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CloseBatchGridModal">
+                                <i class="bi bi-x-lg" aria-hidden="true"></i> Close
+                            </button>
+                        </div>
+                        <div class="cb-filtered-grid-modal-body">
+                            <DynamicBatchGridView OnActionCompleted="HandleBatchActionCompletedAsync"
+                                                  ViewDefinition="@ViewDefinition"
+                                                  GridCode="@GridCode"
+                                                  ParentDataObjectReference="@ParentDataObjectReference"
+                                                  ParentGuid="@ParentGuid"
+                                                  FullGrid="@FullGrid" />
+                        </div>
+                    </div>
+                </div>
+            }
         }
-
-    });
-</script>
-
-<style>
-
-        .bg-sageLegacyCustom{
-            background-color: #ADEBB3 !important;
-        }
-
-        .sticky {
-            position: sticky;
-            z-index: 100; /* Ensure the sticky header is above other elements */
-            background-color: white; /* Optional, to prevent content showing through */
-        }
-
-            .grid-container .k-grid td {
-                min-width: 100%;
-                width: 100%;
-        }
-
-
-        .view-name {
-            padding: 5px;
-        }
-
-        .width-100 {
-            width: 100%;
-        }
-
-        .grid .k-grid-content tr {
-            line-height: 32px;
-        }
-
-        .k-grid-content{
-            overflow: scroll !important;
-        }
-
-        /* Ensure text overflow with ellipsis for grid cells */
-        .custom-ellipsis,
-        .k-grid td.custom-ellipsis,
-        .k-grid tr.custom-ellipsis .k-table-td {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        /* Container to enable horizontal scrolling */
-        .grid-container {
-            max-width: 100%; /* Ensure the container does not exceed the viewport width */
-            overflow-x: auto; /* Enable horizontal scrolling */
-        }
-
-        /* Adjusting the grid layout */
-        .grid-container .k-grid {
-    @* min-width: 1200px; /* Adjust this value based on your columns' total width */ *@
-            width: 100%; /* This ensures the grid will take up all available width */
-            table-layout: fixed; /* Use fixed layout for the grid */
-        }
-
-
-
-        /* Style for the back-to-top button */
-        .back-to-top-button {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000; /* Ensure it is on top of other elements */
-            opacity: 0.5; /* Initial opacity set to 50% */
-            transition: opacity 0.3s ease; /* Smooth transition for hover effect */
-        }
-
-        /* Full opacity on hover for better visibility */
-        .back-to-top-button:hover {
-            opacity: 1;
-        }
-
-
-        .k-grid .k-grouping-row {
-            position: static;
-            z-index: auto;
-            top: 0;
-        }
-
-        .k-grid .k-grouping-row td {
-            position: sticky;
-            z-index: 2;
-            top: inherit;
-            bottom: inherit;
-            min-width: 100%;
-        }
-
-        #newBtn{
-            padding: .5rem !important;
-        }
-
-        .highlight-total-row {
-            font-weight: bold;
-            background-color: #ADD8E6 !important;
-        }
-
-        .filter-control{
-            display:flex;
-            flex-direction:column;
-            margin-left: 10px;
-            margin-right: 10px;
-        }
-
-        .quick-filter-toolbar, .custom-range-panel {
-            display: flex;
-            gap: 8px;
-            padding: 12px 0;
-        }
-
-        .quick-filter-toolbar{
-            flex-direction:row;
-            justify-content: space-between;
-        }
-
-        .custom-range-panel{
-            margin-right: 10px;
-            margin-left: 10px;
-        }
-
-        .status-explanation ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .status-explanation li {
-            display: flex;
-            align-items: center;
-            margin-bottom: 4px;
-        }
-
-        .dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 6px;
-        }
-
-        .dot.red { background-color: red; }
-        .dot.yellow { background-color: gold; }
-        .dot.green { background-color: limegreen; }
-
-        .activeButton{
-            background-color: #0d6efd !important;
-            color: white !important;
-        }
-
-        .quick-filter-group-by{
-
-        }
-
-        .OverThreshold{
-            background-color: #0d6efd !important;
-            color: white !important;
-        }
-
-</style>
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

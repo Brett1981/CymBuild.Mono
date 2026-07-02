@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create view [SFin].[vw_SageInboundDiagnostics]')
 GO
+PRINT (N'Create view [SFin].[vw_SageInboundDiagnostics]')
+GO
 
     CREATE VIEW [SFin].[vw_SageInboundDiagnostics]
     AS
@@ -54,6 +56,6 @@ GO
         d.LastAttemptResponseDetail,
         d.CanRequeue,
         d.CanForceRequeue
-    FROM SFin.tvf_SageInboundDiagnostics(DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT) AS d;
+    FROM SFin.tvf_SageInboundDiagnostics(DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT, DEFAULT) AS d;
     
 GO

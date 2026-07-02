@@ -1,4 +1,4 @@
-﻿@page "/QuoteSelfAssignDetail"
+@page "/QuoteSelfAssignDetail"
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Google.Protobuf
@@ -112,7 +112,7 @@
     [Parameter] public string? SerializedDataObjectReference { get; set; }
     [Parameter] public bool IsBulkUpdate { get; set; } = false;
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
-    [Parameter] public TelerikGrid<ExpandoObject>? GridRef { get; set; }
+    [Parameter] public object? GridRef { get; set; }
     [Parameter] public EventCallback OnRefreshRequested { get; set; }
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();

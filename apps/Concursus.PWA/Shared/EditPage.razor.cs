@@ -1019,9 +1019,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while updating the input.");
-            ex.Data.Add("PageMethod", "EditPage/HandleInputUpdated()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while updating the input.";
+            ex.Data["PageMethod"] = "EditPage/HandleInputUpdated()";
             OnError(ex);
         }
     }
@@ -1077,9 +1077,9 @@ public partial class EditPage
                 {
                     Console.WriteLine($"File {file.Name} has null or empty content. Skipping processing.");
                     var ex = new Exception($"Processing of Images has failed Due to the Content being empty.");
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "File content is empty or null. Skipping processing.");
-                    ex.Data.Add("PageMethod", "EditPage/HandleProcessedFilesStatic(processedFilesJson)");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                    ex.Data["AdditionalInfo"] = "File content is empty or null. Skipping processing.";
+                    ex.Data["PageMethod"] = "EditPage/HandleProcessedFilesStatic(processedFilesJson)";
                     OnError(ex);
                 }
                 else
@@ -1222,9 +1222,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while updating the DataObject.");
-            ex.Data.Add("PageMethod", "EditPage/ReceiveItemDoubleClick()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while updating the DataObject.";
+            ex.Data["PageMethod"] = "EditPage/ReceiveItemDoubleClick()";
             OnError(ex);
         }
     }
@@ -1363,7 +1363,7 @@ public partial class EditPage
 
             if (_formHelper != null && save)
             {
-                // Keep the existing small delay (but now it’s after we’ve stabilised input)
+                // Keep the existing small delay (but now itâ€™s after weâ€™ve stabilised input)
                 await Task.Delay(500);
                 UpdateSharepoint = true;
 
@@ -1488,11 +1488,11 @@ public partial class EditPage
             if (DeltaDataObject != null && hasUpdated)
                 return;
 
-            // If Blazor thinks we’re modified, that’s a strong signal something is still settling.
+            // If Blazor thinks weâ€™re modified, thatâ€™s a strong signal something is still settling.
             // (We still rely on the DeltaDataObject/hasUpdated for correctness.)
             if (editContext?.IsModified() != true && (DeltaDataObject == null && !hasUpdated))
             {
-                // Not modified and no delta – nothing to wait for
+                // Not modified and no delta â€“ nothing to wait for
                 return;
             }
 
@@ -1500,7 +1500,7 @@ public partial class EditPage
             waited += pollMs;
         }
 
-        // If we get here, we deliberately *do not* throw — we just fall through
+        // If we get here, we deliberately *do not* throw â€” we just fall through
         // and the existing "No changes" logic will still apply.
     }
 
@@ -1519,9 +1519,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the EditPage component.");
-            ex.Data.Add("PageMethod", "EditPage/OnInitialized()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while initializing the EditPage component.";
+            ex.Data["PageMethod"] = "EditPage/OnInitialized()";
             OnError(ex);
         }
     }
@@ -1698,24 +1698,24 @@ public partial class EditPage
                 if (EntityTypeGuid == "2cfbff39-93cd-436b-b8ca-b2fcf7609707" && ex.Message.Contains("No data returned for property"))
                 {
                     ex = new Exception("This asset no longer exists");
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while reading the DataObject.");
-                    ex.Data.Add("PageMethod", "EditPage/OnInitializedAsync()");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                    ex.Data["AdditionalInfo"] = "An error occurred while reading the DataObject.";
+                    ex.Data["PageMethod"] = "EditPage/OnInitializedAsync()";
                 }
 
                 //CBLD-627: Account Merge - display warning message
                 else if (EntityTypeGuid == "40476ecc-d19a-4de9-90df-e1f45cd72fb2" && ex.Message.Contains("No data returned for property AccountStatusID"))
                 {
                     ex = new Exception("The record no longer exists!");
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while reading the DataObject.");
-                    ex.Data.Add("PageMethod", "EditPage/OnInitializedAsync()");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Warning;
+                    ex.Data["AdditionalInfo"] = "An error occurred while reading the DataObject.";
+                    ex.Data["PageMethod"] = "EditPage/OnInitializedAsync()";
                 }
                 else
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while reading the DataObject.");
-                    ex.Data.Add("PageMethod", "EditPage/OnInitializedAsync()");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                    ex.Data["AdditionalInfo"] = "An error occurred while reading the DataObject.";
+                    ex.Data["PageMethod"] = "EditPage/OnInitializedAsync()";
                 }
 
                 IsLoading = false;
@@ -1761,9 +1761,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the EditPage component.");
-            ex.Data.Add("PageMethod", "EditPage/OnInitializedAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while initializing the EditPage component.";
+            ex.Data["PageMethod"] = "EditPage/OnInitializedAsync()";
             IsLoading = false;
             OnError(ex);
         }
@@ -1794,9 +1794,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while setting the parameters.");
-            ex.Data.Add("PageMethod", "EditPage/OnParametersSet()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while setting the parameters.";
+            ex.Data["PageMethod"] = "EditPage/OnParametersSet()";
             OnError(ex);
         }
     }
@@ -1844,7 +1844,7 @@ public partial class EditPage
 
         // HISTORY / RETURNURL CASE: If the string already has "https%3a%2f%2f" starting at this
         // index, then the "https://" part is already FULLY encoded. That is exactly what our
-        // ReturnUrl / history URLs look like. In that case, DO NOTHING – this path is "safe" and
+        // ReturnUrl / history URLs look like. In that case, DO NOTHING â€“ this path is "safe" and
         // must not be rewritten.
         if (uri.IndexOf(fullyEncodedHttps, StringComparison.OrdinalIgnoreCase) == idx)
         {
@@ -1891,9 +1891,9 @@ public partial class EditPage
 
     private void HandleError(Exception ex, string pageMethod)
     {
-        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-        ex.Data.Add("AdditionalInfo", ex.Message);
-        ex.Data.Add("PageMethod", pageMethod);
+        ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+        ex.Data["AdditionalInfo"] = ex.Message;
+        ex.Data["PageMethod"] = pageMethod;
         OnError(ex);
     }
 
@@ -1921,7 +1921,7 @@ public partial class EditPage
         }
         else
         {
-            // Unified exit path for all non-windowed pages: Dashboard → Job, Grid → Job, Job →
+            // Unified exit path for all non-windowed pages: Dashboard â†’ Job, Grid â†’ Job, Job â†’
             // Job (History), etc.
             //
             // We let NavigateToCorrectPage:
@@ -1930,13 +1930,13 @@ public partial class EditPage
             // - Navigate directly to that URL
             //
             // This avoids broken URLs like: /JobDetail/.../{...}/https://localhost:44368/jobs/...
-            // and correctly handles: Job A → Job B (History) → Save & Exit → Job A → Save & Exit → Grid
+            // and correctly handles: Job A â†’ Job B (History) â†’ Save & Exit â†’ Job A â†’ Save & Exit â†’ Grid
 
             PWAFunctions.ResetStateService(stateService);
 
             // ParentDataObjectReference is initialised earlier
             // (InitializeParentDataObjectReferenceAsync). For safety, fall back to an empty
-            // reference if it’s somehow null.
+            // reference if itâ€™s somehow null.
             var reference = ParentDataObjectReference ?? new DataObjectReference(string.Empty, string.Empty);
 
             PWAFunctions.NavigateToCorrectPage(
@@ -1959,9 +1959,9 @@ public partial class EditPage
                 if (!string.IsNullOrEmpty(message))
                 {
                     var ex = new Exception(message);
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while updating the DataObject.");
-                    ex.Data.Add("PageMethod", "EditPage/HandleFormHelper()");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                    ex.Data["AdditionalInfo"] = "An error occurred while updating the DataObject.";
+                    ex.Data["PageMethod"] = "EditPage/HandleFormHelper()";
                     OnError(ex);
                 }
                 ;
@@ -1992,9 +1992,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while updating the DataObject.");
-            ex.Data.Add("PageMethod", "EditPage/HandleFormHelper()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while updating the DataObject.";
+            ex.Data["PageMethod"] = "EditPage/HandleFormHelper()";
             OnError(ex);
         }
     }
@@ -2091,9 +2091,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while updating the Postcode.");
-            ex.Data.Add("PageMethod", "EditPage/HandlePostcodeUpdated()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while updating the Postcode.";
+            ex.Data["PageMethod"] = "EditPage/HandlePostcodeUpdated()";
             OnError(ex);
         }
     }
@@ -2111,9 +2111,9 @@ public partial class EditPage
                 messageBuilder.AppendLine(validationResult.ToString());
             }
             var exception = new Exception(messageBuilder.ToString());
-            exception.Data.Add("MessageType", MessageDisplay.ShowMessageType.Information);
-            exception.Data.Add("AdditionalInfo", ex.Message);
-            exception.Data.Add("PageMethod", "EditPage/HandleValidationErrors)");
+            exception.Data["MessageType"] = MessageDisplay.ShowMessageType.Information;
+            exception.Data["AdditionalInfo"] = ex.Message;
+            exception.Data["PageMethod"] = "EditPage/HandleValidationErrors)";
             var _messageBuilder = new StringBuilder(ex.Message);
             _messageBuilder.AppendLine("\r\n" + exception.ToString());
             ex = new Exception(_messageBuilder.ToString());
@@ -2121,9 +2121,9 @@ public partial class EditPage
         }
         catch (Exception e)
         {
-            e.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            e.Data.Add("AdditionalInfo", "An error occurred while handling the validation errors.");
-            e.Data.Add("PageMethod", "EditPage/HandleValidationErrors()");
+            e.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            e.Data["AdditionalInfo"] = "An error occurred while handling the validation errors.";
+            e.Data["PageMethod"] = "EditPage/HandleValidationErrors()";
             var messageBuilder = new StringBuilder(ex.Message);
             messageBuilder.AppendLine("\r\n" + e.ToString());
             ex = new Exception(messageBuilder.ToString());
@@ -2154,9 +2154,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error Checking if Postcode is Updated.");
-            ex.Data.Add("PageMethod", "EditPage/IsPostcodeUpdated()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error Checking if Postcode is Updated.";
+            ex.Data["PageMethod"] = "EditPage/IsPostcodeUpdated()";
             OnError(ex);
         }
 
@@ -2174,9 +2174,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error Checking if Value is Searchable.");
-            ex.Data.Add("PageMethod", "EditPage/IsSearchableValue()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error Checking if Value is Searchable.";
+            ex.Data["PageMethod"] = "EditPage/IsSearchableValue()";
             OnError(ex);
         }
         return false;
@@ -2273,9 +2273,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while opening the camera.");
-            ex.Data.Add("PageMethod", "EditPage/OpenCamera()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while opening the camera.";
+            ex.Data["PageMethod"] = "EditPage/OpenCamera()";
             IsLoading = false;
             OnError(ex);
         }
@@ -2315,9 +2315,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while opening the gallery.");
-            ex.Data.Add("PageMethod", "EditPage/OpenGallery()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while opening the gallery.";
+            ex.Data["PageMethod"] = "EditPage/OpenGallery()";
             IsLoading = false;
             OnError(ex);
         }
@@ -2376,9 +2376,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while preparing the file count.");
-            ex.Data.Add("PageMethod", "EditPage/OnParametersSet()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while preparing the file count.";
+            ex.Data["PageMethod"] = "EditPage/OnParametersSet()";
             OnError(ex);
         }
     }
@@ -2401,9 +2401,9 @@ public partial class EditPage
                 {
                     Console.WriteLine("Storage URL is not set. Cannot proceed with file upload.");
                     var ex = new Exception("Storage URL is not set. Cannot proceed with file upload.");
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while preparing the storage URL.");
-                    ex.Data.Add("PageMethod", "EditPage/PrepareStorageUrlAsync()");
+                    ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                    ex.Data["AdditionalInfo"] = "An error occurred while preparing the storage URL.";
+                    ex.Data["PageMethod"] = "EditPage/PrepareStorageUrlAsync()";
                     OnError(ex);
                     return;
                 }
@@ -2455,9 +2455,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while preparing the update to binded selection.");
-            ex.Data.Add("PageMethod", "EditPage/PrepareUpdateToBindedSelection()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while preparing the update to binded selection.";
+            ex.Data["PageMethod"] = "EditPage/PrepareUpdateToBindedSelection()";
             OnError(ex);
         }
 
@@ -2472,7 +2472,7 @@ public partial class EditPage
          * The function never executed on new grid creation since the only thing we were checking for is if the first GUID in the return URL is an empty GUID.
          * In this case, it was always just "/dev" without any GUID. To tackle this, I added "ReturnUrl.EndsWith("/dev")" to the if condition.
          *
-         * This method is specifically for the “new record from grid/dev” scenario:
+         * This method is specifically for the â€œnew record from grid/devâ€ scenario:
          * - We want to reload the SAME detail page, but with the new Guid.
          * - We do NOT want to go back to the grid here.
          */
@@ -2628,9 +2628,9 @@ public partial class EditPage
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while updating the bound data properties.");
-            ex.Data.Add("PageMethod", "EditPage/UpdateBoundDataProperties()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while updating the bound data properties.";
+            ex.Data["PageMethod"] = "EditPage/UpdateBoundDataProperties()";
             OnError(ex);
         }
     }

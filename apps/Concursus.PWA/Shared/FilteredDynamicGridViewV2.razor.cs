@@ -1,4 +1,4 @@
-﻿using Concursus.API.Client;
+using Concursus.API.Client;
 using Concursus.API.Client.Models;
 using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
@@ -6,18 +6,14 @@ using Concursus.PWA.Classes;
 using Concursus.PWA.Helpers;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using System.Collections;
 using System.Dynamic;
 using System.Text.Json;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
 using static Concursus.API.Core.Core;
 using static Concursus.PWA.Shared.MessageDisplay;
 using JsonSerializer = System.Text.Json.JsonSerializer;
-
-
-
 
 namespace Concursus.PWA.Shared;
 
@@ -31,164 +27,216 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
     [Parameter] public string ParentGuid { get; set; } = Guid.Empty.ToString();
     [Parameter] public bool DoubleClickDisabled { get; set; } = false;
     [Parameter] public bool Disabled { get; set; } = false;
+
     [Parameter]
     public GridViewDefinition? ViewDefinition
     {
         get => _viewDefinition;
-        set
-        {
-            _viewDefinition = value;
-
-            if (GridRef is not null) RefreshMe().ConfigureAwait(true);
-        }
+        set => _viewDefinition = value;
     }
-
 
     public bool HasChanges { get; private set; } = false;
 
-
-    //Status indicator messages.
+    // Status indicator messages.
     private string RedIndicator { get; set; } = "";
     private string GreenIndicator { get; set; } = "";
     private string OrangeIndicator { get; set; } = "";
 
+    #region Lifecycle
 
-
-    #region Public Methods
-
-
-
-
-    /// <summary>
-    /// Gets the quote threshold, which is used to highlight
-    /// rows where the amount is greated than the threshold threshold.
-    /// </summary>
-    /// <returns>Awaitable</returns>
-    private async Task GetQuoteThreshold()
-    {
-        formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
-
-        //Get the threshold first.
-        var QuoteThresholdReq = await coreClient.GetThresholdsForOrgUnitAsync(new GetQuoteThresholdReq() { UserId = userService.UserId });
-        Threshold = QuoteThresholdReq.QuoteThreshold;
-
-        //Next, get the organisation unit ID.
-        var UnitId = await formHelper.GetOrganisationalUnitForUser(userService.UserId);
-
-        if (UnitId != null)
-        {
-            OrganisationalUnitID = UnitId;
-            Console.WriteLine($"Got threshold -> {Threshold} and Organisational Unit => {OrganisationalUnitID}");
-        }
-    }
-
-    /// <summary>
-    /// In this case, it is used to get the configuration for the viewdefinition
-    /// to make it dynamic.
-    /// </summary>
-    /// <returns></returns>
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
 
         try
         {
-            if (ViewDefinition is not null)
-            {
-                CreatedOnColumn = _viewDefinition.FilteredListCreatedOnColumn;
-                RedIndicator = _viewDefinition.FilteredListRedStatusIndicatorTxt;
-                GreenIndicator = _viewDefinition.FilteredListGreenStatusIndicatorTxt;
-                OrangeIndicator = _viewDefinition.FilteredListOrangeStatusIndicatorTxt;
-                GroupBy = _viewDefinition.FilteredListGroupBy;
-
-                if (GroupBy == "OrgUnit")
-                {
-                    GroupByColumTranslation = "Organisation Unit";
-                }
-
-                // Existing KPI logic (invoicing) - keep
-                await GetKPIValues();
-
-                // NEW: Authorisation KPI logic (AUTHOREVIEW only)
-                //if (IsClosureReviewQueueGrid)
-                //{
-                //    await RefreshAuthorisationKpisAsync(force: true);
-                //    StateHasChanged();
-                //}
-            }
+            ApplyViewDefinitionSettings();
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("PageMethod", "FilteredDynamicGridViewV2/OnInitializedAsync()");
-            OnError(ex);
+            await OnError(ex);
         }
 
         await GetQuoteThreshold();
     }
 
-    protected async Task ReadItems(GridReadEventArgs args)
+    protected override async Task OnParametersSetAsync()
     {
-        _authorisationIsUpdating = true;
+        await base.OnParametersSetAsync();
+
+        try
+        {
+            if (ViewDefinition is null)
+                return;
+
+            ApplyViewDefinitionSettings();
+
+            var parameterKey = $"{GridCode}|{ViewDefinition.Code}|{ParentGuid}|{FullGrid}";
+            if (!string.Equals(_nativeGridParameterKey, parameterKey, StringComparison.Ordinal))
+            {
+                _nativeGridParameterKey = parameterKey;
+                InitialiseNativeSortFromViewDefinition();
+                await RestoreNativeGridStateAsync();
+
+                if (IsClosureReviewQueueGrid)
+                {
+                    await EnsureAuthorisationInitialisedAsync();
+                }
+
+                await ReloadNativeGridAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "FilteredDynamicGridViewV2/OnParametersSetAsync()");
+            await OnError(ex);
+        }
+    }
+
+    private void ApplyViewDefinitionSettings()
+    {
+        if (ViewDefinition is null)
+            return;
+
+        CreatedOnColumn = ViewDefinition.FilteredListCreatedOnColumn;
+        RedIndicator = ViewDefinition.FilteredListRedStatusIndicatorTxt;
+        GreenIndicator = ViewDefinition.FilteredListGreenStatusIndicatorTxt;
+        OrangeIndicator = ViewDefinition.FilteredListOrangeStatusIndicatorTxt;
+        GroupBy = ViewDefinition.FilteredListGroupBy;
+
+        if (GroupBy == "OrgUnit")
+        {
+            GroupByColumTranslation = "Organisation Unit";
+        }
+    }
+
+    #endregion Lifecycle
+
+    #region Native Grid
+
+    private IEnumerable<GridViewColumnDefinition> VisibleGridColumns =>
+        ViewDefinition?.Columns
+            .Where(o => !o.IsHidden)
+            .OrderBy(o => o.ColumnOrder)
+        ?? Enumerable.Empty<GridViewColumnDefinition>();
+
+    private IEnumerable<ExpandoObject> NativeGridItems => CurrentGridItems ?? Enumerable.Empty<ExpandoObject>();
+
+    private int NativeGridColumnCount => VisibleGridColumns.Count() + (IsClosureReviewQueueGrid ? 1 : 0);
+
+    private int NativeTotalPages => Math.Max(1, (int)Math.Ceiling((double)Math.Max(0, NativeTotalRows) / Math.Max(1, NativePageSize)));
+
+    private bool CanGoPreviousPage => NativePage > 1 && !NativeIsLoading;
+
+    private bool CanGoNextPage => NativePage < NativeTotalPages && !NativeIsLoading;
+
+    private bool HasActiveNativeColumnFilters => NativeColumnFilters.Any(f => !string.IsNullOrWhiteSpace(f.Value));
+
+    private bool HasActiveNativeSearch => !string.IsNullOrWhiteSpace(NativeSearchText);
+
+    private int NativeActiveFilterCount => NativeColumnFilters.Count(f => !string.IsNullOrWhiteSpace(f.Value));
+
+    private string NativeSearchPlaceholder
+    {
+        get
+        {
+            var name = ViewDefinition?.Name;
+            return string.IsNullOrWhiteSpace(name)
+                ? "Search records..."
+                : $"Search {name} records...";
+        }
+    }
+
+    private string NativeGridSummaryText
+    {
+        get
+        {
+            if (NativeTotalRows <= 0)
+                return "Showing 0 records";
+
+            var start = ((NativePage - 1) * NativePageSize) + 1;
+            var end = Math.Min(NativeTotalRows, NativePage * NativePageSize);
+            return $"Showing {start} to {end} of {NativeTotalRows}";
+        }
+    }
+
+    public async Task ReloadNativeGridAsync(int? requestedPage = null)
+    {
+        NativeIsLoading = true;
+
+        if (IsClosureReviewQueueGrid)
+        {
+            _authorisationIsUpdating = true;
+        }
+
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            if (ViewDefinition == null)
+            if (ViewDefinition is null)
                 return;
 
-            var pageNum = args.Request.Page;
+            var pageNum = requestedPage ?? NativePage;
             var savedPageNum = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
 
             if (ComingFromModal && !string.IsNullOrWhiteSpace(savedPageNum) && int.TryParse(savedPageNum, out var parsedPage))
+            {
                 pageNum = parsedPage;
+            }
+
+            NativePage = Math.Max(1, pageNum);
+            NativePageSize = Math.Max(1, NativePageSize);
 
             var gridDataListRequest = new GridDataListRequest
             {
                 GridCode = GridCode,
                 GridViewCode = ViewDefinition.Code,
-                Page = pageNum,
-                PageSize = args.Request.PageSize,
+                Page = NativePage,
+                PageSize = NativePageSize,
                 ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
             };
 
             if (gridDataListRequest.ParentGuid == Guid.Empty.ToString() && !FullGrid)
-                return;
-
-            await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", args.Request.Page);
-
-            // ---------------------------------------------------------------------
-            // FILTERS: always create a fresh root filter with lowercase operators
-            // ---------------------------------------------------------------------
-            var root = new DataCompositeFilter { LogicalOperator = "and" };
-
-            // 1) Kendo column filters
-            var kendo = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(args.Request.Filters);
-            if (HasAnyFilterContent(kendo))
             {
-                // Ensure lowercase (defensive). If your helper already emits "and"/"or", this does nothing.
-                kendo.LogicalOperator = NormaliseLogicalOperator(kendo.LogicalOperator);
-                root.CompositeFilters.Add(kendo);
+                CurrentGridItems = new List<ExpandoObject>();
+                NativeTotalRows = 0;
+                return;
             }
 
-            // 2) Quick filters
+            await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", NativePage);
+
+            var root = new DataCompositeFilter { LogicalOperator = "and" };
+
+            var columnFilters = BuildNativeColumnFilterComposite();
+            if (HasAnyFilterContent(columnFilters))
+            {
+                root.CompositeFilters.Add(columnFilters!);
+            }
+
+            var searchFilters = BuildNativeSearchFilterComposite();
+            if (HasAnyFilterContent(searchFilters))
+            {
+                root.CompositeFilters.Add(searchFilters!);
+            }
+
             if (HasAnyFilterContent(QuickFilters))
             {
-                QuickFilters.LogicalOperator = NormaliseLogicalOperator(QuickFilters.LogicalOperator);
+                QuickFilters!.LogicalOperator = NormaliseLogicalOperator(QuickFilters.LogicalOperator);
                 root.CompositeFilters.Add(QuickFilters);
             }
 
-            // 3) Range filters
             if (HasAnyFilterContent(RangeFilters))
             {
-                RangeFilters.LogicalOperator = NormaliseLogicalOperator(RangeFilters.LogicalOperator);
+                RangeFilters!.LogicalOperator = NormaliseLogicalOperator(RangeFilters.LogicalOperator);
                 root.CompositeFilters.Add(RangeFilters);
             }
 
-            // 4) AUTHOREVIEW filters (type + my items)
             if (IsClosureReviewQueueGrid && HasAnyFilterContent(AuthorisationFilters))
             {
-                AuthorisationFilters.LogicalOperator = NormaliseLogicalOperator(AuthorisationFilters.LogicalOperator);
+                AuthorisationFilters!.LogicalOperator = NormaliseLogicalOperator(AuthorisationFilters.LogicalOperator);
                 root.CompositeFilters.Add(AuthorisationFilters);
             }
 
@@ -198,18 +246,17 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
                 LogCompositeFilter(root);
             }
 
-            // ---------------------------------------------------------------------
-            // SORTS
-            // ---------------------------------------------------------------------
-            gridDataListRequest.Sort.AddRange(
-                API.Client.TypeHelpers.GridDataSortFromKendoSortDescriptor(args.Request.Sorts));
+            if (!string.IsNullOrWhiteSpace(NativeSortColumn))
+            {
+                gridDataListRequest.Sort.Add(new DataSort
+                {
+                    ColumnName = NativeSortColumn,
+                    Direction = NativeSortDescending ? "Descending" : "Ascending"
+                });
+            }
 
-            // ---------------------------------------------------------------------
-            // DATA
-            // ---------------------------------------------------------------------
             var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
-
-            var gridData = new List<ExpandoObject>();
+            var loadedGridData = new List<ExpandoObject>();
 
             foreach (var r in gridDataListReply.DataTable)
             {
@@ -223,48 +270,423 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
                     dictionary[name] = value;
                 }
 
-                gridData.Add(dataObj);
+                loadedGridData.Add(dataObj);
             }
 
-            //Update the KPI from here.
+            NativeTotalRows = (int)gridDataListReply.TotalRows;
+
+            if (NativeTotalRows > 0 && NativePage > NativeTotalPages)
+            {
+                NativePage = NativeTotalPages;
+                await ReloadNativeGridAsync(NativePage);
+                return;
+            }
+
+            CurrentGridItems = GroupByField(loadedGridData);
+
             if (IsClosureReviewQueueGrid)
             {
                 await RefreshAuthorisationKpisAsync(force: true);
-                StateHasChanged();
             }
 
-            gridData = GroupByField(gridData);
-
-            args.Data = gridData;
-            args.Total = (int)gridDataListReply.TotalRows;
-            CurrentGridItems = gridData;
-
-            if (ComingFromModal)
-            {
-                ComingFromModal = false;
-                _ = InvokeAsync(() => GridRef?.Rebind());
-            }
+            ComingFromModal = false;
         }
         catch (OperationCanceledException)
         {
-            // Expected when user clicks quickly / cancels
             return;
         }
         catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
         {
-            // Expected when client cancels in-flight gRPC calls
             return;
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("PageMethod", "FilteredDynamicGridViewV2/ReadItems()");
-            OnError(ex);
+            ex.Data.Add("PageMethod", "FilteredDynamicGridViewV2/ReloadNativeGridAsync()");
+            await OnError(ex);
         }
         finally
         {
-            _authorisationIsUpdating = false;
+            NativeIsLoading = false;
+
+            if (IsClosureReviewQueueGrid)
+            {
+                _authorisationIsUpdating = false;
+            }
+
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private DataCompositeFilter? BuildNativeColumnFilterComposite()
+    {
+        var composite = new DataCompositeFilter { LogicalOperator = "and" };
+
+        foreach (var filter in NativeColumnFilters.Where(f => !string.IsNullOrWhiteSpace(f.Value)))
+        {
+            composite.Filters.Add(new DataFilter
+            {
+                ColumnName = filter.Key,
+                Operator = "contains",
+                Guid = Guid.NewGuid().ToString(),
+                Value = Value.ForString(filter.Value.Trim())
+            });
+        }
+
+        return HasAnyFilterContent(composite) ? composite : null;
+    }
+
+    private DataCompositeFilter? BuildNativeSearchFilterComposite()
+    {
+        if (string.IsNullOrWhiteSpace(NativeSearchText))
+            return null;
+
+        var composite = new DataCompositeFilter { LogicalOperator = "or" };
+        var searchValue = NativeSearchText.Trim();
+
+        foreach (var column in VisibleGridColumns
+                     .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                     .Select(c => c.Name)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            composite.Filters.Add(new DataFilter
+            {
+                ColumnName = column,
+                Operator = "contains",
+                Guid = Guid.NewGuid().ToString(),
+                Value = Value.ForString(searchValue)
+            });
+        }
+
+        return HasAnyFilterContent(composite) ? composite : null;
+    }
+
+    private void InitialiseNativeSortFromViewDefinition()
+    {
+        if (ViewDefinition is null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(NativeSortColumn))
+            return;
+
+        NativeSortColumn = ViewDefinition.DefaultSortColumnName;
+        NativeSortDescending = ViewDefinition.IsDefaultSortDescending;
+    }
+
+    private async Task RestoreNativeGridStateAsync()
+    {
+        if (ViewDefinition is null)
+            return;
+
+        var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
+        if (!string.IsNullOrWhiteSpace(savedPageNumber) && int.TryParse(savedPageNumber, out var pageNum))
+        {
+            NativePage = Math.Max(1, pageNum);
+        }
+
+        if (!FullGrid)
+            return;
+
+        var savedState = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_nativeGridState");
+        if (string.IsNullOrWhiteSpace(savedState))
+            return;
+
+        try
+        {
+            var state = JsonSerializer.Deserialize<NativeFilterAndSortSetting>(savedState);
+            if (state is null)
+                return;
+
+            if (!string.Equals(state.code, ViewDefinition.Code, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(state.gridCode, GridCode, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            NativeColumnFilters = state.filterValues is not null
+                ? new Dictionary<string, string>(state.filterValues, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            NativeSearchText = state.searchText ?? string.Empty;
+            NativeFilterPanelOpen = NativeColumnFilters.Any(f => !string.IsNullOrWhiteSpace(f.Value));
+
+            if (!string.IsNullOrWhiteSpace(state.sortColumn))
+            {
+                NativeSortColumn = state.sortColumn;
+                NativeSortDescending = state.sortDescending;
+            }
+        }
+        catch
+        {
+            // Ignore invalid or legacy saved state. It will be overwritten by native state.
+        }
+    }
+
+    private async Task PersistNativeGridStateAsync()
+    {
+        if (ViewDefinition is null || !FullGrid)
+            return;
+
+        var hasFilters = NativeColumnFilters.Any(f => !string.IsNullOrWhiteSpace(f.Value));
+        var hasSearch = !string.IsNullOrWhiteSpace(NativeSearchText);
+        var hasSort = !string.IsNullOrWhiteSpace(NativeSortColumn);
+
+        if (!hasFilters && !hasSearch && !hasSort)
+        {
+            await LocalStorageAccessor.RemoveAsync($"{ViewDefinition.Code}_nativeGridState");
+            return;
+        }
+
+        var state = new NativeFilterAndSortSetting
+        {
+            code = ViewDefinition.Code,
+            gridCode = GridCode,
+            filterValues = NativeColumnFilters
+                .Where(f => !string.IsNullOrWhiteSpace(f.Value))
+                .ToDictionary(f => f.Key, f => f.Value, StringComparer.OrdinalIgnoreCase),
+            searchText = NativeSearchText,
+            sortColumn = NativeSortColumn,
+            sortDescending = NativeSortDescending
+        };
+
+        var serializedGridStateToSave = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
+        await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_nativeGridState", serializedGridStateToSave);
+    }
+
+    private string GetNativeFilterValue(string columnName)
+    {
+        return NativeColumnFilters.TryGetValue(columnName, out var value) ? value : string.Empty;
+    }
+
+    private void OnNativeSearchChanged(ChangeEventArgs args)
+    {
+        NativeSearchText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task OnNativeSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyNativeSearchAsync();
+        }
+    }
+
+    private async Task ApplyNativeSearchAsync()
+    {
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task ClearNativeSearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NativeSearchText))
+            return;
+
+        NativeSearchText = string.Empty;
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private void ToggleNativeFilterPanel()
+    {
+        NativeFilterPanelOpen = !NativeFilterPanelOpen;
+    }
+
+    private void SetNativeFilterValue(string columnName, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            NativeColumnFilters.Remove(columnName);
+            return;
+        }
+
+        NativeColumnFilters[columnName] = value;
+    }
+
+    private async Task OnNativeFilterKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyNativeColumnFiltersAsync();
+        }
+    }
+
+    private async Task ApplyNativeColumnFiltersAsync()
+    {
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task ClearNativeColumnFilterAsync(string columnName)
+    {
+        NativeColumnFilters.Remove(columnName);
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task ClearAllNativeColumnFiltersAsync()
+    {
+        NativeColumnFilters.Clear();
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task SortNativeGridAsync(string columnName)
+    {
+        if (string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase))
+        {
+            NativeSortDescending = !NativeSortDescending;
+        }
+        else
+        {
+            NativeSortColumn = columnName;
+            NativeSortDescending = false;
+        }
+
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private string GetNativeSortIndicator(string columnName)
+    {
+        if (!string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+
+        return NativeSortDescending ? "▼" : "▲";
+    }
+
+    private string GetNativeSortCss(string columnName)
+    {
+        return string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase)
+            ? "is-active"
+            : string.Empty;
+    }
+
+    private async Task GoToPreviousNativePageAsync()
+    {
+        if (!CanGoPreviousPage)
+            return;
+
+        await ReloadNativeGridAsync(NativePage - 1);
+    }
+
+    private async Task GoToNextNativePageAsync()
+    {
+        if (!CanGoNextPage)
+            return;
+
+        await ReloadNativeGridAsync(NativePage + 1);
+    }
+
+    private async Task ChangeNativePageSizeAsync(ChangeEventArgs args)
+    {
+        if (args.Value is not null && int.TryParse(args.Value.ToString(), out var pageSize) && pageSize > 0)
+        {
+            NativePageSize = pageSize;
+            NativePage = 1;
+            await ReloadNativeGridAsync(1);
+        }
+    }
+
+    private static string GetColumnWidthStyle(string? width)
+    {
+        if (string.IsNullOrWhiteSpace(width))
+            return string.Empty;
+
+        var safeWidth = width.Trim();
+        return $"width:{safeWidth};min-width:{safeWidth};";
+    }
+
+    private object GetNativeCellValue(ExpandoObject row, string columnName)
+    {
+        var dictionary = (IDictionary<string, object>)row;
+        return dictionary.TryGetValue(columnName, out var value) ? value ?? string.Empty : string.Empty;
+    }
+
+    private string GetInvoicePaymentStatusDot(ExpandoObject row)
+    {
+        var dictionary = (IDictionary<string, object>)row;
+        var paymentStatus = dictionary.TryGetValue("InvoicePaymentStatus", out var status)
+            ? status?.ToString() ?? string.Empty
+            : string.Empty;
+
+        return paymentStatus switch
+        {
+            "Overdue" => "dot red",
+            "Pending" => "dot yellow",
+            "Paid" => "dot green",
+            _ => string.Empty
+        };
+    }
+
+    private string GetDateChaseDot(ExpandoObject row)
+    {
+        var dictionary = (IDictionary<string, object>)row;
+        var isOverdue = dictionary.TryGetValue("IsOverdue", out var value)
+            ? value?.ToString() ?? string.Empty
+            : string.Empty;
+
+        return !string.IsNullOrWhiteSpace(isOverdue) ? "dot red" : string.Empty;
+    }
+
+    private string GetNativeRowCssClass(ExpandoObject rowObject)
+    {
+        var row = (IDictionary<string, object>)rowObject;
+        var cssClasses = new List<string>();
+
+        if (row.TryGetValue("IsTotalHighlightRow", out var totalValue) && totalValue?.ToString() == "1")
+        {
+            cssClasses.Add("highlight-total-row");
+        }
+
+        var orgUnitAsString = OrganisationalUnitID switch
+        {
+            2 => "Building and Real Estate",
+            3 => "CDM Consulting",
+            8 => "Building & Real Estate Admin",
+            10 => "Building Control Consultancy",
+            _ => string.Empty
+        };
+
+        if (Threshold > 1 &&
+            row.TryGetValue("TotalNet", out var net) &&
+            row.TryGetValue("OrganisationalUnitName", out var orgUnit) &&
+            string.Equals(orgUnit?.ToString(), orgUnitAsString, StringComparison.OrdinalIgnoreCase))
+        {
+            var valAsString = net?.ToString();
+            if (decimal.TryParse(valAsString, out var n) && (double)n >= Threshold)
+            {
+                cssClasses.Add("OverThreshold");
+            }
+        }
+
+        return string.Join(" ", cssClasses);
+    }
+
+    #endregion Native Grid
+
+    #region Public Methods
+
+    /// <summary>
+    /// Gets the quote threshold, which is used to highlight rows where the amount is greater than the threshold.
+    /// </summary>
+    private async Task GetQuoteThreshold()
+    {
+        formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+
+        var quoteThresholdReq = await coreClient.GetThresholdsForOrgUnitAsync(new GetQuoteThresholdReq { UserId = userService.UserId });
+        Threshold = quoteThresholdReq.QuoteThreshold;
+
+        var unitId = await formHelper.GetOrganisationalUnitForUser(userService.UserId);
+
+        if (unitId != null)
+        {
+            OrganisationalUnitID = unitId;
+            Console.WriteLine($"Got threshold -> {Threshold} and Organisational Unit => {OrganisationalUnitID}");
         }
     }
 
@@ -280,46 +702,38 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
     private static string NormaliseLogicalOperator(string op)
     {
-        // Defensive: your SQL builder likely expects lowercase
         if (string.IsNullOrWhiteSpace(op)) return "and";
         op = op.Trim();
         return op.Equals("or", StringComparison.OrdinalIgnoreCase) ? "or" : "and";
     }
 
-
-
-
-
     public RenderFragment<object> GetColumnTemplate(string propName)
     {
         try
         {
-            RenderFragment ColumnTemplate(object context) =>
-                builder =>
+            RenderFragment<object> columnTemplate = context => builder =>
+            {
+                if (context is not ExpandoObject expandoObject) return;
+                var dictionary = expandoObject as IDictionary<string, object>;
+
+                if (dictionary.TryGetValue(propName, out var propValue))
                 {
-                    if (context is not ExpandoObject expandoObject) return;
-                    var dictionary = expandoObject as IDictionary<string, object>;
+                    builder.AddContent(0, propValue);
+                }
+            };
 
-                    if (dictionary.TryGetValue(propName, out var propValue))
-                    { //return the
-                      //value of the property which will be rendered in the grid inside the<div>
-
-                        builder.AddContent(0, propValue);
-                    }
-                }; return ColumnTemplate;
+            return columnTemplate;
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
             ex.Data.Add("PageMethod", "DynamicGridView/GetColumnTemplate()");
-            OnError(ex);
+            _ = OnError(ex);
         }
 
-        return null;
+        return _ => builder => builder.AddContent(0, string.Empty);
     }
-
-
 
     public async Task OnError(Exception error)
     {
@@ -345,7 +759,6 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
             Console.WriteLine("DynamicGridView: MessageType not found in error.Data. Defaulted to Error.");
         }
 
-        // Extract all exception data
         var exceptionData = error.Data.Count > 0
             ? error.Data.Cast<DictionaryEntry>().ToDictionary(
                 de => de.Key?.ToString() ?? "UnknownKey",
@@ -364,7 +777,6 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
         Console.WriteLine("DynamicGridView: MessageDisplay updated and error shown.");
 
-        // AI Error Reporting (only for actual errors)
         if (MessageType == ShowMessageType.Error)
         {
             try
@@ -378,11 +790,9 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
                     Data = error.Data.Cast<DictionaryEntry>()
                         .ToDictionary(
                             de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
+                            de => de.Value?.ToString() ?? "null")
                 };
 
-                var log = InteractionTracker.GetAllLogs();
                 var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
                 error.Data["UserInteractionLog"] = description;
                 Console.WriteLine($"DynamicGridView: UserInteractionLog = {description}");
@@ -409,21 +819,15 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
     }
 
     /// <summary>
-    /// Refreshes/rebinds the grid.
+    /// Refreshes/reloads the native grid.
     /// </summary>
-    /// <returns></returns>
     public async Task RefreshMe()
     {
         try
         {
-            var state = await CalcGridStateAsync();
-            if (GridRef != null)
-            {
-                await GridRef.SetStateAsync(state);
-                await Task.Delay(50); // Small delay for smoother UI updates
-            }
+            await ReloadNativeGridAsync(NativePage);
 
-            if (!HasChanges) return; // Prevent unnecessary UI refreshes
+            if (!HasChanges) return;
             HasChanges = false;
             StateHasChanged();
         }
@@ -431,17 +835,13 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("PageMethod", "DynamicGridView/RefreshMe()");
-            OnError(ex);
+            await OnError(ex);
         }
     }
 
     #endregion Public Methods
 
     #region Protected Methods
-
-
-
-
 
     private static readonly HashSet<string> _loggedFilters = new();
 
@@ -457,8 +857,8 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
     {
         foreach (var subFilter in filter.Filters ?? Enumerable.Empty<DataFilter>())
         {
-            var key = $"{subFilter.ColumnName}-{subFilter.Operator}-{subFilter.Value}";
-            if (_loggedFilters.Add(key)) // ensures uniqueness
+            var key = $"{subFilter.ColumnName}|{subFilter.Operator}|{subFilter.Value}";
+            if (_loggedFilters.Add(key))
             {
                 InteractionTracker.Log(NavManager.Uri,
                     $"Filter added to Grid - '{ViewDefinition?.Name ?? "Unknown"}' Filter: '{subFilter.ColumnName}' Operator: '{subFilter.Operator}' Value: '{subFilter.Value}'");
@@ -471,15 +871,8 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         }
     }
 
-    /// <summary>
-    /// Helper function to format grid column values correctly
-    /// </summary>
-    /// <param name="columnName"></param>
-    /// <param name="value"></param>
-    /// <returns></returns>
     private object FormatGridColumnValue(string columnName, string value)
     {
-        ////CBLD-530
         bool isPhoneNumber = CheckIfMobileNumber(columnName, value);
 
         if (isPhoneNumber)
@@ -487,11 +880,10 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
             return value;
         }
 
-        // Try numeric parsing first
         if (int.TryParse(value, out var intValue)) return intValue;
 
         if (decimal.TryParse(value, out var decimalValue))
-            return decimalValue.ToString("F2"); // Standard 2dp
+            return decimalValue.ToString("F2");
 
         if (bool.TryParse(value, out var boolValue))
             return boolValue ? "Yes" : "No";
@@ -499,157 +891,30 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         if (Guid.TryParse(value, out var guidValue))
             return guidValue.ToString();
 
-        // Handle DateTime with standardized logic
         if (DateTime.TryParse(value, out var dateTimeValue))
         {
-            // Use UiFormattingHelper to normalize and format
             var localDateTime = UiFormattingHelper.NormalizeToLocal(dateTimeValue);
-
-            // Smart formatting based on column name
             bool isDateOnly = columnName.ToLower().EndsWith("date") && !columnName.ToLower().Contains("time");
-
             return UiFormattingHelper.FormatDateForUI(localDateTime, isDateOnly);
         }
 
-        // Default to raw string
         return value;
     }
 
-    /// <summary>
-    /// Helper function ensuring phone number is displayed properly.
-    /// </summary>
-    /// <param name="columnName"></param>
-    /// <param name="columnValue"></param>
-    /// <returns></returns>
     private bool CheckIfMobileNumber(string columnName, string columnValue)
     {
-        //Check for common ways a phone number might start.
-        bool startsWithZero = columnValue.StartsWith("0") && !columnValue.Contains("/"); //Date can start with 0, therefore check for '/'
+        bool startsWithZero = columnValue.StartsWith("0") && !columnValue.Contains("/");
         bool startWithFourtyFour = columnValue.StartsWith("44");
         bool startsWithPlus = columnValue.StartsWith("+");
 
-        if (startsWithZero || startWithFourtyFour || startsWithPlus)
-        {
-            return true;
-        }
-
-        return false;
+        return startsWithZero || startWithFourtyFour || startsWithPlus;
     }
 
     #endregion Protected Methods
 
     #region Private Methods
 
-
-
-    private Task<GridState<ExpandoObject>> CalcGridStateAsync()
-    {
-        try
-        {
-            if (ViewDefinition == null) return Task.FromResult(new GridState<ExpandoObject>()); // Return a default state if ViewDefinition is null
-            var defaultSortColumnName = ViewDefinition.DefaultSortColumnName;
-
-            var state = new GridState<ExpandoObject>
-            {
-                SortDescriptors = new List<SortDescriptor>
-                {
-                    new()
-                    {
-                        Member = defaultSortColumnName,
-                        SortDirection = ViewDefinition.IsDefaultSortDescending ? ListSortDirection.Descending : ListSortDirection.Ascending
-                    }
-                },
-                FilterDescriptors = new List<IFilterDescriptor>()
-                {
-                    new CompositeFilterDescriptor()
-                    {
-                        FilterDescriptors = new FilterDescriptorCollection()
-                    }
-                }
-            };
-
-            return Task.FromResult(state);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while calculating the grid state in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/CalcGridState()");
-            OnError(ex);
-        }
-        return Task.FromResult(new GridState<ExpandoObject>());
-    }
-
-
-
-    private async Task OnGridStateChanged(GridStateEventArgs<ExpandoObject> args)
-    {
-        try
-        {
-            //CBLD-106: Object that holds all the relevant information needed for the session storage.
-            var gridStateToSave = new FilterAndSortSetting()
-            {
-                code = ViewDefinition.Code,
-                gridCode = GridCode,
-                filterDescriptor = args.GridState.FilterDescriptors,
-                sortDescriptor = args.GridState.SortDescriptors
-            };
-
-            //If we only have one item in filterDescriptor, it means the filter has been reset.
-            if (gridStateToSave.filterDescriptor.Count < 2)
-            {
-                var filterExists = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_gridState");
-
-                if (filterExists != null)
-                    await LocalStorageAccessor.RemoveAsync($"{ViewDefinition.Code}_gridState");
-            }
-            else
-            {
-                //Serialize the created object and then save it to the session.
-                var serializedGridStateToSave = JsonSerializer.Serialize(gridStateToSave, new JsonSerializerOptions() { WriteIndented = true });
-                await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_gridState", serializedGridStateToSave);
-            }
-
-            if (DoubleStateChanged)
-            {
-                DoubleStateChanged = false;
-                await Task.Delay(1500);
-                GridStateChangedPropertyClass = string.Empty;
-            }
-
-            ++OnStateChangedCount;
-
-            GridStateChangedProperty = args.PropertyName;
-
-            // serialize the GridState and highlight the changed property
-            GridStateString = JsonSerializer.Serialize(args.GridState, new JsonSerializerOptions() { WriteIndented = true })
-                .Replace($"\"{GridStateChangedProperty}\"", $"\"<strong class='latest-changed-property'>{GridStateChangedProperty}</strong>\"");
-
-            // highlight first GridStateChangedProperty during filtering, grouping and search
-            if (_operationsWithMultipleStateChanged.Contains(GridStateChangedProperty))
-            {
-                DoubleStateChanged = true;
-                GridStateChangedPropertyClass = "first-of-two";
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while handling the grid state change in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/OnGridStateChanged()");
-            OnError(ex);
-        }
-    }
-
-    /*
-        The below 2 functions are pertaining to CBLD-361.
-
-        Their purpose is to ensure that the scrollbar does not
-        jump after adding an item to the grid & clicking "save and exit".
-
-     */
-
-    private async Task GetScrollBarPos() //CBLD-361
+    private async Task GetScrollBarPos()
     {
         try
         {
@@ -657,12 +922,11 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         }
         catch (Exception ex)
         {
-            // OE - CBLD- Added catch so that it does throw an error message.
             Console.WriteLine(ex.Message);
         }
     }
 
-    private async Task SetScrollBarPos() //CBLD-361
+    private async Task SetScrollBarPos()
     {
         try
         {
@@ -671,12 +935,11 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         }
         catch (Exception ex)
         {
-            // OE - CBLD- Added catch so that it does throw an error message.
             Console.WriteLine(ex.Message);
         }
     }
 
-    private void OnRowDoubleClickHandler(GridRowClickEventArgs args)
+    private void OnRowDoubleClickHandler(ExpandoObject item)
     {
         try
         {
@@ -684,44 +947,33 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
             var onRowDoubleClickHandler = !string.IsNullOrEmpty(ViewDefinition?.DetailPageUri) ? "@OnRowDoubleClickHandler" : null;
             if (onRowDoubleClickHandler == null) return;
-            dynamic model = args.Item;
-            //Do nothing if empty guid
-            if (model.Guid == Guid.Empty.ToString()) return;
-
             if (ViewDefinition == null) return;
 
-            string parentGuid = model.Guid;
-            // CBLD - 462: SB - Check to see if the Entity Guid in the current
-            // ParentDataOnjectReference is different than where its going
+            var row = (IDictionary<string, object>)item;
+            var parentGuid = TryGetStringFromRow(row, "Guid");
+
+            if (PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentGuid) == Guid.Empty) return;
+
             var isParentDataObjectReferenceDifferent = ParentDataObjectReference.EntityTypeGuid.ToString() != ViewDefinition.EntityTypeGuid;
 
-            //Below is the code to get the ParentDataObjectReference and make sure it is set with the latest Modal windows saved details
-            var (parentDataObjectReference, serializedParentDataObjectReference) = PWAFunctions.ProcessDataObjectReference(modalService, ParentDataObjectReference, parentGuid, ViewDefinition.EntityTypeGuid);
+            var (parentDataObjectReference, serializedParentDataObjectReference) =
+                PWAFunctions.ProcessDataObjectReference(modalService, ParentDataObjectReference, parentGuid, ViewDefinition.EntityTypeGuid);
 
-
-
-            //CBLD-771
-            // Step 1: Parse safe GUID
-            string guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(model.Guid).ToString();
-
-            // Step 2: Serialized reference should already be encoded (confirm this!)
+            string guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentGuid).ToString();
             string sPDOR = serializedParentDataObjectReference;
-
-            // Step 3: ENCODE the full URL you are appending
             string uri = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
-
-            // Step 4: Combine
             string url = $"{ViewDefinition.DetailPageUri}/{guid}/{sPDOR}/{uri}";
 
             if (ViewDefinition.DetailPageUri == "DynamicEdit")
-                NavManager.NavigateTo(ViewDefinition.DetailPageUri + "/" + PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString() + "/" + parentDataObjectReference.DataObjectGuid + "/" +
-                                      serializedParentDataObjectReference + "/" + System.Web.HttpUtility.UrlEncode(NavManager.Uri));
-            else
-
-            if (isParentDataObjectReferenceDifferent)
             {
-                //CLD-611
-                //Page not refreshing (url does change though) when we try to go to the same record type through the history tab in a modal
+                NavManager.NavigateTo(ViewDefinition.DetailPageUri + "/" +
+                                      PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString() + "/" +
+                                      parentDataObjectReference.DataObjectGuid + "/" +
+                                      serializedParentDataObjectReference + "/" +
+                                      System.Web.HttpUtility.UrlEncode(NavManager.Uri));
+            }
+            else if (isParentDataObjectReferenceDifferent)
+            {
                 var navigateToDetailPage = "/" + ViewDefinition.DetailPageUri + "/";
                 var currentUri = NavManager.Uri;
 
@@ -738,187 +990,47 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
             {
                 NavManager.NavigateTo(url, true);
             }
-            InteractionTracker.Log(NavManager.Uri, $"User Double Clicked Row in Grid - '{ViewDefinition?.Name ?? "Unknown"}' New Page Opened: '{PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition?.EntityTypeGuid ?? "No Guid").ToString()}'");
 
+            InteractionTracker.Log(NavManager.Uri,
+                $"User Double Clicked Row in Grid - '{ViewDefinition?.Name ?? "Unknown"}' New Page Opened: '{PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition?.EntityTypeGuid ?? "No Guid").ToString()}'");
 
             formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
-            _ = formHelper.LogUsageAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid), PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());
+            _ = formHelper.LogUsageAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid),
+                PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while handling the row double-click event in the DynamicGridView.");
             ex.Data.Add("PageMethod", "DynamicGridView/OnRowDoubleClickHandler()");
-            OnError(ex);
+            _ = OnError(ex);
         }
     }
 
-    /// <summary>
-    /// Function in which we highlight rows based on two things: Threshold (set for the org unit) and the user's org unit.
-    /// This means, if the user is part of "CDM", only CDM jobs should be highlighted.
-    /// </summary>
-    /// <param name="args"></param>
-    private void OnRowRenderHandler(GridRowRenderEventArgs args)
-    {
-
-        //Match the organisational unit / row.
-        var OrgUnitAsString = "";
-
-        switch (OrganisationalUnitID)
-        {
-            case 2:
-                OrgUnitAsString = "Building and Real Estate";
-                break;
-            case 3:
-                OrgUnitAsString = "CDM Consulting";
-                break;
-            case 8:
-                OrgUnitAsString = "Building & Real Estate Admin";
-                break;
-            case 10:
-                OrgUnitAsString = "Building Control Consultancy";
-                break;
-
-        }
-
-        //CBLD-215 - Highlighting total row.
-        var row = args.Item as IDictionary<string, object>;
-
-        if (row == null) return;
-
-        if (row.TryGetValue("IsTotalHighlightRow", out var value))
-        {
-            if (value?.ToString() == "1")
-            {
-                args.Class = "highlight-total-row";
-            }
-        }
-
-        //Check the threshold is above 1 at minimum.
-        if (Threshold > 1)
-        {
-            //Now, get the net amount for the row.
-            if (row.TryGetValue("TotalNet", out var net))
-            {
-                //Get the organisational unit ID.
-                if (row.TryGetValue("OrganisationalUnitName", out var OrgUnit))
-                {
-
-                    if (OrgUnit.ToString() == OrgUnitAsString)
-                    {
-                        var valAsString = net?.ToString();
-                        if (decimal.TryParse(valAsString, out var n))
-                        {
-                            if ((double)n >= Threshold)
-                                args.Class = "OverThreshold";
-                        }
-                    }
-
-                }
-            }
-        }
-
-    }
-
-
-    /// <summary>
-    /// Mainly used to apply saved filtering & page number (accessed by LocalStorageAccessor)
-    /// which then gets applied to the grid.
-    /// </summary>
-    /// <param name="args"></param>
-    /// <returns></returns>
-    private async Task OnStateInitHandler(GridStateEventArgs<ExpandoObject> args)
-    {
-        try
-        {
-            var state = await CalcGridStateAsync();
-            if (ViewDefinition is not null)
-            {
-                state.SortDescriptors.Clear();
-                state.SortDescriptors.Add(new SortDescriptor
-                {
-                    Member = ViewDefinition.DefaultSortColumnName,
-                    SortDirection = ViewDefinition.IsDefaultSortDescending
-                        ? ListSortDirection.Descending
-                        : ListSortDirection.Ascending
-                });
-
-                var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
-                //Extract the page number - if there is one.
-                //We are returning a string, we need to convert to int.
-                int pageNum;
-                if (savedPageNumber != null)
-                {
-                    //Returns true if converted succesfully.
-                    if (Int32.TryParse(savedPageNumber, out pageNum))
-                    {
-                        state.Page = pageNum;
-                    }
-                }
-
-                //Check if there are gridSettings already present in the session.
-                var isGradeStateSaved = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_gridState");
-
-                //cBLD-106: ensuring the filter and sort settings are rememebered.
-                if (isGradeStateSaved != null && FullGrid) //Only on full grids.
-                {
-                    FilterAndSortSetting gridSetting = JsonSerializer.Deserialize<FilterAndSortSetting>(isGradeStateSaved);
-                    //CBLD-532: Get the page number from the session - if there is one.
-
-                    //Only apply the settings when viewng the correct grid.
-                    if (gridSetting.code == ViewDefinition.Code && gridSetting.gridCode == GridCode)
-                    {
-                        state.FilterDescriptors = gridSetting.filterDescriptor;
-                        state.SortDescriptors = gridSetting.sortDescriptor;
-                    }
-                }
-            }
-
-            args.GridState = state;
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the grid state in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/OnStateInitHandler()");
-            OnError(ex);
-        }
-    }
-
-    // Open the batch grid view in a modal
     private void OpenDynamicBatchGrid()
     {
-        _ = GetScrollBarPos(); //CBLD-361
+        _ = GetScrollBarPos();
         BatchGridVisible = true;
     }
 
-
-
-
     private void ScrollToTop()
     {
-        // Scroll to the top of the page
-        JsRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
-        InteractionTracker.Log(NavManager.Uri, $"Back To Top Clicked");
+        _ = JsRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
+        InteractionTracker.Log(NavManager.Uri, "Back To Top Clicked");
     }
-
-
 
     #endregion Private Methods
 
     #region Private Classes
 
-    //CBLD-106
-    private class FilterAndSortSetting
+    private sealed class NativeFilterAndSortSetting
     {
-        #region Public Properties
-
-        public string code { get; set; }
-        public ICollection<IFilterDescriptor> filterDescriptor { get; set; }
-        public string gridCode { get; set; }
-        public ICollection<SortDescriptor> sortDescriptor { get; set; }
-
-        #endregion Public Properties
+        public string code { get; set; } = string.Empty;
+        public Dictionary<string, string> filterValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string gridCode { get; set; } = string.Empty;
+        public string searchText { get; set; } = string.Empty;
+        public string sortColumn { get; set; } = string.Empty;
+        public bool sortDescending { get; set; }
     }
 
     #endregion Private Classes

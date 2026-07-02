@@ -20,12 +20,18 @@ SELECT  e.ID,
 		LEFT(e.DescriptionOfWorks, 200) AS DescriptionOfWorks, 
 		CASE WHEN client.Name <> N'' THEN client.Name ELSE e.ClientName END + N' / ' + CASE WHEN agent.Name <> N'' THEN agent.Name ELSE e.AgentName END  AS ClientAgentAccount,
 		CASE WHEN uprn.AssetNumber > 0 THEN uprn.FormattedAddressComma ELSE e.PropertyNameNumber + N' ' + e.PropertyAddressLine1 END AS Property,
-		calculatedFields.EnquiryStatus
+		calculatedFields.EnquiryStatus,
+		org.Name AS Department,
+		org2.Name AS BusinessUnit
 FROM    SSop.Enquiries e
 --JOIN	SSop.Enquiry_CalculatedFields AS ecf ON (ecf.ID = e.ID)
 JOIN	SCrm.Accounts client ON (client.ID = e.ClientAccountID)
 JOIN	SCrm.Accounts agent ON (agent.ID = e.AgentAccountId)
 JOIN	SJob.Assets uprn ON (uprn.ID = e.PropertyId)
+JOIN SCore.OrganisationalUnits AS org
+        ON org.ID = e.OrganisationalUnitID
+LEFT JOIN SCore.OrganisationalUnits AS org2 
+		ON (org.ParentID = org2.ID)
 OUTER APPLY
 	(
 		SELECT ecf.EnquiryStatus

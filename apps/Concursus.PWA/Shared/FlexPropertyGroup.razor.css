@@ -1,9 +1,620 @@
 ﻿.property-row {
     display: flex;
     align-items: center;
-    margin-bottom: 10px; /* Add spacing between rows if needed */
+    margin-bottom: 10px;
 }
 
-    .property-row .form-check-input {
-        margin-top: 0; /* Ensures proper alignment with controls */
+.property-row .form-check-input {
+    margin-top: 0;
+}
+
+/* Metadata group card chrome. */
+.flexpropertygroup {
+    display: flex !important;
+    flex-direction: column !important;
+    align-self: stretch !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+    border-radius: var(--cb-v2-radius-md, .75rem);
+    background: var(--cb-v2-bg, #ffffff);
+}
+
+.flexpropertygroup > .card-body {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    padding: 1rem !important;
+    border-radius: 0 !important;
+}
+
+.flexpropertygroup .card-title {
+    color: var(--cb-v2-text-strong, #0f172a);
+}
+
+.flexpropertygroup > .card-header,
+.flexpropertygroup > .card-footer {
+    border-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.flexpropertygroup .input-group,
+.flexpropertygroup .input-group-text,
+.flexpropertygroup .form-control,
+.flexpropertygroup .form-select,
+.flexpropertygroup textarea.form-control,
+.flexpropertygroup .btn-outline-secondary,
+.flexpropertygroup .form-check-input {
+    border-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.flexpropertygroup .input-group-text {
+    background: #eef2f7;
+}
+
+.flexpropertygroup .cb-dynamic-grid-card,
+.flexpropertygroup .dynamic-grid-view-v2-grid-card,
+.flexpropertygroup .dynamic-grid-view-v2-header,
+.flexpropertygroup .dynamic-grid-view-v2-toolbar {
+    margin: 0 !important;
+}
+
+.flexpropertygroup .cb-dynamic-grid-card,
+.flexpropertygroup .dynamic-grid-view-v2-grid-card {
+    border-radius: var(--cb-v2-radius-md, 16px) !important;
+}
+
+.flexpropertygroup .cb-dynamic-grid-card + .cb-dynamic-grid-card,
+.flexpropertygroup .dynamic-grid-view-v2-grid-card + .dynamic-grid-view-v2-grid-card {
+    margin-top: 1rem !important;
+}
+
+/* Lookup menus must not be clipped inside cards. */
+.flexpropertygroup:has(.shore-lookup-menu),
+.flexpropertygroup > .card-body:has(.shore-lookup-menu) {
+    overflow: visible !important;
+    position: relative;
+    z-index: 2140;
+}
+
+/* 14S-R15 field placement repair.
+   Group placement is owned by FlexPropertyGroups. Inside each group, controls should fill
+   the available field row. Row groups can arrange fields side-by-side. Column groups stack
+   fields, but every field still expands to the card width. */
+.flexpropertygroup-fields,
+.flexpropertygroup-fields.is-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)) !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    align-content: start !important;
+    gap: 0.85rem 0.9rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-column {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    justify-items: stretch !important;
+    align-content: start !important;
+    gap: 0.85rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-field,
+.flexpropertygroup-field.is-bulk-edit {
+    display: block !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-field.is-multiline {
+    grid-column: 1 / -1 !important;
+}
+
+.flexpropertygroup-field > *,
+.flexpropertygroup-field ::deep .developer-inspectable,
+.flexpropertygroup-field ::deep .developer-inspectable > :first-child,
+.flexpropertygroup-field ::deep .col-auto.m-1.flex-fill,
+.flexpropertygroup-field ::deep .col-auto.w-100.m-1.shore-input-multiline-field,
+.flexpropertygroup-field ::deep .shore-input-field,
+.flexpropertygroup-field ::deep .shore-input-multiline-field,
+.flexpropertygroup-field ::deep .input-group,
+.flexpropertygroup-field ::deep .shore-input-multiline-group {
+    display: block !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-field ::deep .input-group,
+.flexpropertygroup-field ::deep .shore-input-multiline-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+}
+
+.flexpropertygroup-field ::deep .input-group > .form-control,
+.flexpropertygroup-field ::deep .input-group > .form-select,
+.flexpropertygroup-field ::deep .input-group > .combo-wrapper,
+.flexpropertygroup-field ::deep .input-group > label.form-control,
+.flexpropertygroup-field ::deep .combo-wrapper,
+.flexpropertygroup-field ::deep .combo-wrapper .shore-lookup,
+.flexpropertygroup-field ::deep .combo-wrapper .shore-lookup-control,
+.flexpropertygroup-field ::deep .combo-wrapper .shore-lookup-input {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-field ::deep .input-group > .input-group-text,
+.flexpropertygroup-field ::deep .shore-input-multiline-group > .input-group-text {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 6.75rem !important;
+    max-width: min(14rem, 45%) !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.flexpropertygroup-field ::deep .input-group > .btn,
+.flexpropertygroup-field ::deep .input-group > button,
+.flexpropertygroup-field ::deep .input-group > .dropdown,
+.flexpropertygroup-field ::deep .shore-input-multiline-group > .btn,
+.flexpropertygroup-field ::deep .shore-input-multiline-group > button,
+.flexpropertygroup-field ::deep .shore-input-multiline-group > .dropdown {
+    flex: 0 0 auto !important;
+    width: auto !important;
+}
+
+.flexpropertygroup-field.is-bulk-edit .property-row {
+    display: flex !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.flexpropertygroup-field.is-bulk-edit .property-row > *:last-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+.flexpropertygroup-field.is-multiline ::deep .shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(8.5rem, max-content) minmax(0, 1fr) auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-field.is-multiline ::deep .shore-input-multiline-textarea {
+    width: 100% !important;
+    min-width: 0 !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields,
+    .flexpropertygroup-fields.is-row,
+    .flexpropertygroup-fields.is-column {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 0.75rem !important;
     }
+}
+
+/* BEGIN 14S-R18 row field fit and tooltip polish */
+/* Row groups are generally wider, so allow normal fields to size by metadata type rather than
+   forcing every single-line control to span the full row. Column groups keep the full-width field
+   behaviour from the preceding 14S layout fixes. */
+.flexpropertygroup-fields.is-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    justify-items: stretch !important;
+    gap: 0.85rem 0.9rem !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field {
+    flex: 1 1 22rem !important;
+    width: auto !important;
+    min-width: min(100%, 14rem) !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-compact {
+    flex: 0 1 17rem !important;
+    max-width: min(100%, 24rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-lookup {
+    flex: 1 1 30rem !important;
+    max-width: min(100%, 44rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-boolean {
+    flex: 0 1 21rem !important;
+    max-width: min(100%, 30rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-multiline {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field > *,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .developer-inspectable,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .developer-inspectable > :first-child,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .shore-input-multiline-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field > *,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field ::deep .developer-inspectable,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field ::deep .developer-inspectable > :first-child,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field ::deep .shore-input-field,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field ::deep .shore-input-multiline-field,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field ::deep .input-group {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup .input-group-text label,
+.flexpropertygroup ::deep .shore-lookup-input,
+.flexpropertygroup .form-control,
+.flexpropertygroup .form-select {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.flexpropertygroup .input-group-text label {
+    white-space: nowrap;
+    cursor: help;
+}
+
+.flexpropertygroup .input-group:not(.shore-input-multiline-group) .form-control,
+.flexpropertygroup .input-group:not(.shore-input-multiline-group) .form-select,
+.flexpropertygroup ::deep .shore-lookup-input {
+    white-space: nowrap;
+}
+
+.flexpropertygroup-field.is-multiline .form-control,
+.flexpropertygroup-field.is-multiline textarea.form-control {
+    white-space: normal;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields.is-row {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-compact,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-lookup,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-boolean,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-multiline {
+        flex: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+}
+/* END 14S-R18 row field fit and tooltip polish */
+
+/* BEGIN 14S-R20 safe date field alignment */
+/* Safe date/date-time alignment.
+   Keep this scoped to fields classified as DATE/DATETIME only. R19 used broad ShoreInput selectors
+   which also changed text, lookup and number controls. These rules give date fields a little more
+   Row-group width and keep their native controls on one line without changing other field types. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date {
+    flex: 0 1 23rem !important;
+    min-width: min(100%, 19rem) !important;
+    max-width: min(100%, 30rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime {
+    flex: 0 1 26rem !important;
+    min-width: min(100%, 22rem) !important;
+    max-width: min(100%, 34rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group:not(.shore-input-multiline-group),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group-text,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .input-group-text {
+    flex: 0 0 auto !important;
+    min-height: 2.25rem !important;
+    height: 2.25rem !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group-text label,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .input-group-text label {
+    white-space: nowrap !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .combo-wrapper,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .combo-wrapper {
+    flex: 1 1 0 !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    display: flex !important;
+    align-items: stretch !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .shore-input-native-date,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .shore-input-native-date-time {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .shore-input-native-datetime-select {
+    display: grid !important;
+    grid-template-columns: minmax(8.5rem, 1fr) 4rem 4rem !important;
+    gap: 0.35rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    align-items: stretch !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .shore-input-native-datetime-select .form-control,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .shore-input-native-datetime-select .form-select {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime {
+        flex: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+}
+/* END 14S-R20 safe date field alignment */
+
+/* BEGIN 14S-R21 row date host empty width fix */
+/* Give DATE fields enough host space even when the stored value is empty.
+   The input itself is fixed in ShoreInput.razor.css; this host rule prevents Row groups from
+   choosing a too-small flex basis for empty date fields. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date {
+    flex: 0 1 calc(10rem + 10rem) !important;
+    min-width: min(100%, calc(10rem + 8rem)) !important;
+    max-width: min(100%, calc(10rem + 16rem)) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .combo-wrapper {
+    flex: 1 1 10rem !important;
+    width: auto !important;
+    min-width: min(100%, 10rem) !important;
+    max-width: 100% !important;
+}
+/* END 14S-R21 row date host empty width fix */
+
+/* BEGIN 14S-R22 row text content sizing fix */
+/* Row-only single-line text sizing.
+   Column groups intentionally keep their previous full-width stacked behaviour.
+   Multiline textareas still span the whole row. */
+.flexpropertygroup-fields.is-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    justify-items: initial !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field {
+    flex: 1 1 24rem !important;
+    width: auto !important;
+    min-width: min(100%, 18rem) !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text {
+    flex: 0 1 var(--cb-row-text-field-basis, 28ch) !important;
+    width: var(--cb-row-text-field-basis, auto) !important;
+    min-width: var(--cb-row-text-field-min, min(100%, 22ch)) !important;
+    max-width: var(--cb-row-text-field-max, min(100%, 72ch)) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-lookup {
+    flex: 1 1 28rem !important;
+    min-width: min(100%, 22rem) !important;
+    max-width: min(100%, 44rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date {
+    flex: 0 1 24rem !important;
+    min-width: min(100%, 20rem) !important;
+    max-width: min(100%, 30rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime {
+    flex: 0 1 30rem !important;
+    min-width: min(100%, 26rem) !important;
+    max-width: min(100%, 36rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric {
+    flex: 0 1 18ch !important;
+    width: auto !important;
+    min-width: min(100%, 16ch) !important;
+    max-width: min(100%, 30ch) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-boolean {
+    flex: 0 1 22rem !important;
+    min-width: min(100%, 16rem) !important;
+    max-width: min(100%, 30rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-multiline {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric ::deep .input-group:not(.shore-input-multiline-group),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group:not(.shore-input-multiline-group),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .input-group:not(.shore-input-multiline-group),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .shore-input-field {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .form-control,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric ::deep .form-control,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .form-control,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .form-control {
+    min-width: 0 !important;
+}
+
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field.is-singleline-text,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field.is-numeric,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field.is-date,
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field.is-datetime {
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-lookup,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime,
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-boolean {
+        flex: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+}
+/* END 14S-R22 row text content sizing fix */
+
+/* BEGIN 14S-R23 row single-line no-wrap sizing fix */
+/* Row single-line text no-wrap sizing.
+   R22 made single-line text content-aware, but very short text fields could become narrow enough
+   for Bootstrap input-group children to wrap onto separate lines.  This keeps the sizing Row-only,
+   preserves Column group behaviour, and adds enough inline allowance for the label + value to stay
+   on the same row. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text {
+    flex: 0 1 min(100%, calc(var(--cb-row-text-field-basis, 30ch) + 8rem)) !important;
+    width: min(100%, calc(var(--cb-row-text-field-basis, 30ch) + 8rem)) !important;
+    min-width: min(100%, 14rem) !important;
+    max-width: min(100%, 52rem) !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .developer-inspectable,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .developer-inspectable > :first-child,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group) > .input-group-text {
+    flex: 0 0 auto !important;
+    max-width: min(45%, 14rem) !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group) > .form-control {
+    flex: 1 1 auto !important;
+    width: 1% !important;
+    min-width: 6rem !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-column > .flexpropertygroup-field.is-singleline-text {
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text {
+        flex: none !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+}
+/* END 14S-R23 row single-line no-wrap sizing fix */
+

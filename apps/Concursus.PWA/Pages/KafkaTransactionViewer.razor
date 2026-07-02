@@ -1,45 +1,296 @@
-﻿@page "/transactions"
+@page "/transactions"
 @inject HttpClient Http
 
-<h3>📋 Transaction Records</h3>
+<section class="cb-v2-card cb-native-dev-card">
+    <div class="cb-v2-card-body">
+        <div class="cb-v2-panel-header cb-native-dev-header">
+            <div class="cb-native-dev-title-wrap">
+                <div class="cb-v2-icon-wrap"><i class="bi bi-list-check"></i></div>
+                <div>
+                    <h3 class="cb-v2-title mb-1">Transaction Records</h3>
+                    <div class="cb-v2-description">Review recent integration transaction messages.</div>
+                </div>
+            </div>
 
-@if (records == null)
+            <button type="button" class="btn btn-outline-secondary" @onclick="LoadRecordsAsync" disabled="@isLoading">
+                <i class="bi bi-arrow-clockwise"></i>
+                Refresh
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger mt-3">@errorMessage</div>
+        }
+
+        <div class="cb-native-dev-toolbar mt-3">
+            <input class="form-control cb-native-dev-search"
+                   value="@searchText"
+                   @oninput="OnSearchInput"
+                   placeholder="Search transactions..." />
+
+            <div class="cb-native-dev-toolbar-spacer"></div>
+
+            <span class="dynamic-grid-view-v2-page-pill">Rows @FilteredRecords.Count()</span>
+
+            <select class="form-select cb-native-dev-page-size" value="@pageSize" @onchange="OnPageSizeChanged">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="cb-grid-loading mt-3">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Loading transaction records...
+            </div>
+        }
+        else if (records is null || records.Count == 0)
+        {
+            <div class="cb-native-dev-empty mt-3">No transaction records found.</div>
+        }
+        else
+        {
+            <div class="cb-native-dev-table-wrap mt-3">
+                <table class="table cb-v2-table cb-native-dev-table">
+                    <thead>
+                        <tr>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("Id")'>ID @SortIndicator("Id")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("SourceTransactionId")'>Source Tx ID @SortIndicator("SourceTransactionId")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("SageReference")'>Sage Ref @SortIndicator("SageReference")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("Status")'>Status @SortIndicator("Status")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("TransactionType")'>Type @SortIndicator("TransactionType")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("ExternalReferenceId")'>External Ref @SortIndicator("ExternalReferenceId")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("CreatedUtc")'>Created @SortIndicator("CreatedUtc")</button></th>
+                            <th><button type="button" class="cb-native-dev-sort" @onclick='() => ToggleSort("UpdatedUtc")'>Updated @SortIndicator("UpdatedUtc")</button></th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in PagedRecords)
+                        {
+                            <tr>
+                                <td>@record.Id</td>
+                                <td>@record.SourceTransactionId</td>
+                                <td>@record.SageReference</td>
+                                <td><span class="cb-v2-badge cb-v2-badge-info">@record.Status</span></td>
+                                <td>@record.TransactionType</td>
+                                <td>@record.ExternalReferenceId</td>
+                                <td>@record.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td>@(record.UpdatedUtc?.ToString("yyyy-MM-dd HH:mm") ?? string.Empty)</td>
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => ShowRecord(record)">
+                                        <i class="bi bi-search"></i>
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="cb-native-dev-pager">
+                <button type="button" class="btn btn-outline-secondary" @onclick="PreviousPage" disabled="@(pageIndex <= 0)">Previous</button>
+                <span class="dynamic-grid-view-v2-page-pill">Page @(pageIndex + 1) of @TotalPages</span>
+                <button type="button" class="btn btn-outline-secondary" @onclick="NextPage" disabled="@(pageIndex >= TotalPages - 1)">Next</button>
+            </div>
+        }
+    </div>
+</section>
+
+@if (selectedRecord is not null)
 {
-    <p>Loading...</p>
+    <div class="cb-modal-backdrop" @onclick="CloseRecord"></div>
+    <div class="cb-modal-shell" role="dialog" aria-modal="true" aria-labelledby="transaction-record-title">
+        <div class="cb-modal-window cb-modal-window-lg" @onclick:stopPropagation="true">
+            <div class="cb-modal-header">
+                <div>
+                    <h4 id="transaction-record-title" class="mb-1">Transaction @selectedRecord.Id</h4>
+                    <div class="text-muted small">@selectedRecord.SourceTransactionId</div>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseRecord">Close</button>
+            </div>
+            <div class="cb-modal-body">
+                <dl class="cb-native-dev-details">
+                    <dt>Status</dt><dd>@selectedRecord.Status</dd>
+                    <dt>Type</dt><dd>@selectedRecord.TransactionType</dd>
+                    <dt>External Ref</dt><dd>@selectedRecord.ExternalReferenceId</dd>
+                    <dt>Sage Ref</dt><dd>@selectedRecord.SageReference</dd>
+                    <dt>Created</dt><dd>@selectedRecord.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</dd>
+                    <dt>Updated</dt><dd>@(selectedRecord.UpdatedUtc?.ToString("yyyy-MM-dd HH:mm") ?? string.Empty)</dd>
+                </dl>
+
+                @if (!string.IsNullOrWhiteSpace(selectedRecord.OriginalJson))
+                {
+                    <h5>Original JSON</h5>
+                    <pre class="cb-native-dev-pre">@selectedRecord.OriginalJson</pre>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(selectedRecord.SageRequestXml))
+                {
+                    <h5>Sage Request XML</h5>
+                    <pre class="cb-native-dev-pre">@selectedRecord.SageRequestXml</pre>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(selectedRecord.SageResponseXml))
+                {
+                    <h5>Sage Response XML</h5>
+                    <pre class="cb-native-dev-pre">@selectedRecord.SageResponseXml</pre>
+                }
+            </div>
+        </div>
+    </div>
 }
-else
-{
-    <TelerikGrid Data="@records"
-                 Pageable="true"
-                 Sortable="true"
-                 FilterMode="Telerik.Blazor.GridFilterMode.FilterRow"
-                 Height="600px"
-                 RowHeight="40"
-                 Reorderable="true"
-                 Resizable="true"
-                 Groupable="true">
-        <GridColumns>
-            <GridColumn Field="Id" Title="ID" Width="80px" />
-            <GridColumn Field="SourceTransactionId" Title="Source Tx ID" />
-            <GridColumn Field="SageReference" Title="Sage Ref" />
-            <GridColumn Field="Status" Title="Status" />
-            <GridColumn Field="TransactionType" Title="Type" />
-            <GridColumn Field="ExternalReferenceId" Title="External Ref" />
-            <GridColumn Field="CreatedUtc" Title="Created" Format="{0:yyyy-MM-dd HH:mm}" />
-            <GridColumn Field="UpdatedUtc" Title="Updated" Format="{0:yyyy-MM-dd HH:mm}" />
-            <GridCommandColumn>
-                <GridCommandButton Command="View">🔍</GridCommandButton>
-            </GridCommandColumn>
-        </GridColumns>
-    </TelerikGrid>
-}
+
 @code {
-    private List<TransactionRecord> records;
+    private List<TransactionRecord>? records;
+    private TransactionRecord? selectedRecord;
+    private string searchText = string.Empty;
+    private string sortColumn = "CreatedUtc";
+    private bool sortAscending;
+    private int pageSize = 25;
+    private int pageIndex;
+    private bool isLoading;
+    private string errorMessage = string.Empty;
+
+    private IEnumerable<TransactionRecord> FilteredRecords
+    {
+        get
+        {
+            var query = records ?? new List<TransactionRecord>();
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var term = searchText.Trim();
+                query = query.Where(record =>
+                    Contains(record.SourceTransactionId, term) ||
+                    Contains(record.SageReference, term) ||
+                    Contains(record.Status, term) ||
+                    Contains(record.TransactionType, term) ||
+                    Contains(record.ExternalReferenceId, term)).ToList();
+            }
+
+            return sortAscending
+                ? query.OrderBy(GetSortValue)
+                : query.OrderByDescending(GetSortValue);
+        }
+    }
+
+    private IEnumerable<TransactionRecord> PagedRecords =>
+        FilteredRecords.Skip(pageIndex * pageSize).Take(pageSize);
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredRecords.Count() / (double)pageSize));
 
     protected override async Task OnInitializedAsync()
     {
-        records = await Http.GetFromJsonAsync<List<TransactionRecord>>("http://localhost:5001/api/transactions");
+        await LoadRecordsAsync();
     }
+
+    private async Task LoadRecordsAsync()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            records = await Http.GetFromJsonAsync<List<TransactionRecord>>("http://localhost:5001/api/transactions") ?? new List<TransactionRecord>();
+            pageIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to load transaction records: {ex.Message}";
+            records = new List<TransactionRecord>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        searchText = args.Value?.ToString() ?? string.Empty;
+        pageIndex = 0;
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs args)
+    {
+        if (int.TryParse(args.Value?.ToString(), out var selectedPageSize) && selectedPageSize > 0)
+        {
+            pageSize = selectedPageSize;
+            pageIndex = 0;
+        }
+    }
+
+    private void ToggleSort(string column)
+    {
+        if (string.Equals(sortColumn, column, StringComparison.OrdinalIgnoreCase))
+        {
+            sortAscending = !sortAscending;
+        }
+        else
+        {
+            sortColumn = column;
+            sortAscending = true;
+        }
+
+        pageIndex = 0;
+    }
+
+    private string SortIndicator(string column)
+    {
+        if (!string.Equals(sortColumn, column, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return sortAscending ? "▲" : "▼";
+    }
+
+    private object GetSortValue(TransactionRecord record) => sortColumn switch
+    {
+        "Id" => record.Id,
+        "SourceTransactionId" => record.SourceTransactionId,
+        "SageReference" => record.SageReference,
+        "Status" => record.Status,
+        "TransactionType" => record.TransactionType,
+        "ExternalReferenceId" => record.ExternalReferenceId,
+        "UpdatedUtc" => record.UpdatedUtc ?? DateTime.MinValue,
+        _ => record.CreatedUtc
+    };
+
+    private void PreviousPage()
+    {
+        if (pageIndex > 0)
+        {
+            pageIndex--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (pageIndex < TotalPages - 1)
+        {
+            pageIndex++;
+        }
+    }
+
+    private void ShowRecord(TransactionRecord record)
+    {
+        selectedRecord = record;
+    }
+
+    private void CloseRecord()
+    {
+        selectedRecord = null;
+    }
+
+    private static bool Contains(string? value, string term) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
     public class TransactionRecord
     {

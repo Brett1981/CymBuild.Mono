@@ -8,7 +8,7 @@ CREATE FUNCTION [SJob].[tvf_Jobs_TeamNoRecentActivity]
     @UserId INT
 )
 RETURNS TABLE
-                    --WITH SCHEMABINDING
+                     --WITH SCHEMABINDING
 AS
 RETURN 
 SELECT  j.ID,
@@ -28,7 +28,9 @@ SELECT  j.ID,
             ELSE LastMilestone.LastMilestoneChange
         END AS LastActivityDate,
 		jt.Name AS JobTypeName,
-		i.FullName AS Consultant
+		i.FullName AS Consultant,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
 FROM    
 	SJob.Jobs  AS j
  
@@ -43,6 +45,10 @@ JOIN
 	SCore.Identities AS i		ON (j.SurveyorID = i.ID)
 JOIN
 	SJob.JobTypes as jt ON (jt.ID = j.JobTypeID)
+JOIN 
+	SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+JOIN 
+	SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 --Retrieve date of last change for activities + milestones (60 >= days)
 OUTER APPLY
 (

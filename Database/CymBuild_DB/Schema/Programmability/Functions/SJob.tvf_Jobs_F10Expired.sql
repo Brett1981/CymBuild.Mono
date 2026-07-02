@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_F10Expired]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_F10Expired]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -24,7 +23,9 @@ RETURN
         asset.FormattedAddressComma AS Asset,
         j.ExternalReference AS ExternalReference,
         jt.Name AS JobTypeName,
-        i.FullName AS Consultant,
+        i.FullName AS Consultant,        
+        COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnit,
+        COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS Department,
         CONVERT(VARCHAR(10), F10.SubmissionExpiryDate, 120) AS F10Date
     FROM SJob.Jobs AS j
     JOIN SJob.JobStatus     AS js    ON (js.ID = j.ID)
@@ -33,7 +34,33 @@ RETURN
     JOIN SCrm.Accounts      AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts      AS agent  ON (agent.ID = j.AgentAccountID)
     JOIN SJob.Assets        AS asset  ON (asset.ID = j.UprnID)
-
+    JOIN SCore.OrganisationalUnits AS ou ON ou.ID = j.OrganisationalUnitID
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsBusinessUnit, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS businessUnit
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsDepartment, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS department
     -- Latest workflow status for this job (if any) - rowstatus safe (dot + wfs)
     OUTER APPLY
     (

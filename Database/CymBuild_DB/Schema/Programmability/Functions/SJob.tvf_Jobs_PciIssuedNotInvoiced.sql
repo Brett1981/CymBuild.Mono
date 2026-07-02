@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_PciIssuedNotInvoiced]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_PciIssuedNotInvoiced]
 (
     @UserId INT
 )
 RETURNS TABLE
-           --WITH SCHEMABINDING
+            --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -31,7 +30,9 @@ RETURN
         client.Name + N' / ' + agent.Name AS ClientAgent,
         j.ExternalReference,
         asset.FormattedAddressComma AS Asset,
-        j.CreatedOn
+        j.CreatedOn,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Jobs AS j
     JOIN SJob.JobStatus AS js ON (js.ID = j.ID)
     JOIN SJob.JobFinance AS jf ON (jf.ID = j.ID)
@@ -40,7 +41,8 @@ RETURN
     JOIN SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
     JOIN SJob.Assets AS asset ON (asset.ID = j.UprnID)
-
+	JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     -- Latest workflow status for this job (if any). If none, this returns NULLs.
     OUTER APPLY
     (

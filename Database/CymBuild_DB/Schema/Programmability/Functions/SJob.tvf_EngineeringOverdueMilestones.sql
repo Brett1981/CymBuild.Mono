@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_EngineeringOverdueMilestones]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_EngineeringOverdueMilestones] 
 (
     @UserId INT
 )
 RETURNS TABLE
-            --WITH SCHEMABINDING
+             --WITH SCHEMABINDING
 AS
 RETURN 
 WITH StatusDefs AS
@@ -28,12 +27,15 @@ SELECT
 		CONVERT(DATE,m.DueDateTimeUTC) AS DueDate,
 		i.FullName,
 		org.Name AS OrgUnit,
-		jt.Name AS JobType
+		jt.Name AS JobType,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
 FROM	SJob.Milestones				  AS m
 JOIN	SJob.MilestoneTypes			  AS mt ON (mt.ID = m.MilestoneTypeID)
 JOIN	SJob.Jobs					  AS j ON (j.ID = m.JobID)
 JOIN	SCore.Identities			  AS i ON (i.ID = j.SurveyorID)
-JOIN    SCore.OrganisationalUnits	  AS org ON (org.ID = j.OrganisationalUnitID)
+JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 JOIN	SJob.JobTypes					AS jt ON (jt.ID = j.JobTypeID)
 CROSS JOIN StatusDefs   AS sd
 -- Latest workflow status for this job (rowstatus safe)

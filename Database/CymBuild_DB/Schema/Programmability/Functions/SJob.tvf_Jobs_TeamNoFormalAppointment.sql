@@ -8,7 +8,7 @@ CREATE FUNCTION [SJob].[tvf_Jobs_TeamNoFormalAppointment]
 		@UserId INT
 	)
 RETURNS TABLE
-                --WITH SCHEMABINDING
+                 --WITH SCHEMABINDING
 AS
 RETURN	 SELECT		j.ID,
 					j.RowStatus,
@@ -28,7 +28,9 @@ RETURN	 SELECT		j.ID,
 					j.ExternalReference,
 					jobTypes.Name As JobType,
 					CONVERT(NVARCHAR(19),j.CreatedOn) AS CreatedOn,
-					i.FullName
+					i.FullName,
+					org.Name AS Department,
+					org2.Name AS BusinessUnit
 	   FROM			SJob.Jobs					  AS j
 	   JOIN			SJob.JobStatus AS js ON (js.ID = j.ID)
 	   JOIN			SJob.JobTypes				  AS jt ON (j.JobTypeID = jt.ID)
@@ -37,6 +39,8 @@ RETURN	 SELECT		j.ID,
 	   JOIN			SCrm.Accounts agent ON (agent.ID = j.AgentAccountID)
 	   JOIN			SJob.Assets prop ON (prop.ID = j.UprnID)
 	   JOIN			SJob.JobTypes as jobTypes ON (jobTypes.ID = j.JobTypeID)
+	   JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	   JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 	   CROSS APPLY
 					(
 						SELECT	ou1.OrgNode

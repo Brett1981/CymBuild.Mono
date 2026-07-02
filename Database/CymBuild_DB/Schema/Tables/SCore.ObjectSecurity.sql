@@ -1,25 +1,21 @@
 ﻿PRINT (N'Create table [SCore].[ObjectSecurity]')
 GO
+PRINT (N'Create table [SCore].[ObjectSecurity]')
+GO
 CREATE TABLE [SCore].[ObjectSecurity] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ObjectSecurity_RowStatus] DEFAULT (0),
   [RowVersion] [timestamp],
-  [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_ObjectSecurity_Guid] DEFAULT (newid()) ROWGUIDCOL,
+  [Guid] [uniqueidentifier] NULL ROWGUIDCOL,
   [ObjectGuid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_ObjectSecurity_RecordGuid] DEFAULT ('00000000-0000-0000-0000-000000000000'),
-  [UserId] [int] NOT NULL CONSTRAINT [DF_ObjectSecurity_UserId] DEFAULT (-1),
-  [GroupId] [int] NOT NULL CONSTRAINT [DF_ObjectSecurity_GroupId] DEFAULT (-1),
-  [CanRead] [bit] NOT NULL CONSTRAINT [DF_ObjectSecurity_CanRead] DEFAULT (0),
-  [DenyRead] [bit] NOT NULL CONSTRAINT [DF_ObjectSecurity_DenyRead] DEFAULT (0),
-  [CanWrite] [bit] NOT NULL CONSTRAINT [DF_ObjectSecurity_CanWrite] DEFAULT (0),
-  [DenyWrite] [bit] NOT NULL CONSTRAINT [DF_ObjectSecurity_DenyWrite] DEFAULT (0)
+  [UserId] [int] NOT NULL,
+  [GroupId] [int] NOT NULL,
+  [CanRead] [bit] NOT NULL,
+  [DenyRead] [bit] NOT NULL,
+  [CanWrite] [bit] NOT NULL,
+  [DenyWrite] [bit] NOT NULL
 )
 ON [PRIMARY]
-GO
-
-PRINT (N'Create primary key [PK_ObjectSecurity] on table [SCore].[ObjectSecurity]')
-GO
-ALTER TABLE [SCore].[ObjectSecurity] WITH NOCHECK
-  ADD CONSTRAINT [PK_ObjectSecurity] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 90)
 GO
 
 SET QUOTED_IDENTIFIER ON
@@ -288,18 +284,6 @@ BEGIN
 		END
 		
 		
-GO
-
-PRINT (N'Create foreign key [FK_ObjectSecurity_DataObjects] on table [SCore].[ObjectSecurity]')
-GO
-ALTER TABLE [SCore].[ObjectSecurity] WITH NOCHECK
-  ADD CONSTRAINT [FK_ObjectSecurity_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
-GO
-
-PRINT (N'Disable foreign key [FK_ObjectSecurity_DataObjects] on table [SCore].[ObjectSecurity]')
-GO
-ALTER TABLE [SCore].[ObjectSecurity]
-  NOCHECK CONSTRAINT [FK_ObjectSecurity_DataObjects]
 GO
 
 PRINT (N'Create foreign key [FK_ObjectSecurity_Goups] on table [SCore].[ObjectSecurity]')

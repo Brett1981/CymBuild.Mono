@@ -2,101 +2,63 @@
 @attribute [Authorize]
 @using Concursus.API.Client
 @using Concursus.PWA.Helpers
+@using Concursus.PWA.Shared.Scheduler
 @using Google.Protobuf.WellKnownTypes
 @inject Core.CoreClient CoreClient
 
-<h4>Schedule</h4>
+<div class="cb-schedule-page">
+    <div class="cb-schedule-page-header">
+        <div class="cb-schedule-page-header__icon">
+            <i class="bi bi-calendar-week"></i>
+        </div>
+        <div>
+            <h4>Schedule</h4>
+            <p>Review and manage scheduled items.</p>
+        </div>
+    </div>
 
-<div class="d-flex justify-content-around">
-    <TelerikMultiSelect Data="@_users"
-                        @bind-Value="@SelectedUserIds"
-                        ValueField="@nameof(API.Core.User.Guid)"
-                        TextField="@nameof(API.Core.User.FullName)"
-                        OnChange="@LoadDataAsync"
-                        Placeholder="Select Users"
-                        Id="u-multiselect" Width="100%">
-    </TelerikMultiSelect>
-    <TelerikMultiSelect Data="@_organisationalUnits"
-                        @bind-Value="@_selectedOrganisationalUnitsIds"
-                        ValueField="@nameof(OrganisationalUnit.Guid)"
-                        TextField="@nameof(OrganisationalUnit.Name)"
-                        OnChange="@LoadDataAsync"
-                        Placeholder="Select Org. Units"
-                        Id="ou-multiselect" Width="100%"
-                        Enabled="false">
-    </TelerikMultiSelect>
+    <div class="cb-schedule-filter-card">
+        <div class="cb-schedule-filter-field">
+            <label for="schedule-users">Users</label>
+            <select id="schedule-users"
+                    class="form-select cb-schedule-multi-select"
+                    multiple
+                    @onchange="OnSelectedUsersChangedAsync">
+                @foreach (var user in _users)
+                {
+                    <option value="@user.Guid" selected="@IsSelectedUser(user.Guid)">@user.FullName</option>
+                }
+            </select>
+            <small>Leave empty to show your schedule only.</small>
+        </div>
+
+        <div class="cb-schedule-filter-field cb-schedule-filter-field--disabled">
+            <label for="schedule-organisational-units">Organisational Units</label>
+            <select id="schedule-organisational-units"
+                    class="form-select cb-schedule-multi-select"
+                    multiple
+                    disabled>
+                @foreach (var organisationalUnit in _organisationalUnits)
+                {
+                    <option value="@organisationalUnit.Guid">@organisationalUnit.Name</option>
+                }
+            </select>
+            <small>Temporarily disabled to match the previous behaviour.</small>
+        </div>
+    </div>
+
+    <NativeScheduleBoard Items="@_scheduleItems"
+                         Statuses="@_scheduleItemStatus"
+                         Types="@_scheduleItemTypes"
+                         StartDate="@StartDate"
+                         StartDateChanged="OnStartDateChangedAsync"
+                         View="@CurrView"
+                         ViewChanged="OnViewChangedAsync"
+                         OnRefresh="LoadDataAsync"
+                         OnCreate="AddAppointmentAsync"
+                         OnUpdate="UpdateAppointmentAsync"
+                         OnDelete="DeleteAppointmentAsync" />
 </div>
-<TelerikScheduler
-    Data="@_scheduleItems"
-    @bind-Date="@StartDate"
-    Height="90vh"
-    @bind-View="@CurrView"
-    OnUpdate="@UpdateAppointmentAsync"
-    OnCreate="@AddAppointmentAsync"
-    OnDelete="@DeleteAppointmentAsync"
-    AllowCreate="true"
-    AllowDelete="true"
-    AllowUpdate="true"
-    ConfirmDelete="true"
-    IdField="@(nameof(ScheduleViewItem.Id))"
-    StartField="@(nameof(ScheduleViewItem.Start))"
-    EndField="@(nameof(ScheduleViewItem.End))"
-    TitleField="@(nameof(ScheduleViewItem.Title))"
-    DescriptionField="@(nameof(ScheduleViewItem.Description))"
-    IsAllDayField="@(nameof(ScheduleViewItem.IsAllDay))"
-    RecurrenceRuleField="@(nameof(ScheduleViewItem.RecurrenceRule))"
-    RecurrenceExceptionsField="@(nameof(ScheduleViewItem.RecurrenceExceptions))"
-    RecurrenceIdField="@(nameof(ScheduleViewItem.RecurrenceId))">
-    <SchedulerResources>
-        <SchedulerResource
-            Field="StatusId"
-            Title="Status"
-            TextField="Name"
-            ColorField="Color"
-            ValueField="Id"
-            Data="@_scheduleItemStatus"/>
-        <SchedulerResource
-            Field="TypeId"
-            Title="Type"
-            TextField="Name"
-            ColorField="Color"
-            ValueField="Id"
-            Data="@_scheduleItemTypes"/>
-    </SchedulerResources>
-    <SchedulerViews>
-        <SchedulerDayView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd">
-            <DateHeaderTemplate>
-                <div>
-                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
-                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
-                    </NavLink>
-                    @context.ToString("ddd, dd")
-                </div>
-            </DateHeaderTemplate>
-        </SchedulerDayView>
-        <SchedulerWeekView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd">
-            <DateHeaderTemplate>
-                <div>
-                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
-                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
-                    </NavLink>
-                    @context.ToString("ddd, dd")
-                </div>
-            </DateHeaderTemplate>
-        </SchedulerWeekView>
-        <SchedulerMultiDayView StartTime="@DayStart" EndTime="@DayEnd" WorkDayStart="@WorkDayStart" WorkDayEnd="@WorkDayEnd" NumberOfDays="10">
-            <DateHeaderTemplate>
-                <div>
-                    <NavLink class="nav-link" href="@{ "daymap/" + context.ToBinary()}">
-                        <TelerikFontIcon Icon="@FontIcon.MapMarker"></TelerikFontIcon>
-                    </NavLink>
-                    @context.ToString("ddd, dd")
-                </div>
-            </DateHeaderTemplate>
-        </SchedulerMultiDayView>
-        <SchedulerMonthView></SchedulerMonthView>
-    </SchedulerViews>
-</TelerikScheduler>
 
 @code {
     readonly List<ScheduleViewItem> _scheduleItems = new();
@@ -109,13 +71,13 @@
 
     public DateTime StartDate { get; set; } = UiFormattingHelper.NormalizeToLocal(DateTime.UtcNow);
 
-    public SchedulerView CurrView { get; set; } = SchedulerView.Week;
+    public NativeScheduleViewMode CurrView { get; set; } = NativeScheduleViewMode.Week;
 
-    //the time portions are important
     public DateTime DayStart { get; set; } = new(2000, 1, 1, 8, 0, 0);
     public DateTime DayEnd { get; set; } = new(2000, 1, 1, 20, 0, 0);
     public DateTime WorkDayStart { get; set; } = new(2000, 1, 1, 9, 0, 0);
     public DateTime WorkDayEnd { get; set; } = new(2000, 1, 1, 17, 0, 0);
+
     [Parameter]
     public EventCallback<Exception> OnError { get; set; }
 
@@ -134,8 +96,6 @@
             await LoadDataAsync();
 
             await base.OnInitializedAsync();
-
-            return;
         }
         catch (Exception ex)
         {
@@ -156,15 +116,17 @@
             {
                 throw new Exception(scheduleItemStatusGetResponse.ErrorReturned);
             }
+
             var scheduleItemTypesGetResponse = await CoreClient.ScheduleItemTypesGetAsync(new ScheduleItemTypesGetRequest());
             _scheduleItemTypes = scheduleItemTypesGetResponse.ScheduleItemTypes.ToList();
-            if(!string.IsNullOrEmpty(scheduleItemTypesGetResponse.ErrorReturned))
+            if (!string.IsNullOrEmpty(scheduleItemTypesGetResponse.ErrorReturned))
             {
                 throw new Exception(scheduleItemTypesGetResponse.ErrorReturned);
             }
+
             _scheduleItems.Clear();
 
-            ScheduleItemsGetResponse scheduleItemsGetResponse = new ScheduleItemsGetResponse();
+            ScheduleItemsGetResponse scheduleItemsGetResponse;
             List<string>? selectedUserGuids = new();
             if (SelectedUserIds != null && SelectedUserIds.Any())
             {
@@ -179,6 +141,7 @@
                             selectedUserGuids.Add(user.UserId.ToString());
                         }
                     }
+
                     scheduleItemsGetResponse = await CoreClient.ScheduleItemsGetAsync(new ScheduleItemsGetRequest { CurrentUserOnly = false });
                     if (!string.IsNullOrEmpty(scheduleItemsGetResponse.ErrorReturned))
                     { throw new Exception(scheduleItemsGetResponse.ErrorReturned); }
@@ -189,8 +152,8 @@
                     ex.Data.Add("AdditionalInfo", "An error occurred while loading the Schedule Items for the selected users");
                     ex.Data.Add("PageMethod", "Schedule/LoadDataAsync()");
                     _ = OnError.InvokeAsync(ex);
+                    return;
                 }
-
             }
             else
             {
@@ -199,12 +162,10 @@
 
             foreach (var scheduleItem in scheduleItemsGetResponse.ScheduleItems)
             {
-                // Check if the UserId is present in the selected user ids
                 if (selectedUserGuids != null && selectedUserGuids.Contains(scheduleItem.UserId.ToString()))
                 {
                     _scheduleItems.Add(new ScheduleViewItem(scheduleItem));
                 }
-                // If no users are selected, add all items (Should be current user only)
                 else if (selectedUserGuids == null || !selectedUserGuids.Any())
                 {
                     _scheduleItems.Add(new ScheduleViewItem(scheduleItem));
@@ -215,18 +176,49 @@
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while loading the Schedule Items");
-            ex.Data.Add("PageMethod", "Schedule/OnInitializedAsync()");
+            ex.Data.Add("PageMethod", "Schedule/LoadDataAsync()");
             _ = OnError.InvokeAsync(ex);
         }
-
     }
 
-    private Task UpdateAppointmentAsync(SchedulerUpdateEventArgs args)
+    private Task OnStartDateChangedAsync(DateTime date)
+    {
+        StartDate = date;
+        return Task.CompletedTask;
+    }
+
+    private Task OnViewChangedAsync(NativeScheduleViewMode view)
+    {
+        CurrView = view;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnSelectedUsersChangedAsync(ChangeEventArgs args)
+    {
+        SelectedUserIds = ExtractSelectedStringValues(args.Value);
+        await LoadDataAsync();
+    }
+
+    private bool IsSelectedUser(string userGuid)
+    {
+        return SelectedUserIds?.Contains(userGuid) == true;
+    }
+
+    private static List<string> ExtractSelectedStringValues(object? value)
+    {
+        return value switch
+        {
+            string[] selectedValues => selectedValues.Where(v => !string.IsNullOrWhiteSpace(v)).ToList(),
+            IEnumerable<string> selectedValues => selectedValues.Where(v => !string.IsNullOrWhiteSpace(v)).ToList(),
+            string selectedValue when !string.IsNullOrWhiteSpace(selectedValue) => new List<string> { selectedValue },
+            _ => new List<string>()
+        };
+    }
+
+    private Task UpdateAppointmentAsync(ScheduleViewItem scheduleViewItem)
     {
         try
         {
-            var scheduleViewItem = (ScheduleViewItem)args.Item;
-            // ReSharper disable once ComplexConditionExpression
             var scheduleItem = new ScheduleItem()
             {
                 Description = scheduleViewItem.Description,
@@ -242,32 +234,30 @@
                 TypeId = scheduleViewItem.TypeId ?? -1,
                 JobNumber = scheduleViewItem.JobNumber
             };
-            // var scheduleItemsUpsertResponse = await coreClient.ScheduleItemsUpsertAsync(new ScheduleItemsUpsertRequest(){scheduleItem});
+            _ = scheduleItem;
             _ = LoadDataAsync();
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while updating the Schedule Item");
-            ex.Data.Add("PageMethod", "Schedule/LoadDataAsync()");
+            ex.Data.Add("PageMethod", "Schedule/UpdateAppointmentAsync()");
             _ = OnError.InvokeAsync(ex);
         }
 
         return Task.CompletedTask;
     }
 
-    private Task AddAppointmentAsync(SchedulerCreateEventArgs args)
+    private Task AddAppointmentAsync()
     {
         _ = LoadDataAsync();
-
         return Task.CompletedTask;
     }
 
-    private Task DeleteAppointmentAsync(SchedulerDeleteEventArgs args)
+    private Task DeleteAppointmentAsync(ScheduleViewItem scheduleViewItem)
     {
+        _ = scheduleViewItem;
         _ = LoadDataAsync();
-
         return Task.CompletedTask;
     }
-
 }

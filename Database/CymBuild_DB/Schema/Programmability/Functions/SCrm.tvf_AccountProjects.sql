@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create function [SCrm].[tvf_AccountProjects]')
 GO
-
 CREATE FUNCTION [SCrm].[tvf_AccountProjects]
 (
 	@UserId INT,
@@ -18,7 +17,9 @@ SELECT
 		p.RowVersion,
 		p.Guid,
 		p.Number,
-		p.ProjectDescription
+		p.ProjectDescription,
+		org1.Name AS Department,
+		org2.Name AS BusinessUnit
 FROM
 		SSop.Projects AS p
 JOIN
@@ -31,6 +32,12 @@ JOIN
 
 JOIN
 		SCrm.Accounts financeAccount ON (financeAccount.ID = j.FinanceAccountID)
+JOIN
+		SSop.Enquiries AS e ON (e.ProjectId = p.ID)
+LEFT JOIN
+		SCore.OrganisationalUnits AS org1 ON (e.OrganisationalUnitID = org1.ID)
+LEFT JOIN 
+		SCore.OrganisationalUnits AS org2 ON (org1.ParentID = org2.ID)
 WHERE
 		(p.RowStatus NOT IN (0, 254))
 		AND (j.RowStatus NOT IN (0,254))

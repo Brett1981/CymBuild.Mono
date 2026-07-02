@@ -1,108 +1,257 @@
-﻿using Concursus.API.Core;
+using Concursus.API.Client.Models;
+using Concursus.API.Core;
 using Concursus.PWA.Classes;
 using Concursus.PWA.Helpers;
-using DocumentFormat.OpenXml.Drawing.Diagrams;
+using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using System.Dynamic;
 using System.Text.Json;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
-using Telerik.DataSource.Extensions;
 
 namespace Concursus.PWA.Shared;
 
 public partial class MultiColumnDynamicGridView
 {
-    #region Privately Inherited Variables
+    private const string DefaultHeaderColour = "#f8f9fa";
 
-    private TelerikGrid<ExpandoObject>? GridRef { get; set; }
-    private IEnumerable<ExpandoObject>? CurrentGridItems { get; set; } // Exposes the grid data
-    private bool BatchGridVisible { get; set; } = false;
-    private TelerikWindow? ModalWindow { get; set; }
+    private readonly IDictionary<string, object> _detailPageParameters = new Dictionary<string, object>();
+    private MessageDisplay _messageDisplay = default!;
+
+    private IEnumerable<ExpandoObject>? CurrentGridItems { get; set; }
     private bool WindowIsVisible { get; set; }
-    private bool WindowIsClosable { get; set; } = true;
     private string? WindowTitle { get; set; }
-    private MessageDisplay _messageDisplay = new();
-    private bool DoubleStateChanged { get; set; }
-    private IDictionary<string, object> _detailPageParameters = new Dictionary<string, object>();
     private string modalId = Guid.Empty.ToString();
-    private string GridStateChangedPropertyClass { get; set; } = string.Empty;
-    private string GridStateChangedProperty { get; set; } = string.Empty;
-    private int OnStateChangedCount { get; set; }
-    private string GridStateString { get; set; } = string.Empty;
 
-    private List<string> _operationsWithMultipleStateChanged = new List<string>() {
-        "FilterDescriptors",
-        "GroupDescriptors",
-        "SearchFilter"
-    };
+    [Parameter] public List<string> TopColumnHeaders { get; set; } = new();
+    [Parameter] public string? CellColoursJSON { get; set; }
+    [Parameter] public EventCallback<string> SendJSONToWidgetCallback { get; set; }
+    [Parameter] public EventCallback<string> SendFilterAndSortCallback { get; set; }
+    [Parameter] public string? CSSFromDB { get; set; }
+    [Parameter] public string? MyWorkFiltersFromDB { get; set; }
 
-    #endregion Privately Inherited Variables
+    private bool CSSLoadedFromDatabase { get; set; }
+    private HashSet<CellColouring> CellColourings { get; set; } = new();
+    private string MyWorkGridFilterAsJSON { get; set; } = string.Empty;
 
-    #region Privately Inherited Functions
+    private int NativePage { get; set; } = 1;
+    private int NativePageSize { get; set; } = 50;
+    private int NativeTotalRows { get; set; }
+    private bool NativeIsLoading { get; set; }
+    private string NativeSortColumn { get; set; } = string.Empty;
+    private bool NativeSortDescending { get; set; }
+    private string NativeSearchText { get; set; } = string.Empty;
+    private bool NativeFilterPanelOpen { get; set; }
+    private Dictionary<string, string> NativeColumnFilters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private string _nativeGridParameterKey = string.Empty;
 
-    private void OpenDynamicBatchGrid()
+    private IEnumerable<GridViewColumnDefinition> VisibleGridColumns =>
+        ViewDefinition?.Columns
+            .Where(o => !o.IsHidden)
+            .OrderBy(o => o.ColumnOrder)
+        ?? Enumerable.Empty<GridViewColumnDefinition>();
+
+    private IEnumerable<string> EffectiveTopColumnHeaders
     {
-        _ = GetScrollBarPos();
-        BatchGridVisible = true;
+        get
+        {
+            if (TopColumnHeaders is not null && TopColumnHeaders.Any())
+            {
+                return TopColumnHeaders;
+            }
+
+            return VisibleGridColumns
+                .Select(c => string.IsNullOrWhiteSpace(c.TopHeaderCategory) ? " " : c.TopHeaderCategory)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
     }
 
-    private async Task GetScrollBarPos()
+    private IEnumerable<ExpandoObject> NativeGridItems => CurrentGridItems ?? Enumerable.Empty<ExpandoObject>();
+    private int NativeGridColumnCount => Math.Max(1, VisibleGridColumns.Count());
+    private int NativeTotalPages => Math.Max(1, (int)Math.Ceiling((double)Math.Max(0, NativeTotalRows) / Math.Max(1, NativePageSize)));
+    private bool CanGoPreviousPage => NativePage > 1 && !NativeIsLoading;
+    private bool CanGoNextPage => NativePage < NativeTotalPages && !NativeIsLoading;
+    private bool HasActiveNativeColumnFilters => NativeColumnFilters.Any(f => !string.IsNullOrWhiteSpace(f.Value));
+    private bool HasActiveNativeSearch => !string.IsNullOrWhiteSpace(NativeSearchText);
+    private int NativeActiveFilterCount => NativeColumnFilters.Count(f => !string.IsNullOrWhiteSpace(f.Value));
+
+    private string NativeSearchPlaceholder => string.IsNullOrWhiteSpace(ViewDefinition?.Name)
+        ? "Search records..."
+        : $"Search {ViewDefinition.Name} records...";
+
+    private string NativeGridSummaryText
     {
-        await JSRuntime.InvokeVoidAsync("GetScrollBarPos");
+        get
+        {
+            if (NativeTotalRows <= 0) return "Showing 0 records";
+            var start = ((NativePage - 1) * NativePageSize) + 1;
+            var end = Math.Min(NativeTotalRows, NativePage * NativePageSize);
+            return $"Showing {start} to {end} of {NativeTotalRows}";
+        }
     }
 
-    private void ScrollToTop()
+    public class CellColouring
     {
-        // Scroll to the top of the page
-        JsRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
+        public string ClassName { get; set; } = string.Empty;
+        public string Colour { get; set; } = DefaultHeaderColour;
     }
 
-    private void WindowVisibleChangedHandler(bool currVisible)
+    protected override async Task OnParametersSetAsync()
     {
-        if (WindowIsClosable)
-            WindowIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
-        else
-            Console.WriteLine("The user tried to close the window but the code didn't let them");
+        await base.OnParametersSetAsync();
+
+        LoadHeaderCssFromDatabase();
+
+        if (ViewDefinition is null) return;
+
+        var parameterKey = $"{GridCode}|{ViewDefinition.Code}|{ParentGuid}|{FullGrid}";
+        if (!string.Equals(_nativeGridParameterKey, parameterKey, StringComparison.Ordinal))
+        {
+            _nativeGridParameterKey = parameterKey;
+            InitialiseNativeSortFromViewDefinition();
+            await RestoreNativeGridStateAsync();
+            await ReloadNativeGridAsync(NativePage);
+        }
     }
 
-    private async void CloseBatchGridModal()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        BatchGridVisible = false;
-        await GridUpdated();
-        StateHasChanged();
+        await base.OnAfterRenderAsync(firstRender);
 
-        _ = SetScrollBarPos();
+        if (CellColourings.Any())
+        {
+            await ApplyCSSColour();
+        }
     }
 
-    private async Task SetScrollBarPos()
+    private IEnumerable<GridViewColumnDefinition> GetColumnsForTopHeader(string topHeader)
+    {
+        return VisibleGridColumns.Where(c => string.Equals(NormaliseTopHeader(c.TopHeaderCategory), NormaliseTopHeader(topHeader), StringComparison.OrdinalIgnoreCase))
+                                 .OrderBy(c => c.TopHeaderCategoryOrder)
+                                 .ThenBy(c => c.ColumnOrder);
+    }
+
+    private static string NormaliseTopHeader(string? value) => string.IsNullOrWhiteSpace(value) ? " " : value;
+
+    private static string GetTopHeaderCssClass(string topHeader)
+    {
+        var result = topHeader == " " ? "empty_topHeader" : topHeader.Replace(" ", "_") + "_topHeader";
+        return result.Replace("&", string.Empty);
+    }
+
+    private string GetHeaderColour(string className)
+    {
+        var colouring = CellColourings.FirstOrDefault(x => string.Equals(x.ClassName, className, StringComparison.OrdinalIgnoreCase));
+        return string.IsNullOrWhiteSpace(colouring?.Colour) ? DefaultHeaderColour : colouring.Colour;
+    }
+
+    private async Task SetHeaderColour(string colour, string className)
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("SetScrollBarPos");
-            await Task.Delay(100);
+            if (string.IsNullOrWhiteSpace(colour)) colour = DefaultHeaderColour;
+
+            var colouring = CellColourings.FirstOrDefault(x => string.Equals(x.ClassName, className, StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(colour, DefaultHeaderColour, StringComparison.OrdinalIgnoreCase))
+            {
+                if (colouring is not null) CellColourings.Remove(colouring);
+            }
+            else if (colouring is null)
+            {
+                CellColourings.Add(new CellColouring { ClassName = className, Colour = colour });
+            }
+            else
+            {
+                colouring.Colour = colour;
+            }
+
+            await SetHeaderColourJS(colour, className);
+            await SendJSONToWidgetBoard();
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            // OE - CBLD- Added catch so that it does throw an error message.
-            Console.WriteLine(ex.Message);
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting a My Work header colour.");
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/SetHeaderColour()");
+            await OnError(ex);
         }
     }
 
-    private async void OnRowRenderHandler(GridRowRenderEventArgs args)
+    [JSInvokable]
+    private async Task SetHeaderColourJS(string colour, string className)
     {
-        // apply ellipsis to specific columns using OnRowRender
-        args.Class = "custom-ellipsis";
+        try
+        {
+            await JS.InvokeVoidAsync("applyCSSForHeader", className, colour);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while applying My Work header CSS.");
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/SetHeaderColourJS()");
+            await OnError(ex);
+        }
+    }
+
+    [JSInvokable]
+    private async Task ApplyCSSColour()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("applyCSSToGrid", CellColourings);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while applying My Work CSS.");
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/ApplyCSSColour()");
+            await OnError(ex);
+        }
+    }
+
+    private void LoadHeaderCssFromDatabase()
+    {
+        try
+        {
+            if (CSSLoadedFromDatabase || string.IsNullOrWhiteSpace(CSSFromDB)) return;
+
+            var existingMyWorkStyle = JsonSerializer.Deserialize<List<CellColouring>>(CSSFromDB);
+            if (existingMyWorkStyle is not null)
+            {
+                foreach (var css in existingMyWorkStyle.Where(x => !string.IsNullOrWhiteSpace(x.ClassName)))
+                {
+                    var existing = CellColourings.FirstOrDefault(x => string.Equals(x.ClassName, css.ClassName, StringComparison.OrdinalIgnoreCase));
+                    if (existing is null) CellColourings.Add(css);
+                    else existing.Colour = css.Colour;
+                }
+            }
+
+            CSSLoadedFromDatabase = true;
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while loading My Work CSS settings.");
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/LoadHeaderCssFromDatabase()");
+            _ = OnError(ex);
+        }
+    }
+
+    public async Task SendJSONToWidgetBoard()
+    {
+        var cellJson = JsonSerializer.Serialize(CellColourings);
+        await SendJSONToWidgetCallback.InvokeAsync(cellJson);
     }
 
     private async Task EnsureCorrectParentGuid()
     {
+        if (ViewDefinition is null) return;
+
         if (ParentGuid == Guid.Empty.ToString() && ViewDefinition.IsDetailWindowed)
         {
             var numberOfModals = modalService.GetOpenModals().Count();
-
-            //OE: CBLD-467.
             if (numberOfModals == 0)
             {
                 ParentGuid = Guid.NewGuid().ToString();
@@ -114,227 +263,419 @@ public partial class MultiColumnDynamicGridView
                 {
                     ParentDataObjectReference.DataObjectGuid = modal.Value.DataObjectReference.DataObjectGuid;
                     ParentGuid = ParentDataObjectReference.DataObjectGuid.ToString();
-
                     await ParentGuidChanged.InvokeAsync(ParentGuid);
                 }
             }
         }
     }
 
-    private object FormatGridColumnValue(string columnName, string value)
+    public async Task ReloadNativeGridAsync(int? requestedPage = null)
     {
-        // Try numeric parsing first
-        if (int.TryParse(value, out var intValue)) return intValue;
+        NativeIsLoading = true;
+        await InvokeAsync(StateHasChanged);
 
-        if (decimal.TryParse(value, out var decimalValue))
-            return decimalValue.ToString("F2"); // Standard 2dp
-
-        if (bool.TryParse(value, out var boolValue))
-            return boolValue ? "Yes" : "No";
-
-        if (Guid.TryParse(value, out var guidValue))
-            return guidValue.ToString();
-
-        // Handle DateTime with standardized logic
-        if (DateTime.TryParse(value, out var dateTimeValue))
-        {
-            // Use UiFormattingHelper to normalize and format
-            var localDateTime = UiFormattingHelper.NormalizeToLocal(dateTimeValue);
-
-            // Smart formatting based on column name
-            bool isDateOnly = columnName.ToLower().EndsWith("date") && !columnName.ToLower().Contains("time");
-
-            return UiFormattingHelper.FormatDateForUI(localDateTime, isDateOnly);
-        }
-
-        // Default to raw string
-        return value;
-    }
-
-    private async Task OnStateInitHandler(GridStateEventArgs<ExpandoObject> args)
-    {
         try
         {
-            var state = await CalcGridStateAsync();
-            if (ViewDefinition is not null)
-            {
-                state.SortDescriptors.Clear();
-                state.SortDescriptors.Add(new SortDescriptor
-                {
-                    Member = ViewDefinition.DefaultSortColumnName,
-                    SortDirection = ViewDefinition.IsDefaultSortDescending
-                        ? ListSortDirection.Descending
-                        : ListSortDirection.Ascending
-                });
+            if (ViewDefinition is null) return;
 
-                //Check if there are gridSettings already present in the session.
-                var isGradeStateSaved = await LocalStorageAccessor.GetValueAsync<string>("gridState");
+            await EnsureCorrectParentGuid();
 
-                //cBLD-106: ensuring the filter and sort settings are rememebered.
-                if (isGradeStateSaved != null && FullGrid) //Only on full grids.
-                {
-                    FilterAndSortSetting gridSetting = JsonSerializer.Deserialize<FilterAndSortSetting>(isGradeStateSaved);
-                    //CBLD-532: Get the page number from the session - if there is one.
-                    var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>("currentPageNumber");
+            NativePage = Math.Max(1, requestedPage ?? NativePage);
+            NativePageSize = Math.Max(1, NativePageSize);
 
-                    //Only apply the settings when viewng the correct grid.
-                    if (gridSetting.code == ViewDefinition.Code && gridSetting.gridCode == GridCode)
-                    {
-                        state.FilterDescriptors = gridSetting.filterDescriptor;
-                        state.SortDescriptors = gridSetting.sortDescriptor;
-
-                        //Extract the page number - if there is one.
-                        //We are returning a string, we need to convert to int.
-                        int pageNum;
-                        if (savedPageNumber != null)
-                        {
-                            //Returns true if converted succesfully.
-                            if (Int32.TryParse(savedPageNumber, out pageNum))
-                            {
-                                state.Page = pageNum;
-                            }
-                        }
-                    }
-                    //else
-                    //{
-                    //    //We have visited a new grid, therefore we should delete the old configuration - if exitst.
-                    //    SessionStorageAccessor.RemoveAsync("gridState");
-                    //    //Remove page number, too.
-                    //    SessionStorageAccessor.RemoveAsync("currentPageNumber");
-                    //}
-                }
-            }
-
-            args.GridState = state;
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the grid state in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/OnStateInitHandler()");
-            OnError(ex);
-        }
-    }
-
-    protected async Task ReadItems(GridReadEventArgs args)
-    {
-        try
-        {
-            if (ViewDefinition == null) return;
-
-            await EnsureCorrectParentGuid(); // Ensure Parent GUID is properly set before API calls
-
-            var gridDataListRequest = new GridDataListRequest
+            var request = new GridDataListRequest
             {
                 GridCode = GridCode,
                 GridViewCode = ViewDefinition.Code,
-                Page = args.Request.Page,
-                PageSize = args.Request.PageSize,
+                Page = NativePage,
+                PageSize = NativePageSize,
                 ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
             };
 
-            if (gridDataListRequest.ParentGuid == Guid.Empty.ToString() && !FullGrid) return;
-
-            // Ensure we handle single `DataCompositeFilter` properly
-            var compositeFilter = API.Client.TypeHelpers.GridDataCompositeFilterFromKendoFilterDescriptor(args.Request.Filters);
-            if (compositeFilter != null)
+            if (request.ParentGuid == Guid.Empty.ToString() && !FullGrid)
             {
-                gridDataListRequest.Filters.Add(compositeFilter); // Add single filter correctly
+                CurrentGridItems = new List<ExpandoObject>();
+                NativeTotalRows = 0;
+                return;
             }
 
-            gridDataListRequest.Sort.AddRange(
-                API.Client.TypeHelpers.GridDataSortFromKendoSortDescriptor(args.Request.Sorts));
+            await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_multiColumnCurrentPageNumber", NativePage);
 
-            var gridDataListReply = await coreClient.GridDataListAsync(gridDataListRequest);
-            var gridData = new List<ExpandoObject>();
+            var filter = BuildCompositeFilter();
+            if (filter is not null)
+            {
+                request.Filters.Add(filter);
+            }
 
-            foreach (var r in gridDataListReply.DataTable)
+            if (!string.IsNullOrWhiteSpace(NativeSortColumn))
+            {
+                request.Sort.Add(new DataSort
+                {
+                    ColumnName = NativeSortColumn,
+                    Direction = NativeSortDescending ? "Descending" : "Ascending"
+                });
+            }
+
+            var reply = await coreClient.GridDataListAsync(request);
+            var loadedRows = new List<ExpandoObject>();
+            foreach (var r in reply.DataTable)
             {
                 dynamic dataObj = new ExpandoObject();
-                var dictionary = dataObj as IDictionary<string, object>;
-
+                var dictionary = (IDictionary<string, object>)dataObj;
                 foreach (var c in r.Columns)
                 {
-                    var name = c.Name;
-                    var value = FormatGridColumnValue(name, c.Value);
-                    dictionary[name] = value;
+                    dictionary[c.Name] = FormatGridColumnValue(c.Name, c.Value);
                 }
-
-                gridData.Add(dataObj);
+                loadedRows.Add(dataObj);
             }
 
-            args.Data = gridData;
-            args.Total = (int)gridDataListReply.TotalRows;
-            CurrentGridItems = gridData;
+            NativeTotalRows = (int)reply.TotalRows;
+            if (NativeTotalRows > 0 && NativePage > NativeTotalPages)
+            {
+                NativePage = NativeTotalPages;
+                await ReloadNativeGridAsync(NativePage);
+                return;
+            }
+
+            CurrentGridItems = loadedRows;
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("PageMethod", "DynamicGridView/ReadItems()");
-            OnError(ex);
-
-            //Reset the grid filters.
-            MyWorkFilterSettings = null;
-            SendFilterAndSortSettingsToBoard();
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/ReloadNativeGridAsync()");
+            await OnError(ex);
+            await SendFilterAndSortSettingsToBoard(null);
+        }
+        finally
+        {
+            NativeIsLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
-    private void OnRowDoubleClickHandler(GridRowClickEventArgs args)
+    private DataCompositeFilter? BuildCompositeFilter()
+    {
+        var root = new DataCompositeFilter { LogicalOperator = "and" };
+        AddCompositeIfNotEmpty(root, BuildNativeColumnFilterComposite());
+        AddCompositeIfNotEmpty(root, BuildNativeSearchFilterComposite());
+        return HasAnyFilterContent(root) ? root : null;
+    }
+
+    private DataCompositeFilter? BuildNativeColumnFilterComposite()
+    {
+        var composite = new DataCompositeFilter { LogicalOperator = "and" };
+        foreach (var filter in NativeColumnFilters.Where(f => !string.IsNullOrWhiteSpace(f.Value)))
+        {
+            composite.Filters.Add(new DataFilter
+            {
+                ColumnName = filter.Key,
+                Operator = "contains",
+                Guid = Guid.NewGuid().ToString(),
+                Value = Value.ForString(filter.Value.Trim())
+            });
+        }
+        return HasAnyFilterContent(composite) ? composite : null;
+    }
+
+    private DataCompositeFilter? BuildNativeSearchFilterComposite()
+    {
+        if (string.IsNullOrWhiteSpace(NativeSearchText)) return null;
+        var composite = new DataCompositeFilter { LogicalOperator = "or" };
+        var searchValue = NativeSearchText.Trim();
+        foreach (var column in VisibleGridColumns.Select(c => c.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            composite.Filters.Add(new DataFilter
+            {
+                ColumnName = column,
+                Operator = "contains",
+                Guid = Guid.NewGuid().ToString(),
+                Value = Value.ForString(searchValue)
+            });
+        }
+        return HasAnyFilterContent(composite) ? composite : null;
+    }
+
+    private static void AddCompositeIfNotEmpty(DataCompositeFilter root, DataCompositeFilter? filter)
+    {
+        if (!HasAnyFilterContent(filter)) return;
+        filter!.LogicalOperator = NormaliseLogicalOperator(filter.LogicalOperator);
+        root.CompositeFilters.Add(filter);
+    }
+
+    private static bool HasAnyFilterContent(DataCompositeFilter? filter)
+    {
+        return filter is not null && ((filter.Filters?.Count ?? 0) > 0 || (filter.CompositeFilters?.Count ?? 0) > 0);
+    }
+
+    private static string NormaliseLogicalOperator(string op)
+    {
+        if (string.IsNullOrWhiteSpace(op)) return "and";
+        return op.Trim().Equals("or", StringComparison.OrdinalIgnoreCase) ? "or" : "and";
+    }
+
+    private void InitialiseNativeSortFromViewDefinition()
+    {
+        if (ViewDefinition is null || !string.IsNullOrWhiteSpace(NativeSortColumn)) return;
+        NativeSortColumn = ViewDefinition.DefaultSortColumnName;
+        NativeSortDescending = ViewDefinition.IsDefaultSortDescending;
+    }
+
+    private async Task RestoreNativeGridStateAsync()
+    {
+        if (ViewDefinition is null) return;
+
+        var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_multiColumnCurrentPageNumber");
+        if (!string.IsNullOrWhiteSpace(savedPageNumber) && int.TryParse(savedPageNumber, out var pageNum))
+        {
+            NativePage = Math.Max(1, pageNum);
+        }
+
+        var savedState = !string.IsNullOrWhiteSpace(MyWorkFiltersFromDB)
+            ? MyWorkFiltersFromDB
+            : await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_multiColumnNativeGridState");
+
+        if (string.IsNullOrWhiteSpace(savedState)) return;
+
+        try
+        {
+            var state = JsonSerializer.Deserialize<NativeFilterAndSortSetting>(savedState);
+            if (state is null) return;
+            if (!string.IsNullOrWhiteSpace(state.code) && !string.Equals(state.code, ViewDefinition.Code, StringComparison.OrdinalIgnoreCase)) return;
+            if (!string.IsNullOrWhiteSpace(state.gridCode) && !string.Equals(state.gridCode, GridCode, StringComparison.OrdinalIgnoreCase)) return;
+
+            NativeColumnFilters = state.filterValues is not null
+                ? new Dictionary<string, string>(state.filterValues, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            NativeSearchText = state.searchText ?? string.Empty;
+            NativeFilterPanelOpen = NativeColumnFilters.Any(f => !string.IsNullOrWhiteSpace(f.Value));
+            if (!string.IsNullOrWhiteSpace(state.sortColumn))
+            {
+                NativeSortColumn = state.sortColumn;
+                NativeSortDescending = state.sortDescending;
+            }
+        }
+        catch
+        {
+            // Ignore invalid legacy state from older widget records. Native state will overwrite it after the next action.
+        }
+    }
+
+    private async Task PersistNativeGridStateAsync()
+    {
+        if (ViewDefinition is null) return;
+
+        var state = new NativeFilterAndSortSetting
+        {
+            code = ViewDefinition.Code,
+            gridCode = GridCode,
+            filterValues = NativeColumnFilters.Where(f => !string.IsNullOrWhiteSpace(f.Value)).ToDictionary(f => f.Key, f => f.Value, StringComparer.OrdinalIgnoreCase),
+            searchText = NativeSearchText,
+            sortColumn = NativeSortColumn,
+            sortDescending = NativeSortDescending,
+            pageNumber = NativePage,
+            pageSize = NativePageSize
+        };
+
+        MyWorkGridFilterAsJSON = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
+        await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_multiColumnNativeGridState", MyWorkGridFilterAsJSON);
+        await SendFilterAndSortCallback.InvokeAsync(MyWorkGridFilterAsJSON);
+    }
+
+    public async Task SendFilterAndSortSettingsToBoard(NativeFilterAndSortSetting? settings)
+    {
+        MyWorkGridFilterAsJSON = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+        await SendFilterAndSortCallback.InvokeAsync(MyWorkGridFilterAsJSON);
+    }
+
+    private string GetNativeFilterValue(string columnName) => NativeColumnFilters.TryGetValue(columnName, out var value) ? value : string.Empty;
+    private void OnNativeSearchChanged(ChangeEventArgs args) => NativeSearchText = args.Value?.ToString() ?? string.Empty;
+
+    private async Task OnNativeSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase)) await ApplyNativeSearchAsync();
+    }
+
+    private async Task ApplyNativeSearchAsync()
+    {
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task ClearNativeSearchAsync()
+    {
+        NativeSearchText = string.Empty;
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private void ToggleNativeFilterPanel() => NativeFilterPanelOpen = !NativeFilterPanelOpen;
+
+    private void SetNativeFilterValue(string columnName, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) NativeColumnFilters.Remove(columnName);
+        else NativeColumnFilters[columnName] = value;
+    }
+
+    private async Task OnNativeFilterKeyDown(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase)) await ApplyNativeColumnFiltersAsync();
+    }
+
+    private async Task ApplyNativeColumnFiltersAsync()
+    {
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task ClearAllNativeColumnFiltersAsync()
+    {
+        NativeColumnFilters.Clear();
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private async Task SortNativeGridAsync(string columnName)
+    {
+        if (string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase)) NativeSortDescending = !NativeSortDescending;
+        else
+        {
+            NativeSortColumn = columnName;
+            NativeSortDescending = false;
+        }
+
+        NativePage = 1;
+        await PersistNativeGridStateAsync();
+        await ReloadNativeGridAsync(1);
+    }
+
+    private string GetNativeSortIndicator(string columnName)
+    {
+        if (!string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase)) return string.Empty;
+        return NativeSortDescending ? "▼" : "▲";
+    }
+
+    private string GetNativeSortCss(string columnName) => string.Equals(NativeSortColumn, columnName, StringComparison.OrdinalIgnoreCase) ? "is-active" : string.Empty;
+
+    private async Task GoToPreviousNativePageAsync()
+    {
+        if (CanGoPreviousPage) await ReloadNativeGridAsync(NativePage - 1);
+    }
+
+    private async Task GoToNextNativePageAsync()
+    {
+        if (CanGoNextPage) await ReloadNativeGridAsync(NativePage + 1);
+    }
+
+    private async Task ChangeNativePageSizeAsync(ChangeEventArgs args)
+    {
+        if (args.Value is not null && int.TryParse(args.Value.ToString(), out var pageSize) && pageSize > 0)
+        {
+            NativePageSize = pageSize;
+            NativePage = 1;
+            await PersistNativeGridStateAsync();
+            await ReloadNativeGridAsync(1);
+        }
+    }
+
+    private static string GetColumnWidthStyle(string? width)
+    {
+        var safeWidth = string.IsNullOrWhiteSpace(width) || width.StartsWith('0') ? "125px" : width.Trim();
+        return $"width:{safeWidth};min-width:{safeWidth};";
+    }
+
+    private object GetNativeCellValue(ExpandoObject row, string columnName)
+    {
+        var dictionary = (IDictionary<string, object>)row;
+        return dictionary.TryGetValue(columnName, out var value) ? value ?? string.Empty : string.Empty;
+    }
+
+    private object FormatGridColumnValue(string columnName, string value)
+    {
+        if (int.TryParse(value, out var intValue)) return intValue;
+        if (decimal.TryParse(value, out var decimalValue)) return decimalValue.ToString("F2");
+        if (bool.TryParse(value, out var boolValue)) return boolValue ? "Yes" : "No";
+        if (Guid.TryParse(value, out var guidValue)) return guidValue.ToString();
+        if (DateTime.TryParse(value, out var dateTimeValue))
+        {
+            var localDateTime = UiFormattingHelper.NormalizeToLocal(dateTimeValue);
+            var isDateOnly = columnName.ToLower().EndsWith("date") && !columnName.ToLower().Contains("time");
+            return UiFormattingHelper.FormatDateForUI(localDateTime, isDateOnly);
+        }
+        return value;
+    }
+
+    private async Task GetScrollBarPos()
+    {
+        try { await JSRuntime.InvokeVoidAsync("GetScrollBarPos"); }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+    }
+
+    private async Task SetScrollBarPos()
     {
         try
         {
-            var onRowDoubleClickHandler = !string.IsNullOrEmpty(ViewDefinition?.DetailPageUri) ? "@OnRowDoubleClickHandler" : null;
-            if (onRowDoubleClickHandler == null) return;
-            dynamic model = args.Item;
-            //Do nothing if empty guid
-            if (model.Guid == Guid.Empty.ToString()) return;
+            await JSRuntime.InvokeVoidAsync("SetScrollBarPos");
+            await Task.Delay(100);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+    }
 
-            if (ViewDefinition == null) return;
+    private void ScrollToTop()
+    {
+        _ = JsRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
+    }
 
-            string parentGuid = model.Guid;
-            // CBLD - 462: SB - Check to see if the Entity Guid in the current
-            // ParentDataOnjectReference is different than where its going
+    private void OnRowDoubleClickHandler(ExpandoObject item)
+    {
+        try
+        {
+            if (ViewDefinition is null || string.IsNullOrWhiteSpace(ViewDefinition.DetailPageUri)) return;
+            var row = (IDictionary<string, object>)item;
+            if (!row.TryGetValue("Guid", out var guidObj)) return;
+            var parentGuid = guidObj?.ToString() ?? Guid.Empty.ToString();
+            if (PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentGuid) == Guid.Empty) return;
+
             var isParentDataObjectReferenceDifferent = ParentDataObjectReference.EntityTypeGuid.ToString() != ViewDefinition.EntityTypeGuid;
-
-            //Below is the code to get the ParentDataObjectReference and make sure it is set with the latest Modal windows saved details
-            var (parentDataObjectReference, serializedParentDataObjectReference) = PWAFunctions.ProcessDataObjectReference(modalService, ParentDataObjectReference, parentGuid, ViewDefinition.EntityTypeGuid);
+            var (parentDataObjectReference, serializedParentDataObjectReference) =
+                PWAFunctions.ProcessDataObjectReference(modalService, ParentDataObjectReference, parentGuid, ViewDefinition.EntityTypeGuid);
 
             if (ViewDefinition.IsDetailWindowed)
             {
                 _ = GetScrollBarPos();
-
-                //Get new ModalId, add it to Parameter and register it
                 modalId = Guid.NewGuid().ToString();
                 _detailPageParameters.Clear();
                 _detailPageParameters.Add("EntityTypeGuid", PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());
                 _detailPageParameters.Add("Windowed", true);
-                _detailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
-                _detailPageParameters.Add("GridUpdated", EventCallback.Factory.Create(this, GridUpdated));
-                _detailPageParameters.Add("RecordGuid", PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(model.Guid).ToString());
+                _detailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseNativeWindow));
+                _detailPageParameters.Add("GridUpdated", EventCallback.Factory.Create(this, NativeGridUpdated));
+                _detailPageParameters.Add("RecordGuid", PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentGuid).ToString());
                 _detailPageParameters.Add("SerializedDataObjectReference", serializedParentDataObjectReference);
                 _detailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
                 _detailPageParameters.Add("ModalId", modalId);
 
                 modalService.RegisterModal(modalId, parentDataObjectReference);
+                WindowTitle = ViewDefinition.Name;
                 WindowIsVisible = true;
             }
             else
             {
-                //OE: Fix for CBLD-331
-                string guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(model.Guid).ToString();
-                string urlEncode = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
-                string sPDOR = serializedParentDataObjectReference;
-                string uri = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
-                string url = ViewDefinition.DetailPageUri + "/" + guid + "/" + serializedParentDataObjectReference + "/" + uri;
+                var guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentGuid).ToString();
+                var uri = System.Web.HttpUtility.UrlEncode(NavManager.Uri);
+                var url = ViewDefinition.DetailPageUri + "/" + guid + "/" + serializedParentDataObjectReference + "/" + uri;
 
                 if (ViewDefinition.DetailPageUri == "DynamicEdit")
-                    NavManager.NavigateTo(ViewDefinition.DetailPageUri + "/" + PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString() + "/" + parentDataObjectReference.DataObjectGuid + "/" +
-                                          serializedParentDataObjectReference + "/" + System.Web.HttpUtility.UrlEncode(NavManager.Uri));
-                else
-                    //NavManager.NavigateTo(ViewDefinition.DetailPageUri + "/" + PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(model.Guid).ToString() + "/" +
-                    //                      serializedParentDataObjectReference + "/" + System.Web.HttpUtility.UrlEncode(NavManager.Uri));
-                    //SB: Fix for CBLD-331 removef the Force Load
-                    if (isParentDataObjectReferenceDifferent)
+                {
+                    NavManager.NavigateTo(ViewDefinition.DetailPageUri + "/" +
+                                          PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString() + "/" +
+                                          parentDataObjectReference.DataObjectGuid + "/" +
+                                          serializedParentDataObjectReference + "/" +
+                                          System.Web.HttpUtility.UrlEncode(NavManager.Uri));
+                }
+                else if (isParentDataObjectReferenceDifferent)
                 {
                     NavManager.NavigateTo(url, false);
                 }
@@ -348,471 +689,48 @@ public partial class MultiColumnDynamicGridView
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("AdditionalInfo", "An error occurred while handling the row double-click event in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/OnRowDoubleClickHandler()");
-            OnError(ex);
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/OnRowDoubleClickHandler()");
+            _ = OnError(ex);
         }
     }
 
-    private Task<GridState<ExpandoObject>> CalcGridStateAsync()
+    private async Task CloseNativeWindow()
     {
-        try
+        WindowIsVisible = false;
+        if (!string.IsNullOrWhiteSpace(modalId) && modalId != Guid.Empty.ToString())
         {
-            if (ViewDefinition == null) return Task.FromResult(new GridState<ExpandoObject>()); // Return a default state if ViewDefinition is null
-            var defaultSortColumnName = ViewDefinition.DefaultSortColumnName;
-
-            var state = new GridState<ExpandoObject>
-            {
-                SortDescriptors = new List<SortDescriptor>
-                {
-                    new()
-                    {
-                        Member = defaultSortColumnName,
-                        SortDirection = ViewDefinition.IsDefaultSortDescending ? ListSortDirection.Descending : ListSortDirection.Ascending
-                    }
-                },
-                FilterDescriptors = new List<IFilterDescriptor>()
-                {
-                    new CompositeFilterDescriptor()
-                    {
-                        FilterDescriptors = new FilterDescriptorCollection()
-                    }
-                }
-            };
-
-            return Task.FromResult(state);
+            modalService.UnregisterModal(modalId);
+            modalId = Guid.Empty.ToString();
         }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while calculating the grid state in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/CalcGridState()");
-            OnError(ex);
-        }
-        return Task.FromResult(new GridState<ExpandoObject>());
+        _detailPageParameters.Clear();
+        await SetScrollBarPos();
+        StateHasChanged();
     }
 
-    private async Task OnGridStateChanged(GridStateEventArgs<ExpandoObject> args)
+    private async Task NativeGridUpdated()
     {
-        try
-        {
-            //Handling for saving the grid filters.
-            var gridState = new FilterAndSortSetting()
-            {
-                code = ViewDefinition.Code,
-                gridCode = GridCode,
-                filterDescriptor = args.GridState.FilterDescriptors,
-                sortDescriptor = args.GridState.SortDescriptors
-            };
-
-            //Serialize the created object and then save it to the session.
-            var serializedGridStateToSave = JsonSerializer.Serialize(gridState, new JsonSerializerOptions() { WriteIndented = true });
-            LocalStorageAccessor.SetValueAsync("gridState", serializedGridStateToSave);
-
-            //Send over to the board.
-            //SendFilterAndSortSettingsToBoard();
-
-            if (DoubleStateChanged)
-            {
-                DoubleStateChanged = false;
-                await Task.Delay(1500);
-                GridStateChangedPropertyClass = string.Empty;
-            }
-
-            ++OnStateChangedCount;
-
-            GridStateChangedProperty = args.PropertyName;
-
-            // serialize the GridState and highlight the changed property
-            GridStateString = JsonSerializer.Serialize(args.GridState, new JsonSerializerOptions() { WriteIndented = true })
-                .Replace($"\"{GridStateChangedProperty}\"", $"\"<strong class='latest-changed-property'>{GridStateChangedProperty}</strong>\"");
-
-            // highlight first GridStateChangedProperty during filtering, grouping and search
-            if (_operationsWithMultipleStateChanged.Contains(GridStateChangedProperty))
-            {
-                DoubleStateChanged = true;
-                GridStateChangedPropertyClass = "first-of-two";
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while handling the grid state change in the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/OnGridStateChanged()");
-            OnError(ex);
-        }
+        await ReloadNativeGridAsync(NativePage);
+        StateHasChanged();
     }
 
-    #endregion Privately Inherited Functions
-
-    #region Privately Inherited Classes
-
-    private class FilterAndSortSetting
+    public async Task RefreshGrid(bool resetToFirstPage = false)
     {
-        public string code { get; set; }
-        public ICollection<IFilterDescriptor> filterDescriptor { get; set; }
-        public string gridCode { get; set; }
-        public ICollection<SortDescriptor> sortDescriptor { get; set; }
-        public int pageNumber { get; set; }
-    }
-
-    #endregion Privately Inherited Classes
-
-    #region Parameters
-
-    [Parameter] public List<string> TopColumnHeaders { get; set; } = new();
-    [Parameter] public string CellColoursJSON { get; set; }
-
-    //Callback to send data from the widget to the board.
-    [Parameter] public EventCallback<string> SendJSONToWidgetCallback { get; set; }
-
-    [Parameter] public EventCallback<string> SendFilterAndSortCallback { get; set; } //Sending the filter and sort for the grid.
-    [Parameter] public string CSSFromDB { get; set; }
-    [Parameter] public string MyWorkFiltersFromDB { get; set; }
-
-    #endregion Parameters
-
-    //Controls if the color picker palette is enabled.
-    private bool EditCellsEnabled = false;
-
-    private string EditCellsButtonText = "Edit";
-    private string EditCellsButtonColor = "btn btn-primary";
-
-    //We store all the formatting applied.
-    private HashSet<CellColouring> CellColourings { get; set; } = new();
-
-    //Set to true once the CSS has been fetched from the DB.
-    private bool CSSLoadedFromDatabase { get; set; } = false;
-
-    private bool MyWorkFiltersLoadedFromDB { get; set; } = false;
-
-    private List<ContextMenuItem> MenuItems { get; set; }
-    private bool ShowPaletteForHeader { get; set; } = false;
-    private Dictionary<string, bool> AllHeaders { get; set; } = new();
-
-    //THe filter applied to the grid -> to be saved as a JSON in the database.
-    private string MyWorkGridFilterAsJSON { get; set; }
-
-    private FilterAndSortSetting MyWorkFilterSettings { get; set; }
-
-    public class CellColouring
-    {
-        public string ClassName { get; set; }
-        public string Colour { get; set; }
-    }
-
-    public class ContextMenuItem
-    {
-        public string Text { get; set; }
-    }
-
-    #region FUNCTIONS
-
-    /*
-        Init. the context menu items (right-click on top-level headers).
-     */
-
-    protected override void OnInitialized()
-    {
-        MenuItems = new List<ContextMenuItem>()
-        {
-            new ContextMenuItem
-            {
-                Text = "Change Colour"
-            }
-        };
-
-        base.OnInitialized();
-    }
-
-    /*
-        Used mainly to grey out cells - if the returned value is "#808080",
-        apply class to grey out the field.
-
-        The actual value is changed inside the GetColumnTemplate function!
-     */
-
-    private void OnCellRenderHandler(GridCellRenderEventArgs args)
-    {
-        try
-        {
-            if (args.Value.ToString() == "#808080")
-            {
-                args.Class = "greyed-out-cell";
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/OnCellRenderHandler()");
-            OnError(ex);
-        }
+        await ReloadNativeGridAsync(resetToFirstPage ? 1 : NativePage);
     }
 
     public RenderFragment<object> GetColumnTemplate(string propName)
     {
-        try
+        return context => builder =>
         {
-            RenderFragment ColumnTemplate(object context) =>
-                builder =>
-                {
-                    if (context is not ExpandoObject expandoObject) return;
-                    var dictionary = expandoObject as IDictionary<string, object>;
-
-                    if (dictionary.TryGetValue(propName, out var propValue))
-                    { //return the
-                      //value of the property which will be rendered in the grid inside the<div>
-
-                        if (propValue.ToString() == "#808080")
-                            propValue = " ";
-
-                        builder.AddContent(0, propValue);
-                    }
-                }; return ColumnTemplate;
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/GetColumnTemplate()");
-            OnError(ex);
-        }
-
-        return null;
-    }
-
-    /*
-        Describes what should happen when the user
-        clicks "Change Colour" on a top-level header.
-     */
-
-    private async void ClickHandlerForColouring(ContextMenuItem itm, string Class)
-    {
-        if (itm.Text == "Change Colour")
-        {
-            ShowPaletteForHeader = true;
-            //Ensures the palette is only shown for the right-clicked header.
-            AllHeaders[Class] = true;
-        }
-    }
-
-    private async void SetHeaderColour(object Colour, string ClassName)
-    {
-        try
-        {
-            //Close the palette once the colour has been set.
-            ShowPaletteForHeader = false;
-            AllHeaders[ClassName] = false;
-
-            //Check if we already have a colour applied to the top-level header.
-            var colouring = CellColourings.Where(x => x.ClassName == ClassName).FirstOrDefault();
-
-            //Add new colour if haven't already assigned one for the given header.
-            if (colouring is null)
+            if (context is not ExpandoObject expandoObject) return;
+            var dictionary = (IDictionary<string, object>)expandoObject;
+            if (dictionary.TryGetValue(propName, out var propValue))
             {
-                CellColourings.Add(new CellColouring
-                {
-                    ClassName = ClassName,
-                    Colour = (string)Colour
-                });
+                if (propValue?.ToString() == "#808080") propValue = " ";
+                builder.AddContent(0, propValue);
             }
-            //Otherwise, get the colouring and change the assigned hex colour.
-            else
-            {
-                //Default colour for the headers - remove the styling from the database.
-                if ((string)Colour == "#f8f9fa")
-                    CellColourings.Remove(colouring);
-                else
-                    colouring.Colour = (string)Colour;
-            }
-
-            await SetHeaderColourJS(Colour.ToString(), ClassName);
-            SendJSONToWidgetBoard();
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/SetHeaderColour()");
-            OnError(ex);
-        }
+        };
     }
-
-    /*
-        The JS part of applying the CSS for a coloured header.
-     */
-
-    [JSInvokable]
-    private async Task SetHeaderColourJS(string colour, string className)
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("applyCSSForHeader", className, colour);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "DynamicGridView/GetColumnTemplate()");
-            OnError(ex);
-        }
-    }
-
-    /*
-        Unused at the moment.
-     */
-
-    [Obsolete("Function is yet to be enabled - obsolete for now.")]
-    private async void ToggleEditCells()
-    {
-        EditCellsEnabled = !EditCellsEnabled;
-
-        if (!EditCellsEnabled)
-        {
-            EditCellsButtonText = "Edit";
-            EditCellsButtonColor = "btn btn-primary";
-        }
-        else
-        {
-            EditCellsButtonText = "Done";
-            EditCellsButtonColor = "btn btn-danger";
-        }
-    }
-
-    /*
-        Ensures the CSS is applied on render.
-     */
-
-    protected override Task OnAfterRenderAsync(bool firstRender)
-    {
-        try
-        {
-            if (!firstRender)
-            {
-                if (CellColourings.Any())
-                    _ = Task.Run(async () => { await ApplyCSSColour(); });
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "OnAfterRenderAsync()");
-            OnError(ex);
-        }
-
-        return base.OnAfterRenderAsync(firstRender);
-    }
-
-    /*
-        Loads the stored CSS in the database into the Widget board.
-     */
-
-    protected override void OnParametersSet()
-    {
-        try
-        {
-            //Check if we have the CSS styling from the db first.
-            if (CSSFromDB is not null && !CSSLoadedFromDatabase)
-            {
-                //Deserialise the JSON into a type of "CellColouring"
-                var ExistingMyWorkStyle = System.Text.Json.JsonSerializer.Deserialize<List<CellColouring>>(CSSFromDB);
-
-                if (ExistingMyWorkStyle != null)
-                {
-                    foreach (var css in ExistingMyWorkStyle)
-                    {
-                        var className = css.ClassName;
-                        var colour = css.Colour;
-
-                        var cssStyling = CellColourings.Where(x => x.ClassName == className).FirstOrDefault();
-
-                        if (cssStyling is not null)
-                            cssStyling.Colour = colour;
-                        else
-                            CellColourings.Add(css);
-                    }
-                }
-
-                CSSLoadedFromDatabase = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "OnParametersSet()");
-            OnError(ex);
-        }
-    }
-
-    /*
-        Function for setting the colour for a cell.
-    */
-
-    private async void SetCellColour(object Colour, string CSSClass, object context)
-    {
-        try
-        {
-            string CellColour = (string)Colour;
-
-            // Check for existing CSS rule.
-            var CSSRuleExists = CellColourings.Where(x => x.ClassName == CSSClass).FirstOrDefault();
-
-            //Reset the colour if exists, otherwise, add it as a new CSS rule.
-            if (CSSRuleExists is not null)
-            {
-                CSSRuleExists.Colour = CellColour;
-            }
-            else
-            {
-                CellColourings.Add(new CellColouring()
-                {
-                    ClassName = CSSClass,
-                    Colour = CellColour
-                });
-            }
-
-            //Apply it & send it to the widget board so that it can be saved.
-            await ApplyCSSColour();
-            SendJSONToWidgetBoard();
-
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "SetCellColour()");
-            OnError(ex);
-        }
-    }
-
-    /*
-        Applies the CSS using a JS function - this can be found in the .razor file.
-        Called from SetCellColour
-     */
-
-    [JSInvokable]
-    private async Task ApplyCSSColour()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("applyCSSToGrid", CellColourings);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "ApplyCSSColour()");
-            OnError(ex);
-        }
-    }
-
-    /*
-        Assigns a unique ID to each cell on render - called from MultiColumnDynamicGrid.razor
-        This is to help assign a colour to a selected cell.
-     */
 
     private string EncodeClassNameAsBase64(GridViewColumnDefinition gvcd, object context)
     {
@@ -820,60 +738,33 @@ public partial class MultiColumnDynamicGridView
         {
             if (context is ExpandoObject expandoObject)
             {
-                var dictionary = expandoObject as IDictionary<string, object>;
-
-                if (dictionary.TryGetValue("Guid", out var Guid))
+                var dictionary = (IDictionary<string, object>)expandoObject;
+                if (dictionary.TryGetValue("Guid", out var guid))
                 {
-                    return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(gvcd.Id + "_" + gvcd.Name + "_" + Guid));
+                    return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(gvcd.Id + "_" + gvcd.Name + "_" + guid));
                 }
             }
         }
         catch (Exception ex)
         {
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "ApplyCSSColour()");
-            OnError(ex);
+            ex.Data.Add("AdditionalInfo", "An error occurred while generating the My Work cell CSS class.");
+            ex.Data.Add("PageMethod", "MultiColumnDynamicGridView/EncodeClassNameAsBase64()");
+            _ = OnError(ex);
         }
 
-        return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(gvcd.Guid + "_" + gvcd.Name));
+        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(gvcd.Guid + "_" + gvcd.Name));
     }
 
-    public async void SendJSONToWidgetBoard()
+    public sealed class NativeFilterAndSortSetting
     {
-        try
-        {
-            var CellJSON = JsonSerializer.Serialize(CellColourings);
-            await SendJSONToWidgetCallback.InvokeAsync(CellJSON);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "SendJSONToWidgetBoard()");
-            OnError(ex);
-        }
+        public string code { get; set; } = string.Empty;
+        public Dictionary<string, string> filterValues { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string gridCode { get; set; } = string.Empty;
+        public string searchText { get; set; } = string.Empty;
+        public string sortColumn { get; set; } = string.Empty;
+        public bool sortDescending { get; set; }
+        public int pageNumber { get; set; }
+        public int pageSize { get; set; }
     }
-
-    /*
-        Sends over the filter & sort settings to the widget board.
-     */
-
-    public async void SendFilterAndSortSettingsToBoard()
-    {
-        try
-        {
-            MyWorkGridFilterAsJSON = JsonSerializer.Serialize(MyWorkFilterSettings, new JsonSerializerOptions() { WriteIndented = true });
-            await SendFilterAndSortCallback.InvokeAsync(MyWorkGridFilterAsJSON);
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while getting the column template for the DynamicGridView.");
-            ex.Data.Add("PageMethod", "SendJSONToWidgetBoard()");
-            OnError(ex);
-        }
-    }
-
-    #endregion FUNCTIONS
 }

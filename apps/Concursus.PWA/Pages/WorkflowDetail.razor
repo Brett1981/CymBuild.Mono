@@ -1,4 +1,4 @@
-﻿@page "/WorkflowDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/WorkflowDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @inherits EditPageBase
 @attribute [Authorize]
 @using Concursus.API.Client.Models;
@@ -20,13 +20,25 @@
         <i class="bi bi-building me-2" style="font-size: 1.2rem;"></i>
     </FormTitle>
     <FormBody>
-        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
+        <div class="cb-native-tabstrip">
+            <div class="cb-native-tab-list" role="tablist" aria-label="Workflow detail tabs">
+                <button type="button" class="@NativeTabButtonCss(0)" role="tab" aria-selected="@(_nativeActiveTab == 0)" @onclick="@(() => SelectNativeTab(0))">
+                    <i class="bi bi-briefcase" aria-hidden="true"></i>
+                    <span>Workflows</span>
+                </button>
+                <button type="button" class="@NativeTabButtonCss(1)" role="tab" aria-selected="@(_nativeActiveTab == 1)" @onclick="@(() => SelectNativeTab(1))">
+                    <i class="bi bi-briefcase" aria-hidden="true"></i>
+                    <span>Workflow Statuses</span>
+                </button>
+                <button type="button" class="@NativeTabButtonCss(2)" role="tab" aria-selected="@(_nativeActiveTab == 2)" @onclick="@(() => SelectNativeTab(2))">
+                    <i class="bi bi-briefcase" aria-hidden="true"></i>
+                    <span>Workflow Authorisation</span>
+                </button>
+            </div>
 
-            <TabStripTab Title="Your Workflows">
-                <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Workflows
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(0))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 0)">
                     <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
                                         entityProperties="@editPage.entityProperties"
                                         entityPropertyGroups="@editPage.entityPropertyGroups"
@@ -37,39 +49,49 @@
                                         editPageRef="@editPage" />
 
                     <DynamicGrid GridCode="WORKFLOWTRANS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                </section>
+            }
 
-                </Content>
-            </TabStripTab>
-
-            <TabStripTab Title="Workflow Statuses">
-                <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Workflow Statuses
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(1))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 1)">
                     <DynamicGrid GridCode="WORKFLOWSTATUS"
                                  DrawerGuid="@DrawerGuid"
                                  FullGrid="true"
                                  TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
+                </section>
+            }
 
-            <TabStripTab Title="Workflow Authorisation">
-                <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Workflow Authorisation
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(2))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 2)">
                     <DynamicGrid GridCode="WORKFLOWAUTH"
                                  DrawerGuid="@DrawerGuid"
                                  FullGrid="true"
                                  TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
-        </TelerikTabStrip>
+                </section>
+            }
+        </div>
     </FormBody>
 </EditPage>
 
 
 @code {
+
+    private int _nativeActiveTab;
+    private readonly System.Collections.Generic.HashSet<int> _nativeVisitedTabs = new() { 0 };
+
+    private void SelectNativeTab(int index)
+    {
+        _nativeActiveTab = index;
+        _nativeVisitedTabs.Add(index);
+    }
+
+    private bool ShouldRenderNativeTab(int index) => _nativeVisitedTabs.Contains(index);
+
+    private string NativeTabButtonCss(int index) =>
+        _nativeActiveTab == index ? "cb-native-tab-button active" : "cb-native-tab-button";
+
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
     [Parameter] public string? ModalId { get; set; }
 
@@ -84,10 +106,6 @@
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
-
-
-
-
 
     public string DrawerGuid { get; set; } = "";
 

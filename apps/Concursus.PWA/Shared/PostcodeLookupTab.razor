@@ -1,10 +1,9 @@
-﻿@using Concursus.PWA.Classes
-@using System;
-@using System.Collections.Generic;
+@using Concursus.PWA.Classes
+@using System
+@using System.Collections.Generic
 @inject IHttpClientFactory HttpFactory
 @inject IConfiguration Config
 @inject HttpClient Http
-
 
 @if (!uiEnabled)
 {
@@ -12,30 +11,46 @@
 }
 else
 {
-    <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-        <TabStripTab Title="Postcode lookup">
-            <HeaderTemplate>
-                <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Postcode
-            </HeaderTemplate>
-            <Content>
+    <div class="postcode-lookup-tab-shell">
+        <div class="cb-native-tabstrip postcode-lookup-native-tabstrip" role="tablist" aria-label="Postcode lookup modes">
+            <button type="button"
+                    role="tab"
+                    aria-selected="@(activeTab == 0)"
+                    class="@GetTabButtonCss(0)"
+                    @onclick="@(() => SetActiveTab(0))">
+                <i class="bi bi-mailbox me-2"></i>
+                Postcode
+            </button>
+            <button type="button"
+                    role="tab"
+                    aria-selected="@(activeTab == 1)"
+                    class="@GetTabButtonCss(1)"
+                    @onclick="@(() => SetActiveTab(1))">
+                <i class="bi bi-geo-alt me-2"></i>
+                Address
+            </button>
+        </div>
+
+        @if (postcodeTabVisited)
+        {
+            <div class="postcode-lookup-tab-panel @(activeTab == 0 ? string.Empty : "d-none")" role="tabpanel">
                 <h3>Postcode Lookup Test</h3>
 
-                <label>
-                    <input type="checkbox" @bind="enterManually" />
-                    Enter address manually
+                <label class="form-check mb-3">
+                    <input type="checkbox" class="form-check-input" @bind="enterManually" />
+                    <span class="form-check-label">Enter address manually</span>
                 </label>
 
-                @* only show the lookup form when we’re not in “manual” mode *@
                 @if (!enterManually)
                 {
-                    <div class="mb-2">
-                        <input placeholder="Postcode" @bind="postcodeInput"
-                        class="k-textbox" style="width:200px" />
-                        <button class="k-button" @onclick="Search">Search</button>
+                    <div class="postcode-lookup-inline-search mb-3">
+                        <input placeholder="Postcode" @bind="postcodeInput" class="form-control" />
+                        <button type="button" class="btn btn-primary" @onclick="Search">Search</button>
                     </div>
+
                     @if (addresses != null)
                     {
-                        <select @onchange="OnSelect" class="k-dropdown">
+                        <select @onchange="OnSelect" class="form-select postcode-lookup-select" aria-label="Choose an address">
                             <option value="-1">-- choose an address --</option>
                             @for (int i = 0; i < addresses.Count; i++)
                             {
@@ -44,153 +59,114 @@ else
                         </select>
                     }
                 }
-                @* once in manual mode, show the full set of fields *@
                 else
                 {
-                    <div class="mt-4">
+                    <div class="postcode-lookup-manual-card mt-4">
                         <h4>Address Details</h4>
-                        <div>
+                        <div class="postcode-lookup-form-grid">
                             <label>UPRN (read-only):</label>
-                            <input readonly value="@selected?.Uprn" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input readonly value="@SelectedAddressDetails.Uprn" class="form-control" />
+
                             <label>Local Authority:</label>
-                            <input value="@selected?.LocalAuthority" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input value="@SelectedAddressDetails.LocalAuthority" class="form-control" />
+
                             <label>Address Line 1:</label>
-                            <input @bind="selected.Line1" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input @bind="SelectedAddressDetails.Line1" class="form-control" />
+
                             <label>Address Line 2:</label>
-                            <input @bind="selected.Line2" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input @bind="SelectedAddressDetails.Line2" class="form-control" />
+
                             <label>Town / City:</label>
-                            <input @bind="selected.Town" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input @bind="SelectedAddressDetails.Town" class="form-control" />
+
                             <label>County:</label>
-                            <input @bind="selected.County" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input @bind="SelectedAddressDetails.County" class="form-control" />
+
                             <label>Postcode:</label>
-                            <input @bind="selected.Postcode" class="k-textbox" />
-                        </div>
-                        <div>
+                            <input @bind="SelectedAddressDetails.Postcode" class="form-control" />
+
                             <label>Country:</label>
-                            <input @bind="selected.Country" class="k-textbox" />
+                            <input @bind="SelectedAddressDetails.Country" class="form-control" />
                         </div>
 
-                        <button class="k-button" @onclick="SearchByAddress">Search</button>
+                        <button type="button" class="btn btn-primary mt-3" @onclick="SearchByAddress">Search</button>
                     </div>
                 }
-            </Content>
-        </TabStripTab>
+            </div>
+        }
 
-        @*
-            -----------------------------------------------------
-           |                    ADDRES SEARCH                    |
-            -----------------------------------------------------
-        *@
-        <TabStripTab Title="Address lookup">
-            <HeaderTemplate>
-                <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Address
-            </HeaderTemplate>
-            <Content>
-
-
-                <div id="outer-container" class="d-flex flex-row justify-content-between">
-                    <!-- Field(s) for searching for an address.-->
-                    <div id="search-fields" class="d-flex flex-column">
+        @if (addressTabVisited)
+        {
+            <div class="postcode-lookup-tab-panel @(activeTab == 1 ? string.Empty : "d-none")" role="tabpanel">
+                <div id="outer-container" class="postcode-lookup-address-grid">
+                    <div id="search-fields" class="postcode-lookup-card">
                         <h5>Search for an address:</h5>
-                        <div id="search-inputs">
-                             <input  placeholder="Enter the address:" 
-                                @bind="AddressSearchInput"
-                                class="k-textbox" style="width:200px" />
+                        <div id="search-inputs" class="postcode-lookup-stacked-controls">
+                            <input placeholder="Enter the address:"
+                                   @bind="AddressSearchInput"
+                                   class="form-control" />
 
-                            <TelerikDropDownList Data="@ISOCodes"
-                                             TextField="name"
-                                             ValueField="iso"
-                                             Width="150px"
-                                             @bind-Value="selectedISO" />
+                            <select class="form-select" @bind="selectedISO" aria-label="Address lookup country context">
+                                @foreach (var isoCode in ISOCodes)
+                                {
+                                    <option value="@isoCode.iso">@isoCode.name</option>
+                                }
+                            </select>
                         </div>
-                       
-                        <button class="k-button" 
-                                @onclick="SearchByAddress">Search</button>
+
+                        <button type="button" class="btn btn-primary mt-3" @onclick="SearchByAddress">Search</button>
                     </div>
 
-                    <div id="suggested-addresses" class="d-flex flex-column">
-                         <h5>Select a suggestion: </h5>
-                        <TelerikListBox @ref="@ListBoxRef"
-                                        Data="@ListBoxData"
-                                        TextField="@nameof(AddressSearchResult.Suggestion)"
-                                        SelectionMode="@ListBoxSelectionMode.Multiple"
-                                        @bind-SelectedItems="@ListBoxSelectedItems"
-                                        Width="180px"
-                                        Height="auto">
-                                        <ListBoxToolBarSettings>
-                                            <ListBoxToolBar Visible="false" />
-                                        </ListBoxToolBarSettings>
-                        </TelerikListBox>
-                        <button class="k-button"
-                                @onclick="ResolveSelectedAddress">
+                    <div id="suggested-addresses" class="postcode-lookup-card">
+                        <h5>Select a suggestion:</h5>
+                        <select class="form-select postcode-lookup-suggestion-list"
+                                size="8"
+                                @bind="SelectedAddressRecommendationId"
+                                aria-label="Address search suggestions">
+                            <option value="">-- choose a suggestion --</option>
+                            @foreach (var item in ListBoxData)
+                            {
+                                <option value="@item.Id">@item.Suggestion</option>
+                            }
+                        </select>
+                        <button type="button" class="btn btn-success mt-3" @onclick="ResolveSelectedAddress">
                             Select Address
                         </button>
                     </div>
 
-                    <div id="resolved-address" class="d-flex flex-column">
+                    <div id="resolved-address" class="postcode-lookup-card">
                         <h5>Selected Address:</h5>
-                        <div class="mt-4">
-                            <div>
-                                <label>UPRN (read-only):</label>
-                                <input readonly @bind="ResolvedAddress.Uprn"  class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Local Authority:</label>
-                                <input @bind="ResolvedAddress.AuthorityCode" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Address Line 1:</label>
-                                <input @bind="ResolvedAddress.Line1" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Address Line 2:</label>
-                                <input @bind="ResolvedAddress.Line2" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Town / City:</label>
-                                <input @bind="ResolvedAddress.Town" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>County:</label>
-                                <input @bind="ResolvedAddress.County" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Postcode:</label>
-                                <input @bind="ResolvedAddress.Postcode" class="k-textbox" />
-                            </div>
-                            <div>
-                                <label>Country:</label>
-                                <input @bind="ResolvedAddress.Country" class="k-textbox" />
-                            </div>
+                        <div class="postcode-lookup-form-grid mt-4">
+                            <label>UPRN (read-only):</label>
+                            <input readonly @bind="ResolvedAddress.Uprn" class="form-control" />
+
+                            <label>Local Authority:</label>
+                            <input @bind="ResolvedAddress.AuthorityCode" class="form-control" />
+
+                            <label>Address Line 1:</label>
+                            <input @bind="ResolvedAddress.Line1" class="form-control" />
+
+                            <label>Address Line 2:</label>
+                            <input @bind="ResolvedAddress.Line2" class="form-control" />
+
+                            <label>Town / City:</label>
+                            <input @bind="ResolvedAddress.Town" class="form-control" />
+
+                            <label>County:</label>
+                            <input @bind="ResolvedAddress.County" class="form-control" />
+
+                            <label>Postcode:</label>
+                            <input @bind="ResolvedAddress.Postcode" class="form-control" />
+
+                            <label>Country:</label>
+                            <input @bind="ResolvedAddress.Country" class="form-control" />
                         </div>
                     </div>
                 </div>
-
-
-            </Content>
-        </TabStripTab>
-    </TelerikTabStrip>
-
-
-
-
-
-
-
+            </div>
+        }
+    </div>
 }
-
 
 @code {
     // UI state
@@ -201,7 +177,6 @@ else
     AddressResponse? selected;
     int selectedIndex = -1;
 
-
     //ISO code dropdown:
     List<CountryWithISO> ISOCodes = new();
     private string selectedISO { get; set; } = "GBR";
@@ -210,27 +185,35 @@ else
     string AddressSearchInput = "";
 
     //Variables for the box that displays suggestions:
-    private TelerikListBox<AddressSearchResult> ListBoxRef { get; set; } = null!;
     private List<AddressSearchResult> ListBoxData { get; set; } = new List<AddressSearchResult>();
-    private IEnumerable<AddressSearchResult> ListBoxSelectedItems { get; set; } = new List<AddressSearchResult>();
+    private string SelectedAddressRecommendationId { get; set; } = string.Empty;
 
     //Resolved address:
     AddressResponse ResolvedAddress = new();
 
+    private int activeTab = 0;
+    private bool postcodeTabVisited = true;
+    private bool addressTabVisited = false;
 
+    private AddressResponse SelectedAddressDetails
+    {
+        get
+        {
+            selected ??= new AddressResponse();
+            return selected;
+        }
+        set => selected = value;
+    }
 
-
-    public class AddressLookupInputs {
-
+    public class AddressLookupInputs
+    {
         public string AddressLine1 { get; set; } = "";
         public string AddressLine2 { get; set; } = "";
         public string Town { get; set; } = "";
         public string County { get; set; } = "";
         public string Postcode { get; set; } = "";
         public string Country { get; set; } = "";
-
     }
-
 
     //Class defintion for reading the country codes.
     public class CountryWithISO
@@ -239,14 +222,12 @@ else
         public string iso { get; set; }
     }
 
-
     //Class defintion for the suggestions returned by Ideal Postcode Lookup.
     public class ListBoxModel
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
     }
-
 
     protected override void OnInitialized()
     {
@@ -255,13 +236,32 @@ else
         LoadCountryISOCodes();
     }
 
+    private void SetActiveTab(int tabIndex)
+    {
+        activeTab = tabIndex;
+
+        if (tabIndex == 0)
+        {
+            postcodeTabVisited = true;
+        }
+        else if (tabIndex == 1)
+        {
+            addressTabVisited = true;
+        }
+    }
+
+    private string GetTabButtonCss(int tabIndex)
+    {
+        return activeTab == tabIndex
+            ? "cb-native-tab active"
+            : "cb-native-tab";
+    }
 
     private async void LoadCountryISOCodes()
     {
         string jsonFileName = "PostCodeLookup_Assets/country_iso_codes.json";
         ISOCodes = await Http.GetFromJsonAsync<List<CountryWithISO>>(jsonFileName);
     }
-
 
     async Task Search()
     {
@@ -280,7 +280,6 @@ else
         {
             Console.WriteLine(ex);
         }
-
     }
 
     /*
@@ -307,6 +306,7 @@ else
 
             resp.EnsureSuccessStatusCode();
             addressRecommendations = await resp.Content.ReadFromJsonAsync<List<AddressSearchResult>>();
+            SelectedAddressRecommendationId = string.Empty;
 
             if(addressRecommendations?.Count > 0)
             {
@@ -322,20 +322,21 @@ else
                     Udprn = "NA",
                     Urls = "NA"
                 });
+                ListBoxData = addressRecommendations;
+                StateHasChanged();
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex);
         }
-
     }
 
     async Task ResolveSelectedAddress()
     {
         try
         {
-            if (ListBoxSelectedItems.Count() < 0)
+            if (string.IsNullOrWhiteSpace(SelectedAddressRecommendationId))
                 return;
 
             string BaseUrl = "http://localhost:5041/api/AddressLookup/";
@@ -343,12 +344,11 @@ else
 
             var client = HttpFactory.CreateClient("AddressLookupUI");
 
-            var ID = ListBoxSelectedItems.First().Id;
-
+            var ID = SelectedAddressRecommendationId;
 
             var resp = await client.PostAsJsonAsync($"{BaseUrl}{GetAddressEndpoint}", new
             {
-                id = ID, 
+                id = ID,
                 context = selectedISO
             });
 

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[JobRibaStageFees]')
 GO
+PRINT (N'Create table [SJob].[JobRibaStageFees]')
+GO
 CREATE TABLE [SJob].[JobRibaStageFees] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_JobRibaStageFees_RowStatus] DEFAULT (1),
@@ -45,10 +47,10 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-PRINT (N'Create index [UX_JobRibaStageFees_QuoteItem_Active] on table [SJob].[JobRibaStageFees]')
+PRINT (N'Create index [UX_JobRibaStageFees_JobQuoteItemStage_Active] on table [SJob].[JobRibaStageFees]')
 GO
-CREATE UNIQUE INDEX [UX_JobRibaStageFees_QuoteItem_Active]
-  ON [SJob].[JobRibaStageFees] ([CreatedFromQuoteItemID])
+CREATE UNIQUE INDEX [UX_JobRibaStageFees_JobQuoteItemStage_Active]
+  ON [SJob].[JobRibaStageFees] ([JobID], [CreatedFromQuoteItemID], [RibaStageID])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
@@ -58,6 +60,12 @@ PRINT (N'Create foreign key [FK_JobRibaStageFees_DataObjects] on table [SJob].[J
 GO
 ALTER TABLE [SJob].[JobRibaStageFees] WITH NOCHECK
   ADD CONSTRAINT [FK_JobRibaStageFees_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
+GO
+
+PRINT (N'Disable foreign key [FK_JobRibaStageFees_DataObjects] on table [SJob].[JobRibaStageFees]')
+GO
+ALTER TABLE [SJob].[JobRibaStageFees]
+  NOCHECK CONSTRAINT [FK_JobRibaStageFees_DataObjects]
 GO
 
 PRINT (N'Create foreign key [FK_JobRibaStageFees_Jobs] on table [SJob].[JobRibaStageFees]')

@@ -37,3 +37,1474 @@
 .dropdown-menu.p-3 {
     min-width: 500px !important;
 }
+
+/* 14B ShoreInput native modal host.
+   Replaces TelerikWindow for lookup detail/information windows only. */
+.shore-input-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    background: rgba(15, 23, 42, 0.52);
+    backdrop-filter: blur(2px);
+}
+
+.shore-input-modal-shell {
+    position: fixed;
+    inset: 3vh 3vw;
+    z-index: 1090;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.shore-input-modal-card {
+    width: min(1320px, 96vw);
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-border, #dbe3ef);
+    border-radius: var(--cb-v2-radius-lg, 1.1rem);
+    background: var(--cb-v2-bg, #ffffff);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+    pointer-events: auto;
+}
+
+.shore-input-modal-card.is-maximized {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+}
+
+.shore-input-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.95rem 1.15rem;
+    border-bottom: 1px solid var(--cb-v2-border, #dbe3ef);
+    background: linear-gradient(90deg, var(--cb-v2-primary-dark, #0f4c81), var(--cb-v2-primary, #1677c8));
+    color: #ffffff;
+}
+
+.shore-input-modal-title-wrap {
+    min-width: 0;
+}
+
+.shore-input-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    font-weight: 800;
+    font-size: 1rem;
+}
+
+.shore-input-modal-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.shore-input-modal-subtitle {
+    margin-top: 0.2rem;
+    font-size: 0.82rem;
+    opacity: 0.82;
+}
+
+.shore-input-modal-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 0 0 auto;
+}
+
+.shore-input-modal-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    min-height: 2rem;
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #ffffff;
+}
+
+.shore-input-modal-actions .btn:hover,
+.shore-input-modal-actions .btn:focus-visible {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.75);
+    color: #ffffff;
+}
+
+.shore-input-modal-body {
+    min-height: 0;
+    max-height: calc(94vh - 68px);
+    overflow: auto;
+    padding: 1rem;
+    background: var(--cb-v2-bg-soft, #f8fafc);
+}
+
+.shore-input-modal-card.is-maximized .shore-input-modal-body {
+    max-height: calc(100vh - 5.8rem);
+}
+
+@media (max-width: 768px) {
+    .shore-input-modal-shell {
+        inset: 0.75rem;
+    }
+
+    .shore-input-modal-card,
+    .shore-input-modal-card.is-maximized {
+        width: 100%;
+        max-height: calc(100vh - 1.5rem);
+        border-radius: var(--cb-v2-radius-md, 0.85rem);
+    }
+
+    .shore-input-modal-header {
+        padding: 0.85rem;
+    }
+
+    .shore-input-modal-body {
+        padding: 0.75rem;
+        max-height: calc(100vh - 5.3rem);
+    }
+}
+/* 14C ShoreInput native date controls.
+   Replaces TelerikDatePicker/TelerikDateTimePicker for DATE and DATETIME2 fields. */
+.shore-input-native-date,
+.shore-input-native-date-time {
+    min-height: 2.25rem;
+    width: 100%;
+    min-width: 11rem;
+    border-radius: var(--cb-v2-radius-sm, 0.55rem);
+}
+
+.shore-input-native-date-time {
+    min-width: 14rem;
+}
+
+.shore-input-native-date:disabled,
+.shore-input-native-date-time:disabled {
+    cursor: not-allowed;
+    color: var(--cb-v2-text-muted, #64748b);
+    background-color: var(--cb-v2-bg-soft, #f8fafc);
+}
+
+.combo-wrapper .shore-input-native-date,
+.combo-wrapper .shore-input-native-date-time {
+    display: block;
+}
+/* 14C-R5 ShoreInput quarter-minute datetime selector.
+   Selectable DATETIME2 fields use a native date + hour + 15-minute selector so the minute list
+   is limited to 00/15/30/45 rather than browser-dependent one-minute increments. */
+.shore-input-native-datetime-select {
+    display: grid;
+    grid-template-columns: minmax(9.5rem, 1fr) minmax(4.25rem, auto) minmax(4.25rem, auto);
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 18rem;
+}
+
+.shore-input-native-datetime-select .form-control,
+.shore-input-native-datetime-select .form-select {
+    min-height: 2.25rem;
+    border-radius: var(--cb-v2-radius-sm, 0.55rem);
+}
+
+.shore-input-native-datetime-select.is-invalid .form-control,
+.shore-input-native-datetime-select.is-invalid .form-select {
+    border-color: var(--bs-danger, #dc3545);
+}
+
+.shore-input-native-datetime-select .form-control:disabled,
+.shore-input-native-datetime-select .form-select:disabled {
+    cursor: not-allowed;
+    color: var(--cb-v2-text-muted, #64748b);
+    background-color: var(--cb-v2-bg-soft, #f8fafc);
+}
+
+.combo-wrapper .shore-input-native-datetime-select {
+    display: grid;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-native-datetime-select {
+        grid-template-columns: 1fr 1fr;
+        min-width: 0;
+    }
+
+    .shore-input-native-datetime-date {
+        grid-column: 1 / -1;
+    }
+}
+/* 14D ShoreInput native lookup combo bridge */
+.combo-wrapper .shore-lookup {
+    width: 100%;
+}
+
+.input-group > .combo-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* 14D-R3 ShoreInput native lookup sizing bridge.
+   Keeps the new native lookup aligned with input-group labels and action buttons. */
+.input-group > .combo-wrapper {
+    display: flex;
+    align-items: stretch;
+}
+
+.combo-wrapper .shore-lookup,
+.combo-wrapper .shore-lookup-control {
+    height: 100%;
+}
+
+.combo-wrapper .shore-lookup-input {
+    min-height: 2.375rem;
+}
+
+/* 14D-R4 ShoreInput border consistency.
+   Brings metadata-driven field controls onto the shared CymBuild V2 border language. */
+.combo-wrapper .form-control,
+.combo-wrapper .form-select,
+.combo-wrapper .shore-input-native-date,
+.combo-wrapper .shore-input-native-date-time,
+.combo-wrapper .shore-input-native-datetime-select .form-control,
+.combo-wrapper .shore-input-native-datetime-select .form-select,
+.input-group .input-group-text,
+.input-group .btn-outline-secondary {
+    border-color: var(--cb-v2-control-border-soft, #94a3b8) !important;
+}
+
+.input-group .input-group-text {
+    background: #eef2f7;
+    color: var(--cb-v2-text-strong, #0f172a);
+}
+
+.input-group .btn-outline-secondary {
+    color: var(--cb-v2-text-strong, #0f172a);
+}
+
+.combo-wrapper .form-control:hover:not(:disabled):not([readonly]),
+.combo-wrapper .form-select:hover:not(:disabled),
+.input-group .btn-outline-secondary:hover {
+    border-color: var(--cb-v2-control-border, #64748b) !important;
+}
+
+/* 14D-R5 ShoreInput border completion.
+   Covers controls not caught by the shared pass, especially textarea fields and joined controls. */
+.combo-wrapper,
+.combo-wrapper .form-control,
+.combo-wrapper .form-select,
+.input-group > .form-control,
+.input-group > .form-select,
+.input-group > .input-group-text,
+.input-group > .btn,
+textarea.form-control,
+.form-check-input {
+    border-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.input-group > .input-group-text:first-child,
+.input-group > .form-control:first-child,
+.input-group > .form-select:first-child {
+    border-left-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+.input-group > .input-group-text:last-child,
+.input-group > .form-control:last-child,
+.input-group > .form-select:last-child,
+.input-group > .btn:last-child {
+    border-right-color: var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8)) !important;
+}
+
+/* 14D-R6 ShoreInput joined action button border completion. */
+.input-group > .btn:not(.btn-link),
+.input-group > button:not(.btn-link),
+.combo-wrapper + .btn,
+.combo-wrapper ~ .btn {
+    border-color: var(--cb-v2-control-border-dark, #8ea0bb) !important;
+}
+
+.input-group > .btn:not(.btn-link):hover,
+.input-group > button:not(.btn-link):hover,
+.combo-wrapper + .btn:hover,
+.combo-wrapper ~ .btn:hover {
+    border-color: var(--cb-v2-control-border-dark-hover, #64748b) !important;
+}
+
+
+/* 14I-R2 inline grid edit lookup layering repair.
+   Allows embedded native lookup menus to escape ShoreInput wrappers in compact grid edit/new panels. */
+.combo-wrapper:has(.shore-lookup),
+.input-group:has(.shore-lookup) {
+    overflow: visible !important;
+}
+
+.combo-wrapper:has(.shore-lookup:focus-within),
+.input-group:has(.shore-lookup:focus-within) {
+    z-index: 2500;
+}
+
+/* 14I-R3 native lookup viewport menu.
+   Keep compact inline edit wrappers from stacking above viewport-positioned lookup menus. */
+.combo-wrapper:has(.shore-lookup-menu.is-fixed),
+.input-group:has(.shore-lookup-menu.is-fixed) {
+    z-index: 2140;
+}
+
+/* 14I-R5 ShoreLookup viewport menu compile/layering repair. */
+.combo-wrapper:has(.shore-lookup-menu.is-fixed),
+.input-group:has(.shore-lookup-menu.is-fixed) {
+    z-index: 2140;
+}
+
+/* 14I-R7 ShoreLookup stable inline menu repair.
+   Allow lookup dropdowns to escape narrow input-group wrappers used by inline grid edit/new panels. */
+.combo-wrapper:has(.shore-lookup-menu),
+.input-group:has(.shore-lookup-menu),
+.form-group:has(.shore-lookup-menu) {
+    overflow: visible !important;
+    position: relative;
+    z-index: 2140;
+}
+
+
+/* 14S-R4 native multiline text area sizing/layout repair.
+   The full-line decision is made by FlexPropertyGroup; this component owns the
+   textarea's internal shape once the parent gives it the full row. */
+.shore-input-multiline-field {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: min(100%, 24rem);
+    align-self: stretch;
+    margin: 0 !important;
+}
+
+.shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(9.5rem, max-content) minmax(0, 1fr) auto;
+    align-items: stretch;
+    width: 100% !important;
+}
+
+.shore-input-multiline-group > .input-group-text {
+    min-width: 9.5rem;
+    white-space: normal;
+    align-items: center;
+    justify-content: flex-start;
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+.shore-input-multiline-textarea {
+    width: 100% !important;
+    min-width: 0;
+    min-height: 9.5rem !important;
+    height: auto !important;
+    padding: 0.75rem 0.9rem;
+    line-height: 1.45;
+    resize: vertical;
+    border-radius: 0 var(--cb-v2-radius-sm, 0.55rem) var(--cb-v2-radius-sm, 0.55rem) 0 !important;
+}
+
+.shore-input-multiline-group > .dropdown,
+.shore-input-multiline-group > .btn,
+.shore-input-multiline-group > button {
+    align-self: stretch;
+}
+
+.shore-input-multiline-group > .dropdown > .btn {
+    height: 100%;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+}
+
+.shore-input-multiline-group > .invalid-feedback,
+.shore-input-multiline-group > .valid-feedback {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-multiline-field {
+        min-width: 0;
+    }
+
+    .shore-input-multiline-group {
+        grid-template-columns: 1fr;
+    }
+
+    .shore-input-multiline-group > .input-group-text,
+    .shore-input-multiline-textarea,
+    .shore-input-multiline-group > .dropdown > .btn {
+        width: 100% !important;
+        border-radius: var(--cb-v2-radius-sm, 0.55rem) !important;
+    }
+}
+
+
+/* 14S-R6 ShoreInput internal width regression repair.
+   Bootstrap's col-auto wrappers were still allowed to shrink to content after R5. Force the
+   ShoreInput root wrappers and joined input groups to occupy the host width, while keeping
+   labels and action buttons at sensible intrinsic widths. */
+.col-auto.m-1.flex-fill,
+.col-auto.m-1:not(.shore-input-multiline-field),
+.col-auto.w-100.m-1.shore-input-multiline-field,
+.shore-input-multiline-field {
+    display: block !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+.input-group,
+.input-group.col-auto,
+.shore-input-multiline-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.input-group > .input-group-text,
+.shore-input-multiline-group > .input-group-text {
+    flex: 0 0 auto !important;
+    min-width: 8.5rem !important;
+    max-width: 15rem !important;
+    width: auto !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+}
+
+.input-group > .input-group-text > label,
+.shore-input-multiline-group > .input-group-text > label {
+    margin: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.input-group > .form-control,
+.input-group > .form-select,
+.input-group > .combo-wrapper,
+.input-group > label.form-control,
+.combo-wrapper,
+.combo-wrapper .shore-lookup,
+.combo-wrapper .shore-lookup-control,
+.combo-wrapper .shore-lookup-input,
+.combo-wrapper .form-control,
+.combo-wrapper .form-select,
+.combo-wrapper .shore-input-native-date,
+.combo-wrapper .shore-input-native-date-time,
+.combo-wrapper .shore-input-native-datetime-select {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.input-group > .btn,
+.input-group > button,
+.input-group > .dropdown,
+.shore-input-multiline-group > .btn,
+.shore-input-multiline-group > button,
+.shore-input-multiline-group > .dropdown {
+    flex: 0 0 auto !important;
+    width: auto !important;
+}
+
+.shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(9.5rem, max-content) minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+}
+
+.shore-input-multiline-textarea {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 7.75rem !important;
+    height: auto !important;
+    resize: vertical;
+}
+
+.valid-feedback,
+.invalid-feedback {
+    width: 100% !important;
+}
+
+@media (max-width: 575.98px) {
+    .input-group,
+    .input-group.col-auto,
+    .shore-input-multiline-group {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+    }
+
+    .input-group > .input-group-text,
+    .shore-input-multiline-group > .input-group-text,
+    .input-group > .form-control,
+    .input-group > .form-select,
+    .input-group > .combo-wrapper,
+    .input-group > label.form-control,
+    .input-group > .btn,
+    .input-group > button,
+    .input-group > .dropdown {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        border-radius: var(--cb-v2-radius-sm, 0.55rem) !important;
+    }
+}
+
+
+/* 14S-R7 metadata field fill repair.
+   R5/R6 still left the original Bootstrap col-auto field wrappers in control of sizing in
+   several edit page layouts. ShoreInput now uses .shore-input-field for normal fields and
+   keeps legacy col-auto selectors as a fallback for any older markup still present. */
+.shore-input-field,
+.col-auto.m-1.flex-fill,
+.col-auto.m-1:not(.shore-input-multiline-field) {
+    display: block !important;
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+.shore-input-field > .input-group,
+.col-auto.m-1.flex-fill > .input-group,
+.col-auto.m-1:not(.shore-input-multiline-field) > .input-group {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field .input-group,
+.col-auto.m-1.flex-fill .input-group,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field .input-group > .input-group-text,
+.col-auto.m-1.flex-fill .input-group > .input-group-text,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > .input-group-text {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: clamp(7rem, 30%, 14rem) !important;
+    max-width: min(16rem, 45%) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+}
+
+.shore-input-field .input-group > .input-group-text > label,
+.col-auto.m-1.flex-fill .input-group > .input-group-text > label,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > .input-group-text > label {
+    display: block !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.shore-input-field .input-group > .form-control,
+.shore-input-field .input-group > .form-select,
+.shore-input-field .input-group > .combo-wrapper,
+.shore-input-field .input-group > label.form-control,
+.col-auto.m-1.flex-fill .input-group > .form-control,
+.col-auto.m-1.flex-fill .input-group > .form-select,
+.col-auto.m-1.flex-fill .input-group > .combo-wrapper,
+.col-auto.m-1.flex-fill .input-group > label.form-control,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > .form-control,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > .form-select,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > .combo-wrapper,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group > label.form-control {
+    flex: 1 1 auto !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field .combo-wrapper,
+.shore-input-field .combo-wrapper .shore-lookup,
+.shore-input-field .combo-wrapper .shore-lookup-control,
+.shore-input-field .combo-wrapper .shore-lookup-input,
+.shore-input-field .combo-wrapper .form-control,
+.shore-input-field .combo-wrapper .form-select,
+.shore-input-field .combo-wrapper .shore-input-native-date,
+.shore-input-field .combo-wrapper .shore-input-native-date-time,
+.shore-input-field .combo-wrapper .shore-input-native-datetime-select {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+/* Boolean fields have a checkbox in the left add-on. They must not inherit the normal
+   text-label min-width, otherwise the text label is squeezed and wraps vertically. */
+.shore-input-field .input-group:has(> .input-group-text input[type="checkbox"]) > .input-group-text,
+.col-auto.m-1.flex-fill .input-group:has(> .input-group-text input[type="checkbox"]) > .input-group-text,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group:has(> .input-group-text input[type="checkbox"]) > .input-group-text {
+    flex: 0 0 2.65rem !important;
+    width: 2.65rem !important;
+    min-width: 2.65rem !important;
+    max-width: 2.65rem !important;
+    justify-content: center !important;
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+}
+
+.shore-input-field .input-group:has(> .input-group-text input[type="checkbox"]) > label.form-control,
+.col-auto.m-1.flex-fill .input-group:has(> .input-group-text input[type="checkbox"]) > label.form-control,
+.col-auto.m-1:not(.shore-input-multiline-field) .input-group:has(> .input-group-text input[type="checkbox"]) > label.form-control {
+    display: flex !important;
+    align-items: center !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    min-width: 0 !important;
+}
+
+.shore-input-multiline-field {
+    display: block !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}
+
+.shore-input-multiline-group {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-field .input-group,
+    .col-auto.m-1.flex-fill .input-group,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+    }
+
+    .shore-input-field .input-group:has(> .input-group-text input[type="checkbox"]),
+    .col-auto.m-1.flex-fill .input-group:has(> .input-group-text input[type="checkbox"]),
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group:has(> .input-group-text input[type="checkbox"]) {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+    }
+
+    .shore-input-field .input-group > .input-group-text,
+    .shore-input-field .input-group > .form-control,
+    .shore-input-field .input-group > .form-select,
+    .shore-input-field .input-group > .combo-wrapper,
+    .shore-input-field .input-group > label.form-control,
+    .col-auto.m-1.flex-fill .input-group > .input-group-text,
+    .col-auto.m-1.flex-fill .input-group > .form-control,
+    .col-auto.m-1.flex-fill .input-group > .form-select,
+    .col-auto.m-1.flex-fill .input-group > .combo-wrapper,
+    .col-auto.m-1.flex-fill .input-group > label.form-control,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group > .input-group-text,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group > .form-control,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group > .form-select,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group > .combo-wrapper,
+    .col-auto.m-1:not(.shore-input-multiline-field) .input-group > label.form-control {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+}
+
+
+/* 14S-R8 deterministic ShoreInput field sizing repair.
+   R7 moved normal fields away from Bootstrap col-auto wrappers, but existing input-group
+   col-auto classes and inherited flex sizing could still allow content-width collapse.
+   Keep the component itself deterministic: full host width, no shrink-to-content controls. */
+.shore-input-field,
+.shore-input-multiline-field {
+    display: flex !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group,
+.shore-input-multiline-field > .input-group,
+.shore-input-field .input-group,
+.shore-input-multiline-field .input-group {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field .input-group > .input-group-text,
+.shore-input-multiline-field .input-group > .input-group-text {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: clamp(7.25rem, 28%, 13.5rem) !important;
+    max-width: min(16rem, 45%) !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.shore-input-field .input-group > .input-group-text > label,
+.shore-input-multiline-field .input-group > .input-group-text > label {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.shore-input-field .input-group > .form-control,
+.shore-input-field .input-group > .form-select,
+.shore-input-field .input-group > .combo-wrapper,
+.shore-input-field .input-group > label.form-control,
+.shore-input-multiline-field .input-group > .form-control,
+.shore-input-multiline-field .input-group > .form-select,
+.shore-input-multiline-field .input-group > .combo-wrapper,
+.shore-input-multiline-field .input-group > textarea.form-control {
+    flex: 1 1 auto !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field .combo-wrapper,
+.shore-input-field .combo-wrapper > *,
+.shore-input-field .shore-lookup,
+.shore-input-field .shore-lookup-control,
+.shore-input-field .shore-lookup-input,
+.shore-input-field .shore-input-native-datetime-select {
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field .input-group > .btn,
+.shore-input-field .input-group > button,
+.shore-input-field .input-group > .dropdown,
+.shore-input-multiline-field .input-group > .btn,
+.shore-input-multiline-field .input-group > button,
+.shore-input-multiline-field .input-group > .dropdown {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 2.35rem !important;
+}
+
+.shore-input-field .input-group:has(> .input-group-text input[type="checkbox"]) > .input-group-text {
+    flex: 0 0 2.65rem !important;
+    width: 2.65rem !important;
+    min-width: 2.65rem !important;
+    max-width: 2.65rem !important;
+    justify-content: center !important;
+}
+
+.shore-input-field .input-group:has(> .input-group-text input[type="checkbox"]) > label.form-control {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(9.5rem, 14rem) minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+}
+
+.shore-input-multiline-textarea {
+    min-height: 7.75rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    resize: vertical !important;
+}
+
+/* 14S-R9 multiline textarea grid expansion repair.
+   R8 correctly made the outer input-group wide, but the textarea still matched the
+   more-specific generic input-group > .form-control rule that sets width: 1% for
+   flex-based controls. The multiline group is grid-based, so it needs a stronger,
+   textarea-specific rule that fills the second grid column. */
+.shore-input-multiline-field .shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(9.5rem, max-content) minmax(0, 1fr) !important;
+    grid-auto-columns: unset !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-multiline-field .shore-input-multiline-group > .input-group-text {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: auto !important;
+    min-width: 9.5rem !important;
+    max-width: 14rem !important;
+    align-self: stretch !important;
+}
+
+.shore-input-multiline-field .shore-input-multiline-group > textarea.form-control.shore-input-multiline-textarea,
+.shore-input-multiline-field .shore-input-multiline-group > textarea.shore-input-multiline-textarea,
+.shore-input-multiline-group > textarea.form-control.shore-input-multiline-textarea {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: block !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    flex: initial !important;
+    flex-basis: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-height: 7.75rem !important;
+    height: auto !important;
+    resize: vertical !important;
+}
+
+.shore-input-multiline-field .shore-input-multiline-group > .invalid-feedback,
+.shore-input-multiline-field .shore-input-multiline-group > .valid-feedback {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-multiline-field .shore-input-multiline-group {
+        grid-template-columns: 1fr !important;
+    }
+
+    .shore-input-multiline-field .shore-input-multiline-group > .input-group-text,
+    .shore-input-multiline-field .shore-input-multiline-group > textarea.form-control.shore-input-multiline-textarea,
+    .shore-input-multiline-field .shore-input-multiline-group > textarea.shore-input-multiline-textarea {
+        grid-column: 1 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/* 14S-R10 single-line metadata field expansion repair.
+   R9 fixed multiline text areas. The remaining single-line controls were still behaving like
+   Bootstrap shrink-to-content input groups in some metadata cards. Use a deterministic grid for
+   ShoreInput's normal input groups so the value control always fills the available field width. */
+.shore-input-field {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group),
+.shore-input-field .input-group:not(.shore-input-multiline-group) {
+    display: grid !important;
+    grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr) repeat(6, auto) !important;
+    grid-auto-flow: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text {
+    grid-column: auto !important;
+    display: flex !important;
+    align-items: center !important;
+    width: auto !important;
+    min-width: 7.5rem !important;
+    max-width: 16rem !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text > label,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text > label {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-control,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-select,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > label.form-control,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .shore-input-native-datetime-select,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .form-select,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > label.form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .shore-input-native-datetime-select {
+    grid-column: auto !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    flex: none !important;
+    flex-basis: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field .combo-wrapper,
+.shore-input-field .combo-wrapper > *,
+.shore-input-field .shore-lookup,
+.shore-input-field .shore-lookup-control,
+.shore-input-field .shore-lookup-input,
+.shore-input-field .shore-input-native-date,
+.shore-input-field .shore-input-native-date-time,
+.shore-input-field .shore-input-native-datetime-select {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .btn,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > button,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .dropdown,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .btn,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > button,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .dropdown {
+    grid-column: auto !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    flex: none !important;
+    width: auto !important;
+    min-width: 2.35rem !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .valid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .valid-feedback {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]),
+.shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) {
+    grid-template-columns: 2.65rem minmax(0, 1fr) repeat(6, auto) !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text,
+.shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text {
+    width: 2.65rem !important;
+    min-width: 2.65rem !important;
+    max-width: 2.65rem !important;
+    justify-content: center !important;
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > label.form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > label.form-control {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-field > .input-group:not(.shore-input-multiline-group),
+    .shore-input-field .input-group:not(.shore-input-multiline-group) {
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-auto-flow: row !important;
+    }
+
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text,
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-control,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > .form-control,
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-select,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > .form-select,
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > label.form-control,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > label.form-control {
+        grid-column: 1 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]),
+    .shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) {
+        grid-template-columns: 2.65rem minmax(0, 1fr) !important;
+        grid-auto-flow: column !important;
+    }
+}
+
+
+.shore-input-field {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: left !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group),
+.shore-input-field .input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    align-content: flex-start !important;
+    gap: 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: left !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: auto !important;
+    min-width: 7.25rem !important;
+    /*max-width: min(45%, 16rem) !important;*/
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-align: left !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text > label,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text > label {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    text-align: left !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-control,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .form-select,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > label.form-control,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .shore-input-native-datetime-select,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .form-select,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > label.form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .shore-input-native-datetime-select {
+    display: block !important;
+    flex: 1 1 10rem !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: left !important;
+}
+
+.shore-input-field .combo-wrapper {
+    display: flex !important;
+    align-items: stretch !important;
+}
+
+.shore-input-field .combo-wrapper > *,
+.shore-input-field .shore-lookup,
+.shore-input-field .shore-lookup-control,
+.shore-input-field .shore-lookup-input,
+.shore-input-field .shore-input-native-date,
+.shore-input-field .shore-input-native-date-time {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field .shore-input-native-datetime-select {
+    display: grid !important;
+    grid-template-columns: minmax(8rem, 1fr) minmax(4.25rem, auto) minmax(4.25rem, auto) !important;
+    flex: 1 1 14rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .btn,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > button,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .dropdown,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .btn,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > button,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .dropdown {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: auto !important;
+    min-width: 2.35rem !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .valid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .valid-feedback {
+    flex: 0 0 100% !important;
+    order: 100 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: left !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text,
+.shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text {
+    flex: 0 0 2.65rem !important;
+    width: 2.65rem !important;
+    min-width: 2.65rem !important;
+    max-width: 2.65rem !important;
+    justify-content: center !important;
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > label.form-control,
+.shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > label.form-control {
+    display: flex !important;
+    flex: 1 1 10rem !important;
+    align-items: center !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    text-align: left !important;
+}
+
+@media (max-width: 575.98px) {
+    .shore-input-field > .input-group:not(.shore-input-multiline-group) > .input-group-text,
+    .shore-input-field .input-group:not(.shore-input-multiline-group) > .input-group-text {
+        flex-basis: 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .shore-input-field > .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text,
+    .shore-input-field .input-group:not(.shore-input-multiline-group):has(> .input-group-text input[type="checkbox"]) > .input-group-text {
+        flex-basis: 2.65rem !important;
+        width: 2.65rem !important;
+        min-width: 2.65rem !important;
+        max-width: 2.65rem !important;
+    }
+
+    .shore-input-field .shore-input-native-datetime-select {
+        grid-template-columns: minmax(0, 1fr) minmax(4.25rem, auto) minmax(4.25rem, auto) !important;
+    }
+}
+
+/* BEGIN 14S-R15 ShoreInput field fill reinforcement */
+/* Reinforce field fill from inside ShoreInput as well as from FlexPropertyGroup.
+   This protects the layout from Bootstrap col-auto/input-group intrinsic sizing. */
+.col-auto.m-1.flex-fill,
+.col-auto.m-1:not(.shore-input-multiline-field),
+.col-auto.w-100.m-1.shore-input-multiline-field,
+.shore-input-multiline-field {
+    display: block !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.input-group,
+.input-group.col-auto,
+.shore-input-multiline-group {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+}
+
+.input-group > .form-control,
+.input-group > .form-select,
+.input-group > .combo-wrapper,
+.input-group > label.form-control,
+.combo-wrapper,
+.combo-wrapper .shore-lookup,
+.combo-wrapper .shore-lookup-control,
+.combo-wrapper .shore-lookup-input,
+.combo-wrapper .form-control,
+.combo-wrapper .form-select,
+.combo-wrapper .shore-input-native-date,
+.combo-wrapper .shore-input-native-date-time,
+.combo-wrapper .shore-input-native-datetime-select {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.input-group > .input-group-text,
+.shore-input-multiline-group > .input-group-text {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 6.75rem !important;
+    max-width: min(14rem, 45%) !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+}
+
+.input-group > .btn,
+.input-group > button,
+.input-group > .dropdown,
+.shore-input-multiline-group > .btn,
+.shore-input-multiline-group > button,
+.shore-input-multiline-group > .dropdown {
+    flex: 0 0 auto !important;
+    width: auto !important;
+}
+
+.shore-input-multiline-group {
+    display: grid !important;
+    grid-template-columns: minmax(8.5rem, max-content) minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+}
+
+.shore-input-multiline-textarea {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+/* END 14S-R15 ShoreInput field fill reinforcement */
+
+/* BEGIN 14S-R16 ShoreInput single-line height alignment */
+/* Keep standard single-line controls at the same height as their input-group labels.
+   Multiline text areas are excluded so the corrected R9/R15 multiline behaviour is preserved. */
+.input-group:not(.shore-input-multiline-group) {
+    align-items: stretch !important;
+}
+
+.input-group:not(.shore-input-multiline-group) > .input-group-text,
+.input-group:not(.shore-input-multiline-group) > .form-control,
+.input-group:not(.shore-input-multiline-group) > .form-select,
+.input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.input-group:not(.shore-input-multiline-group) > .btn,
+.input-group:not(.shore-input-multiline-group) > button,
+.combo-wrapper .shore-input-native-date,
+.combo-wrapper .shore-input-native-date-time,
+.combo-wrapper .shore-input-native-datetime-select {
+    min-height: 2.25rem !important;
+    height: auto !important;
+}
+
+.input-group:not(.shore-input-multiline-group) > .input-group-text,
+.input-group:not(.shore-input-multiline-group) > .btn,
+.input-group:not(.shore-input-multiline-group) > button {
+    display: inline-flex !important;
+    align-items: center !important;
+}
+/* END 14S-R16 ShoreInput single-line height alignment */
+
+/* BEGIN 14S-R17 single-line input and lookup height polish */
+/* Final single-line height alignment.
+   The label/input/dropdown pieces must share one input-group height.  Multiline textareas are
+   deliberately excluded to preserve the R9+ multiline expansion fix. */
+.input-group:not(.shore-input-multiline-group) {
+    align-items: stretch !important;
+}
+
+.input-group:not(.shore-input-multiline-group) > .input-group-text,
+.input-group:not(.shore-input-multiline-group) > .form-control,
+.input-group:not(.shore-input-multiline-group) > .form-select,
+.input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.input-group:not(.shore-input-multiline-group) > .btn,
+.input-group:not(.shore-input-multiline-group) > button {
+    min-height: 2.25rem !important;
+    height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    box-sizing: border-box !important;
+}
+
+.input-group:not(.shore-input-multiline-group) > .input-group-text,
+.input-group:not(.shore-input-multiline-group) > .btn,
+.input-group:not(.shore-input-multiline-group) > button {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.input-group:not(.shore-input-multiline-group) > .combo-wrapper {
+    display: flex !important;
+    align-items: stretch !important;
+}
+
+.combo-wrapper .shore-lookup,
+.combo-wrapper .shore-lookup-control {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    display: flex !important;
+    align-items: stretch !important;
+}
+
+.combo-wrapper .shore-lookup-input,
+.combo-wrapper .shore-lookup-clear,
+.combo-wrapper .shore-lookup-toggle {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    align-self: stretch !important;
+    box-sizing: border-box !important;
+}
+
+.combo-wrapper .shore-lookup-clear,
+.combo-wrapper .shore-lookup-toggle {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+/* 14S dropdown height polish:
+   ShoreLookup is a child component, so use ::deep to reach its internal native controls. */
+.combo-wrapper ::deep .shore-lookup,
+.combo-wrapper ::deep .shore-lookup-control {
+    height: 100% !important;
+    min-height: 2.25rem !important;
+}
+
+.combo-wrapper ::deep .shore-lookup-input,
+.combo-wrapper ::deep .shore-lookup-toggle,
+.combo-wrapper ::deep .shore-lookup-clear {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    box-sizing: border-box !important;
+    align-self: stretch !important;
+}
+
+.combo-wrapper ::deep .shore-lookup-toggle,
+.combo-wrapper ::deep .shore-lookup-clear {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+/* END 14S-R17 single-line input and lookup height polish */
+
+/* BEGIN 14S-R21 native date empty width fix */
+/* Native DATE fields can collapse when the value is empty because the date input sits inside the
+   generic Bootstrap-style combo-wrapper.  Keep this scoped to the DATE input class so DATETIME2,
+   lookups and normal text fields keep the R18/R20 layout behaviour. */
+.combo-wrapper:has(.shore-input-native-date) {
+    flex: 1 1 10rem !important;
+    width: auto !important;
+    min-width: min(100%, 10rem) !important;
+    max-width: 100% !important;
+    display: flex !important;
+    align-items: stretch !important;
+}
+
+.combo-wrapper .shore-input-native-date,
+input[type="date"].shore-input-native-date {
+    flex: 1 1 10rem !important;
+    width: 100% !important;
+    min-width: min(100%, 10rem) !important;
+    max-width: 100% !important;
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+    max-height: 2.25rem !important;
+    box-sizing: border-box !important;
+}
+
+/* Chrome/Edge can render empty date inputs very compact internally.  These pseudo-elements do not
+   change the value or behaviour; they only keep the visual edit area from collapsing. */
+.shore-input-native-date::-webkit-datetime-edit {
+    min-width: calc(10rem - 2.25rem) !important;
+}
+/* END 14S-R21 native date empty width fix */
+

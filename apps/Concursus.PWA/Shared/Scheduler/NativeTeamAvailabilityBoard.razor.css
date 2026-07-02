@@ -1,0 +1,148 @@
+.cb-team-availability-board {
+    background: #ffffff;
+    border: 1px solid var(--cb-v2-border, #9caecb);
+    border-radius: var(--cb-v2-radius-md, 14px);
+    box-shadow: var(--cb-v2-shadow-sm, 0 6px 18px rgba(15, 23, 42, 0.05));
+    overflow: hidden;
+}
+
+.cb-team-availability-board__header {
+    align-items: center;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-bottom: 1px solid var(--cb-v2-border-soft, #dbe4f0);
+    display: flex;
+    justify-content: space-between;
+    padding: .85rem 1rem;
+}
+
+.cb-team-availability-board__title {
+    color: var(--cb-v2-text-strong, #0f172a);
+    font-weight: 900;
+}
+
+.cb-team-availability-board__subtitle {
+    color: var(--cb-v2-text-muted, #64748b);
+    font-size: .82rem;
+}
+
+.cb-team-availability-table-wrap {
+    overflow: auto;
+    max-height: 72vh;
+}
+
+.cb-team-availability-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 1100px;
+    width: 100%;
+}
+
+.cb-team-availability-table th,
+.cb-team-availability-table td {
+    border-bottom: 1px solid var(--cb-v2-border-soft, #dbe4f0);
+    border-right: 1px solid var(--cb-v2-border-soft, #dbe4f0);
+    padding: .45rem;
+    vertical-align: top;
+}
+
+.cb-team-availability-table thead th {
+    background: #f8fafc;
+    color: var(--cb-v2-text-muted, #64748b);
+    font-size: .72rem;
+    letter-spacing: .04em;
+    position: sticky;
+    text-transform: uppercase;
+    top: 0;
+    z-index: 3;
+}
+
+.cb-team-member-col {
+    background: #ffffff;
+    color: var(--cb-v2-text-strong, #0f172a);
+    font-weight: 800;
+    left: 0;
+    min-width: 14rem;
+    position: sticky;
+    z-index: 4;
+}
+
+.cb-team-member-colour {
+    border-radius: 999px;
+    display: inline-block;
+    height: .7rem;
+    margin-right: .45rem;
+    width: .7rem;
+}
+
+.cb-team-day-header {
+    min-width: 6.5rem;
+    text-align: center;
+}
+
+.cb-team-day-header span,
+.cb-team-day-header strong {
+    display: block;
+}
+
+.cb-team-day-cell {
+    background: #ffffff;
+    min-height: 4rem;
+}
+
+.cb-team-day-cell.scheduler-weekend,
+.cb-team-day-header.scheduler-weekend {
+    background: #f1f5f9;
+}
+
+.cb-team-day-cell.scheduler-holiday,
+.cb-team-day-header.scheduler-holiday {
+    background: #fff1f2;
+}
+
+.cb-team-event {
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    display: block;
+    font-size: .72rem;
+    font-weight: 800;
+    margin-bottom: .25rem;
+    max-width: 100%;
+    overflow: hidden;
+    padding: .25rem .35rem;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+}
+
+.cb-team-event--clickable {
+    cursor: pointer;
+}
+
+.cb-team-event--read-only {
+    cursor: help;
+}
+
+.cb-team-event.scheduled-work {
+    background-color: #dbeafe;
+    border-color: #93c5fd;
+    color: #1e3a8a;
+}
+
+.cb-team-event.absence-am {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+.cb-team-event.absence-pm {
+    background-color: #fee2e2;
+    border-color: #dc2626;
+    color: #991b1b;
+}
+
+.cb-team-event.absence-full {
+    background-color: #e5e7eb;
+    border-color: #6b7280;
+    color: #111827;
+}

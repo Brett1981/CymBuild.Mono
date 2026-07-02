@@ -3,6 +3,11 @@ GO
 
 PRINT (N'Create table [SCrm].[Accounts]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SCrm].[Accounts]')
+GO
 CREATE TABLE [SCrm].[Accounts] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Accounts_RowStatus] DEFAULT (1),
@@ -93,6 +98,91 @@ CREATE UNIQUE INDEX [IX_UQ_Accounts_Guid]
   ON [SCrm].[Accounts] ([Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tr_Accounts_CreditHold_InvoiceModeSync] on table [SCrm].[Accounts]')
+GO
+CREATE TRIGGER [SCrm].[tr_Accounts_CreditHold_InvoiceModeSync]
+ON [SCrm].[Accounts]
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT UPDATE(AccountStatusID)
+        RETURN;
+
+    -------------------------------------------------------------------------
+    -- Build two sets:
+    --  - accounts that changed from NOT HOLD -> HOLD
+    --  - accounts that changed from HOLD -> NOT HOLD
+    -------------------------------------------------------------------------
+    DECLARE @ToHold TABLE (AccountId INT NOT NULL PRIMARY KEY);
+    DECLARE @ToRelease TABLE (AccountId INT NOT NULL PRIMARY KEY);
+
+    INSERT INTO @ToHold (AccountId)
+    SELECT i.ID
+    FROM inserted i
+    JOIN deleted d ON d.ID = i.ID
+    JOIN SCrm.AccountStatus stNew ON stNew.ID = i.AccountStatusID
+    JOIN SCrm.AccountStatus stOld ON stOld.ID = d.AccountStatusID
+    WHERE ISNULL(stOld.IsHold, 0) = 0
+      AND ISNULL(stNew.IsHold, 0) = 1;
+
+    INSERT INTO @ToRelease (AccountId)
+    SELECT i.ID
+    FROM inserted i
+    JOIN deleted d ON d.ID = i.ID
+    JOIN SCrm.AccountStatus stNew ON stNew.ID = i.AccountStatusID
+    JOIN SCrm.AccountStatus stOld ON stOld.ID = d.AccountStatusID
+    WHERE ISNULL(stOld.IsHold, 0) = 1
+      AND ISNULL(stNew.IsHold, 0) = 0;
+
+    -------------------------------------------------------------------------
+    -- Apply hold -> Pause jobs
+    -------------------------------------------------------------------------
+    DECLARE @A INT;
+
+    DECLARE cHold CURSOR LOCAL FAST_FORWARD FOR
+        SELECT AccountId FROM @ToHold;
+
+    OPEN cHold;
+    FETCH NEXT FROM cHold INTO @A;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC SFin.JobInvoiceProcessingMode_ApplyCreditHoldPause
+            @FinanceAccountId = @A;
+
+        FETCH NEXT FROM cHold INTO @A;
+    END
+
+    CLOSE cHold;
+    DEALLOCATE cHold;
+
+    -------------------------------------------------------------------------
+    -- Apply release -> set jobs to Manual (only those paused-by-hold)
+    -------------------------------------------------------------------------
+    DECLARE cRelease CURSOR LOCAL FAST_FORWARD FOR
+        SELECT AccountId FROM @ToRelease;
+
+    OPEN cRelease;
+    FETCH NEXT FROM cRelease INTO @A;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC SFin.JobInvoiceProcessingMode_ClearCreditHoldToManual
+            @FinanceAccountId = @A;
+
+        FETCH NEXT FROM cRelease INTO @A;
+    END
+
+    CLOSE cRelease;
+    DEALLOCATE cRelease;
+END
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
@@ -237,6 +327,24 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'CompanyRegistrationNumber', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 502)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[DefaultCreditTermsId]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[DefaultCreditTermsId]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[DefaultCreditTermsId] IS DISTINCT FROM i.[DefaultCreditTermsId])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'DefaultCreditTermsId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2817)
 			END 
 			
 			SELECT	
@@ -462,91 +570,6 @@ BEGIN
 		
 GO
 
-SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tr_Accounts_CreditHold_InvoiceModeSync] on table [SCrm].[Accounts]')
-GO
-CREATE TRIGGER [SCrm].[tr_Accounts_CreditHold_InvoiceModeSync]
-ON [SCrm].[Accounts]
-AFTER UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NOT UPDATE(AccountStatusID)
-        RETURN;
-
-    -------------------------------------------------------------------------
-    -- Build two sets:
-    --  - accounts that changed from NOT HOLD -> HOLD
-    --  - accounts that changed from HOLD -> NOT HOLD
-    -------------------------------------------------------------------------
-    DECLARE @ToHold TABLE (AccountId INT NOT NULL PRIMARY KEY);
-    DECLARE @ToRelease TABLE (AccountId INT NOT NULL PRIMARY KEY);
-
-    INSERT INTO @ToHold (AccountId)
-    SELECT i.ID
-    FROM inserted i
-    JOIN deleted d ON d.ID = i.ID
-    JOIN SCrm.AccountStatus stNew ON stNew.ID = i.AccountStatusID
-    JOIN SCrm.AccountStatus stOld ON stOld.ID = d.AccountStatusID
-    WHERE ISNULL(stOld.IsHold, 0) = 0
-      AND ISNULL(stNew.IsHold, 0) = 1;
-
-    INSERT INTO @ToRelease (AccountId)
-    SELECT i.ID
-    FROM inserted i
-    JOIN deleted d ON d.ID = i.ID
-    JOIN SCrm.AccountStatus stNew ON stNew.ID = i.AccountStatusID
-    JOIN SCrm.AccountStatus stOld ON stOld.ID = d.AccountStatusID
-    WHERE ISNULL(stOld.IsHold, 0) = 1
-      AND ISNULL(stNew.IsHold, 0) = 0;
-
-    -------------------------------------------------------------------------
-    -- Apply hold -> Pause jobs
-    -------------------------------------------------------------------------
-    DECLARE @A INT;
-
-    DECLARE cHold CURSOR LOCAL FAST_FORWARD FOR
-        SELECT AccountId FROM @ToHold;
-
-    OPEN cHold;
-    FETCH NEXT FROM cHold INTO @A;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        EXEC SFin.JobInvoiceProcessingMode_ApplyCreditHoldPause
-            @FinanceAccountId = @A;
-
-        FETCH NEXT FROM cHold INTO @A;
-    END
-
-    CLOSE cHold;
-    DEALLOCATE cHold;
-
-    -------------------------------------------------------------------------
-    -- Apply release -> set jobs to Manual (only those paused-by-hold)
-    -------------------------------------------------------------------------
-    DECLARE cRelease CURSOR LOCAL FAST_FORWARD FOR
-        SELECT AccountId FROM @ToRelease;
-
-    OPEN cRelease;
-    FETCH NEXT FROM cRelease INTO @A;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        EXEC SFin.JobInvoiceProcessingMode_ClearCreditHoldToManual
-            @FinanceAccountId = @A;
-
-        FETCH NEXT FROM cRelease INTO @A;
-    END
-
-    CLOSE cRelease;
-    DEALLOCATE cRelease;
-END
-GO
-
 PRINT (N'Create foreign key [FK_Accounts_AccountAddresses] on table [SCrm].[Accounts]')
 GO
 ALTER TABLE [SCrm].[Accounts] WITH NOCHECK
@@ -608,4 +631,7 @@ CREATE FULLTEXT INDEX
   KEY INDEX [PK_Accounts]
   ON [AccountName]
   WITH CHANGE_TRACKING AUTO, STOPLIST Honorifics
+GO
+
+PRINT (N'Create full-text index on table [SCrm].[Accounts]')
 GO

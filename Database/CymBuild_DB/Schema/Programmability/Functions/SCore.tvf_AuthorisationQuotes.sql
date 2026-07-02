@@ -23,7 +23,9 @@ SELECT
     asset.FormattedAddressComma AS Asset,
     q.ExternalReference,
     CONVERT(date, q.[Date]) AS QuoteDate,
-	I.FullName AS QuotingUser
+	I.FullName AS QuotingUser,
+	ou.Name AS Department,
+	ou2.Name AS BusinessUnit
 FROM SSop.Quotes AS q
 JOIN SJob.Assets AS asset
     ON asset.ID = q.UprnId
@@ -39,6 +41,8 @@ JOIN SCore.OrganisationalUnits AS org
     ON org.ID = q.OrganisationalUnitID
 JOIN SCore.Identities AS I
 	ON (I.ID = q.QuotingUserId)
+LEFT JOIN SCore.OrganisationalUnits AS ou ON (q.OrganisationalUnitID = ou.ID)
+LEFT JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 OUTER APPLY
 (
     SELECT TOP (1)

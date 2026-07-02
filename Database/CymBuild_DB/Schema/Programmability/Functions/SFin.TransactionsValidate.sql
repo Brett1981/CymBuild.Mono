@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create function [SFin].[TransactionsValidate]')
 GO
+PRINT (N'Create function [SFin].[TransactionsValidate]')
+GO
 
 CREATE FUNCTION [SFin].[TransactionsValidate]
 (
@@ -23,40 +25,76 @@ RETURNS @ValidationResult TABLE
     Message NVARCHAR(2000) NOT NULL DEFAULT ('')
 )
 AS
---WITH SCHEMABINDING
 BEGIN
     DECLARE
         @EntityPropertyGuid UNIQUEIDENTIFIER,
-        @PersistedIsBatched BIT = 0;
+        @TransactionsHoBTGuid UNIQUEIDENTIFIER,
+        @CurrentUserId INT = SCore.GetCurrentUserId(),
+        @CurrentUserIsFinance BIT = 0,
+        @ExistingTransaction BIT = 0,
+        @PersistedIsBatched BIT = 0,
+        @PersistedIsApprovedFromBatch BIT = 0;
 
     SELECT
-        @PersistedIsBatched = CAST(t.Batched AS BIT)
+        @TransactionsHoBTGuid = eh.Guid
+    FROM SCore.EntityHobts AS eh
+    WHERE eh.SchemaName = N'SFin'
+      AND eh.ObjectName = N'Transactions'
+      AND eh.RowStatus NOT IN (0, 254);
+
+    SELECT
+        @ExistingTransaction = CONVERT(BIT, 1),
+        @PersistedIsBatched = CONVERT(BIT, t.Batched)
     FROM SFin.Transactions AS t
     WHERE t.Guid = @Guid
       AND t.RowStatus NOT IN (0, 254);
 
-    /*
-        Only apply batched read-only rules when the transaction already exists
-        and is persisted as batched.
-        This avoids locking fields for a new unsaved transaction.
-    */
-    IF EXISTS
+    SELECT
+        @CurrentUserIsFinance = CONVERT(BIT, 1)
+    WHERE EXISTS
     (
         SELECT 1
-        FROM SFin.Transactions AS t
-        WHERE t.Guid = @Guid
-          AND t.RowStatus NOT IN (0, 254)
-    )
-    AND @PersistedIsBatched = 1
+        FROM SCore.UserGroups AS ug
+        JOIN SCore.Groups AS g
+          ON g.ID = ug.GroupID
+        WHERE ug.IdentityID = @CurrentUserId
+          AND ug.RowStatus NOT IN (0, 254)
+          AND g.RowStatus NOT IN (0, 254)
+          AND
+          (
+              g.Code = N'FINANCE'
+              OR g.Name IN (N'Finance', N'Finance Group')
+          )
+    );
+
+    /*
+        Important:
+        Use the persisted SFin.Transactions.Batched value, not the incoming @Batched value.
+
+        This means a new unsaved transaction is never locked by this rule, even if
+        the form currently has @Batched = 0.
+    */
+    IF @ExistingTransaction = 1
+       AND @PersistedIsBatched = 0
     BEGIN
-        SELECT @EntityPropertyGuid = ep.Guid
-        FROM SCore.EntityPropertiesV ep
-        JOIN SCore.EntityHobtsV eh
-            ON eh.ID = ep.EntityHoBTID
-        WHERE eh.SchemaName = N'SFin'
-          AND eh.ObjectName = N'Transactions'
-          AND ep.Name = N'Date';
+        SET @PersistedIsApprovedFromBatch = 1;
+    END;
 
+    /*
+        Full transaction read-only rules:
+
+        1. Existing approved/unbatched transactions are read-only for everyone.
+        2. Existing transactions are read-only for non-Finance users.
+        3. New transactions are not blocked because @ExistingTransaction must be 1.
+    */
+    IF @TransactionsHoBTGuid IS NOT NULL
+       AND @ExistingTransaction = 1
+       AND
+       (
+           @PersistedIsApprovedFromBatch = 1
+           OR @CurrentUserIsFinance = 0
+       )
+    BEGIN
         INSERT @ValidationResult
         (
             TargetGuid,
@@ -68,62 +106,8 @@ BEGIN
         )
         VALUES
         (
-            @EntityPropertyGuid,
-            N'P',
-            1,
-            0,
-            0,
-            N''
-        );
-
-        SELECT @EntityPropertyGuid = ep.Guid
-        FROM SCore.EntityPropertiesV ep
-        JOIN SCore.EntityHobtsV eh
-            ON eh.ID = ep.EntityHoBTID
-        WHERE eh.SchemaName = N'SFin'
-          AND eh.ObjectName = N'Transactions'
-          AND ep.Name = N'AccountID';
-
-        INSERT @ValidationResult
-        (
-            TargetGuid,
-            TargetType,
-            IsReadOnly,
-            IsHidden,
-            IsInvalid,
-            Message
-        )
-        VALUES
-        (
-            @EntityPropertyGuid,
-            N'P',
-            1,
-            0,
-            0,
-            N''
-        );
-
-        SELECT @EntityPropertyGuid = ep.Guid
-        FROM SCore.EntityPropertiesV ep
-        JOIN SCore.EntityHobtsV eh
-            ON eh.ID = ep.EntityHoBTID
-        WHERE eh.SchemaName = N'SFin'
-          AND eh.ObjectName = N'Transactions'
-          AND ep.Name = N'TransactionTypeID';
-
-        INSERT @ValidationResult
-        (
-            TargetGuid,
-            TargetType,
-            IsReadOnly,
-            IsHidden,
-            IsInvalid,
-            Message
-        )
-        VALUES
-        (
-            @EntityPropertyGuid,
-            N'P',
+            @TransactionsHoBTGuid,
+            N'H',
             1,
             0,
             0,
@@ -135,67 +119,78 @@ BEGIN
     IF EXISTS
     (
         SELECT 1
-        FROM SFin.TransactionTypes
-        WHERE Guid = @TransactionTypeGuid
-          AND IsBank = 1
+        FROM SFin.TransactionTypes AS tt
+        WHERE tt.Guid = @TransactionTypeGuid
+          AND tt.IsBank = 1
+          AND tt.RowStatus NOT IN (0, 254)
     )
     BEGIN
-        SELECT @EntityPropertyGuid = SCore.GetEntityPropertyGuid(N'SFin', N'Transactions', N'CreditTermsId');
+        SELECT
+            @EntityPropertyGuid = SCore.GetEntityPropertyGuid(N'SFin', N'Transactions', N'CreditTermsId');
 
-        INSERT @ValidationResult
-        (
-            TargetGuid,
-            TargetType,
-            IsReadOnly,
-            IsHidden,
-            IsInvalid,
-            Message
-        )
-        VALUES
-        (
-            @EntityPropertyGuid,
-            N'P',
-            0,
-            1,
-            0,
-            N''
-        );
+        IF @EntityPropertyGuid IS NOT NULL
+        BEGIN
+            INSERT @ValidationResult
+            (
+                TargetGuid,
+                TargetType,
+                IsReadOnly,
+                IsHidden,
+                IsInvalid,
+                Message
+            )
+            VALUES
+            (
+                @EntityPropertyGuid,
+                N'P',
+                0,
+                1,
+                0,
+                N''
+            );
+        END;
     END;
 
+    -- Account must have a Sage account code before use on transactions.
     IF EXISTS
     (
         SELECT 1
         FROM SCrm.Accounts AS a
         WHERE a.Guid = @AccountGuid
           AND a.Code = N''
+          AND a.RowStatus NOT IN (0, 254)
     )
     BEGIN
-        SELECT @EntityPropertyGuid = ep.Guid
-        FROM SCore.EntityPropertiesV ep
-        JOIN SCore.EntityHobtsV eh
-            ON eh.ID = ep.EntityHoBTID
+        SELECT
+            @EntityPropertyGuid = ep.Guid
+        FROM SCore.EntityPropertiesV AS ep
+        JOIN SCore.EntityHobtsV AS eh
+          ON eh.ID = ep.EntityHoBTID
         WHERE eh.SchemaName = N'SFin'
           AND eh.ObjectName = N'Transactions'
-          AND ep.Name = N'AccountId';
+          AND ep.Name = N'AccountID';
 
-        INSERT @ValidationResult
-        (
-            TargetGuid,
-            TargetType,
-            IsReadOnly,
-            IsHidden,
-            IsInvalid,
-            Message
-        )
-        VALUES
-        (
-            @EntityPropertyGuid,
-            N'P',
-            0,
-            0,
-            1,
-            N'An account must have a Sage Account Code before it can be used on transactions.'
-        );
+        IF @EntityPropertyGuid IS NOT NULL
+        BEGIN
+            INSERT @ValidationResult
+            (
+                TargetGuid,
+                TargetType,
+                IsReadOnly,
+                IsHidden,
+                IsInvalid,
+                Message
+            )
+            VALUES
+            (
+                @EntityPropertyGuid,
+                N'P',
+                0,
+                0,
+                1,
+                N'An account must have a Sage Account Code before it can be used on transactions.'
+            );
+        END;
     END;
 
     RETURN;

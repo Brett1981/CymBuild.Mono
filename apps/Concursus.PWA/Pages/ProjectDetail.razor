@@ -1,4 +1,4 @@
-﻿@page "/projectdetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/projectdetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @using Concursus.API.Client.Models
 @using Google.Protobuf.WellKnownTypes
 @using Newtonsoft.Json
@@ -24,42 +24,50 @@
         <i class="bi bi-file-earmark-ppt-fill" style="font-size: 1.2rem;"></i>
     </FormTitle>
     <FormBody>
+        <div class="cb-native-tabstrip">
+            <div class="cb-native-tab-list" role="tablist" aria-label="Project detail tabs">
+                <button type="button" class="@NativeTabButtonCss(0)" role="tab" aria-selected="@(_nativeActiveTab == 0)" @onclick="@(() => SelectNativeTab(0))">
+                    <i class="bi bi-briefcase" aria-hidden="true"></i>
+                    <span>Project Details</span>
+                </button>
+                <button type="button" class="@NativeTabButtonCss(1)" role="tab" aria-selected="@(_nativeActiveTab == 1)" @onclick="@(() => SelectNativeTab(1))">
+                    <i class="bi bi-book" aria-hidden="true"></i>
+                    <span>Related Records</span>
+                </button>
+                <button type="button" class="@NativeTabButtonCss(2)" role="tab" aria-selected="@(_nativeActiveTab == 2)" @onclick="@(() => SelectNativeTab(2))">
+                    <i class="bi bi-journal-medical" aria-hidden="true"></i>
+                    <span>Project Directory</span>
+                </button>
+            </div>
 
-        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-             <TabStripTab Title="Project">
-                <HeaderTemplate>
-                    <i class="bi bi-briefcase me-2" style="font-size: 1.2rem;"></i> Project Details
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(0))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 0)">
                     <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
-                                entityProperties="@editPage.entityProperties"
-                                entityPropertyGroups="@editPage.entityPropertyGroups"
+                                        entityProperties="@editPage.entityProperties"
+                                        entityPropertyGroups="@editPage.entityPropertyGroups"
                                         IsMainRecordContext="@IsMainRecordContext"
-                                dataObject="@editPage.dataObject"
-                                RecordGuid="@RecordGuid"
-                                inputUpdated="@editPage.HandleInputUpdated" />
+                                        dataObject="@editPage.dataObject"
+                                        RecordGuid="@RecordGuid"
+                                        inputUpdated="@editPage.HandleInputUpdated" />
+                </section>
+            }
 
-                </Content>
-            </TabStripTab>
-            <TabStripTab Title="Related Records">
-                <HeaderTemplate>
-                    <i class="bi bi-book me-2" style="font-size: 1.2rem;"></i> Related Records
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(1))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 1)">
                     <DynamicGrid GridCode="PROJECTDETAILS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
+                </section>
+            }
 
-             <TabStripTab Title="Project Directory">
-                <HeaderTemplate>
-                    <i class="bi bi-journal-medical me-2" style="font-size: 1.2rem;"></i> Project Directory
-                </HeaderTemplate>
-                <Content>
+            @if (ShouldRenderNativeTab(2))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 2)">
                     <DynamicGrid GridCode="PROJECTDIRECTORY" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     <DynamicGrid GridCode="PROJECTKEYDATES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                </Content>
-            </TabStripTab>
-    </TelerikTabStrip>
+                </section>
+            }
+        </div>
     </FormBody>
 </EditPage>
 
@@ -75,6 +83,20 @@
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    private int _nativeActiveTab;
+    private readonly HashSet<int> _nativeVisitedTabs = new() { 0 };
+
+    private void SelectNativeTab(int index)
+    {
+        _nativeActiveTab = index;
+        _nativeVisitedTabs.Add(index);
+    }
+
+    private bool ShouldRenderNativeTab(int index) => _nativeVisitedTabs.Contains(index);
+
+    private string NativeTabButtonCss(int index) =>
+        _nativeActiveTab == index ? "cb-native-tab-button active" : "cb-native-tab-button";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -94,6 +116,5 @@
             ex.Data.Add("PageMethod", "ProjectDetail/OnParametersSetAsync()");
             _ = OnError.InvokeAsync(ex);
         }
-
     }
 }

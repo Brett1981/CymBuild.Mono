@@ -1,4 +1,4 @@
-﻿using Concursus.API.Core;
+using Concursus.API.Core;
 using Concursus.API.Services.AIAssistant;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -169,7 +169,9 @@ SELECT
     root_hobt.ContentMarkdown,
     root_hobt.ContentPlainText,
     root_hobt.CreatedUtc,
-    root_hobt.ConfidenceScore
+    root_hobt.ConfidenceScore,
+    root_hobt.SourcePayloadJson,
+    root_hobt.ModelCode
 FROM SAi.tvf_AssistantConversationMessages(@ConversationGuid) AS root_hobt
 ORDER BY root_hobt.CreatedUtc ASC;", cn)
             {
@@ -229,8 +231,10 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
             }
 
             var userText = request.Message.Trim();
+            var requestedAttachmentCount = CountDistinctValidAssistantUploadGuids(request.AttachedUploadGuids);
             Guid userMessageGuid;
             List<AIAssistantKnowledgeSearchRow> knowledgeItems;
+            IReadOnlyList<BlueGenFileReference> attachedFiles;
 
             await using (var cn = await OpenSqlAsync(context.CancellationToken))
             {
@@ -259,16 +263,27 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
                         authoritativeFirst: true,
                         context.CancellationToken)
                     : new List<AIAssistantKnowledgeSearchRow>();
+
+                attachedFiles = await ReadBlueGenFileReferencesAsync(
+                    cn,
+                    request.UserId,
+                    request.AttachedUploadGuids,
+                    context.CancellationToken);
             }
 
             AIAssistantGeneratedAnswer answer;
 
-            if (_aiAssistantAnswerService is null)
+            if (requestedAttachmentCount > 0 && attachedFiles.Count == 0)
             {
-                answer = BuildDeterministicAssistantAnswer(
+                answer = BuildAttachmentUnavailableAssistantAnswer(userText, requestedAttachmentCount);
+            }
+            else if (_aiAssistantAnswerService is null)
+            {
+                answer = BuildBlueGenUnavailableAssistantAnswer(
                     userText,
-                    NormaliseAssistantMode(request.ModeCode),
-                    knowledgeItems);
+                    knowledgeItems,
+                    attachedFiles,
+                    new InvalidOperationException("The BlueGen assistant answer service is not registered."));
             }
             else
             {
@@ -279,6 +294,7 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
                         NormaliseAssistantMode(request.ModeCode),
                         string.IsNullOrWhiteSpace(request.LanguageCode) ? null : request.LanguageCode.Trim(),
                         knowledgeItems.Select(x => x.Item).ToList(),
+                        attachedFiles,
                         context.CancellationToken);
 
                     answer = new AIAssistantGeneratedAnswer(
@@ -294,12 +310,13 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
                 }
                 catch (Exception ex)
                 {
-                    _serviceBase.logger.LogException(ex, "AI answer generation failed. Falling back to deterministic assistant answer.");
+                    _serviceBase.logger.LogException(ex, "BlueGen answer generation failed. Returning explicit BlueGen unavailable response.");
 
-                    answer = BuildDeterministicAssistantAnswer(
+                    answer = BuildBlueGenUnavailableAssistantAnswer(
                         userText,
-                        NormaliseAssistantMode(request.ModeCode),
-                        knowledgeItems);
+                        knowledgeItems,
+                        attachedFiles,
+                        ex);
                 }
             }
 
@@ -336,7 +353,7 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
 
                 try
                 {
-                    var analyticsPayloadJson = BuildAssistantAnswerAnalyticsPayloadJson(userText, answer);
+                    var analyticsPayloadJson = BuildAssistantAnswerAnalyticsPayloadJson(userText, answer, attachedFiles);
 
                     await InsertAssistantAnalyticsEventAsync(
                         cn,
@@ -368,6 +385,16 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
             response.ErrorReturned = $"AI assistant message send failed: {ex.Message}";
             return response;
         }
+    }
+
+
+    private static int CountDistinctValidAssistantUploadGuids(IEnumerable<string> uploadGuids)
+    {
+        return uploadGuids
+            .Where(value => Guid.TryParse(value, out var guid) && guid != Guid.Empty)
+            .Select(value => Guid.Parse(value))
+            .Distinct()
+            .Count();
     }
 
     private static bool IsLikelyCymBuildQuestion(string question)
@@ -655,17 +682,40 @@ ORDER BY root_hobt.CreatedUtc ASC;", cn)
 
     private static AIAssistantMessage MapMessage(SqlDataReader reader)
     {
+        var messageRoleCode = Convert.ToString(reader["MessageRoleCode"]) ?? string.Empty;
+        var answerTypeCode = Convert.ToString(reader["AnswerTypeCode"]) ?? string.Empty;
+        var sourcePayloadJson = HasColumn(reader, "SourcePayloadJson")
+            ? Convert.ToString(reader["SourcePayloadJson"]) ?? string.Empty
+            : string.Empty;
+        var modelCode = HasColumn(reader, "ModelCode")
+            ? Convert.ToString(reader["ModelCode"]) ?? string.Empty
+            : string.Empty;
+
+        var usedBlueGenUnavailable = string.Equals(answerTypeCode, "BLUEGEN_UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
+        var usedBlueGen = !usedBlueGenUnavailable && IsAssistantBlueGenModel(modelCode);
+        var usedInternalKnowledge = AssistantMessageUsesKnowledge(answerTypeCode, sourcePayloadJson);
+        var usedAttachments = AssistantMessageUsesAttachments(sourcePayloadJson);
+        var provenanceCode = usedBlueGenUnavailable
+            ? "BLUEGEN_UNAVAILABLE"
+            : BuildAssistantProvenanceCode(usedBlueGen, usedInternalKnowledge, usedAttachments);
+
         return new AIAssistantMessage
         {
             Guid = Convert.ToString(reader["Guid"]) ?? string.Empty,
             ConversationGuid = Convert.ToString(reader["ConversationGuid"]) ?? string.Empty,
             UserId = Convert.ToInt32(reader["UserId"]),
-            MessageRoleCode = Convert.ToString(reader["MessageRoleCode"]) ?? string.Empty,
-            AnswerTypeCode = Convert.ToString(reader["AnswerTypeCode"]) ?? string.Empty,
+            MessageRoleCode = messageRoleCode,
+            AnswerTypeCode = answerTypeCode,
             ContentMarkdown = Convert.ToString(reader["ContentMarkdown"]) ?? string.Empty,
             ContentPlainText = Convert.ToString(reader["ContentPlainText"]) ?? string.Empty,
             CreatedUtc = FormatUtc(reader["CreatedUtc"]),
-            ConfidenceScore = reader["ConfidenceScore"] == DBNull.Value ? 0d : Convert.ToDouble(reader["ConfidenceScore"])
+            ConfidenceScore = reader["ConfidenceScore"] == DBNull.Value ? 0d : Convert.ToDouble(reader["ConfidenceScore"]),
+            ModelCode = modelCode,
+            ProvenanceCode = provenanceCode,
+            ProvenanceLabel = BuildAssistantProvenanceLabel(provenanceCode, messageRoleCode),
+            UsedBlueGen = usedBlueGen,
+            UsedInternalKnowledge = usedInternalKnowledge,
+            UsedAttachments = usedAttachments
         };
     }
 
@@ -721,7 +771,9 @@ SELECT
     root_hobt.ContentMarkdown,
     root_hobt.ContentPlainText,
     root_hobt.CreatedUtc,
-    root_hobt.ConfidenceScore
+    root_hobt.ConfidenceScore,
+    root_hobt.SourcePayloadJson,
+    root_hobt.ModelCode
 FROM SAi.AssistantMessages AS m
 JOIN SAi.AssistantConversations AS c ON c.ID = m.ConversationId
 CROSS APPLY
@@ -735,7 +787,9 @@ CROSS APPLY
         m.ContentMarkdown,
         m.ContentPlainText,
         m.CreatedUtc,
-        m.ConfidenceScore
+        m.ConfidenceScore,
+        m.SourcePayloadJson,
+        m.ModelCode
 ) AS root_hobt
 WHERE m.Guid = @MessageGuid
   AND m.RowStatus NOT IN (0, 254)
@@ -932,8 +986,10 @@ WHERE m.Guid = @MessageGuid
     private static AIAssistantGeneratedAnswer BuildDeterministicAssistantAnswer(
         string userQuestion,
         string modeCode,
-        IReadOnlyList<AIAssistantKnowledgeSearchRow> knowledgeRows)
+        IReadOnlyList<AIAssistantKnowledgeSearchRow> knowledgeRows,
+        IReadOnlyList<BlueGenFileReference>? attachedFiles = null)
     {
+        var safeAttachedFiles = attachedFiles ?? Array.Empty<BlueGenFileReference>();
         var topRows = knowledgeRows
             .OrderByDescending(row => row.Item.IsAuthoritative)
             .ThenByDescending(row => row.MatchScore)
@@ -953,10 +1009,26 @@ WHERE m.Guid = @MessageGuid
             IsAuthoritative = row.Item.IsAuthoritative
         }).ToList();
 
+        sources.AddRange(safeAttachedFiles.Select(file => new AIAssistantSource
+        {
+            Title = string.IsNullOrWhiteSpace(file.FileName) ? "Attached file" : $"Attached: {file.FileName}",
+            TypeCode = "ATTACHMENT",
+            Url = file.Url,
+            KnowledgeItemGuid = string.Empty,
+            VersionNumber = 0,
+            Excerpt = string.IsNullOrWhiteSpace(file.ContentType) ? "User attachment" : file.ContentType,
+            IsAuthoritative = false
+        }));
+
         var confidenceScore = CalculateDeterministicConfidence(userQuestion, topRows);
-        var answerType = sources.Count > 0 && confidenceScore >= 0.80d
+        if (topRows.Count == 0 && safeAttachedFiles.Count > 0)
+        {
+            confidenceScore = 0.5500d;
+        }
+
+        var answerType = topRows.Count > 0 && confidenceScore >= 0.80d
             ? "TRUSTED_KNOWLEDGE"
-            : "GENERATED_SUGGESTION";
+            : safeAttachedFiles.Count > 0 ? "ATTACHMENT_RECEIVED" : "GENERATED_SUGGESTION";
 
 
         var answer = new StringBuilder();
@@ -1047,11 +1119,17 @@ WHERE m.Guid = @MessageGuid
         }
         else
         {
-            if (!IsLikelyCymBuildQuestion(userQuestion))
+            if (!IsLikelyCymBuildQuestion(userQuestion) && safeAttachedFiles.Count == 0)
             {
                 answer.AppendLine("I can help with CymBuild questions, but this does not look like a CymBuild-related request.");
                 answer.AppendLine();
                 answer.AppendLine("Try asking about a CymBuild process, screen, workflow status, permission, quote, job, enquiry, invoice, document, or SharePoint task.");
+            }
+            else if (safeAttachedFiles.Count > 0)
+            {
+                answer.AppendLine("I received your attachment, but the internal fallback could not inspect the image/file content directly.");
+                answer.AppendLine();
+                answer.AppendLine("The attachment has still been linked to this assistant request and will show in the answer provenance. BlueGen attachment analysis is needed for screenshot description or file-content interpretation.");
             }
             else
             {
@@ -1066,6 +1144,16 @@ WHERE m.Guid = @MessageGuid
             }
             answer.AppendLine();
 
+        }
+
+        if (safeAttachedFiles.Count > 0)
+        {
+            answer.AppendLine("Attachment context");
+            answer.AppendLine();
+            answer.AppendLine($"- {safeAttachedFiles.Count} attachment(s) were received and linked to this assistant request.");
+            answer.AppendLine("- The internal fallback can record and pass attachment references, but it cannot safely inspect image content without the BlueGen attachment analysis provider completing successfully.");
+            answer.AppendLine("- If you asked about a screenshot, retry once BlueGen is available or include the visible error/text in the question.");
+            answer.AppendLine();
         }
 
         answer.AppendLine("Your question");
@@ -1093,9 +1181,338 @@ WHERE m.Guid = @MessageGuid
             "deterministic");
     }
 
+
+
+    private static AIAssistantGeneratedAnswer BuildBlueGenUnavailableAssistantAnswer(
+        string userQuestion,
+        IReadOnlyList<AIAssistantKnowledgeSearchRow> knowledgeRows,
+        IReadOnlyList<BlueGenFileReference>? attachedFiles,
+        Exception exception)
+    {
+        var safeAttachedFiles = attachedFiles ?? Array.Empty<BlueGenFileReference>();
+        var topRows = knowledgeRows
+            .OrderByDescending(row => row.Item.IsAuthoritative)
+            .ThenByDescending(row => row.MatchScore)
+            .Take(3)
+            .ToList();
+
+        var sources = new List<AIAssistantSource>
+        {
+            new()
+            {
+                Title = "BlueGen provider did not complete",
+                TypeCode = "BLUEGEN_ERROR",
+                Url = string.Empty,
+                KnowledgeItemGuid = string.Empty,
+                VersionNumber = 0,
+                Excerpt = SanitiseProviderDiagnostic(exception),
+                IsAuthoritative = false
+            }
+        };
+
+        sources.AddRange(safeAttachedFiles.Select(file => new AIAssistantSource
+        {
+            Title = string.IsNullOrWhiteSpace(file.FileName) ? "Attached file" : $"Attached: {file.FileName}",
+            TypeCode = "ATTACHMENT",
+            Url = file.Url,
+            KnowledgeItemGuid = string.Empty,
+            VersionNumber = 0,
+            Excerpt = string.IsNullOrWhiteSpace(file.ContentType) ? "User attachment" : file.ContentType,
+            IsAuthoritative = false
+        }));
+
+        var followUps = new List<AIAssistantFollowUp>
+        {
+            new() { Text = "Retry with BlueGen", Prompt = "Retry this question using BlueGen and the same CymBuild context." },
+            new() { Text = "Show support checks", Prompt = "What should support check when BlueGen is unavailable in CymBuild?" },
+            new() { Text = "Use visible screen text", Prompt = "I will paste the visible screen text instead. Help me with this CymBuild screen." }
+        };
+
+        var answer = new StringBuilder();
+        answer.AppendLine("CymBuild assistant");
+        answer.AppendLine();
+        answer.AppendLine("BlueGen was selected for this assistant answer, but it did not return a usable response.");
+        answer.AppendLine();
+        answer.AppendLine("I have not silently replaced the BlueGen answer with an internal knowledge answer, so the provenance is clear.");
+        answer.AppendLine();
+        answer.AppendLine("Diagnostic");
+        answer.AppendLine();
+        answer.AppendLine($"- Provider status: BlueGen unavailable");
+        answer.AppendLine($"- Error: {SanitiseProviderDiagnostic(exception)}");
+
+        if (topRows.Count > 0)
+        {
+            answer.AppendLine($"- CymBuild knowledge context prepared: {topRows.Count} source(s)");
+            answer.AppendLine($"- Best context source: {topRows[0].Item.Title} ({topRows[0].MatchScore})");
+        }
+        else
+        {
+            answer.AppendLine("- CymBuild knowledge context prepared: none");
+        }
+
+        answer.AppendLine($"- Attachment references prepared: {safeAttachedFiles.Count}");
+        answer.AppendLine();
+        answer.AppendLine("What to check next");
+        answer.AppendLine();
+        answer.AppendLine("1. Confirm the API environment has the BlueGen settings populated.");
+        answer.AppendLine("2. Check the API logs for the BlueGen token/chat request status at the time of this question.");
+        answer.AppendLine("3. If the provider returned a non-standard response shape, update the BlueGen response parser rather than falling back internally.");
+        answer.AppendLine("4. Retry the same question once BlueGen is available.");
+        answer.AppendLine();
+        answer.AppendLine("Your question");
+        answer.AppendLine();
+        answer.AppendLine(userQuestion);
+
+        var answerText = answer.ToString();
+
+        return new AIAssistantGeneratedAnswer(
+            "BLUEGEN_UNAVAILABLE",
+            answerText,
+            StripMarkdown(answerText),
+            0.0500d,
+            JsonSerializer.Serialize(sources, AIAssistantJsonOptions),
+            JsonSerializer.Serialize(followUps, AIAssistantJsonOptions),
+            sources,
+            followUps,
+            "internal");
+    }
+
+    private static string SanitiseProviderDiagnostic(Exception exception)
+    {
+        var diagnostic = exception.GetType().Name;
+
+        if (!string.IsNullOrWhiteSpace(exception.Message))
+        {
+            diagnostic += $": {exception.Message}";
+        }
+
+        diagnostic = diagnostic
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Replace("\t", " ", StringComparison.Ordinal);
+
+        diagnostic = System.Text.RegularExpressions.Regex.Replace(
+            diagnostic,
+            @"(?i)(password|pwd|secret|token|authorization)\s*[:=]\s*[^,;\s]+",
+            "$1=***");
+
+        return diagnostic.Length <= 500
+            ? diagnostic
+            : diagnostic[..500] + "...";
+    }
+
+    private static AIAssistantGeneratedAnswer BuildAttachmentUnavailableAssistantAnswer(
+        string userQuestion,
+        int requestedAttachmentCount)
+    {
+        var safeRequestedAttachmentCount = Math.Max(requestedAttachmentCount, 1);
+
+        var sources = new List<AIAssistantSource>
+        {
+            new()
+            {
+                Title = safeRequestedAttachmentCount == 1
+                    ? "Attachment was selected but was not available to the assistant"
+                    : $"{safeRequestedAttachmentCount} attachments were selected but were not available to the assistant",
+                TypeCode = "ATTACHMENT_UNAVAILABLE",
+                Url = string.Empty,
+                KnowledgeItemGuid = string.Empty,
+                VersionNumber = 0,
+                Excerpt = "The selected attachment upload could not be resolved as an uploaded assistant file for this user.",
+                IsAuthoritative = false
+            }
+        };
+
+        var followUps = new List<AIAssistantFollowUp>
+        {
+            new() { Text = "Try again with the attachment", Prompt = "I have re-attached the screenshot/file. Please analyse it now." },
+            new() { Text = "Describe the visible text", Prompt = "I will paste the visible screen text instead. Help me identify the CymBuild screen." },
+            new() { Text = "Show upload checks", Prompt = "What should I check if a CymBuild assistant attachment is not being used?" }
+        };
+
+        var answer = new StringBuilder();
+        answer.AppendLine("CymBuild assistant");
+        answer.AppendLine();
+        answer.AppendLine("I could see that an attachment was selected for this question, but the assistant could not resolve it as a completed upload.");
+        answer.AppendLine();
+        answer.AppendLine("What to check");
+        answer.AppendLine();
+        answer.AppendLine("1. Re-attach the screenshot or file and wait until it appears in the ready-to-send attachment list.");
+        answer.AppendLine("2. Send the question only after the upload status shows as ready.");
+        answer.AppendLine("3. If the file is large, try a smaller screenshot or image crop.");
+        answer.AppendLine("4. If this keeps happening, check the assistant upload audit row and BlueGen upload response for the selected upload Guid.");
+        answer.AppendLine();
+        answer.AppendLine("Your question");
+        answer.AppendLine();
+        answer.AppendLine(userQuestion);
+
+        var answerText = answer.ToString();
+
+        return new AIAssistantGeneratedAnswer(
+            "ATTACHMENT_UNAVAILABLE",
+            answerText,
+            StripMarkdown(answerText),
+            0.2000d,
+            JsonSerializer.Serialize(sources, AIAssistantJsonOptions),
+            JsonSerializer.Serialize(followUps, AIAssistantJsonOptions),
+            sources,
+            followUps,
+            "internal");
+    }
+
+    private static bool HasColumn(IDataRecord reader, string columnName)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsAssistantBlueGenModel(string? modelCode)
+    {
+        if (string.IsNullOrWhiteSpace(modelCode))
+        {
+            return false;
+        }
+
+        return !string.Equals(modelCode.Trim(), "deterministic", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(modelCode.Trim(), "internal", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool AssistantMessageUsesKnowledge(string? answerTypeCode, string? sourcePayloadJson)
+    {
+        if (string.Equals(answerTypeCode, "TRUSTED_KNOWLEDGE", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return EnumerateAssistantSourcePayload(sourcePayloadJson)
+            .Any(source =>
+                !IsAssistantAttachmentSourceType(source.TypeCode)
+                && !IsAssistantProviderDiagnosticSourceType(source.TypeCode)
+                && (!string.IsNullOrWhiteSpace(source.KnowledgeItemGuid)
+                    || !string.IsNullOrWhiteSpace(source.Title)));
+    }
+
+    private static bool AssistantMessageUsesAttachments(string? sourcePayloadJson)
+    {
+        return EnumerateAssistantSourcePayload(sourcePayloadJson)
+            .Any(source => IsAssistantAttachmentSourceType(source.TypeCode));
+    }
+
+    private static IEnumerable<AIAssistantSource> EnumerateAssistantSourcePayload(string? sourcePayloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePayloadJson))
+        {
+            return Array.Empty<AIAssistantSource>();
+        }
+
+        try
+        {
+            var parsedSources = JsonSerializer.Deserialize<List<AIAssistantSource>>(
+                sourcePayloadJson,
+                AIAssistantJsonOptions);
+
+            return parsedSources is not null
+                ? parsedSources
+                : Array.Empty<AIAssistantSource>();
+        }
+        catch
+        {
+            return sourcePayloadJson.Contains("ATTACHMENT", StringComparison.OrdinalIgnoreCase)
+                ? new[] { new AIAssistantSource { TypeCode = "ATTACHMENT" } }
+                : Array.Empty<AIAssistantSource>();
+        }
+    }
+
+    private static bool IsAssistantAttachmentSourceType(string? typeCode)
+    {
+        return !string.IsNullOrWhiteSpace(typeCode)
+            && typeCode.Contains("ATTACHMENT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAssistantProviderDiagnosticSourceType(string? typeCode)
+    {
+        if (string.IsNullOrWhiteSpace(typeCode))
+        {
+            return false;
+        }
+
+        return typeCode.Contains("BLUEGEN", StringComparison.OrdinalIgnoreCase)
+            || typeCode.Contains("PROVIDER", StringComparison.OrdinalIgnoreCase)
+            || typeCode.Contains("DIAGNOSTIC", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAssistantProvenanceCode(bool usedBlueGen, bool usedInternalKnowledge, bool usedAttachments)
+    {
+        if (usedBlueGen && usedInternalKnowledge && usedAttachments)
+        {
+            return "BLUEGEN_KNOWLEDGE_ATTACHMENT";
+        }
+
+        if (usedBlueGen && usedInternalKnowledge)
+        {
+            return "BLUEGEN_KNOWLEDGE";
+        }
+
+        if (usedBlueGen && usedAttachments)
+        {
+            return "BLUEGEN_ATTACHMENT";
+        }
+
+        if (usedBlueGen)
+        {
+            return "BLUEGEN";
+        }
+
+        if (usedInternalKnowledge && usedAttachments)
+        {
+            return "INTERNAL_KNOWLEDGE_ATTACHMENT";
+        }
+
+        if (usedInternalKnowledge)
+        {
+            return "INTERNAL_KNOWLEDGE";
+        }
+
+        if (usedAttachments)
+        {
+            return "INTERNAL_ATTACHMENT";
+        }
+
+        return "INTERNAL";
+    }
+
+    private static string BuildAssistantProvenanceLabel(string provenanceCode, string? messageRoleCode)
+    {
+        if (!string.Equals(messageRoleCode, "ASSISTANT", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return provenanceCode switch
+        {
+            "BLUEGEN_UNAVAILABLE" => "BlueGen unavailable",
+            "BLUEGEN_KNOWLEDGE_ATTACHMENT" => "BlueGen + CymBuild knowledge + attachment",
+            "BLUEGEN_KNOWLEDGE" => "BlueGen + CymBuild knowledge",
+            "BLUEGEN_ATTACHMENT" => "BlueGen + attachment",
+            "BLUEGEN" => "BlueGen",
+            "INTERNAL_KNOWLEDGE_ATTACHMENT" => "Internal knowledge + attachment",
+            "INTERNAL_KNOWLEDGE" => "Internal knowledge",
+            "INTERNAL_ATTACHMENT" => "Internal attachment",
+            _ => "Internal response"
+        };
+    }
+
     private static string BuildAssistantAnswerAnalyticsPayloadJson(
         string userQuestion,
-        AIAssistantGeneratedAnswer answer)
+        AIAssistantGeneratedAnswer answer,
+        IReadOnlyList<BlueGenFileReference>? attachedFiles)
     {
         var topSource = answer.Sources.Count > 0
             ? answer.Sources[0]
@@ -1103,11 +1520,27 @@ WHERE m.Guid = @MessageGuid
 
         var isLikelyCymBuildQuestion = IsLikelyCymBuildQuestion(userQuestion);
 
+        var safeAttachedFiles = attachedFiles ?? Array.Empty<BlueGenFileReference>();
+        var blueGenUnavailable = string.Equals(answer.AnswerTypeCode, "BLUEGEN_UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
+        var usedBlueGen = !blueGenUnavailable && IsAssistantBlueGenModel(answer.ModelCode);
+        var usedAttachments = safeAttachedFiles.Count > 0 || answer.Sources.Any(source => IsAssistantAttachmentSourceType(source.TypeCode));
+        var usedKnowledge = answer.Sources.Any(source =>
+            !IsAssistantAttachmentSourceType(source.TypeCode)
+            && !IsAssistantProviderDiagnosticSourceType(source.TypeCode));
+        var provenanceCode = blueGenUnavailable
+            ? "BLUEGEN_UNAVAILABLE"
+            : BuildAssistantProvenanceCode(usedBlueGen, usedKnowledge, usedAttachments);
+
         var payload = new
         {
             answerTypeCode = answer.AnswerTypeCode,
+            provenanceCode,
             confidenceScore = Math.Round(answer.ConfidenceScore, 4),
             sourceCount = answer.Sources.Count,
+            attachmentCount = safeAttachedFiles.Count,
+            usedBlueGen,
+            usedKnowledge,
+            usedAttachments,
             topSourceTitle = topSource?.Title,
             topSourceTypeCode = topSource?.TypeCode,
             topSourceKnowledgeItemGuid = topSource?.KnowledgeItemGuid,
@@ -1115,7 +1548,7 @@ WHERE m.Guid = @MessageGuid
             isTopSourceAuthoritative = topSource?.IsAuthoritative,
             hasSources = answer.Sources.Count > 0,
             isLikelyCymBuildQuestion,
-            isOutOfScope = !isLikelyCymBuildQuestion,
+            isOutOfScope = !isLikelyCymBuildQuestion && safeAttachedFiles.Count == 0,
             modelCode = answer.ModelCode ?? "deterministic",
             generatedUtc = DateTime.UtcNow
         };

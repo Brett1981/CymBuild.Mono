@@ -1,1 +1,167 @@
-﻿
+/* Native CymBuild task menu and modal host. */
+.button-menu-container {
+    gap: .625rem;
+    position: relative;
+}
+
+.cb-task-menu-loading:empty {
+    display: none !important;
+}
+
+.cb-task-menu {
+    position: relative;
+    z-index: 1035;
+}
+
+.cb-task-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-height: 2.25rem;
+    padding-inline: .85rem;
+    border-radius: var(--cb-v2-radius-sm, .55rem);
+    font-weight: 700;
+    box-shadow: var(--cb-v2-shadow-sm, 0 6px 18px rgba(15, 23, 42, .08));
+}
+
+.cb-task-menu-list {
+    min-width: 16rem;
+    max-width: min(22rem, calc(100vw - 2rem));
+    padding: .45rem;
+    border: 1px solid var(--cb-v2-border, #e5eaf3);
+    border-radius: var(--cb-v2-radius-md, .9rem);
+    box-shadow: var(--cb-v2-shadow-lg, 0 20px 48px rgba(15, 23, 42, .18));
+    z-index: 1040;
+}
+
+.cb-task-menu-item {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    min-height: 2.35rem;
+    border-radius: var(--cb-v2-radius-sm, .55rem);
+    color: var(--cb-v2-text, #172033);
+    font-weight: 600;
+}
+
+.cb-task-menu-item:hover,
+.cb-task-menu-item:focus-visible {
+    background: rgba(37, 99, 235, .08);
+    color: var(--cb-v2-primary-dark, #1d4ed8);
+}
+
+.cb-task-menu-item:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+.cb-task-menu-item i {
+    width: 1.1rem;
+    min-width: 1.1rem;
+    text-align: center;
+}
+
+.cb-task-menu-item-main {
+    display: inline-flex;
+    align-items: center;
+    gap: .65rem;
+    min-width: 0;
+}
+
+.cb-task-menu-has-children {
+    justify-content: space-between;
+    width: 100%;
+}
+
+.cb-task-menu-chevron {
+    margin-left: auto;
+    font-size: .8rem;
+    color: var(--cb-v2-text-muted, #64748b);
+}
+
+.cb-task-menu-submenu {
+    position: relative;
+}
+
+.cb-task-submenu-menu {
+    top: 0;
+    left: 100%;
+    margin-left: .35rem;
+    min-width: 15rem;
+    padding: .45rem;
+    border: 1px solid var(--cb-v2-border, #e5eaf3);
+    border-radius: var(--cb-v2-radius-md, .9rem);
+    box-shadow: var(--cb-v2-shadow-lg, 0 20px 48px rgba(15, 23, 42, .18));
+}
+
+.cb-task-menu-submenu:hover > .cb-task-submenu-menu,
+.cb-task-menu-submenu:focus-within > .cb-task-submenu-menu {
+    display: block;
+}
+
+.cb-task-menu-dismiss {
+    position: fixed;
+    inset: 0;
+    z-index: 1030;
+    display: block;
+    border: 0;
+    background: transparent;
+    cursor: default;
+}
+
+.cb-task-modal-root,
+.cb-task-modal-backdrop,
+.cb-task-modal-card,
+.cb-task-modal-header,
+.cb-task-modal-body {
+    box-sizing: border-box;
+}
+
+.cb-task-modal-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: var(--cb-v2-radius-sm, .55rem);
+}
+
+.cb-task-modal-body .button-menu-container,
+.cb-task-modal-body .cb-task-menu-dismiss {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .cb-task-menu-list {
+        right: auto;
+        left: 0;
+    }
+
+    .cb-task-submenu-menu {
+        position: static;
+        display: none;
+        margin: .25rem 0 .25rem 1rem;
+        box-shadow: none;
+    }
+
+    .cb-task-modal-root {
+        padding: .5rem !important;
+    }
+
+    .cb-task-modal-card,
+    .cb-task-modal-card.is-maximized {
+        width: calc(100vw - 1rem) !important;
+        max-height: calc(100vh - 1rem) !important;
+        border-radius: var(--cb-v2-radius-md, .9rem) !important;
+    }
+
+    .cb-task-modal-header {
+        padding: .8rem !important;
+    }
+
+    .cb-task-modal-body {
+        padding: .75rem !important;
+        max-height: calc(100vh - 4.5rem) !important;
+    }
+}

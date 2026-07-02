@@ -1,0 +1,153 @@
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Google.Protobuf.WellKnownTypes
+@inject DeveloperInspectorState InspectorState
+@inject NavigationManager NavigationManager
+
+<div class="developer-inspectable @(InspectorState.IsEnabled ? "developer-inspectable-active" : null)"
+     @onclick="InspectAsync"
+     @onclick:stopPropagation="@InspectorState.IsEnabled"
+     title="@(InspectorState.IsEnabled ? "CymBuild Inspector: click this field to open details" : null)">
+    @ChildContent
+
+    @if (InspectorState.IsEnabled && EntityProperty is not null)
+    {
+        <div class="developer-inspectable-tip" aria-hidden="true">
+            <div class="developer-inspectable-tip-title">@GetDisplayLabel()</div>
+            <div><span>Component</span><strong>@ComponentName</strong></div>
+            <div><span>Property</span><strong>@(EntityProperty.Name ?? string.Empty)</strong></div>
+            <div><span>Data type</span><strong>@(EntityProperty.EntityDataTypeName ?? string.Empty)</strong></div>
+            @if (!string.IsNullOrWhiteSpace(EntityProperty.DropDownListDefinitionGuid) && EntityProperty.DropDownListDefinitionGuid != Guid.Empty.ToString())
+            {
+                <div><span>Lookup</span><strong>@EntityProperty.DropDownListDefinitionGuid</strong></div>
+            }
+            @if (!string.IsNullOrWhiteSpace(GetCurrentValuePreview()))
+            {
+                <div><span>Value</span><strong>@GetCurrentValuePreview()</strong></div>
+            }
+            <div class="developer-inspectable-tip-action">Click to inspect</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public FormHelper? FormHelper { get; set; }
+    [Parameter] public API.Core.EntityProperty? EntityProperty { get; set; }
+    [Parameter] public DataProperty? DataProperty { get; set; }
+    [Parameter] public string RecordGuid { get; set; } = string.Empty;
+    [Parameter] public string ComponentName { get; set; } = "ShoreInput";
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    private async Task InspectAsync()
+    {
+        if (!InspectorState.IsEnabled || EntityProperty is null)
+        {
+            return;
+        }
+
+        var request = new DeveloperInspectorRequest
+        {
+            EntityPropertyGuid = EntityProperty.Guid ?? string.Empty,
+            EntityTypeGuid = EntityProperty.EntityTypeGuid ?? string.Empty,
+            RecordGuid = RecordGuid ?? string.Empty,
+            ComponentName = ComponentName,
+            PropertyName = EntityProperty.Name ?? string.Empty,
+            Label = GetDisplayLabel(),
+            DropDownListDefinitionGuid = EntityProperty.DropDownListDefinitionGuid ?? string.Empty,
+            Route = NavigationManager.Uri,
+            CurrentValuePreview = GetCurrentValuePreview(),
+            FieldState = GetFieldStatePreview()
+        };
+
+        await InspectorState.InspectAsync(FormHelper, request);
+    }
+
+    private string GetDisplayLabel()
+    {
+        if (!string.IsNullOrWhiteSpace(Label))
+        {
+            return Label;
+        }
+
+        return EntityProperty?.Label ?? EntityProperty?.Name ?? string.Empty;
+    }
+
+    private string GetFieldStatePreview()
+    {
+        if (DataProperty is null)
+        {
+            return string.Empty;
+        }
+
+        var states = new List<string>();
+        if (DataProperty.IsInvalid) states.Add("Invalid");
+        if (DataProperty.IsReadOnly) states.Add("ReadOnly");
+        if (DataProperty.IsRestricted) states.Add("Restricted");
+        if (DataProperty.IsHidden) states.Add("Hidden");
+        if (DataProperty.IsEnabled) states.Add("Enabled");
+        return string.Join(", ", states);
+    }
+
+    private string GetCurrentValuePreview()
+    {
+        if (DataProperty?.Value is null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var value = DataProperty.Value;
+            var dataType = EntityProperty?.EntityDataTypeName ?? string.Empty;
+
+            if (value.Is(StringValue.Descriptor))
+            {
+                return Truncate(value.Unpack<StringValue>().Value);
+            }
+
+            if (value.Is(Int32Value.Descriptor))
+            {
+                return value.Unpack<Int32Value>().Value.ToString();
+            }
+
+            if (value.Is(Int64Value.Descriptor))
+            {
+                return value.Unpack<Int64Value>().Value.ToString();
+            }
+
+            if (value.Is(DoubleValue.Descriptor))
+            {
+                return value.Unpack<DoubleValue>().Value.ToString("G");
+            }
+
+            if (value.Is(BoolValue.Descriptor))
+            {
+                return value.Unpack<BoolValue>().Value ? "True" : "False";
+            }
+
+            if (value.Is(Timestamp.Descriptor))
+            {
+                return value.Unpack<Timestamp>().ToDateTime().ToString("yyyy-MM-dd HH:mm:ss");
+            }
+
+            return Truncate(value.ToString());
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string Truncate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        value = value.Trim();
+        return value.Length <= 80 ? value : value[..80] + "…";
+    }
+}

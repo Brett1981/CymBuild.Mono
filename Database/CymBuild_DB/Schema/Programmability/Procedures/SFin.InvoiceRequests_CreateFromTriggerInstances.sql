@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceRequests_CreateFromTriggerInstances]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceRequests_CreateFromTriggerInstances]')
+GO
 CREATE PROCEDURE [SFin].[InvoiceRequests_CreateFromTriggerInstances]
 (
       @AutomationRunGuid             UNIQUEIDENTIFIER = NULL
@@ -122,8 +124,16 @@ BEGIN
                         WHEN t.InstanceType = N'Monthly'    THEN N'MON'
                         ELSE N''
                       END AS InvoicingType
+                    , CASE
+                        WHEN t.InstanceType = N'Activity' AND t.InstanceKey LIKE N'ACT:%'
+                            THEN TRY_CONVERT(BIGINT, SUBSTRING(t.InstanceKey, 5, 200))
+                        WHEN t.InstanceType = N'Activity' AND CHARINDEX(N'|A', t.InstanceKey) > 0
+                            THEN TRY_CONVERT(BIGINT, SUBSTRING(t.InstanceKey, CHARINDEX(N'|A', t.InstanceKey) + 2, 50))
+                        ELSE NULL
+                      END AS ParsedActivityId
                 FROM ToCreate t
             )
+            -- CYB-419: ACT trigger-instance requests use the activity assignee as consultant/requester.
             INSERT SFin.InvoiceRequests
             (
                   RowStatus
@@ -149,7 +159,7 @@ BEGIN
             SELECT
                   1
                 , Notes = CONCAT(N'Auto-created from TriggerInstance. InstanceType=', i.InstanceType, N', InstanceKey=', i.InstanceKey)
-                , @RequesterUserId
+                , COALESCE(activityAssignee.ID, @RequesterUserId)
                 , SYSUTCDATETIME()
                 , i.JobId
                 , i.InvoicingType
@@ -166,7 +176,13 @@ BEGIN
                 , @AutomationRunGuid
                 , @InvoiceBatchGuid
                 , BlockedReason = CASE WHEN @OverrideBlocking = 1 THEN N'OVERRIDE_BLOCKING' ELSE N'' END
-            FROM ToInsert i;
+            FROM ToInsert i
+            LEFT JOIN SJob.Activities AS activityAssigneeSource
+                ON activityAssigneeSource.ID = i.ParsedActivityId
+               AND activityAssigneeSource.RowStatus NOT IN (0,254)
+            LEFT JOIN SCore.Identities AS activityAssignee
+                ON activityAssignee.ID = activityAssigneeSource.SurveyorID
+               AND activityAssignee.RowStatus NOT IN (0,254);
 
             -----------------------------------------------------------------------------------------
             -- 5) Phase 6 (partial): create InvoiceRequestItems for ACT/MS using InstanceKey parsing.

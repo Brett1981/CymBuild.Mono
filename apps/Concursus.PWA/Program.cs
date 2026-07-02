@@ -1,11 +1,13 @@
 
 using Concursus.API.Client.Models;
 using Concursus.API.Client.Services;
+using Concursus.Components.Shared.Modals;
 using Concursus.Components.Shared.Services;
 using Concursus.PWA;
 using Concursus.PWA.Classes;
 using Concursus.PWA.Helpers;
 using Concursus.PWA.Services;
+using Concursus.PWA.Shared.DeveloperInspector;
 using CymBuild.API.Client.Services;
 using Grpc.Net.Client.Web;
 using Microsoft.AspNetCore.Components.Web;
@@ -15,7 +17,6 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
 using System.Net.Http.Headers;
 using System.Threading.Channels;
-using Concursus.Components.Shared.Modals;
 
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -42,7 +43,7 @@ builder.Services.AddSingleton<ModalService>();
 builder.Services.AddSingleton<DeviceInfoService>();
 builder.Services.AddSingleton(sp => new AppConfiguration(sp.GetRequiredService<IConfiguration>()));
 builder.Services.AddSingleton<SyncQueueState>();
-builder.Services.AddScoped<IToastService, TelerikToastService>();
+builder.Services.AddScoped<IToastService, NativeToastService>();
 builder.Services.AddScoped<RefreshService>();
 builder.Services.AddScoped<IndexedDbHelper>();
 builder.Services.AddScoped<GenericEntityService>();
@@ -50,6 +51,7 @@ builder.Services.AddScoped<IndexedDbService>();
 builder.Services.AddScoped<MemoryOverlayService>();
 builder.Services.AddScoped<AiErrorReporter>();
 builder.Services.AddScoped<UserInteractionTrackerService>();
+builder.Services.AddScoped<DeveloperInspectorState>();
 var env = builder.Configuration.GetValue<string>("Environment:Type");
 builder.Services.AddScoped(sp =>
 {

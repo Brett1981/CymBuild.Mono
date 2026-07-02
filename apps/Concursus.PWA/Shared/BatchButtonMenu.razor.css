@@ -1,0 +1,213 @@
+/* 14F native BatchButtonMenu actions dropdown */
+.batch-action-menu {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    z-index: 1050;
+}
+
+.batch-action-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.2rem;
+    border: 1px solid var(--cb-v2-control-border, #7690b8) !important;
+    border-radius: var(--cb-v2-radius-sm, 0.55rem);
+    font-weight: 700;
+    box-shadow: var(--cb-v2-shadow-sm, 0 6px 18px rgba(15, 23, 42, .08));
+}
+
+.batch-action-menu-list {
+    min-width: 15rem;
+    max-width: min(24rem, calc(100vw - 2rem));
+    padding: 0.45rem;
+    border: 1px solid var(--cb-v2-control-border, #7690b8);
+    border-radius: var(--cb-v2-radius-md, 0.9rem);
+    box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
+    z-index: 1060;
+}
+
+.batch-action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 2.35rem;
+    border-radius: var(--cb-v2-radius-sm, 0.55rem);
+    font-weight: 600;
+}
+
+.batch-action-menu-item:hover,
+.batch-action-menu-item:focus-visible {
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--cb-v2-primary-dark, #1d4ed8);
+}
+
+.batch-action-menu-item i {
+    width: 1.1rem;
+    min-width: 1.1rem;
+    text-align: center;
+}
+
+.batch-action-menu-dismiss {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    display: block;
+    border: 0;
+    background: transparent;
+    cursor: default;
+}
+/* 14G native BatchButtonMenu modal/window replacement */
+.batch-native-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    background: rgba(15, 23, 42, 0.54);
+    backdrop-filter: blur(2px);
+}
+
+.batch-native-modal-shell {
+    position: fixed;
+    inset: 3vh 3vw;
+    z-index: 1090;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: auto;
+    pointer-events: none;
+}
+
+.batch-native-modal-card {
+    width: min(1180px, 96vw);
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-control-border, #7690b8);
+    border-radius: var(--cb-v2-radius-lg, 1.1rem);
+    background: var(--cb-v2-bg, #ffffff);
+    box-shadow: 0 24px 80px rgba(15, 23, 42, 0.30);
+    pointer-events: auto;
+}
+
+.batch-native-modal-card.is-maximized {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+}
+
+.batch-invoice-preview-modal {
+    width: min(1600px, 96vw);
+    height: 92vh;
+}
+
+.batch-invoice-preview-modal.is-maximized {
+    height: calc(100vh - 1.5rem);
+}
+
+.batch-native-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1.1rem;
+    border-bottom: 1px solid var(--cb-v2-control-border, #7690b8);
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.10), rgba(255, 255, 255, 0.96) 46%, #ffffff 100%);
+}
+
+.batch-native-modal-title-wrap {
+    min-width: 0;
+}
+
+.batch-native-modal-title {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0;
+    color: var(--cb-v2-text-strong, #0f172a);
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.batch-native-modal-subtitle {
+    margin-top: 0.2rem;
+    color: var(--cb-v2-text-muted, #64748b);
+    font-size: 0.84rem;
+}
+
+.batch-native-modal-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+}
+
+.batch-native-modal-actions .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-color: var(--cb-v2-control-border, #7690b8);
+}
+
+.batch-native-modal-body {
+    min-height: 16rem;
+    max-height: calc(94vh - 4.25rem);
+    overflow: auto;
+    padding: 1rem;
+    background: var(--cb-v2-bg-soft, #f8fafc);
+}
+
+.batch-native-modal-card.is-maximized .batch-native-modal-body {
+    max-height: calc(100vh - 5.75rem);
+}
+
+.invoice-preview-native-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.invoice-preview-native-body .invoice-preview-shell {
+    height: 100%;
+}
+
+.invoice-preview-native-body .invoice-preview-host {
+    min-height: 0;
+}
+
+@media (max-width: 768px) {
+    .batch-native-modal-shell {
+        inset: 0.75rem;
+    }
+
+    .batch-native-modal-card,
+    .batch-native-modal-card.is-maximized,
+    .batch-invoice-preview-modal,
+    .batch-invoice-preview-modal.is-maximized {
+        width: 100%;
+        height: auto;
+        max-height: calc(100vh - 1.5rem);
+        border-radius: var(--cb-v2-radius-md, 0.85rem);
+    }
+
+    .batch-native-modal-header {
+        padding: 0.8rem;
+    }
+
+    .batch-native-modal-body {
+        padding: 0.75rem;
+        max-height: calc(100vh - 5.3rem);
+    }
+
+    .invoice-preview-toolbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .invoice-preview-toolbar__actions {
+        justify-content: center;
+    }
+}

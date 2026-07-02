@@ -2,173 +2,161 @@
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.API.Client.Models.MetadataMigration
+@using Microsoft.AspNetCore.Components.Web
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 
-<div class="cb-v2-shell">
-    <div class="cb-v2-page metadata-migration-page">
-        <div class="cb-v2-card">
-            <div class="cb-v2-card-body">
-                <div class="cb-v2-panel-header">
-                    <div>
-                        <h2 class="cb-v2-title">Metadata Migration</h2>
-                        <div class="cb-v2-description">Stage, validate, compare and apply source-controlled CymBuild metadata through the SMigration framework.</div>
-                    </div>
-                    <div class="cb-v2-actions">
-                        @TabButton("setup", "Setup")
-                        @TabButton("staged", "Staged Data")
-                        @TabButton("diff", "Diff")
-                        @TabButton("audit", "Audit")
-                    </div>
-                </div>
+<div class="metadata-workbench">
+    <aside class="metadata-workbench-sidebar">
+        <div class="metadata-workbench-brand">
+            <span class="metadata-workbench-brand-icon bi bi-database"></span>
+            <div>
+                <h1>Metadata Migration</h1>
+                <span>SMigration workbench</span>
             </div>
         </div>
 
+        <nav class="metadata-workbench-nav" aria-label="Metadata migration sections">
+            @NavButton("overview", "bi-house", "Overview")
+            <div class="metadata-nav-heading">Migration</div>
+            @NavButton("setup", "bi-gear", "Setup")
+            @NavButton("runs", "bi-clock-history", "Runs")
+            @NavButton("stage", "bi-columns-gap", "Stage & Compare")
+            @NavButton("identity", "bi-diagram-3", "Identity Map")
+            @NavButton("apply", "bi-arrow-right-circle", "Apply")
+            @NavButton("audit", "bi-card-checklist", "Audit")
+            <div class="metadata-nav-heading">Configuration</div>
+            @NavButton("ignored", "bi-slash-circle", "Ignored Records")
+            @NavButton("rules", "bi-signpost-split", "Rules")
+            @NavButton("registry", "bi-list-columns-reverse", "Registry")
+        </nav>
+    </aside>
+
+    <main class="metadata-workbench-main">
+        <header class="metadata-workbench-topbar">
+            <div class="metadata-environment-flow">
+                <div class="metadata-environment-chip">
+                    <span class="metadata-env-icon source bi bi-database-fill"></span>
+                    <div>
+                        <span>Source Environment</span>
+                        <strong>@SourceEnvironment</strong>
+                        <small>@SourceDatabaseName</small>
+                    </div>
+                </div>
+                <span class="metadata-flow-arrow bi bi-arrow-right-short"></span>
+                <div class="metadata-environment-chip">
+                    <span class="metadata-env-icon target bi bi-database-fill"></span>
+                    <div>
+                        <span>Target Environment</span>
+                        <strong>@TargetEnvironment</strong>
+                        <small>@TargetDatabaseName</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metadata-topbar-actions">
+                <button type="button" class="cb-v2-btn-secondary" @onclick="RefreshCurrentViewAsync" disabled="@(IsBusy || !HasRunGuid)">
+                    <span class="bi bi-arrow-clockwise"></span>
+                    Refresh
+                </button>
+                <button type="button" class="cb-v2-btn-primary" @onclick="CreateRunAsync" disabled="@(IsBusy || !CanCreateRun)">
+                    <span class="bi bi-plus-circle"></span>
+                    Create Run
+                </button>
+                <label class="metadata-run-picker">
+                    <span>Run:</span>
+                    <select class="cb-v2-select" @bind="RunGuidText">
+                        <option value="">New run...</option>
+                        @foreach (var run in AvailableRuns)
+                        {
+                            <option value="@run.RunGuid">@FormatRunOption(run)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </header>
+
         @if (!string.IsNullOrWhiteSpace(Message))
         {
-            <div class="cb-v2-card"><div class="cb-v2-card-body metadata-inline-message"><span class="cb-v2-badge cb-v2-badge-info">Info</span><span>@Message</span></div></div>
+            <div class="metadata-notice metadata-notice-info">
+                <span class="bi bi-info-circle"></span>
+                <span>@Message</span>
+            </div>
         }
 
         @if (!string.IsNullOrWhiteSpace(Error))
         {
-            <div class="cb-v2-card"><div class="cb-v2-card-body metadata-inline-message"><span class="cb-v2-badge cb-v2-badge-danger">Error</span><span>@Error</span></div></div>
+            <div class="metadata-notice metadata-notice-error">
+                <span class="bi bi-exclamation-triangle"></span>
+                <span>@Error</span>
+            </div>
         }
 
-        @if (SelectedTab == "setup")
+        @if (IsBusy && !string.IsNullOrWhiteSpace(BusyMessage))
         {
-            <div class="cb-v2-card">
-                <div class="cb-v2-card-body">
-                    <div class="metadata-form-grid">
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Source Environment</label>
-                            <select class="cb-v2-select metadata-input-full" @bind="SourceEnvironment">
-                                <option>DEV</option>
-                                <option>QA</option>
-                                <option>UAT</option>
-                            </select>
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Target Environment</label>
-                            <select class="cb-v2-select metadata-input-full" @bind="TargetEnvironment">
-                                <option>QA</option>
-                                <option>UAT</option>
-                                <option>LIVE</option>
-                            </select>
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Source Server</label>
-                            <input class="cb-v2-input metadata-input-full" @bind="SourceServerName" />
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Source Database</label>
-                            <input class="cb-v2-input metadata-input-full" @bind="SourceDatabaseName" />
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Target Server</label>
-                            <input class="cb-v2-input metadata-input-full" @bind="TargetServerName" />
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Target Database</label>
-                            <input class="cb-v2-input metadata-input-full" @bind="TargetDatabaseName" />
-                        </div>
-                        <div class="metadata-field">
-                            <label class="cb-v2-strong">Existing Run</label>
-                            <select class="cb-v2-select metadata-input-full" @bind="RunGuidText">
-                                <option value="">New run...</option>
-                                @foreach (var run in AvailableRuns)
-                                {
-                                    <option value="@run.RunGuid">@run.CreatedOnUtcText - @run.SourceEnvironment → @run.TargetEnvironment - @run.RunStatus</option>
-                                }
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="cb-v2-actions metadata-actions-row">
-                        <label class="metadata-check"><input type="checkbox" @bind="IsValidateOnly" /><span>Validate only</span></label>
-                        <label class="metadata-check"><input type="checkbox" @bind="ForceApply" disabled="@(TargetEnvironment != "LIVE")" /><span>Force apply for LIVE</span></label>
-                    </div>
-                    @if (IsBusy)
-                    {
-                        <div class="cb-v2-description">
-                            Metadata operation is running. Please wait for completion before starting another step.
-                        </div>
-                    }
-                    <div class="cb-v2-actions metadata-actions-row">
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="LoadRunsAsync" disabled="@IsBusy">Load Runs</button>
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="CreateRunAsync" disabled="@(IsBusy || !CanCreateRun)">Create Run</button>
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="StageAsync" disabled="@(IsBusy || !HasRunGuid)">Stage</button>
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="ValidateAsync" disabled="@(IsBusy || !HasRunGuid)">Validate</button>
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="BuildIdentityMapAsync" disabled="@(IsBusy || !HasRunGuid)">Build Identity Map</button>
-                        <button type="button" class="cb-v2-btn-primary" @onclick="ApplyAsync" disabled="@(IsBusy || !CanApply)">Apply</button>
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => RefreshDashboardAsync())" disabled="@(IsBusy || !HasRunGuid)">Refresh</button>
-                    </div>
-                </div>
+            <div class="metadata-notice metadata-notice-processing" role="status" aria-live="polite">
+                <span class="metadata-spinner" aria-hidden="true"></span>
+                <span>@BusyMessage</span>
             </div>
-
-            @DashboardCards()
         }
 
-        @if (SelectedTab == "staged")
+        @SummaryCards()
+
+        @if (SelectedSection == "overview")
         {
-            <div class="cb-v2-card">
-                <div class="cb-v2-toolbar">
-                    <div class="cb-v2-toolbar-left">
-                        <select class="cb-v2-select" @bind="SelectedEntityName">
-                            <option value="">All entities</option>
-                            @foreach (var entity in Entities)
-                            {
-                                <option value="@entity">@entity</option>
-                            }
-                        </select>
-                    <select class="cb-v2-select" @bind="SelectedDifferenceType"><option value="">All</option><option>Insert</option><option>Update</option><option>NoChange</option></select>
-                    <input class="cb-v2-input" placeholder="Search staged values" @bind="SearchText" />
-                    <button type="button" class="cb-v2-btn-secondary" @onclick="LoadStagedRowsAsync" disabled="@(IsBusy || !HasRunGuid)">Load</button>
-                </div>
-            </div>
-            <div class="cb-v2-card-body metadata-detail-grid">
-                <div>@StagedRowsTable()</div>
-                <div>@SelectedStagedRowDetails()</div>
-            </div>
-        </div>
-    }
-
-    @if (SelectedTab == "diff")
-    {
-        <div class="cb-v2-card">
-            <div class="cb-v2-toolbar">
-                <div class="cb-v2-toolbar-left">
-                        <select class="cb-v2-select" @bind="SelectedEntityName">
-                            <option value="">All entities</option>
-                            @foreach (var entity in Entities)
-                            {
-                                <option value="@entity">@entity</option>
-                            }
-                        </select>
-                <select class="cb-v2-select" @bind="SelectedDifferenceType"><option value="">All</option><option>Insert</option><option>Update</option></select>
-                <input class="cb-v2-input" placeholder="Search diff values" @bind="SearchText" />
-                <button type="button" class="cb-v2-btn-secondary" @onclick="LoadDiffAsync" disabled="@(IsBusy || !HasRunGuid)">Load</button>
-            </div>
-        </div>
-        <div class="cb-v2-card-body metadata-detail-grid">
-            <div>@DiffRowsTable()</div>
-            <div>@SelectedDiffRowDetails()</div>
-        </div>
-    </div>
-}
-
-@if (SelectedTab == "audit")
-{
-    <div class="cb-v2-card"><div class="cb-v2-card-body">@AuditContent()</div></div>
-}
-</div>
+            @OverviewSection()
+        }
+        else if (SelectedSection == "setup")
+        {
+            @SetupSection()
+        }
+        else if (SelectedSection == "runs")
+        {
+            @RunsSection()
+        }
+        else if (SelectedSection == "stage")
+        {
+            @StageCompareSection()
+        }
+        else if (SelectedSection == "identity")
+        {
+            @IdentitySection()
+        }
+        else if (SelectedSection == "apply")
+        {
+            @ApplySection()
+        }
+        else if (SelectedSection == "audit")
+        {
+            @AuditSection()
+        }
+        else if (SelectedSection == "ignored")
+        {
+            @IgnoredRecordsSection()
+        }
+        else if (SelectedSection == "rules")
+        {
+            @ComingSoonSection("Rules", "Rule management will sit behind the same FormHelper → gRPC → SQL flow once the backend ignore/selection model is added.")
+        }
+        else if (SelectedSection == "registry")
+        {
+            @RegistrySection()
+        }
+    </main>
 </div>
 
 @code {
-    private string SelectedTab { get; set; } = "setup";
+    private const string DifferenceInsert = "Insert";
+    private const string DifferenceUpdate = "Update";
+    private const string DifferenceNoChange = "NoChange";
+
+    private string SelectedSection { get; set; } = "stage";
+    private string SelectedDetailTab { get; set; } = "comparison";
     private bool IsBusy { get; set; }
     private string Message { get; set; } = string.Empty;
     private string Error { get; set; } = string.Empty;
+    private string BusyMessage { get; set; } = string.Empty;
 
     private string SourceEnvironment { get; set; } = "DEV";
     private string TargetEnvironment { get; set; } = "QA";
@@ -182,15 +170,24 @@
 
     private MetadataMigrationDashboardModel? Dashboard { get; set; }
     private List<MetadataMigrationRunModel> AvailableRuns { get; set; } = new();
-    private List<MetadataMigrationStagedRowModel> StagedRows { get; set; } = new();
     private List<MetadataMigrationDiffRowModel> DiffRows { get; set; } = new();
-    private MetadataMigrationStagedRowModel? SelectedStagedRow { get; set; }
     private MetadataMigrationDiffRowModel? SelectedDiffRow { get; set; }
+    private MetadataTableSummaryRow? SelectedTableSummary { get; set; }
+    private List<MetadataMigrationIgnoredRecordModel> IgnoredRecords { get; set; } = new();
+
     private string SelectedEntityName { get; set; } = string.Empty;
-    private string SelectedDifferenceType { get; set; } = string.Empty;
-    private string SearchText { get; set; } = string.Empty;
+    private string SelectedDifferenceType { get; set; } = DifferenceUpdate;
+    private string TableSearchText { get; set; } = string.Empty;
+    private string RecordSearchText { get; set; } = string.Empty;
+    private string SelectedSchemaFilter { get; set; } = string.Empty;
     private string SelectedAuditSeverity { get; set; } = string.Empty;
+    private bool ShowNoChange { get; set; }
+    private bool ShowIgnored { get; set; }
+    private bool ShowInactiveIgnoredRecords { get; set; }
     private bool ShowMissingTargetsOnly { get; set; }
+    private string IgnoreReason { get; set; } = string.Empty;
+
+    private HashSet<string> SelectedRecordKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     private Concursus.API.Client.FormHelper? formHelper;
 
@@ -203,38 +200,801 @@
             userService);
     }
 
-    private Concursus.API.Client.FormHelper CurrentFormHelper =>
-        formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
-
-    private bool HasRunGuid => Guid.TryParse(RunGuidText, out _);
-    private bool CanCreateRun => !string.IsNullOrWhiteSpace(SourceEnvironment) && !string.IsNullOrWhiteSpace(TargetEnvironment) && !string.IsNullOrWhiteSpace(SourceDatabaseName) && !string.IsNullOrWhiteSpace(TargetDatabaseName);
-    private bool CanApply => HasRunGuid && !IsValidateOnly && (TargetEnvironment != "LIVE" || ForceApply) && (Dashboard?.FailCount ?? 0) == 0;
-
-    private IEnumerable<string> Entities => Dashboard?.StagedCounts
-        .Select(x => x.EntityName)
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(x => x)
-        ?? Enumerable.Empty<string>();
-
     protected override async Task OnInitializedAsync()
     {
         await LoadRunsAsync();
     }
 
-    private RenderFragment TabButton(string tab, string label) => @<button type="button" class="cb-v2-btn-chip @(SelectedTab == tab ? "selected" : "")" @onclick="@(() => SelectTabAsync(tab))">@label</button>;
+    private Concursus.API.Client.FormHelper CurrentFormHelper =>
+        formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
 
-    private async Task SelectTabAsync(string tab)
+    private bool HasRunGuid => Guid.TryParse(RunGuidText, out _);
+    private bool CanCreateRun => !string.IsNullOrWhiteSpace(SourceEnvironment)
+        && !string.IsNullOrWhiteSpace(TargetEnvironment)
+        && !string.IsNullOrWhiteSpace(SourceDatabaseName)
+        && !string.IsNullOrWhiteSpace(TargetDatabaseName);
+    private bool IsForceApplyDisabled => !TargetEnvironment.Equals("LIVE", StringComparison.OrdinalIgnoreCase);
+    private bool CanApply => HasRunGuid && !IsValidateOnly && (IsForceApplyDisabled || ForceApply) && (Dashboard?.FailCount ?? 0) == 0;
+    private bool CanApplySelected => CanApply && SelectedPersistedCount > 0;
+
+    private int InsertCount => Dashboard?.InsertCount ?? 0;
+    private int UpdateCount => Dashboard?.UpdateCount ?? 0;
+    private int NoChangeCount => Dashboard?.NoChangeCount ?? 0;
+    private int ValidationErrorCount => Dashboard?.FailCount ?? 0;
+    private int WarningCount => Dashboard?.WarnCount ?? 0;
+    private int IgnoredCount => Dashboard?.IgnoredCount ?? 0;
+    private int SelectedPersistedCount => Dashboard?.SelectedCount ?? 0;
+    private int SelectedLoadedCount => DiffRows.Count(row => row.IsSelected);
+    private int OnlyInSourceCount => InsertCount;
+    private int OnlyInTargetCount => Dashboard?.MissingTargetRows ?? 0;
+
+    private IEnumerable<string> SchemaFilters => TableSummaryRows
+        .Select(x => x.SchemaName)
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(x => x);
+
+    private List<MetadataTableSummaryRow> TableSummaryRows
     {
-        SelectedTab = tab;
-        if (tab == "audit" && HasRunGuid)
+        get
+        {
+            if (Dashboard?.StagedCounts is null || Dashboard.StagedCounts.Count == 0)
+            {
+                return new List<MetadataTableSummaryRow>();
+            }
+
+            var validationGroups = (Dashboard.ValidationIssues ?? new List<MetadataMigrationValidationIssueModel>())
+                .GroupBy(x => x.EntityName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.Count(v => v.Severity.Equals("Fail", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase);
+
+            var missingTargetGroups = (Dashboard.IdentityMap ?? new List<MetadataMigrationIdentityMapModel>())
+                .ToDictionary(x => x.EntityName, x => x.MissingTargetRows, StringComparer.OrdinalIgnoreCase);
+
+            return Dashboard.StagedCounts
+                .GroupBy(x => x.EntityName, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var first = group.First();
+                    var entityName = first.EntityName;
+                    return new MetadataTableSummaryRow
+                    {
+                        SchemaName = first.SchemaName,
+                        TableName = first.TableName,
+                        EntityName = entityName,
+                        InsertCount = group.Where(x => x.DifferenceType.Equals(DifferenceInsert, StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                        UpdateCount = group.Where(x => x.DifferenceType.Equals(DifferenceUpdate, StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                        NoChangeCount = group.Where(x => x.DifferenceType.Equals(DifferenceNoChange, StringComparison.OrdinalIgnoreCase)).Sum(x => x.Count),
+                        ValidationErrorCount = validationGroups.TryGetValue(entityName, out var failCount) ? failCount : 0,
+                        MissingTargetCount = missingTargetGroups.TryGetValue(entityName, out var missingTargetCount) ? missingTargetCount : 0
+                    };
+                })
+                .OrderBy(x => x.SchemaName)
+                .ThenBy(x => x.TableName)
+                .ToList();
+        }
+    }
+
+    private IEnumerable<MetadataTableSummaryRow> FilteredTableSummaryRows => TableSummaryRows
+        .Where(row => string.IsNullOrWhiteSpace(SelectedSchemaFilter) || row.SchemaName.Equals(SelectedSchemaFilter, StringComparison.OrdinalIgnoreCase))
+        .Where(row => ShowNoChange || row.InsertCount > 0 || row.UpdateCount > 0 || row.ValidationErrorCount > 0 || row.MissingTargetCount > 0)
+        .Where(row => string.IsNullOrWhiteSpace(TableSearchText) || row.EntityName.Contains(TableSearchText, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<MetadataMigrationDiffRowModel> FilteredDiffRows => DiffRows
+        .Where(row => ShowNoChange || !row.DifferenceType.Equals(DifferenceNoChange, StringComparison.OrdinalIgnoreCase))
+        .Where(row => ShowIgnored || !row.IsIgnored)
+        .Where(row => string.IsNullOrWhiteSpace(RecordSearchText)
+            || row.SourceRowGuid.ToString().Contains(RecordSearchText, StringComparison.OrdinalIgnoreCase)
+            || row.SourceValues.Values.Concat(row.TargetValues.Values).Any(v => v.Contains(RecordSearchText, StringComparison.OrdinalIgnoreCase))
+            || row.DifferingColumns.Any(v => v.Contains(RecordSearchText, StringComparison.OrdinalIgnoreCase)));
+
+    private IEnumerable<MetadataMigrationValidationIssueModel> FilteredValidationIssues => (Dashboard?.ValidationIssues ?? Enumerable.Empty<MetadataMigrationValidationIssueModel>())
+        .Where(row => string.IsNullOrWhiteSpace(SelectedAuditSeverity) || row.Severity.Equals(SelectedAuditSeverity, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<MetadataMigrationIdentityMapModel> FilteredIdentityMap => (Dashboard?.IdentityMap ?? Enumerable.Empty<MetadataMigrationIdentityMapModel>())
+        .Where(row => !ShowMissingTargetsOnly || row.MissingTargetRows > 0)
+        .OrderBy(row => row.SchemaName)
+        .ThenBy(row => row.TableName);
+
+    private RenderFragment NavButton(string section, string icon, string label) => @<button type="button"
+        class="metadata-nav-button @(SelectedSection == section ? "selected" : string.Empty)"
+        @onclick="@(() => SelectSectionAsync(section))">
+        <span class="bi @icon"></span>
+        <span>@label</span>
+    </button>;
+
+    private RenderFragment SummaryCards() => @<section class="metadata-summary-grid" aria-label="Metadata migration summary">
+        @SummaryCard("Insert", InsertCount, "success", () => OpenStageWithDifferenceAsync(DifferenceInsert))
+        @SummaryCard("Update", UpdateCount, "info", () => OpenStageWithDifferenceAsync(DifferenceUpdate))
+        @SummaryCard("No Change", NoChangeCount, "muted", () => OpenStageWithDifferenceAsync(DifferenceNoChange))
+        @SummaryCard("Only in Source", OnlyInSourceCount, "orange", () => OpenStageWithDifferenceAsync(DifferenceInsert))
+        @SummaryCard("Only in Target", OnlyInTargetCount, "purple", OpenMissingTargetsAsync)
+        @SummaryCard("Ignored", IgnoredCount, "muted", () => SelectSectionAsync("ignored"))
+        @SummaryCard("Validation Errors", ValidationErrorCount, "danger", () => OpenAuditSeverityAsync("Fail"))
+        @SummaryCard("Warnings", WarningCount, "warning", () => OpenAuditSeverityAsync("Warn"))
+    </section>;
+
+    private RenderFragment SummaryCard(string title, int count, string tone, Func<Task> onClick) => @<button type="button"
+        class="metadata-summary-card metadata-summary-card-@tone"
+        @onclick="@(() => onClick())"
+        disabled="@IsSummaryCardDisabled(title)">
+        <span>@title</span>
+        <strong>@count</strong>
+    </button>;
+
+    private bool IsSummaryCardDisabled(string title) => IsBusy || (!HasRunGuid && !title.Equals("Ignored", StringComparison.OrdinalIgnoreCase));
+
+    private RenderFragment OverviewSection() => @<section class="metadata-card metadata-overview-grid">
+        <div>
+            <h2>Run overview</h2>
+            <p>The workbench keeps the existing CymBuild migration route and presents the staged comparison in a single review surface.</p>
+            <dl class="metadata-definition-grid">
+                <dt>Current run</dt><dd>@(HasRunGuid ? RunGuidText : "No run selected")</dd>
+                <dt>Status</dt><dd>@(Dashboard?.Run?.RunStatus ?? "Not loaded")</dd>
+                <dt>Created UTC</dt><dd>@(Dashboard?.Run?.CreatedOnUtcText ?? "-")</dd>
+                <dt>Validated UTC</dt><dd>@(Dashboard?.Run?.ValidatedOnUtcText ?? "-")</dd>
+                <dt>Applied UTC</dt><dd>@(Dashboard?.Run?.AppliedOnUtcText ?? "-")</dd>
+            </dl>
+        </div>
+        <div class="metadata-step-list">
+            <h3>Recommended flow</h3>
+            <ol>
+                <li>Create or select a run.</li>
+                <li>Stage source metadata into the run.</li>
+                <li>Validate and build identity map.</li>
+                <li>Review differences in Stage & Compare.</li>
+                <li>Apply using the existing guarded apply path.</li>
+            </ol>
+        </div>
+    </section>;
+
+    private RenderFragment SetupSection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Setup</h2>
+                <p>Configure source and target for the migration run.</p>
+            </div>
+            <div class="metadata-section-actions">
+                <button type="button" class="cb-v2-btn-secondary" @onclick="LoadRunsAsync" disabled="@IsBusy">Load Runs</button>
+                <button type="button" class="cb-v2-btn-primary" @onclick="CreateRunAsync" disabled="@(IsBusy || !CanCreateRun)">Create Run</button>
+            </div>
+        </div>
+
+        <div class="metadata-form-grid">
+            <label class="metadata-field">
+                <span>Source Environment</span>
+                <select class="cb-v2-select" @bind="SourceEnvironment">
+                    <option>DEV</option>
+                    <option>QA</option>
+                    <option>UAT</option>
+                </select>
+            </label>
+            <label class="metadata-field">
+                <span>Target Environment</span>
+                <select class="cb-v2-select" @bind="TargetEnvironment">
+                    <option>QA</option>
+                    <option>UAT</option>
+                    <option>LIVE</option>
+                </select>
+            </label>
+            <label class="metadata-field">
+                <span>Source Server</span>
+                <input class="cb-v2-input" @bind="SourceServerName" />
+            </label>
+            <label class="metadata-field">
+                <span>Source Database</span>
+                <input class="cb-v2-input" @bind="SourceDatabaseName" />
+            </label>
+            <label class="metadata-field">
+                <span>Target Server</span>
+                <input class="cb-v2-input" @bind="TargetServerName" />
+            </label>
+            <label class="metadata-field">
+                <span>Target Database</span>
+                <input class="cb-v2-input" @bind="TargetDatabaseName" />
+            </label>
+        </div>
+
+        <div class="metadata-toggle-row">
+            <label><input type="checkbox" @bind="IsValidateOnly" /> Validate only</label>
+            <label><input type="checkbox" @bind="ForceApply" disabled="@IsForceApplyDisabled" /> Force apply for LIVE</label>
+        </div>
+    </section>;
+
+    private RenderFragment RunsSection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Runs</h2>
+                <p>Select an existing migration run or create a new one from Setup.</p>
+            </div>
+            <button type="button" class="cb-v2-btn-secondary" @onclick="LoadRunsAsync" disabled="@IsBusy">Refresh Runs</button>
+        </div>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead>
+                    <tr>
+                        <th>Run</th>
+                        <th>Source</th>
+                        <th>Target</th>
+                        <th>Status</th>
+                        <th>Created UTC</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var run in AvailableRuns)
+                    {
+                        <tr class="@(RunGuidText == run.RunGuid.ToString() ? "selected" : string.Empty)">
+                            <td>@run.RunGuid</td>
+                            <td>@run.SourceEnvironment / @run.SourceDatabaseName</td>
+                            <td>@run.TargetEnvironment / @run.TargetDatabaseName</td>
+                            <td>@Badge(run.RunStatus)</td>
+                            <td>@run.CreatedOnUtcText</td>
+                            <td><button type="button" class="cb-v2-btn-secondary" @onclick="@(() => SelectRunAsync(run))" disabled="@IsBusy">Select</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>;
+
+    private RenderFragment StageCompareSection() => @<section class="metadata-stage-layout">
+        <div class="metadata-card metadata-table-summary-card">
+            <div class="metadata-section-header compact">
+                <div>
+                    <h2>Differences</h2>
+                    <p>@TableSummaryRows.Count table(s) staged for the selected run.</p>
+                </div>
+                <div class="metadata-section-actions">
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="StageAsync" disabled="@(IsBusy || !HasRunGuid)">Stage</button>
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="ValidateAsync" disabled="@(IsBusy || !HasRunGuid)">Validate</button>
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="BuildIdentityMapAsync" disabled="@(IsBusy || !HasRunGuid)">Build Map</button>
+                </div>
+            </div>
+
+            <div class="metadata-toolbar">
+                <input class="cb-v2-input" placeholder="Search tables..." @bind="TableSearchText" />
+                <select class="cb-v2-select" @bind="SelectedSchemaFilter">
+                    <option value="">All Schemas</option>
+                    @foreach (var schema in SchemaFilters)
+                    {
+                        <option value="@schema">@schema</option>
+                    }
+                </select>
+                <label><input type="checkbox" @bind="ShowNoChange" /> Show no change</label>
+                <label><input type="checkbox" checked="@ShowIgnored" @onchange="ToggleShowIgnoredAsync" /> Show ignored</label>
+            </div>
+
+            <div class="metadata-table-wrap metadata-table-summary-wrap">
+                <table class="metadata-table metadata-table-summary">
+                    <thead>
+                        <tr>
+                            <th>Schema</th>
+                            <th>Table</th>
+                            <th>Insert</th>
+                            <th>Update</th>
+                            <th>No Change</th>
+                            <th>Only in Source</th>
+                            <th>Only in Target</th>
+                            <th>Validation</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in FilteredTableSummaryRows)
+                        {
+                            <tr class="@(SelectedEntityName.Equals(row.EntityName, StringComparison.OrdinalIgnoreCase) ? "selected" : string.Empty)" @onclick="@(() => SelectTableAsync(row))">
+                                <td>@row.SchemaName</td>
+                                <td><strong>@row.TableName</strong></td>
+                                <td class="metadata-count success">@row.InsertCount</td>
+                                <td class="metadata-count info">@row.UpdateCount</td>
+                                <td>@row.NoChangeCount</td>
+                                <td class="metadata-count orange">@row.InsertCount</td>
+                                <td class="metadata-count purple">@row.MissingTargetCount</td>
+                                <td class="@(row.ValidationErrorCount > 0 ? "metadata-count danger" : string.Empty)">@row.ValidationErrorCount</td>
+                                <td><button type="button" class="cb-v2-btn-secondary compact" @onclick:stopPropagation="true" @onclick="@(() => SelectTableAsync(row))">View</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="metadata-record-panels">
+            <div class="metadata-card metadata-record-grid-card">
+                <div class="metadata-section-header compact">
+                    <div>
+                        <h2>@(string.IsNullOrWhiteSpace(SelectedEntityName) ? "Records" : SelectedEntityName)</h2>
+                        <p>@DiffRows.Count loaded record(s), @SelectedLoadedCount selected in this table, @SelectedPersistedCount selected in run.</p>
+                    </div>
+                    <div class="metadata-section-actions">
+                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="SelectVisibleRecordsAsync" disabled="@(IsBusy || !FilteredDiffRows.Any(IsSelectableForApply))">Select Visible</button>
+                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="ClearTableSelectionAsync" disabled="@(IsBusy || SelectedLoadedCount == 0)">Clear Table</button>
+                    </div>
+                </div>
+
+                <div class="metadata-toolbar">
+                    <select class="cb-v2-select" @bind="SelectedDifferenceType">
+                        <option value="">All</option>
+                        <option value="Insert">Insert</option>
+                        <option value="Update">Update</option>
+                        <option value="NoChange">No Change</option>
+                    </select>
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="LoadRecordsAsync" disabled="@(IsBusy || !HasRunGuid || string.IsNullOrWhiteSpace(SelectedEntityName))">Load Records</button>
+                    <input class="cb-v2-input" placeholder="Search records..." @bind="RecordSearchText" />
+                </div>
+
+                <div class="metadata-table-wrap metadata-record-table-wrap">
+                    <table class="metadata-table metadata-record-table">
+                        <thead>
+                            <tr>
+                                <th class="metadata-checkbox-col"></th>
+                                <th>ID / Guid</th>
+                                <th>Difference</th>
+                                <th>Changed Columns</th>
+                                <th>Default?</th>
+                                <th>Description</th>
+                                <th>Selected</th>
+                                <th>Ignored</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in FilteredDiffRows)
+                            {
+                                <tr class="@(RecordRowClass(row))" @onclick="@(() => SelectRecord(row))">
+                                    <td class="metadata-checkbox-col">
+                                        <input type="checkbox" checked="@IsRecordSelected(row)" disabled="@(!IsSelectableForApply(row) && !row.IsSelected)" @onclick:stopPropagation="true" @onchange="@((ChangeEventArgs args) => PersistRecordSelectionAsync(row, args))" />
+                                    </td>
+                                    <td>
+                                        <strong>@GetDisplayId(row)</strong>
+                                        <small>@row.SourceRowGuid</small>
+                                    </td>
+                                    <td>@DifferenceBadge(row.DifferenceType)</td>
+                                    <td>@row.DifferingColumns.Count</td>
+                                    <td>@GetValue(row, "IsDefault")</td>
+                                    <td>@FirstNonEmpty(GetValue(row, "Description"), GetValue(row, "Name"), GetValue(row, "Code"), "-")</td>
+                                    <td>
+                                        @if (row.IsSelected)
+                                        {
+                                            @Badge("Selected")
+                                        }
+                                        else
+                                        {
+                                            <span class="metadata-muted-icon bi bi-dash-circle" title="Not selected for apply"></span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (row.IsIgnored)
+                                        {
+                                            @Badge("Ignored")
+                                        }
+                                        else
+                                        {
+                                            <span class="metadata-muted-icon bi bi-dash-circle" title="Not ignored"></span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="metadata-card metadata-comparison-card">
+                <div class="metadata-comparison-header">
+                    <div>
+                        <h2>Comparison</h2>
+                        <p>@(SelectedDiffRow is null ? "Select a record to compare source and target values." : $"{SelectedDiffRow.SchemaName}.{SelectedDiffRow.TableName} / {SelectedDiffRow.SourceRowGuid}")</p>
+                    </div>
+                    <div class="metadata-ignore-actions">
+                        <input class="cb-v2-input metadata-ignore-reason" placeholder="Ignore reason (optional)" @bind="IgnoreReason" disabled="@(IsBusy || SelectedDiffRow?.IsIgnored == true)" />
+                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="ToggleIgnoreSelectedRecordAsync" disabled="@(IsBusy || SelectedDiffRow is null)">
+                            <span class="bi bi-slash-circle"></span>
+                            @(SelectedDiffRow?.IsIgnored == true ? "Unignore Record" : "Ignore Record")
+                        </button>
+                    </div>
+                </div>
+
+                <div class="metadata-tab-row">
+                    @DetailTabButton("comparison", "Comparison")
+                    @DetailTabButton("json", "JSON")
+                    @DetailTabButton("sql", "SQL View")
+                </div>
+
+                @if (SelectedDetailTab == "comparison")
+                {
+                    @ComparisonPanel()
+                }
+                else if (SelectedDetailTab == "json")
+                {
+                    @JsonPanel()
+                }
+                else
+                {
+                    @SqlPreviewPanel()
+                }
+            </div>
+        </div>
+    </section>;
+
+    private RenderFragment IdentitySection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Identity Map</h2>
+                <p>Identity map coverage for the selected metadata run.</p>
+            </div>
+            <button type="button" class="cb-v2-btn-secondary" @onclick="BuildIdentityMapAsync" disabled="@(IsBusy || !HasRunGuid)">Build Identity Map</button>
+        </div>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead><tr><th>Entity</th><th>Map Rows</th><th>Missing Targets</th></tr></thead>
+                <tbody>
+                    @foreach (var row in FilteredIdentityMap)
+                    {
+                        <tr>
+                            <td>@row.EntityName</td>
+                            <td>@row.MapRows</td>
+                            <td class="@(row.MissingTargetRows > 0 ? "metadata-count danger" : string.Empty)">@row.MissingTargetRows</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>;
+
+    private RenderFragment ApplySection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Apply</h2>
+                <p>Apply selected uses the persisted run selection. Apply all valid keeps the existing guarded backend path.</p>
+            </div>
+            <div class="metadata-section-actions">
+                <button type="button" class="cb-v2-btn-secondary" @onclick="ApplySelectedAsync" disabled="@(IsBusy || !CanApplySelected)">Apply Selected (@SelectedPersistedCount)</button>
+                <button type="button" class="cb-v2-btn-primary" @onclick="ApplyAsync" disabled="@(IsBusy || !CanApply)">Apply All Valid</button>
+            </div>
+        </div>
+        <dl class="metadata-definition-grid">
+            <dt>Run</dt><dd>@(HasRunGuid ? RunGuidText : "No run selected")</dd>
+            <dt>Validation errors</dt><dd>@ValidationErrorCount</dd>
+            <dt>Warnings</dt><dd>@WarningCount</dd>
+            <dt>Selected records</dt><dd>@SelectedPersistedCount</dd>
+            <dt>LIVE force apply</dt><dd>@(ForceApply ? "Enabled" : "Disabled")</dd>
+            <dt>Validate only</dt><dd>@(IsValidateOnly ? "Yes" : "No")</dd>
+        </dl>
+        @if (TargetEnvironment == "LIVE" && !ForceApply)
+        {
+            <div class="metadata-notice metadata-notice-warning">
+                <span class="bi bi-shield-lock"></span>
+                <span>LIVE apply remains blocked until Force apply for LIVE is explicitly enabled.</span>
+            </div>
+        }
+    </section>;
+
+    private RenderFragment AuditSection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Audit</h2>
+                <p>Validation issues, identity map warnings and execution log for the selected run.</p>
+            </div>
+            <button type="button" class="cb-v2-btn-secondary" @onclick="ClearAuditFiltersAsync" disabled="@IsBusy">Clear Filters</button>
+        </div>
+
+        <div class="metadata-audit-summary">
+            <div>Status: <strong>@(Dashboard?.Run?.RunStatus ?? "")</strong></div>
+            <div>Run: <strong>@RunGuidText</strong></div>
+            <div>Applied: <strong>@(Dashboard?.Run?.AppliedOnUtcText ?? "-")</strong></div>
+        </div>
+
+        <h3>Validation Issues</h3>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead><tr><th>Severity</th><th>Entity</th><th>Issue Code</th><th>Message</th></tr></thead>
+                <tbody>
+                    @foreach (var row in FilteredValidationIssues)
+                    {
+                        <tr>
+                            <td>@Badge(row.Severity)</td>
+                            <td>@row.EntityName</td>
+                            <td>@row.IssueCode</td>
+                            <td>@row.IssueMessage</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <h3>Execution Log</h3>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead><tr><th>Step</th><th>Status</th><th>Message</th><th>Created UTC</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Dashboard?.ExecutionLog ?? Enumerable.Empty<MetadataMigrationExecutionLogItemModel>())
+                    {
+                        <tr>
+                            <td>@row.StepName</td>
+                            <td>@Badge(row.StepStatus)</td>
+                            <td>@row.Message</td>
+                            <td>@row.CreatedOnUtcText</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>;
+
+
+    private RenderFragment IgnoredRecordsSection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Ignored Records</h2>
+                <p>Ignored metadata records are persisted for @TargetDatabaseName and are skipped in future runs against that database.</p>
+            </div>
+            <div class="metadata-section-actions">
+                <label><input type="checkbox" @bind="ShowInactiveIgnoredRecords" /> Show inactive</label>
+                <button type="button" class="cb-v2-btn-secondary" @onclick="LoadIgnoredRecordsAsync" disabled="@(IsBusy || !HasRunGuid)">Refresh Ignored</button>
+            </div>
+        </div>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead><tr><th>Database</th><th>Table</th><th>Source Guid</th><th>Reason</th><th>Ignored UTC</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                    @foreach (var row in IgnoredRecords)
+                    {
+                        <tr>
+                            <td>@row.DatabaseName</td>
+                            <td>@row.EntityName</td>
+                            <td>@row.SourceRowGuid</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.Reason) ? "-" : row.Reason)</td>
+                            <td>@row.IgnoredOnUtcText</td>
+                            <td>@(row.IsActive ? Badge("Active") : Badge("Inactive"))</td>
+                            <td>
+                                <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => UnignoreRecordAsync(row))" disabled="@(IsBusy || !row.IsActive)">Unignore</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>;
+
+    private RenderFragment RegistrySection() => @<section class="metadata-card">
+        <div class="metadata-section-header">
+            <div>
+                <h2>Registry</h2>
+                <p>Registry status inferred from staged counts for this UI patch.</p>
+            </div>
+        </div>
+        <div class="metadata-table-wrap">
+            <table class="metadata-table">
+                <thead><tr><th>Schema</th><th>Table</th><th>Total Staged</th><th>Validation Errors</th></tr></thead>
+                <tbody>
+                    @foreach (var row in TableSummaryRows)
+                    {
+                        <tr>
+                            <td>@row.SchemaName</td>
+                            <td>@row.TableName</td>
+                            <td>@row.TotalCount</td>
+                            <td>@row.ValidationErrorCount</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>;
+
+    private RenderFragment ComingSoonSection(string title, string description) => @<section class="metadata-card metadata-empty-panel">
+        <span class="bi bi-tools"></span>
+        <h2>@title</h2>
+        <p>@description</p>
+    </section>;
+
+    private RenderFragment DetailTabButton(string tab, string label) => @<button type="button"
+        class="metadata-detail-tab @(SelectedDetailTab == tab ? "selected" : string.Empty)"
+        @onclick="@(() => SetDetailTab(tab))">
+        @label
+    </button>;
+
+
+    private void SetDetailTab(string tab)
+    {
+        SelectedDetailTab = tab;
+    }
+
+    private RenderFragment ComparisonPanel() => @<div class="metadata-comparison-body">
+        @if (SelectedDiffRow is null)
+        {
+            <div class="metadata-empty-state">Select a record to view its source and target values.</div>
+        }
+        else
+        {
+            <div class="metadata-comparison-grid">
+                <div class="metadata-comparison-table-wrap">
+                    <table class="metadata-table metadata-comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Source (@SourceEnvironment)</th>
+                                <th>Target (@TargetEnvironment)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var column in AllColumnNames(SelectedDiffRow))
+                            {
+                                var sourceValue = GetSourceValue(SelectedDiffRow, column);
+                                var targetValue = GetTargetValue(SelectedDiffRow, column);
+                                <tr class="@ComparisonRowClass(sourceValue, targetValue)">
+                                    <td><strong>@column</strong></td>
+                                    <td>@sourceValue</td>
+                                    <td>@targetValue</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <aside class="metadata-record-info-panel">
+                    <h3>Record Information</h3>
+                    <dl>
+                        <dt>Table</dt><dd>@SelectedDiffRow.EntityName</dd>
+                        <dt>Difference</dt><dd>@DifferenceBadge(SelectedDiffRow.DifferenceType)</dd>
+                        <dt>Source Guid</dt><dd>@SelectedDiffRow.SourceRowGuid</dd>
+                        <dt>Changed Columns</dt><dd>@SelectedDiffRow.DifferingColumns.Count</dd>
+                        <dt>Run</dt><dd>@RunGuidText</dd>
+                    </dl>
+                    <h3>Ignore Status</h3>
+                    <dl>
+                        <dt>Selected for apply</dt><dd>@(SelectedDiffRow.IsSelected ? "Yes" : "No")</dd>
+                        <dt>Ignored</dt><dd>@(SelectedDiffRow.IsIgnored ? "Yes" : "No")</dd>
+                        <dt>Reason</dt><dd>@(string.IsNullOrWhiteSpace(SelectedDiffRow.IgnoreReason) ? "-" : SelectedDiffRow.IgnoreReason)</dd>
+                        <dt>Ignored On</dt><dd>@(string.IsNullOrWhiteSpace(SelectedDiffRow.IgnoredOnUtcText) ? "-" : SelectedDiffRow.IgnoredOnUtcText)</dd>
+                    </dl>
+                </aside>
+            </div>
+        }
+    </div>;
+
+    private RenderFragment JsonPanel() => @<div class="metadata-json-grid">
+        @JsonViewer("Source JSON", SelectedDiffRow?.SourceValues, true)
+        @JsonViewer("Target JSON", SelectedDiffRow?.TargetValues, false)
+    </div>;
+
+    private RenderFragment JsonViewer(string title, Dictionary<string, string>? values, bool isSource) => @<div class="metadata-json-panel">
+        <h3>@title</h3>
+        @if (SelectedDiffRow is null || values is null || values.Count == 0)
+        {
+            <pre>{}</pre>
+        }
+        else
+        {
+            <div class="metadata-json-lines" role="table" aria-label="@title">
+                @foreach (var line in PrettyJsonLines(values))
+                {
+                    <div class="@JsonLineClass(line, SelectedDiffRow, isSource)" role="row">
+                        <span class="metadata-json-line-number" role="cell">@line.LineNumber</span>
+                        <code role="cell">@line.Text</code>
+                    </div>
+                }
+            </div>
+        }
+    </div>;
+
+    private RenderFragment SqlPreviewPanel() => @<div class="metadata-json-panel">
+        <h3>SQL View</h3>
+        <p>The backend apply remains procedure-driven. This view shows the selected-only apply context for the active record.</p>
+        <pre>@SqlPreviewText()</pre>
+    </div>;
+
+    private RenderFragment Badge(string text) => @<span class="metadata-badge @BadgeClass(text)">@text</span>;
+
+    private RenderFragment DifferenceBadge(string differenceType) => @<span class="metadata-badge @DifferenceBadgeClass(differenceType)">@DisplayDifference(differenceType)</span>;
+
+    private async Task SelectSectionAsync(string section)
+    {
+        SelectedSection = section;
+
+        if ((section == "audit" || section == "identity" || section == "registry" || section == "overview") && HasRunGuid)
         {
             await RefreshDashboardAsync(false);
         }
+        else if (section == "ignored" && HasRunGuid)
+        {
+            await LoadIgnoredRecordsAsync();
+        }
+    }
+
+    private async Task RefreshCurrentViewAsync()
+    {
+        if (!HasRunGuid)
+        {
+            await LoadRunsAsync();
+            return;
+        }
+
+        await RefreshDashboardAsync();
+
+        if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
+        {
+            await LoadRecordsAsync();
+        }
+    }
+
+    private async Task SelectRunAsync(MetadataMigrationRunModel run)
+    {
+        RunGuidText = run.RunGuid.ToString();
+        SourceEnvironment = run.SourceEnvironment;
+        TargetEnvironment = run.TargetEnvironment;
+        SourceServerName = run.SourceServerName;
+        SourceDatabaseName = run.SourceDatabaseName;
+        TargetServerName = run.TargetServerName;
+        TargetDatabaseName = run.TargetDatabaseName;
+        SelectedRecordKeys.Clear();
+        DiffRows.Clear();
+        SelectedDiffRow = null;
+        await RefreshDashboardAsync();
+    }
+
+    private async Task OpenStageWithDifferenceAsync(string differenceType)
+    {
+        SelectedSection = "stage";
+        SelectedDifferenceType = differenceType;
+        ShowNoChange = differenceType == DifferenceNoChange || ShowNoChange;
+        await RefreshDashboardAsync(false);
+
+        var firstTable = FilteredTableSummaryRows.FirstOrDefault(row => differenceType switch
+        {
+            DifferenceInsert => row.InsertCount > 0,
+            DifferenceUpdate => row.UpdateCount > 0,
+            DifferenceNoChange => row.NoChangeCount > 0,
+            _ => row.TotalCount > 0
+        }) ?? FilteredTableSummaryRows.FirstOrDefault();
+
+        if (firstTable is not null)
+        {
+            await SelectTableAsync(firstTable);
+        }
+    }
+
+    private async Task OpenAuditSeverityAsync(string severity)
+    {
+        SelectedSection = "audit";
+        SelectedAuditSeverity = severity;
+        ShowMissingTargetsOnly = false;
+        await RefreshDashboardAsync(false);
+    }
+
+    private async Task OpenMissingTargetsAsync()
+    {
+        SelectedSection = "identity";
+        SelectedAuditSeverity = string.Empty;
+        ShowMissingTargetsOnly = true;
+        await RefreshDashboardAsync(false);
+    }
+
+    private async Task SelectTableAsync(MetadataTableSummaryRow row)
+    {
+        SelectedTableSummary = row;
+        SelectedEntityName = row.EntityName;
+        RecordSearchText = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(SelectedDifferenceType))
+        {
+            SelectedDifferenceType = row.UpdateCount > 0
+                ? DifferenceUpdate
+                : row.InsertCount > 0
+                    ? DifferenceInsert
+                    : DifferenceNoChange;
+        }
+
+        await LoadRecordsAsync();
+    }
+
+    private void SelectRecord(MetadataMigrationDiffRowModel row)
+    {
+        SelectedDiffRow = row;
+        SelectedDetailTab = "comparison";
     }
 
     private async Task LoadRunsAsync() => await ExecuteAsync(async () =>
     {
-        AvailableRuns = await CurrentFormHelper.MetadataMigrationRunsAsync(50, TargetServerName, TargetDatabaseName);
+        await LoadRunsCoreAsync();
         Message = $"Loaded {AvailableRuns.Count} metadata run(s).";
     });
 
@@ -242,127 +1002,169 @@
     {
         var run = await CurrentFormHelper.MetadataMigrationRunCreateAsync(SourceEnvironment, TargetEnvironment, SourceServerName, SourceDatabaseName, TargetServerName, TargetDatabaseName, IsValidateOnly);
         RunGuidText = run.RunGuid.ToString();
+        await LoadRunsCoreAsync();
+        await RefreshDashboardCoreAsync(false);
+        SelectedSection = "stage";
         Message = $"Created metadata run {RunGuidText}.";
-        await LoadRunsAsync();
-        await RefreshDashboardAsync(false);
     });
 
     private async Task StageAsync() => await ExecuteAsync(async () =>
     {
         await CurrentFormHelper.MetadataMigrationStageAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+        await RefreshDashboardCoreAsync(false);
         Message = "Metadata staged successfully.";
-        await RefreshDashboardAsync(false);
-    });
+    }, busyMessage: "Staging metadata for the selected run. This can take a while; please wait and do not refresh the page.");
 
     private async Task ValidateAsync() => await ExecuteAsync(async () =>
     {
         var issues = await CurrentFormHelper.MetadataMigrationValidateAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+        await RefreshDashboardCoreAsync(false);
         Message = issues.Count == 0 ? "Validation passed with no issues." : $"Validation completed with {issues.Count} issue(s).";
-        await RefreshDashboardAsync(false);
     });
 
     private async Task BuildIdentityMapAsync() => await ExecuteAsync(async () =>
     {
         var rows = await CurrentFormHelper.MetadataMigrationBuildIdentityMapAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+        await RefreshDashboardCoreAsync(false);
         Message = $"Identity map built for {rows.Count} table group(s).";
-        await RefreshDashboardAsync(false);
     });
 
     private async Task ApplyAsync() => await ExecuteAsync(async () =>
     {
         Message = await CurrentFormHelper.MetadataMigrationApplyAsync(CurrentRunGuid(), ForceApply, TargetServerName, TargetDatabaseName);
-        await RefreshDashboardAsync(false);
+        await RefreshDashboardCoreAsync(false);
+        if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
+        {
+            await LoadRecordsCoreAsync(false);
+        }
+    });
+
+    private async Task ApplySelectedAsync() => await ExecuteAsync(async () =>
+    {
+        Message = await CurrentFormHelper.MetadataMigrationApplySelectedAsync(CurrentRunGuid(), ForceApply, TargetServerName, TargetDatabaseName);
+        await RefreshDashboardCoreAsync(false);
+        if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
+        {
+            await LoadRecordsCoreAsync(false);
+        }
     });
 
     private async Task RefreshDashboardAsync(bool clearMessage = true) => await ExecuteAsync(async () =>
     {
+        await RefreshDashboardCoreAsync(clearMessage);
+    }, clearMessage);
+
+    private async Task LoadRecordsAsync() => await ExecuteAsync(async () =>
+    {
+        await LoadRecordsCoreAsync();
+    });
+
+    private async Task LoadRunsCoreAsync()
+    {
+        AvailableRuns = await CurrentFormHelper.MetadataMigrationRunsAsync(50, TargetServerName, TargetDatabaseName);
+    }
+
+    private async Task RefreshDashboardCoreAsync(bool clearMessage = true)
+    {
         Dashboard = await CurrentFormHelper.MetadataMigrationDashboardAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
-        if (!string.IsNullOrWhiteSpace(Dashboard.Run?.TargetEnvironment))
+
+        if (Dashboard.Run is not null && Dashboard.Run.RunGuid != Guid.Empty)
         {
-            TargetEnvironment = Dashboard.Run.TargetEnvironment;
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.SourceEnvironment))
+            {
+                SourceEnvironment = Dashboard.Run.SourceEnvironment;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.TargetEnvironment))
+            {
+                TargetEnvironment = Dashboard.Run.TargetEnvironment;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.SourceServerName))
+            {
+                SourceServerName = Dashboard.Run.SourceServerName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.SourceDatabaseName))
+            {
+                SourceDatabaseName = Dashboard.Run.SourceDatabaseName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.TargetServerName))
+            {
+                TargetServerName = Dashboard.Run.TargetServerName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Dashboard.Run.TargetDatabaseName))
+            {
+                TargetDatabaseName = Dashboard.Run.TargetDatabaseName;
+            }
         }
+
         if (clearMessage)
         {
             Message = "Metadata dashboard refreshed.";
         }
+
         if (string.IsNullOrWhiteSpace(SelectedEntityName))
         {
-            SelectedEntityName = Entities.FirstOrDefault() ?? string.Empty;
+            var firstTable = FilteredTableSummaryRows.FirstOrDefault();
+            if (firstTable is not null)
+            {
+                SelectedTableSummary = firstTable;
+                SelectedEntityName = firstTable.EntityName;
+            }
         }
-    }, clearMessage);
+    }
 
-    private async Task LoadStagedRowsAsync() => await ExecuteAsync(async () =>
+    private async Task LoadRecordsCoreAsync(bool setMessage = true)
     {
         var (schema, table) = SplitEntityName(SelectedEntityName);
-        StagedRows = await CurrentFormHelper.MetadataMigrationStagedRowsAsync(CurrentRunGuid(), schema, table, SelectedDifferenceType, TargetServerName, TargetDatabaseName);
-        SelectedStagedRow = StagedRows.FirstOrDefault();
-        Message = $"Loaded {StagedRows.Count} staged row(s).";
-    });
+        DiffRows = await CurrentFormHelper.MetadataMigrationDiffAsync(CurrentRunGuid(), schema, table, SelectedDifferenceType, TargetServerName, TargetDatabaseName, ShowIgnored);
+        SelectedRecordKeys.Clear();
+        foreach (var selectedRow in DiffRows.Where(row => row.IsSelected))
+        {
+            SelectedRecordKeys.Add(RecordKey(selectedRow));
+        }
 
-    private async Task LoadDiffAsync() => await ExecuteAsync(async () =>
-    {
-        var (schema, table) = SplitEntityName(SelectedEntityName);
-        DiffRows = await CurrentFormHelper.MetadataMigrationDiffAsync(CurrentRunGuid(), schema, table, SelectedDifferenceType, TargetServerName, TargetDatabaseName);
-        SelectedDiffRow = DiffRows.FirstOrDefault();
-        Message = $"Loaded {DiffRows.Count} diff row(s).";
-    });
-
-    private async Task OpenAuditSeverityAsync(string severity)
-    {
-        SelectedTab = "audit";
-        SelectedAuditSeverity = severity;
-        ShowMissingTargetsOnly = false;
-        await RefreshDashboardAsync(false);
+        SelectedDiffRow = FilteredDiffRows.FirstOrDefault();
+        if (setMessage)
+        {
+            Message = $"Loaded {DiffRows.Count} record(s) for {SelectedEntityName}.";
+        }
     }
 
-    private async Task OpenStagedAsync(string differenceType)
+    private async Task ClearAuditFiltersAsync()
     {
-        SelectedTab = "staged";
-        SelectedEntityName = string.Empty;
-        SelectedDifferenceType = differenceType;
-        SearchText = string.Empty;
-        await LoadStagedRowsAsync();
-    }
-
-    private async Task OpenDiffAsync(string differenceType)
-    {
-        SelectedTab = "diff";
-        SelectedEntityName = string.Empty;
-        SelectedDifferenceType = differenceType;
-        SearchText = string.Empty;
-        await LoadDiffAsync();
-    }
-
-    private async Task OpenIdentityMapAsync()
-    {
-        SelectedTab = "audit";
         SelectedAuditSeverity = string.Empty;
         ShowMissingTargetsOnly = false;
         await RefreshDashboardAsync(false);
     }
 
-    private async Task OpenMissingTargetsAsync()
-    {
-        SelectedTab = "audit";
-        SelectedAuditSeverity = string.Empty;
-        ShowMissingTargetsOnly = true;
-        await RefreshDashboardAsync(false);
-    }
+    private Guid CurrentRunGuid() => Guid.TryParse(RunGuidText, out var runGuid)
+        ? runGuid
+        : throw new InvalidOperationException("A metadata run must be selected first.");
 
-    private Guid CurrentRunGuid() => Guid.TryParse(RunGuidText, out var runGuid) ? runGuid : throw new InvalidOperationException("A metadata run must be selected first.");
-
-    private async Task ExecuteAsync(Func<Task> action, bool clearMessage = true)
+    private async Task ExecuteAsync(Func<Task> action, bool clearMessage = true, string busyMessage = "")
     {
         if (IsBusy)
         {
             return;
         }
+
         IsBusy = true;
+        BusyMessage = string.IsNullOrWhiteSpace(busyMessage)
+            ? "Metadata operation is running. Please wait."
+            : busyMessage;
+
         if (clearMessage)
         {
             Message = string.Empty;
             Error = string.Empty;
         }
+
+        await InvokeAsync(StateHasChanged);
+
         try
         {
             await action();
@@ -374,9 +1176,224 @@
         finally
         {
             IsBusy = false;
+            BusyMessage = string.Empty;
             await InvokeAsync(StateHasChanged);
-
         }
+    }
+
+
+    private async Task ToggleShowIgnoredAsync(ChangeEventArgs args)
+    {
+        ShowIgnored = args.Value is bool value && value;
+        if (SelectedSection == "stage" && HasRunGuid && !string.IsNullOrWhiteSpace(SelectedEntityName))
+        {
+            await LoadRecordsAsync();
+        }
+    }
+
+    private async Task ToggleIgnoreSelectedRecordAsync()
+    {
+        if (SelectedDiffRow is null)
+        {
+            return;
+        }
+
+        var row = SelectedDiffRow;
+        var shouldIgnore = !row.IsIgnored;
+
+        await ExecuteAsync(async () =>
+        {
+            var result = await CurrentFormHelper.MetadataMigrationIgnoreUpsertAsync(
+                CurrentRunGuid(),
+                row.SchemaName,
+                row.TableName,
+                row.SourceRowGuid,
+                shouldIgnore,
+                shouldIgnore ? IgnoreReason : string.Empty,
+                TargetServerName,
+                TargetDatabaseName);
+
+            await RefreshDashboardCoreAsync(false);
+            if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
+            {
+                await LoadRecordsCoreAsync(false);
+            }
+
+            if (SelectedSection == "ignored")
+            {
+                await LoadIgnoredRecordsCoreAsync();
+            }
+
+            IgnoreReason = string.Empty;
+            Message = result.Message;
+        });
+    }
+
+    private async Task LoadIgnoredRecordsAsync() => await ExecuteAsync(async () =>
+    {
+        await LoadIgnoredRecordsCoreAsync();
+        Message = $"Loaded {IgnoredRecords.Count} ignored record(s).";
+    });
+
+    private async Task LoadIgnoredRecordsCoreAsync()
+    {
+        IgnoredRecords = await CurrentFormHelper.MetadataMigrationIgnoredRecordsAsync(
+            CurrentRunGuid(),
+            TargetServerName,
+            TargetDatabaseName,
+            ShowInactiveIgnoredRecords);
+    }
+
+    private async Task UnignoreRecordAsync(MetadataMigrationIgnoredRecordModel row)
+    {
+        await ExecuteAsync(async () =>
+        {
+            var result = await CurrentFormHelper.MetadataMigrationIgnoreUpsertAsync(
+                CurrentRunGuid(),
+                row.SchemaName,
+                row.TableName,
+                row.SourceRowGuid,
+                false,
+                string.Empty,
+                TargetServerName,
+                TargetDatabaseName);
+
+            await RefreshDashboardCoreAsync(false);
+            await LoadIgnoredRecordsCoreAsync();
+            if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
+            {
+                await LoadRecordsCoreAsync(false);
+            }
+
+            Message = result.Message;
+        });
+    }
+
+    private async Task PersistRecordSelectionAsync(MetadataMigrationDiffRowModel row, ChangeEventArgs args)
+    {
+        var isChecked = args.Value is bool checkedValue && checkedValue;
+        if (isChecked && !IsSelectableForApply(row))
+        {
+            Error = "Only Insert and Update metadata rows can be selected for apply.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (await SaveSelectionAsync(new[]
+        {
+            ToSelectionItem(row, isChecked)
+        }))
+        {
+            row.IsSelected = isChecked;
+            SyncSelectionKey(row);
+        }
+    }
+
+    private async Task SelectVisibleRecordsAsync()
+    {
+        var rows = FilteredDiffRows.Where(IsSelectableForApply).ToList();
+        if (rows.Count == 0)
+        {
+            Message = "There are no visible Insert or Update rows to select.";
+            return;
+        }
+
+        if (await SaveSelectionAsync(rows.Select(row => ToSelectionItem(row, true)).ToList()))
+        {
+            foreach (var row in rows)
+            {
+                row.IsSelected = true;
+                SyncSelectionKey(row);
+            }
+        }
+    }
+
+    private async Task ClearTableSelectionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedEntityName))
+        {
+            return;
+        }
+
+        var (schema, table) = SplitEntityName(SelectedEntityName);
+
+        await ExecuteAsync(async () =>
+        {
+            var result = await CurrentFormHelper.MetadataMigrationSelectionClearAsync(CurrentRunGuid(), schema, table, string.Empty, TargetServerName, TargetDatabaseName);
+            foreach (var row in DiffRows)
+            {
+                row.IsSelected = false;
+                SelectedRecordKeys.Remove(RecordKey(row));
+            }
+
+            await RefreshDashboardCoreAsync(false);
+            Message = result.Message;
+        }, false);
+    }
+
+    private async Task<bool> SaveSelectionAsync(IReadOnlyCollection<MetadataMigrationSelectionItemModel> items)
+    {
+        if (items.Count == 0)
+        {
+            return true;
+        }
+
+        var succeeded = false;
+        await ExecuteAsync(async () =>
+        {
+            var result = await CurrentFormHelper.MetadataMigrationSelectionUpsertAsync(CurrentRunGuid(), items, TargetServerName, TargetDatabaseName);
+            await RefreshDashboardCoreAsync(false);
+            Message = result.Message;
+            succeeded = true;
+        });
+
+        return succeeded;
+    }
+
+    private static bool IsRecordSelected(MetadataMigrationDiffRowModel row) => row.IsSelected;
+
+    private static bool IsSelectableForApply(MetadataMigrationDiffRowModel row) =>
+        row.DifferenceType.Equals(DifferenceInsert, StringComparison.OrdinalIgnoreCase)
+        || row.DifferenceType.Equals(DifferenceUpdate, StringComparison.OrdinalIgnoreCase);
+
+    private static MetadataMigrationSelectionItemModel ToSelectionItem(MetadataMigrationDiffRowModel row, bool isSelected) => new()
+    {
+        SchemaName = row.SchemaName,
+        TableName = row.TableName,
+        SourceRowGuid = row.SourceRowGuid,
+        DifferenceType = row.DifferenceType,
+        IsSelected = isSelected
+    };
+
+    private void SyncSelectionKey(MetadataMigrationDiffRowModel row)
+    {
+        var key = RecordKey(row);
+        if (row.IsSelected)
+        {
+            SelectedRecordKeys.Add(key);
+        }
+        else
+        {
+            SelectedRecordKeys.Remove(key);
+        }
+    }
+
+    private static string RecordKey(MetadataMigrationDiffRowModel row) => $"{row.SchemaName}.{row.TableName}:{row.SourceRowGuid}";
+
+    private string RecordRowClass(MetadataMigrationDiffRowModel row)
+    {
+        var classes = new List<string>();
+        if (SelectedDiffRow == row)
+        {
+            classes.Add("selected");
+        }
+
+        if (row.IsIgnored)
+        {
+            classes.Add("metadata-record-ignored");
+        }
+
+        return string.Join(" ", classes);
     }
 
     private static (string Schema, string Table) SplitEntityName(string entityName)
@@ -385,152 +1402,196 @@
         return parts.Length == 2 ? (parts[0], parts[1]) : (string.Empty, string.Empty);
     }
 
-    private IEnumerable<MetadataMigrationStagedRowModel> FilteredStagedRows => StagedRows.Where(row => string.IsNullOrWhiteSpace(SearchText) || row.SourcePayloadJson.Contains(SearchText, StringComparison.OrdinalIgnoreCase) || row.TargetPayloadJson.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
-    private IEnumerable<MetadataMigrationDiffRowModel> FilteredDiffRows => DiffRows.Where(row => string.IsNullOrWhiteSpace(SearchText) || row.SourceValues.Values.Concat(row.TargetValues.Values).Any(v => v.Contains(SearchText, StringComparison.OrdinalIgnoreCase)));
-    private IEnumerable<MetadataMigrationValidationIssueModel> FilteredValidationIssues => (Dashboard?.ValidationIssues ?? Enumerable.Empty<MetadataMigrationValidationIssueModel>())
-        .Where(row => string.IsNullOrWhiteSpace(SelectedAuditSeverity) || row.Severity.Equals(SelectedAuditSeverity, StringComparison.OrdinalIgnoreCase));
-    private IEnumerable<MetadataMigrationIdentityMapModel> FilteredIdentityMap => (Dashboard?.IdentityMap ?? Enumerable.Empty<MetadataMigrationIdentityMapModel>())
-        .Where(row => !ShowMissingTargetsOnly || row.MissingTargetRows > 0);
+    private static string FormatRunOption(MetadataMigrationRunModel run) => $"{run.CreatedOnUtcText} - {run.SourceEnvironment} → {run.TargetEnvironment} - {run.RunStatus}";
 
-    private RenderFragment DashboardCards() => @<div class="cb-v2-summary-grid">
-        @SummaryCard("Fail", Dashboard?.FailCount ?? 0, "cb-v2-summary-danger", () => OpenAuditSeverityAsync("Fail"))
-        @SummaryCard("Warn", Dashboard?.WarnCount ?? 0, "cb-v2-summary-warning", () => OpenAuditSeverityAsync("Warn"))
-        @SummaryCard("Info", Dashboard?.InfoCount ?? 0, "cb-v2-summary-info", () => OpenAuditSeverityAsync("Info"))
-        @SummaryCard("Insert", Dashboard?.InsertCount ?? 0, "cb-v2-summary-success", () => OpenStagedAsync("Insert"))
-        @SummaryCard("Update", Dashboard?.UpdateCount ?? 0, "cb-v2-summary-purple", () => OpenDiffAsync("Update"))
-        @SummaryCard("No Change", Dashboard?.NoChangeCount ?? 0, "cb-v2-summary-muted", () => OpenStagedAsync("NoChange"))
-        @SummaryCard("Map Rows", Dashboard?.MapRows ?? 0, "cb-v2-summary-info", OpenIdentityMapAsync)
-        @SummaryCard("Missing Targets", Dashboard?.MissingTargetRows ?? 0, (Dashboard?.MissingTargetRows ?? 0) == 0 ? "cb-v2-summary-success" : "cb-v2-summary-danger", OpenMissingTargetsAsync)
-    </div>;
-
-    private RenderFragment SummaryCard(string title, int count, string cssClass, Func<Task> onClick) => @<button type="button"
-                                                                                                                 class="cb-v2-summary-card @cssClass"
-                                                                                                                 style="text-align:left; border:0; cursor:pointer;"
-                                                                                                                 @onclick="@(() => onClick())"
-                                                                                                                 disabled="@IsBusy">
-        <div class="cb-v2-summary-title">@title</div>
-        <div class="cb-v2-summary-value">@count</div>
-    </button>;
-
-    private RenderFragment StagedRowsTable() => @<div class="cb-v2-table-wrap"><table class="cb-v2-table cb-v2-dashboard-grid"><thead><tr><th>Entity</th><th>Guid</th><th>Type</th></tr></thead><tbody>@foreach (var row in FilteredStagedRows) {
-        <tr class="cb-v2-clickable-row @(SelectedStagedRow == row ? "cb-v2-table-row-selected" : "")" @onclick="@(() => SelectedStagedRow = row)"><td>@row.EntityName</td><td>@row.SourceRowGuid</td><td>@row.DifferenceType</td></tr>
-    }
-</tbody></table></div>;
-
-private RenderFragment SelectedStagedRowDetails() => @<div class="metadata-json-panel"><h3 class="cb-v2-subtitle">Payload</h3><pre>@(SelectedStagedRow?.SourcePayloadJson ?? "Select a row.")</pre></div>;
-
-private RenderFragment DiffRowsTable() => @<div class="cb-v2-table-wrap"><table class="cb-v2-table cb-v2-dashboard-grid"><thead><tr><th>Entity</th><th>Guid</th><th>Type</th><th>Diff Columns</th></tr></thead><tbody>@foreach (var row in FilteredDiffRows) {
-    <tr class="cb-v2-clickable-row @(SelectedDiffRow == row ? "cb-v2-table-row-selected" : "")" @onclick="@(() => SelectedDiffRow = row)"><td>@row.EntityName</td><td>@row.SourceRowGuid</td><td>@row.DifferenceType</td><td>@row.DifferingColumns.Count</td></tr>
-}
-</tbody></table></div>;
-
-    private RenderFragment SelectedDiffRowDetails() => @<div class="metadata-json-panel"><h3 class="cb-v2-subtitle">Changed Columns</h3>@if (SelectedDiffRow is null) {
-        <div class="cb-v2-empty-state compact">Select a row.</div>
-    } else
-{
-
-    <table class="cb-v2-table"><thead><tr><th>Column</th><th>Source</th><th>Target</th></tr></thead><tbody>@foreach (var col in SelectedDiffRow.DifferingColumns) {
-        <tr><td>@col</td><td>@(SelectedDiffRow.SourceValues.TryGetValue(col, out var s) ? s : string.Empty)</td><td>@(SelectedDiffRow.TargetValues.TryGetValue(col, out var t) ? t : string.Empty)</td></tr>
-    }
-</tbody></table>
-    }
-</div>;
-
-private RenderFragment AuditContent() => @<div>
-    <h3 class="cb-v2-subtitle">Run</h3>
-    <div class="metadata-audit-summary">
-        <div>Status: <strong>@(Dashboard?.Run?.RunStatus ?? "")</strong></div>
-        <div>Run: <strong>@RunGuidText</strong></div>
-        <div>Applied: <strong>@(Dashboard?.Run?.AppliedOnUtcText ?? "")</strong></div>
-    </div>
-
-    @if (!string.IsNullOrWhiteSpace(SelectedAuditSeverity) || ShowMissingTargetsOnly)
+    private static string DisplayDifference(string differenceType) => differenceType switch
     {
-        <div class="cb-v2-description">
-            Active card filter:
-            <strong>@(ShowMissingTargetsOnly ? "Missing Targets" : SelectedAuditSeverity)</strong>
-            <button type="button" class="cb-v2-btn-secondary" @onclick="ClearAuditFiltersAsync" disabled="@IsBusy">Clear</button>
-        </div>
+        DifferenceNoChange => "No Change",
+        _ => differenceType
+    };
+
+    private static string BadgeClass(string text)
+    {
+        var normalized = text ?? string.Empty;
+        if (normalized.Equals("Fail", StringComparison.OrdinalIgnoreCase) || normalized.Equals("Failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "danger";
+        }
+
+        if (normalized.Equals("Warn", StringComparison.OrdinalIgnoreCase) || normalized.Equals("Warning", StringComparison.OrdinalIgnoreCase))
+        {
+            return "warning";
+        }
+
+        if (normalized.Equals("Applied", StringComparison.OrdinalIgnoreCase) || normalized.Equals("Complete", StringComparison.OrdinalIgnoreCase) || normalized.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "success";
+        }
+
+        return "info";
     }
 
-    <h3 class="cb-v2-subtitle">Validation Issues</h3>
-    <div class="cb-v2-table-wrap">
-        <table class="cb-v2-table cb-v2-dashboard-grid">
-            <thead>
-                <tr>
-                    <th>Severity</th>
-                    <th>Entity</th>
-                    <th>Issue Code</th>
-                    <th>Message</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in FilteredValidationIssues)
-                {
-                    <tr>
-                        <td>@row.Severity</td>
-                        <td>@row.EntityName</td>
-                        <td>@row.IssueCode</td>
-                        <td>@row.IssueMessage</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    private static string DifferenceBadgeClass(string differenceType) => differenceType switch
+    {
+        DifferenceInsert => "success",
+        DifferenceUpdate => "info",
+        DifferenceNoChange => "muted",
+        _ => "warning"
+    };
 
-    <h3 class="cb-v2-subtitle">Identity Map</h3>
-    <div class="cb-v2-table-wrap">
-        <table class="cb-v2-table cb-v2-dashboard-grid">
-            <thead>
-                <tr>
-                    <th>Entity</th>
-                    <th>Map Rows</th>
-                    <th>Missing Targets</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in FilteredIdentityMap)
-                {
-                    <tr>
-                        <td>@row.EntityName</td>
-                        <td>@row.MapRows</td>
-                        <td>@row.MissingTargetRows</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+    private static string GetValue(MetadataMigrationDiffRowModel row, string key)
+    {
+        if (row.SourceValues.TryGetValue(key, out var sourceValue) && !string.IsNullOrWhiteSpace(sourceValue))
+        {
+            return sourceValue;
+        }
 
-    <h3 class="cb-v2-subtitle">Execution Log</h3>
-    <div class="cb-v2-table-wrap">
-        <table class="cb-v2-table cb-v2-dashboard-grid">
-            <thead>
-                <tr>
-                    <th>Step</th>
-                    <th>Status</th>
-                    <th>Message</th>
-                    <th>Created UTC</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in Dashboard?.ExecutionLog ?? Enumerable.Empty<MetadataMigrationExecutionLogItemModel>())
-                {
-                    <tr>
-                        <td>@row.StepName</td>
-                        <td>@row.StepStatus</td>
-                        <td>@row.Message</td>
-                        <td>@row.CreatedOnUtcText</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</div>;
+        return row.TargetValues.TryGetValue(key, out var targetValue) ? targetValue : string.Empty;
+    }
 
-private async Task ClearAuditFiltersAsync()
-{
-    SelectedAuditSeverity = string.Empty;
-    ShowMissingTargetsOnly = false;
-    await RefreshDashboardAsync(false);
-}
+    private static string GetSourceValue(MetadataMigrationDiffRowModel row, string key) => row.SourceValues.TryGetValue(key, out var value) ? value : string.Empty;
+    private static string GetTargetValue(MetadataMigrationDiffRowModel row, string key) => row.TargetValues.TryGetValue(key, out var value) ? value : string.Empty;
+
+    private static IReadOnlyList<string> AllColumnNames(MetadataMigrationDiffRowModel row) => row.SourceValues.Keys
+        .Union(row.TargetValues.Keys, StringComparer.OrdinalIgnoreCase)
+        .OrderBy(x => x)
+        .ToList();
+
+    private static string ComparisonRowClass(string sourceValue, string targetValue)
+    {
+        if (StringComparer.Ordinal.Equals(sourceValue ?? string.Empty, targetValue ?? string.Empty))
+        {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(targetValue) && !string.IsNullOrWhiteSpace(sourceValue))
+        {
+            return "metadata-row-added";
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceValue) && !string.IsNullOrWhiteSpace(targetValue))
+        {
+            return "metadata-row-removed";
+        }
+
+        return "metadata-row-changed";
+    }
+
+    private static string FirstNonEmpty(params string[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    private static string GetDisplayId(MetadataMigrationDiffRowModel row)
+    {
+        var id = GetValue(row, "ID");
+        return string.IsNullOrWhiteSpace(id) ? "-" : id;
+    }
+
+    private static string PrettyJson(Dictionary<string, string>? values)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return "{}";
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(values, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static IReadOnlyList<JsonDisplayLine> PrettyJsonLines(Dictionary<string, string>? values)
+    {
+        var json = PrettyJson(values);
+        var lines = json.Replace("\r\n", "\n").Split('\n');
+
+        return lines
+            .Select((text, index) => new JsonDisplayLine(index + 1, text, ExtractJsonPropertyName(text)))
+            .ToList();
+    }
+
+    private static string ExtractJsonPropertyName(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return string.Empty;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(line, @"^\s*""(?<key>(?:\\.|[^""\\])*)""\s*:");
+        return match.Success
+            ? System.Text.RegularExpressions.Regex.Unescape(match.Groups["key"].Value)
+            : string.Empty;
+    }
+
+    private static string JsonLineClass(JsonDisplayLine line, MetadataMigrationDiffRowModel? row, bool isSource)
+    {
+        var baseClass = isSource
+            ? "metadata-json-line metadata-json-line-source"
+            : "metadata-json-line metadata-json-line-target";
+
+        if (row is null || string.IsNullOrWhiteSpace(line.PropertyName) || !IsDifferingJsonProperty(row, line.PropertyName))
+        {
+            return baseClass;
+        }
+
+        var sourceValue = GetSourceValue(row, line.PropertyName);
+        var targetValue = GetTargetValue(row, line.PropertyName);
+
+        if (string.IsNullOrWhiteSpace(targetValue) && !string.IsNullOrWhiteSpace(sourceValue))
+        {
+            return $"{baseClass} metadata-json-line-added";
+        }
+
+        if (string.IsNullOrWhiteSpace(sourceValue) && !string.IsNullOrWhiteSpace(targetValue))
+        {
+            return $"{baseClass} metadata-json-line-removed";
+        }
+
+        return $"{baseClass} metadata-json-line-changed";
+    }
+
+    private static bool IsDifferingJsonProperty(MetadataMigrationDiffRowModel row, string propertyName)
+    {
+        if (row.DifferingColumns.Any(column => column.Equals(propertyName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var sourceValue = GetSourceValue(row, propertyName) ?? string.Empty;
+        var targetValue = GetTargetValue(row, propertyName) ?? string.Empty;
+
+        return !StringComparer.Ordinal.Equals(sourceValue, targetValue);
+    }
+
+    private string SqlPreviewText()
+    {
+        if (SelectedDiffRow is null)
+        {
+            return "-- Select a record to view apply context.";
+        }
+
+        return $"EXEC SMigration.MetadataApply_Run @RunGuid = '{RunGuidText}', @ForceApply = {(ForceApply ? 1 : 0)}, @ApplySelectedOnly = 1;\n-- Selected record context: {SelectedDiffRow.SchemaName}.{SelectedDiffRow.TableName} / {SelectedDiffRow.SourceRowGuid}";
+    }
+
+    private sealed class JsonDisplayLine
+    {
+        public JsonDisplayLine(int lineNumber, string text, string propertyName)
+        {
+            LineNumber = lineNumber;
+            Text = text;
+            PropertyName = propertyName;
+        }
+
+        public int LineNumber { get; }
+        public string Text { get; }
+        public string PropertyName { get; }
+    }
+
+    private sealed class MetadataTableSummaryRow
+    {
+        public string SchemaName { get; set; } = string.Empty;
+        public string TableName { get; set; } = string.Empty;
+        public string EntityName { get; set; } = string.Empty;
+        public int InsertCount { get; set; }
+        public int UpdateCount { get; set; }
+        public int NoChangeCount { get; set; }
+        public int ValidationErrorCount { get; set; }
+        public int MissingTargetCount { get; set; }
+        public int TotalCount => InsertCount + UpdateCount + NoChangeCount;
+    }
 }

@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_OverdueMilestones]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_OverdueMilestones]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -35,7 +34,8 @@ RETURN
         js.IsSubjectToNDA,
         j.IsComplete,
         js.JobStatus,
-        org.Name AS OrgUnit
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Jobs AS j
     JOIN SJob.JobStatus             AS js    ON (js.ID = j.ID)
     JOIN SJob.JobTypes              AS jt    ON (j.JobTypeID = jt.ID)
@@ -43,7 +43,8 @@ RETURN
     JOIN SJob.Assets                AS prop  ON (prop.ID = j.UprnID)
     JOIN SCrm.Accounts              AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts              AS agent  ON (agent.ID = j.AgentAccountID)
-    JOIN SCore.OrganisationalUnits  AS org    ON (org.ID = j.OrganisationalUnitID)
+    JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     CROSS JOIN StatusDefs           AS sd
 
     -- Latest workflow status for this job (rowstatus safe)

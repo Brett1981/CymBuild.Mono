@@ -3,6 +3,11 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
+GO
+PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]')
+GO
+
 
 
 CREATE PROCEDURE [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances]
@@ -128,6 +133,9 @@ BEGIN
                 RETURN;
             END;
 
+            -- CYB-419: for Activity trigger instances the InvoiceRequest RequesterUserId
+            -- must be the activity assignee (SJob.Activities.SurveyorID), not the
+            -- automation/service account running the batch.
             CREATE TABLE #ToCreate
             (
                   InvoiceScheduleId      INT              NOT NULL
@@ -138,6 +146,7 @@ BEGIN
                 , CompletedDateTimeUTC   DATETIME2(7)     NULL
                 , InvoicingType          NVARCHAR(10)     NOT NULL
                 , NewInvoiceRequestGuid  UNIQUEIDENTIFIER NOT NULL
+                , RequesterUserId        INT              NOT NULL
             );
 
             INSERT #ToCreate
@@ -150,6 +159,7 @@ BEGIN
                 , CompletedDateTimeUTC
                 , InvoicingType
                 , NewInvoiceRequestGuid
+                , RequesterUserId
             )
             SELECT
                   c.InvoiceScheduleId
@@ -160,7 +170,22 @@ BEGIN
                 , c.CompletedDateTimeUTC
                 , c.InvoicingType
                 , NEWID()
+                , COALESCE(activityAssignee.ID, @RequesterUserId)
             FROM #Candidates AS c
+            LEFT JOIN SJob.Activities AS activityAssigneeSource
+                ON activityAssigneeSource.RowStatus NOT IN (0,254)
+               AND c.InvoicingType = N'ACT'
+               AND activityAssigneeSource.ID =
+                   CASE
+                       WHEN c.InstanceKey LIKE N'ACT:%'
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(c.InstanceKey, 5, 200))
+                       WHEN CHARINDEX(N'|A', c.InstanceKey) > 0
+                           THEN TRY_CONVERT(BIGINT, SUBSTRING(c.InstanceKey, CHARINDEX(N'|A', c.InstanceKey) + 2, 50))
+                       ELSE NULL
+                   END
+            LEFT JOIN SCore.Identities AS activityAssignee
+                ON activityAssignee.ID = activityAssigneeSource.SurveyorID
+               AND activityAssignee.RowStatus NOT IN (0,254)
             WHERE c.InvoicingType <> N'UNKNOWN'
               AND NOT EXISTS
               (
@@ -196,7 +221,8 @@ BEGIN
                 , @InvType NVARCHAR(10)
                 , @Completed DATETIME2(7)
                 , @ReqGuid UNIQUEIDENTIFIER
-                , @RequestNotes NVARCHAR(MAX);
+                , @RequestNotes NVARCHAR(MAX)
+                , @RequestRequesterUserId INT;
 
             DECLARE cur_req CURSOR LOCAL FAST_FORWARD FOR
                 SELECT
@@ -206,12 +232,13 @@ BEGIN
                     , tc.InvoicingType
                     , tc.CompletedDateTimeUTC
                     , tc.NewInvoiceRequestGuid
+                    , tc.RequesterUserId
                 FROM #ToCreate AS tc;
 
             OPEN cur_req;
 
             FETCH NEXT FROM cur_req
-            INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
+            INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid, @RequestRequesterUserId;
 
             WHILE @@FETCH_STATUS = 0
             BEGIN
@@ -283,7 +310,7 @@ BEGIN
                           1
                         , @ReqGuid
                         , @RequestNotes
-                        , @RequesterUserId
+                        , @RequestRequesterUserId
                         , @NowUtcEff
                         , @JobId
                         , NULL
@@ -333,7 +360,7 @@ BEGIN
                 END;
 
                 FETCH NEXT FROM cur_req
-                INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid;
+                INTO @JobId, @TrigGuid, @InstanceKey, @InvType, @Completed, @ReqGuid, @RequestRequesterUserId;
             END;
 
             CLOSE cur_req;
@@ -391,7 +418,7 @@ BEGIN
                       AS DECIMAL(19,2)
                   )
                 , LEFT(ISNULL(NULLIF(a.Title, N''), N'Activity'), 200)
-                , NULLIF(a.RibaStageId, -1)
+                , NULL
                 , CASE
                       WHEN ISNULL(a.InvoicingQuantity, 0.00) = 0.00
                        AND ISNULL(a.InvoicingValue, 0.00) = 0.00
@@ -497,7 +524,7 @@ BEGIN
                 , a.ID
                 , CAST(ISNULL(a.InvoicingValue, 0.00) AS DECIMAL(19,2))
                 , LEFT(ISNULL(NULLIF(a.Title, N''), N'RIBA stage activity'), 200)
-                , NULLIF(a.RibaStageId, -1)
+                , NULL
                 , CASE
                       WHEN ISNULL(a.InvoicingValue, 0.00) = 0.00
                           THEN N'RIBA item created but activity value is zero.'
@@ -556,10 +583,7 @@ BEGIN
                       END,
                       200
                   )
-                , CASE
-                      WHEN ir.InvoicingType IN (N'ACT', N'RIBA') THEN NULLIF(a.RibaStageId, -1)
-                      ELSE NULL
-                  END
+                , NULL
                 , CASE
                       WHEN ir.InvoicingType = N'ACT'
                           THEN N'Activity item created for reconciliation because no billable activity value could be derived.'
@@ -661,7 +685,7 @@ BEGIN
                     , NULL
                     , -1
                     , LEFT(ISNULL(@Desc, N''), 200)
-                    , ISNULL(@RIBAStageId, -1)
+                    , @RIBAStageId
                 WHERE NOT EXISTS
                 (
                     SELECT 1
@@ -770,4 +794,5 @@ BEGIN
         END CATCH;
     END;
 END;
+
 GO

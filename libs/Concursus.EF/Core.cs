@@ -1,4 +1,4 @@
-using Concursus.Common.Shared.Extensions;
+﻿using Concursus.Common.Shared.Extensions;
 using Concursus.Common.Shared.Functions;
 using Concursus.EF.Converters;
 using Concursus.EF.Types;
@@ -3868,6 +3868,155 @@ WHERE i.RowStatus NOT IN (0,254)
             return team;
         }
 
+        public async Task<List<BusinessUnits>> BusinessUnitsGet(int userId)
+        {
+            List<BusinessUnits> rsl = new();
+
+            _userId = userId;
+            if (_userId <= 0)
+            {
+                var _conn = CreateConnection();
+                _userId = await GetCurrentUserId(_conn);
+            }
+
+            using (SqlConnection connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+
+                string securityStatement = "SELECT * FROM SCore.tvf_BusinessUnitsGet(@UserId);";
+
+                using (SqlCommand command = QueryBuilder.CreateCommand(securityStatement, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@UserId", _userId));
+                    try
+                    {
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                BusinessUnits organisationalUnit = new()
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Name = reader.GetString(reader.GetOrdinal("BusinessUnit")),
+                                    Guid = reader.GetGuid(reader.GetOrdinal("Guid")),
+                                };
+
+                                rsl.Add(organisationalUnit);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Attach the SQL query to the exception data so the API logger can pick it up
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting OrganisationalUnitsGet: {ex.Message}", ex);
+                    }
+                }
+            }
+
+            return rsl;
+        }
+
+        public async Task<List<Departments>> DepartmentsGet(int userId, string BusinessUnitGuid)
+        {
+            List<Departments> rsl = new();
+
+            _userId = userId;
+
+
+            if (_userId <= 0)
+            {
+                var _conn = CreateConnection();
+                _userId = await GetCurrentUserId(_conn);
+            }
+
+            using (SqlConnection connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+
+                string securityStatement = "SELECT * FROM SCore.tvf_DepartmentsGet(@UserId, @BusinessUnitGuid);";
+
+                using (SqlCommand command = QueryBuilder.CreateCommand(securityStatement, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@UserId", _userId));
+                    command.Parameters.Add(new SqlParameter("@BusinessUnitGuid", BusinessUnitGuid));
+                    try
+                    {
+                        using (SqlDataReader reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                Departments departments = new()
+                                {
+                                    Id = reader.GetInt32(reader.GetOrdinal("Id")),
+                                    Name = reader.GetString(reader.GetOrdinal("Department")),
+                                    Guid = reader.GetGuid(reader.GetOrdinal("Guid")),
+                                };
+
+                                rsl.Add(departments);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Attach the SQL query to the exception data so the API logger can pick it up
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting departments: {ex.Message}", ex);
+                    }
+                }
+            }
+
+            return rsl;
+        }
+
+
+
+        public async Task<List<User>> GetUsersForDepartment(string DepartmentGuid)
+        {
+            List<User> rsl = new();
+
+            using (var connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+
+                string securityStatement = "SELECT * FROM SCore.tvf_GetUsersForDepartment(@DepartmentGuid);";
+
+                using (var command = QueryBuilder.CreateCommand(securityStatement, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@DepartmentGuid", DepartmentGuid));
+                    try
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                User user = new()
+                                {
+                                    UserId = reader.GetInt32(reader.GetOrdinal("ID")),
+                                    Email = reader.GetString(reader.GetOrdinal("EmailAddress")),
+                                    Guid = reader.GetGuid(reader.GetOrdinal("Guid")),
+                                    FullName = reader.GetString(reader.GetOrdinal("FullName")),
+                                    JobTitle = reader.GetString(reader.GetOrdinal("JobTitle")),
+                                    BillableRate = reader.GetDecimal(reader.GetOrdinal("BillableRate")),
+                                    Signature = reader.IsDBNull(reader.GetOrdinal("Signature")) ? new byte[0] : reader.GetFieldValue<byte[]>(reader.GetOrdinal("Signature"))
+                                };
+
+                                rsl.Add(user);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Attach the SQL query to the exception data so the API logger can pick it up
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting UsersGet: {ex.Message}", ex);
+                    }
+                }
+            }
+
+            return rsl;
+        }
+
         public async Task<List<UsageData>> GetUsageReport(DateTime startDateUtc, DateTime endDateUtc, string userGuid = "")
         {
             List<UsageData> report = new();
@@ -4980,6 +5129,141 @@ EXECUTE SCore.UserCreate
             }
 
             return rsl;
+        }
+
+
+
+        public async Task<List<UniversalSearchResultRow>> UniversalSearchAsync(
+            string searchText,
+            IReadOnlyCollection<string>? moduleFilters,
+            int take,
+            int userId,
+            CancellationToken ct = default)
+        {
+            var results = new List<UniversalSearchResultRow>();
+            var cleanSearchText = string.IsNullOrWhiteSpace(searchText) ? string.Empty : searchText.Trim();
+
+            if (cleanSearchText.Length == 0)
+            {
+                return results;
+            }
+
+            var safeTake = take is >= 1 and <= 100 ? take : 30;
+            var moduleFilterCsv = moduleFilters is null || moduleFilters.Count == 0
+                ? string.Empty
+                : string.Join(",", moduleFilters
+                    .Where(module => !string.IsNullOrWhiteSpace(module))
+                    .Select(module => module.Trim().ToUpperInvariant())
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+
+            await using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            var resolvedUserId = userId > 0 ? userId : _userId;
+
+            const string sql = @"
+SELECT us.ModuleKey,
+       us.ModuleDisplayName,
+       us.RecordGuid,
+       us.EntityTypeGuid,
+       us.EntityTypeName,
+       us.DetailPageUri,
+       us.PrimaryText,
+       us.SecondaryText,
+       us.TertiaryText,
+       us.SearchRank
+FROM SCore.tvf_UniversalSearch(@UserId, @SearchText, @ModuleFilter, @Take) AS us
+ORDER BY us.SearchRank,
+         us.ModuleDisplayName,
+         us.PrimaryText;";
+
+            await using var command = QueryBuilder.CreateCommand(sql, connection);
+            command.CommandType = CommandType.Text;
+            command.CommandTimeout = 30;
+            command.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = resolvedUserId });
+            command.Parameters.Add(new SqlParameter("@SearchText", SqlDbType.NVarChar, 200) { Value = cleanSearchText });
+            command.Parameters.Add(new SqlParameter("@ModuleFilter", SqlDbType.NVarChar, 1000) { Value = moduleFilterCsv });
+            command.Parameters.Add(new SqlParameter("@Take", SqlDbType.Int) { Value = safeTake });
+
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    results.Add(new UniversalSearchResultRow
+                    {
+                        ModuleKey = GetString(reader, "ModuleKey"),
+                        ModuleDisplayName = GetString(reader, "ModuleDisplayName"),
+                        RecordGuid = GetGuid(reader, "RecordGuid", Guid.Empty),
+                        EntityTypeGuid = GetGuid(reader, "EntityTypeGuid", Guid.Empty),
+                        EntityTypeName = GetString(reader, "EntityTypeName"),
+                        DetailPageUri = GetString(reader, "DetailPageUri"),
+                        PrimaryText = GetString(reader, "PrimaryText"),
+                        SecondaryText = GetString(reader, "SecondaryText"),
+                        TertiaryText = GetString(reader, "TertiaryText"),
+                        SearchRank = GetInt32(reader, "SearchRank")
+                    });
+                }
+
+                return results;
+            }
+            catch (Exception ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                throw new Exception($"Exception occurred running Universal Search: {ex.Message}", ex);
+            }
+        }
+
+        public async Task<QuoteCreateJobsStageScheduleValidationRow> QuoteCreateJobsStageScheduleValidateAsync(
+            Guid quoteGuid,
+            bool allowQuoteItemStageFallback,
+            CancellationToken ct = default)
+        {
+            var result = new QuoteCreateJobsStageScheduleValidationRow();
+
+            if (quoteGuid == Guid.Empty)
+            {
+                result.ErrorReturned = "A valid Quote Guid is required before creating a Job.";
+                result.Message = result.ErrorReturned;
+                return result;
+            }
+
+            await using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            await using var command = QueryBuilder.CreateCommand("SSop.QuoteCreateJobsStageScheduleAssert", connection);
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = 60;
+            command.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = quoteGuid });
+            command.Parameters.Add(new SqlParameter("@AllowQuoteItemStageFallback", SqlDbType.Bit) { Value = allowQuoteItemStageFallback });
+
+            try
+            {
+                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                result.IsValid = true;
+                return result;
+            }
+            catch (SqlException ex) when (ex.Number == 60001)
+            {
+                result.IsValid = false;
+                result.RequiresQuoteItemStageFallbackConfirmation = true;
+                result.Message = ex.Message;
+                result.ErrorReturned = ex.Message;
+                return result;
+            }
+            catch (SqlException ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                result.IsValid = false;
+                result.Message = ex.Message;
+                result.ErrorReturned = ex.Message;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                throw new Exception($"Exception occurred validating Quote Create Job invoice schedule stages: {ex.Message}", ex);
+            }
         }
 
         //CBLD-616: Imports legacy statuses by executing a stored procedure ([SCore].[DataObjectTransitionImportLegacyStatus])
@@ -6997,6 +7281,29 @@ EXECUTE SCore.UserCreate
         public int ActiveInvoiceScheduleCount { get; set; }
         public bool CanCreateReplacementInvoiceSchedule { get; set; }
         public JobFinancialOverviewRow FinancialOverview { get; set; } = new();
+    }
+
+
+    public sealed class UniversalSearchResultRow
+    {
+        public string ModuleKey { get; set; } = string.Empty;
+        public string ModuleDisplayName { get; set; } = string.Empty;
+        public Guid RecordGuid { get; set; }
+        public Guid EntityTypeGuid { get; set; }
+        public string EntityTypeName { get; set; } = string.Empty;
+        public string DetailPageUri { get; set; } = string.Empty;
+        public string PrimaryText { get; set; } = string.Empty;
+        public string SecondaryText { get; set; } = string.Empty;
+        public string TertiaryText { get; set; } = string.Empty;
+        public int SearchRank { get; set; }
+    }
+
+    public sealed class QuoteCreateJobsStageScheduleValidationRow
+    {
+        public bool IsValid { get; set; }
+        public bool RequiresQuoteItemStageFallbackConfirmation { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string ErrorReturned { get; set; } = string.Empty;
     }
 
     public sealed class InvoiceScheduleConfigurationTotalsRow

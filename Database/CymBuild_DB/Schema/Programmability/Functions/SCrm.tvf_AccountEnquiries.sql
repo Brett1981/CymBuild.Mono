@@ -3,8 +3,6 @@ GO
 
 PRINT (N'Create function [SCrm].[tvf_AccountEnquiries]')
 GO
-
-
 CREATE FUNCTION [SCrm].[tvf_AccountEnquiries]
 (
 	@UserId INT,
@@ -33,7 +31,9 @@ SELECT
 								  e.AgentName
 							  ELSE
 							  agent.Name
-					  END AS ClientAgent
+					  END AS ClientAgent,
+		org1.Name AS Department,
+		org2.Name AS BusinessUnit
 FROM
 		SSop.Enquiries e
 JOIN
@@ -42,6 +42,10 @@ JOIN
 		SCrm.Accounts client ON (client.ID = e.ClientAccountID)
 JOIN
 		SCrm.Accounts agent ON (agent.ID = e.AgentAccountID)
+LEFT JOIN
+		SCore.OrganisationalUnits AS org1 ON (e.OrganisationalUnitID = org1.ID)
+LEFT JOIN 
+		SCore.OrganisationalUnits AS org2 ON (org1.ParentID = org2.ID)
 WHERE
 		(e.RowStatus NOT IN (0, 254))
 		AND (   (client.Guid = @ParentGuid)

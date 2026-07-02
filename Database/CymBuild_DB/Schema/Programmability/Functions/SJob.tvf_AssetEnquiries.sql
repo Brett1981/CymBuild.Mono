@@ -3,9 +3,6 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_AssetEnquiries]')
 GO
-
-
-
 CREATE FUNCTION [SJob].[tvf_AssetEnquiries]
 (
 	@UserId INT,
@@ -21,11 +18,15 @@ SELECT  e.ID,
 		e.Number,
 		e.DescriptionOfWorks,
 		e.ExternalReference,
-		CASE WHEN e.ClientAccountId < 0 THEN e.ClientName ELSE client.Name END  + N' / ' + CASE WHEN e.AgentAccountId < 0 THEN e.AgentName ELSE  agent.Name END AS ClientAgent
+		CASE WHEN e.ClientAccountId < 0 THEN e.ClientName ELSE client.Name END  + N' / ' + CASE WHEN e.AgentAccountId < 0 THEN e.AgentName ELSE  agent.Name END AS ClientAgent,
+		ou.Name AS Department,
+		ou2.Name AS BusinessUnit
 FROM    SSop.Enquiries e 
 JOIN	SJob.Assets uprn ON (uprn.ID = e.PropertyId)
 JOIN	SCrm.Accounts client ON (client.ID = e.ClientAccountID)
 JOIN	SCrm.Accounts agent ON (agent.ID = e.AgentAccountID)
+LEFT JOIN SCore.OrganisationalUnits AS ou ON (e.OrganisationalUnitID = ou.ID)
+LEFT JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 WHERE   (e.RowStatus NOT IN (0, 254))
 	AND	(uprn.Guid = @ParentGuid)
 	AND	(EXISTS

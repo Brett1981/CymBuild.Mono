@@ -178,7 +178,7 @@ public class Converters
                 IsLatitude = entityProperty.IsLatitude,
                 IsLongitude = entityProperty.IsLongitude,
                 HelpText = entityProperty.HelpText
-               
+
             };
 
             //CBLD-259
@@ -1037,6 +1037,32 @@ public class Converters
             IsDepartment = organisationalUnit.IsDepartment ?? false,
             IsDivision = organisationalUnit.IsDivision ?? false,
             IsTeam = organisationalUnit.IsTeam ?? false,
+        };
+    }
+
+    public static BusinessUnit ConvertEfBusinessUnitToCoreBusinessUnit(
+     EF.Types.BusinessUnits businessUnit)
+    {
+        if (businessUnit == null) return new BusinessUnit();
+        return new BusinessUnit()
+        {
+            Id = businessUnit.Id,
+            Guid = Functions.ParseAndReturnEmptyGuidIfInvalid(businessUnit.Guid.ToString()).ToString(),
+            Name = businessUnit.Name,
+
+        };
+    }
+
+    public static Department ConvertEfDepartmentToCoreDepartment(
+       EF.Types.Departments departments)
+    {
+        if (departments == null) return new Department();
+        return new Department()
+        {
+            Id = departments.Id,
+            Guid = Functions.ParseAndReturnEmptyGuidIfInvalid(departments.Guid.ToString()).ToString(),
+            Name = departments.Name,
+
         };
     }
 

@@ -44,7 +44,8 @@ RETURN
                   THEN N'Multi Discipline'
               ELSE jtSingle.Name
           END AS Disciplines
-        , org.Name AS OrgUnit
+		, org.Name AS Department
+        , org2.Name AS BusinessUnit
         , e.[Date]
     FROM SSop.Enquiries AS e
 
@@ -66,6 +67,8 @@ RETURN
 
     JOIN SCore.OrganisationalUnits AS org
         ON org.ID = e.OrganisationalUnitID
+	LEFT JOIN SCore.OrganisationalUnits AS org2 
+		ON (org.ParentID = org2.ID)
     -- Removed Distinct as it caused issues with Filtering the grids
     LEFT JOIN
         (

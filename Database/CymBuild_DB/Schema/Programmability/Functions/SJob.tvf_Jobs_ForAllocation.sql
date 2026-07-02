@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_ForAllocation]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_ForAllocation]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -25,13 +24,16 @@ RETURN
         jt.Name AS JobTypeName,
         i.Guid AS SurveyorGuid,
         i.FullName AS SurveyorName,
-        js.IsSubjectToNDA
+        js.IsSubjectToNDA,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Jobs           AS j
     JOIN SJob.JobStatus      AS js     ON (js.ID = j.ID)
     JOIN SJob.JobTypes       AS jt     ON (j.JobTypeID = jt.ID)
     JOIN SCore.Identities    AS i      ON (j.SurveyorID = i.ID)
     JOIN SCrm.Accounts       AS client ON (client.ID = j.ClientAccountID)
-
+	JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     -- Latest workflow status for this job (if any) - rowstatus safe (dot + wfs)
     OUTER APPLY
     (

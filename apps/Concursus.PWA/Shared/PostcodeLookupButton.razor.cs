@@ -1,13 +1,15 @@
-﻿using Concursus.API.Client;
+using Concursus.API.Client;
 using Concursus.API.Core;
 using Concursus.PWA.Classes;
 using Concursus.PWA.Services;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
+using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http.Json;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
+using System.Threading.Tasks;
 using static Concursus.PWA.Shared.MessageDisplay;
 using static Concursus.PWA.Shared.PostcodeLookupTab;
 
@@ -74,8 +76,6 @@ namespace Concursus.PWA.Shared
         //MODAL RELATED CONTROL VARIABLES.
         private bool WindowIsVisible { get; set; } = false;
 
-        private TelerikWindow? ModalWindow { get; set; }
-
         private int nmbrOfAPICalls { get; set; } = 0;
 
         private string InputFieldText { get; set; } = "Enter Postcode:";
@@ -89,10 +89,29 @@ namespace Concursus.PWA.Shared
         private bool DisableAddressSearch { get; set; } = false;
         private string ManualAddressEntryText { get; set; } = "Enter Address Manually";
 
-        private TelerikComboBox<ComboDataItem, Guid> CountryCombo { get; set; } = new();
-        private Dictionary<string, string> CountryComboOptions { get; set; } = new();
-        private TelerikComboBox<ComboDataItem, Guid> CountyCombo { get; set; } = new();
-        private Dictionary<string, string> CountyComboOptions { get; set; } = new();
+        private Dictionary<string, string> CountryComboOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> CountyComboOptions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        private List<ComboDataItem> CountryComboItems { get; set; } = new();
+        private List<ComboDataItem> CountyComboItems { get; set; } = new();
+        private bool DropdownOptionsLoaded { get; set; } = false;
+
+        private string AddressSuggestionFilterText { get; set; } = string.Empty;
+        private string PostcodeSuggestionFilterText { get; set; } = string.Empty;
+        private string CountryFilterText { get; set; } = string.Empty;
+        private string CountyFilterText { get; set; } = string.Empty;
+
+        private IEnumerable<AddressSearchResult> FilteredAddressRecommendations =>
+            FilterAddressRecommendations(addressRecommendations, AddressSuggestionFilterText);
+
+        private IEnumerable<AddressResponse> FilteredPostcodeRecommendations =>
+            FilterPostcodeRecommendations(postcodeRecommendations, PostcodeSuggestionFilterText);
+
+        private IEnumerable<ComboDataItem> FilteredCountryComboItems =>
+            FilterComboItems(CountryComboItems, CountryFilterText);
+
+        private IEnumerable<ComboDataItem> FilteredCountyComboItems =>
+            FilterComboItems(CountyComboItems, CountyFilterText);
 
         private int DebounceDelay { get; set; } = 100;
 
@@ -102,9 +121,15 @@ namespace Concursus.PWA.Shared
         /// <summary>
         /// Closes/opens the modal
         /// </summary>
-        private void OpenModal()
+        private async Task OpenModal()
         {
             WindowIsVisible = true;
+            await EnsureDropdownOptionsLoadedAsync();
+        }
+
+        private void CloseModal()
+        {
+            WindowIsVisible = false;
         }
 
 
@@ -126,6 +151,117 @@ namespace Concursus.PWA.Shared
                 userService);
 
             await LoadCountryISOCodes();
+        }
+
+
+        private async Task EnsureDropdownOptionsLoadedAsync()
+        {
+            if (DropdownOptionsLoaded)
+            {
+                return;
+            }
+
+            try
+            {
+                await LoadCountryOptionsAsync();
+                await LoadCountyOptionsAsync();
+                DropdownOptionsLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "An error occurred while trying to load the postcode lookup county/country lists.";
+                ex.Data["PageMethod"] = "PostcodeLookupButton/EnsureDropdownOptionsLoadedAsync()";
+                await OnError(ex);
+            }
+        }
+
+        private async Task LoadCountryOptionsAsync()
+        {
+            var dropDownDataListReply = await coreClient.DropDownDataListAsync(BuildDropDownDataListRequest("49255823-3c63-49a3-85b9-9dc8bc6e2fdc"));
+            CountryComboItems = dropDownDataListReply.Items
+                .Select(item => new ComboDataItem(item))
+                .OrderBy(item => item.Name)
+                .ToList();
+
+            CountryComboOptions = BuildOptionLookup(dropDownDataListReply.Items);
+        }
+
+        private async Task LoadCountyOptionsAsync()
+        {
+            var dropDownDataListReply = await coreClient.DropDownDataListAsync(BuildDropDownDataListRequest("f8b699d2-f678-47c2-b185-060a7d609fa8"));
+            CountyComboItems = dropDownDataListReply.Items
+                .Select(item => new ComboDataItem(item))
+                .OrderBy(item => item.Name)
+                .ToList();
+
+            CountyComboOptions = BuildOptionLookup(dropDownDataListReply.Items);
+        }
+
+        private DropDownDataListRequest BuildDropDownDataListRequest(string dropdownGuid)
+        {
+            return new DropDownDataListRequest
+            {
+                Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dropdownGuid).ToString(),
+                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
+                RecordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
+                CurrentSelectedValueGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(Guid.Empty.ToString()).ToString()
+            };
+        }
+
+        private static Dictionary<string, string> BuildOptionLookup(IEnumerable<DropDownDataListItem> items)
+        {
+            var lookup = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.Name))
+                {
+                    lookup[item.Name] = item.Value;
+                }
+            }
+
+            return lookup;
+        }
+
+        private static IEnumerable<ComboDataItem> FilterComboItems(IEnumerable<ComboDataItem> items, string filterText)
+        {
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                return items;
+            }
+
+            return items.Where(item =>
+                item.Name?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        private static IEnumerable<AddressSearchResult> FilterAddressRecommendations(IEnumerable<AddressSearchResult>? items, string filterText)
+        {
+            var source = items ?? Enumerable.Empty<AddressSearchResult>();
+
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                return source;
+            }
+
+            return source.Where(item =>
+                item.Suggestion?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        private static IEnumerable<AddressResponse> FilterPostcodeRecommendations(IEnumerable<AddressResponse>? items, string filterText)
+        {
+            var source = items ?? Enumerable.Empty<AddressResponse>();
+
+            if (string.IsNullOrWhiteSpace(filterText))
+            {
+                return source;
+            }
+
+            return source.Where(item =>
+                item.FormattedAddress?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true ||
+                item.Postcode?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true ||
+                item.Line1?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true ||
+                item.Town?.Contains(filterText, StringComparison.OrdinalIgnoreCase) == true);
         }
 
         public async Task OnError(Exception error)
@@ -228,6 +364,8 @@ namespace Concursus.PWA.Shared
                 postcodeRecommendations = null;
                 DropdownSelectionForAddress = string.Empty;
                 DropdownSelectionForPostcode = string.Empty;
+                AddressSuggestionFilterText = string.Empty;
+                PostcodeSuggestionFilterText = string.Empty;
 
                 var response = await _formHelper.AddressLookupSearchAsync(
                     AddressSearchInput,
@@ -363,6 +501,10 @@ namespace Concursus.PWA.Shared
             //Reset dropdown
             CountrySelection = Guid.Empty;
             CountySelection = Guid.Empty;
+            AddressSuggestionFilterText = string.Empty;
+            PostcodeSuggestionFilterText = string.Empty;
+            CountryFilterText = string.Empty;
+            CountyFilterText = string.Empty;
         }
 
         private static object GetProperty(dynamic obj, string name)
@@ -571,149 +713,6 @@ namespace Concursus.PWA.Shared
             StateHasChanged();
         }
 
-        /// <summary>
-        /// Reads the options into the Country dropdown.
-        /// </summary>
-        /// <param name="args"> ComboBoxReadEventArgs args </param>
-        /// <returns> </returns>
-        private async Task DropdownReadCountries(ComboBoxReadEventArgs args)
-        {
-            try
-            {
-                var dropDownDataListRequest = new DropDownDataListRequest
-                {
-                    Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("49255823-3c63-49a3-85b9-9dc8bc6e2fdc")
-                        .ToString(),
-                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
-                    RecordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
-                    CurrentSelectedValueGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(Guid.Empty.ToString())
-                        .ToString()
-                };
-
-                if (args.Request.Filters.Count > 0)
-                {
-                    var compositeFilter = new DataObjectCompositeFilter
-                    {
-                        LogicalOperator = FilterOperator.Contains.ToString()
-                    };
-
-                    foreach (var filterDescriptor in args.Request.Filters)
-                    {
-                        var filter = filterDescriptor as FilterDescriptor;
-                        var userInput = filter?.Value.ToString();
-                        var method = filter?.Operator.ToString();
-
-                        var filterItem = new DataObjectFilter
-                        {
-                            Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("49255823-3c63-49a3-85b9-9dc8bc6e2fdc")
-                                .ToString(),
-                            Value = new Value { StringValue = userInput },
-                            Operator = method,
-                            ColumnName = "Name",
-                            DataType = "string"
-                        };
-
-                        compositeFilter.Filters.Add(filterItem);
-                    }
-
-                    dropDownDataListRequest.Filters.Add(compositeFilter);
-                }
-                var dropDownDataListReply = await coreClient.DropDownDataListAsync(dropDownDataListRequest);
-
-                //Add the options into CountryCombo - this will be used for reference
-                //when populating the entity properties.
-                CountryComboOptions = new();
-
-                foreach (var item in dropDownDataListReply.Items)
-                {
-                    CountryComboOptions.Add(item.Name, item.Value);
-                }
-
-                args.Data = dropDownDataListReply.Items
-                    .Select(item => new ComboDataItem(item))
-                    .ToList();
-
-                StateHasChanged();
-            }
-            catch (Exception ex)
-            {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "An error occurred while trying to read the countries into the dropdown!");
-                ex.Data.Add("PageMethod", "PostcodeLookupButton/DropdownReadCountries()");
-                OnError(ex);
-            }
-        }
-
-        /// <summary>
-        /// Reads the options into the County dropdown.
-        /// </summary>
-        /// <param name="args"> ComboBoxReadEventArgs args </param>
-        /// <returns> </returns>
-        private async Task DropdownReadCounties(ComboBoxReadEventArgs args)
-        {
-            try
-            {
-                var dropDownDataListRequest = new DropDownDataListRequest
-                {
-                    Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("f8b699d2-f678-47c2-b185-060a7d609fa8")
-                        .ToString(),
-                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
-                    RecordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.Guid).ToString(),
-                    CurrentSelectedValueGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(Guid.Empty.ToString())
-                        .ToString()
-                };
-
-                if (args.Request.Filters.Count > 0)
-                {
-                    var compositeFilter = new DataObjectCompositeFilter
-                    {
-                        LogicalOperator = FilterOperator.Contains.ToString()
-                    };
-
-                    foreach (var filterDescriptor in args.Request.Filters)
-                    {
-                        var filter = filterDescriptor as FilterDescriptor;
-                        var userInput = filter?.Value.ToString();
-                        var method = filter?.Operator.ToString();
-
-                        var filterItem = new DataObjectFilter
-                        {
-                            Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("f8b699d2-f678-47c2-b185-060a7d609fa8")
-                                .ToString(),
-                            Value = new Value { StringValue = userInput },
-                            Operator = method,
-                            ColumnName = "Name",
-                            DataType = "string"
-                        };
-
-                        compositeFilter.Filters.Add(filterItem);
-                    }
-
-                    dropDownDataListRequest.Filters.Add(compositeFilter);
-                }
-                var dropDownDataListReply = await coreClient.DropDownDataListAsync(dropDownDataListRequest);
-
-                CountyComboOptions = new();
-
-                foreach (var item in dropDownDataListReply.Items)
-                {
-                    CountyComboOptions.Add(item.Name, item.Value);
-                }
-
-                args.Data = dropDownDataListReply.Items
-                    .Select(item => new ComboDataItem(item))
-                    .ToList();
-
-                StateHasChanged();
-            }
-            catch (Exception ex)
-            {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "An error occurred while trying to read the counties into the dropdown!");
-                ex.Data.Add("PageMethod", "PostcodeLookupButton/DropdownReadCounties()");
-                OnError(ex);
-            }
-        }
         private static AddressResponse MapLookupAddress(LookupAddressRecordContract source)
         {
             return new AddressResponse

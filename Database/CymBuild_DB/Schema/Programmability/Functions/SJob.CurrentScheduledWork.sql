@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[CurrentScheduledWork]')
 GO
-
 CREATE FUNCTION [SJob].[CurrentScheduledWork]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -33,7 +32,9 @@ RETURN
         aty.Name AS ActivityType,
         ast.Name AS ActivityStatus,
         i.FullName AS SurveyorName,
-        ast.SortOrder AS SortPriority
+        ast.SortOrder AS SortPriority,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Activities        AS a
     JOIN SJob.ActivityStatus    AS ast ON (ast.ID = a.ActivityStatusID)
     JOIN SJob.ActivityTypes     AS aty ON (aty.ID = a.ActivityTypeID)
@@ -41,6 +42,8 @@ RETURN
     JOIN SJob.Assets            AS prop ON (prop.ID = j.UprnID)
     JOIN SCrm.Accounts          AS client ON (client.ID = j.ClientAccountID)
     JOIN SCore.Identities       AS i   ON (i.ID = a.SurveyorID)
+	JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     CROSS JOIN StatusDefs       AS sd
 
     -- Latest workflow status for this JOB (rowstatus safe)

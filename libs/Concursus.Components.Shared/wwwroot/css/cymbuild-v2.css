@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    CymBuild V2 Shared Design System
    Shared visual primitives for non-Telerik / V2 components.
    Behaviour-specific CSS should live beside the component.
@@ -1035,3 +1035,479 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* 14D-R4 shared control border consistency.
+   Gives native/bootstrap controls, panels and grid shells the same darker border language used by
+   outline buttons while keeping the CymBuild V2 primary focus treatment. */
+:root {
+    --cb-v2-control-border: #64748b;
+    --cb-v2-control-border-soft: #94a3b8;
+    --cb-v2-control-border-hover: #475569;
+    --cb-v2-control-border-focus: var(--cb-v2-primary, #2563eb);
+    --cb-v2-control-focus-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.16);
+}
+
+.form-control,
+.form-select,
+.input-group-text,
+textarea.form-control,
+select.form-select,
+.cb-v2-input,
+.cb-v2-select {
+    border-color: var(--cb-v2-control-border-soft) !important;
+}
+
+.form-control:hover:not(:disabled):not([readonly]),
+.form-select:hover:not(:disabled),
+.cb-v2-input:hover:not(:disabled):not([readonly]),
+.cb-v2-select:hover:not(:disabled) {
+    border-color: var(--cb-v2-control-border) !important;
+}
+
+.form-control:focus,
+.form-select:focus,
+.cb-v2-input:focus,
+.cb-v2-select:focus {
+    border-color: var(--cb-v2-control-border-focus) !important;
+    box-shadow: var(--cb-v2-control-focus-shadow) !important;
+}
+
+.input-group-text {
+    background: #eef2f7;
+    color: var(--cb-v2-text-strong, #0f172a);
+}
+
+.btn-outline-secondary,
+.cb-v2-btn-secondary,
+.cb-v2-btn-chip,
+.cb-v2-btn-ghost {
+    border-color: var(--cb-v2-control-border) !important;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus-visible,
+.cb-v2-btn-secondary:hover,
+.cb-v2-btn-secondary:focus-visible,
+.cb-v2-btn-chip:hover,
+.cb-v2-btn-chip:focus-visible,
+.cb-v2-btn-ghost:hover,
+.cb-v2-btn-ghost:focus-visible {
+    border-color: var(--cb-v2-control-border-hover) !important;
+}
+
+.cb-v2-card,
+.cb-v2-panel,
+.cb-v2-surface,
+.cb-v2-summary-card,
+.card,
+.accordion-item,
+.dropdown-menu,
+.modal-content,
+.dynamic-grid-view-v2-shell,
+.dynamic-batch-grid-v2-shell,
+.v2-docs .cb-v2-panel {
+    border-color: var(--cb-v2-control-border-soft) !important;
+}
+
+.cb-v2-table,
+.table,
+.dynamic-grid-view-v2-grid-table,
+.dynamic-batch-grid-v2-grid-table {
+    border-color: var(--cb-v2-control-border-soft) !important;
+}
+
+.cb-v2-table th,
+.cb-v2-table td,
+.table th,
+.table td,
+.dynamic-grid-view-v2-grid-table th,
+.dynamic-grid-view-v2-grid-table td,
+.dynamic-batch-grid-v2-grid-table th,
+.dynamic-batch-grid-v2-grid-table td {
+    border-color: var(--cb-v2-control-border-soft) !important;
+}
+
+/* Keep any remaining Telerik surfaces visually consistent while they are being removed. */
+.k-input,
+.k-picker,
+.k-dropdownlist,
+.k-combobox,
+.k-multiselect,
+.k-grid,
+.k-window,
+.k-card {
+    border-color: var(--cb-v2-control-border-soft) !important;
+}
+
+/* 14D-R5 border completion for groups and grids.
+   Completes the 14D-R4 control border pass for form group containers, drawer/tab shells and
+   native table/grid surfaces that live in separate isolated components. */
+:root {
+    --cb-v2-border-strong: var(--cb-v2-control-border, #64748b);
+    --cb-v2-border-mid: var(--cb-v2-control-border-soft, #94a3b8);
+}
+
+.flexpropertygroup,
+.flexpropertygroups > .card,
+.cb-dynamic-grid-card,
+.cb-drawer-layout,
+.cb-tabs,
+.cb-tab-panel,
+.cb-v2-card,
+.cb-v2-panel,
+.cb-v2-surface,
+.dynamic-grid-view-v2-header,
+.dynamic-grid-view-v2-toolbar,
+.dynamic-grid-view-v2-grid-card,
+.dynamic-batch-grid-v2-grid-wrapper,
+.dynamic-grid-view-v2-grid-wrapper,
+.v2-docs .cb-v2-panel {
+    border-color: var(--cb-v2-border-mid) !important;
+}
+
+.flexpropertygroup,
+.flexpropertygroups > .card,
+.cb-dynamic-grid-card,
+.dynamic-grid-view-v2-grid-card,
+.dynamic-grid-view-v2-header,
+.dynamic-grid-view-v2-toolbar {
+    border-width: 1px !important;
+    border-style: solid !important;
+}
+
+.input-group,
+.input-group .input-group-text,
+.input-group .form-control,
+.input-group .form-select,
+.input-group .btn,
+textarea.form-control,
+.form-check-input,
+.cb-v2-input,
+.cb-v2-select {
+    border-color: var(--cb-v2-border-mid) !important;
+}
+
+.cb-v2-table,
+.cb-v2-table thead,
+.cb-v2-table tbody,
+.cb-v2-table tr,
+.cb-v2-table th,
+.cb-v2-table td,
+.dynamic-grid-view-v2-grid-table,
+.dynamic-grid-view-v2-grid-table thead,
+.dynamic-grid-view-v2-grid-table tbody,
+.dynamic-grid-view-v2-grid-table tr,
+.dynamic-grid-view-v2-grid-table th,
+.dynamic-grid-view-v2-grid-table td,
+.dynamic-batch-grid-v2-grid-table,
+.dynamic-batch-grid-v2-grid-table thead,
+.dynamic-batch-grid-v2-grid-table tbody,
+.dynamic-batch-grid-v2-grid-table tr,
+.dynamic-batch-grid-v2-grid-table th,
+.dynamic-batch-grid-v2-grid-table td {
+    border-color: var(--cb-v2-border-mid) !important;
+}
+
+/* 14D-R6 Rounded toolbar and button border completion.
+   Completes the border language for native V2 controls without changing behaviour. */
+:root {
+    --cb-v2-control-border-dark: #8ea0bb;
+    --cb-v2-control-border-dark-hover: #64748b;
+}
+
+.cb-v2-toolbar .btn:not(.btn-link),
+.cb-v2-actions .btn:not(.btn-link),
+.cb-v2-panel .btn:not(.btn-link),
+.cb-v2-card .btn:not(.btn-link),
+.cb-v2-surface .btn:not(.btn-link),
+.cb-v2-btn-secondary,
+.cb-v2-btn-chip,
+.cb-v2-btn-ghost {
+    border: 1px solid var(--cb-v2-control-border-dark, #8ea0bb) !important;
+}
+
+.cb-v2-toolbar .btn:not(.btn-link):hover,
+.cb-v2-actions .btn:not(.btn-link):hover,
+.cb-v2-panel .btn:not(.btn-link):hover,
+.cb-v2-card .btn:not(.btn-link):hover,
+.cb-v2-surface .btn:not(.btn-link):hover,
+.cb-v2-btn-secondary:hover,
+.cb-v2-btn-chip:hover,
+.cb-v2-btn-ghost:hover {
+    border-color: var(--cb-v2-control-border-dark-hover, #64748b) !important;
+}
+
+/* 14D-R7 shared clean nested border tokens.
+   Keeps the darker border language but avoids stacking rounded borders on nested shells. */
+:root {
+    --cb-v2-nested-border-radius: var(--cb-v2-radius-md, 16px);
+}
+
+.cb-v2-card .cb-v2-card,
+.cb-v2-card .cb-v2-panel,
+.cb-v2-panel .cb-v2-card,
+.cb-v2-panel .cb-v2-panel {
+    box-shadow: none;
+}
+/* 14I native detail tabstrip styling.
+   Replaces simple TelerikTabStrip usage with CymBuild native pill tabs while
+   preserving lazy first-render + persist-after-visit tab behaviour. */
+.cb-native-tabstrip {
+    width: 100%;
+    min-width: 0;
+}
+
+.cb-native-tab-list {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin: 0 0 1rem 0;
+    padding: 0.45rem;
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8));
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background:
+        radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 34%),
+        linear-gradient(180deg, #ffffff 0%, var(--cb-v2-bg-soft-alt, #fbfcff) 100%);
+    box-shadow: var(--cb-v2-shadow-sm, 0 8px 22px rgba(15, 23, 42, 0.06));
+}
+
+.cb-native-tab-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.35rem;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid transparent;
+    border-radius: var(--cb-v2-radius-sm, 10px);
+    background: transparent;
+    color: var(--cb-v2-text-muted, #64748b);
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        background-color var(--cb-v2-transition-fast, 0.16s ease),
+        border-color var(--cb-v2-transition-fast, 0.16s ease),
+        color var(--cb-v2-transition-fast, 0.16s ease),
+        box-shadow var(--cb-v2-transition-fast, 0.16s ease),
+        transform var(--cb-v2-transition-fast, 0.16s ease);
+}
+
+.cb-native-tab-button i {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.cb-native-tab-button:hover,
+.cb-native-tab-button:focus-visible {
+    border-color: var(--cb-v2-control-border-soft, #94a3b8);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--cb-v2-primary-dark, #1d4ed8);
+    outline: none;
+    transform: translateY(-1px);
+}
+
+.cb-native-tab-button.active,
+.cb-native-tab-button[aria-selected="true"] {
+    border-color: var(--cb-v2-control-border-dark, var(--cb-v2-control-border-soft, #94a3b8));
+    background: var(--cb-v2-bg, #ffffff);
+    color: var(--cb-v2-primary-dark, #1d4ed8);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.82),
+        0 8px 18px rgba(37, 99, 235, 0.12);
+}
+
+.cb-native-tab-panel {
+    min-width: 0;
+}
+
+.cb-native-tab-panel[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .cb-native-tab-list {
+        align-items: stretch;
+    }
+
+    .cb-native-tab-button {
+        flex: 1 1 100%;
+        justify-content: flex-start;
+    }
+}
+
+/* 14J Native dev/diagnostics page helpers.
+   Shared styling for non-Telerik developer diagnostics pages. */
+.cb-native-dev-page {
+    gap: 1rem;
+}
+
+.cb-native-dev-card {
+    overflow: hidden;
+}
+
+.cb-native-dev-header {
+    align-items: flex-start;
+}
+
+.cb-native-dev-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: .9rem;
+    min-width: 0;
+}
+
+.cb-native-dev-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: .9rem;
+}
+
+.cb-native-dev-field {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    min-width: 0;
+}
+
+.cb-native-dev-field label {
+    color: var(--cb-v2-text-muted, #64748b);
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+.cb-native-dev-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+}
+
+.cb-native-dev-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+.cb-native-dev-toolbar-spacer {
+    flex: 1 1 auto;
+}
+
+.cb-native-dev-search {
+    width: min(100%, 360px);
+}
+
+.cb-native-dev-page-size {
+    width: 6rem;
+}
+
+.cb-native-dev-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-border-strong, #d8e1ef));
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background: var(--cb-v2-bg, #ffffff);
+}
+
+.cb-native-dev-table {
+    margin-bottom: 0;
+    min-width: 980px;
+}
+
+.cb-native-dev-table th,
+.cb-native-dev-table td {
+    vertical-align: middle;
+}
+
+.cb-native-dev-sort {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 800;
+    text-align: left;
+    text-transform: inherit;
+    cursor: pointer;
+}
+
+.cb-native-dev-sort:hover,
+.cb-native-dev-sort:focus-visible {
+    color: var(--cb-v2-primary-dark, #1d4ed8);
+    outline: none;
+}
+
+.cb-native-dev-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.cb-native-dev-empty {
+    padding: 1rem;
+    border: 1px dashed var(--cb-v2-border-strong, #d8e1ef);
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background: var(--cb-v2-bg-soft, #f8fafc);
+    color: var(--cb-v2-text-muted, #64748b);
+    font-weight: 700;
+}
+
+.cb-native-dev-details {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: .45rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.cb-native-dev-details dt {
+    color: var(--cb-v2-text-muted, #64748b);
+}
+
+.cb-native-dev-details dd {
+    margin-bottom: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.cb-native-dev-pre {
+    max-height: 22rem;
+    overflow: auto;
+    padding: .9rem;
+    border: 1px solid var(--cb-v2-border-soft, #e2e8f0);
+    border-radius: var(--cb-v2-radius-sm, 10px);
+    background: #0f172a;
+    color: #e2e8f0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cb-modal-window-lg {
+    width: min(100%, 1100px);
+}
+
+@media (max-width: 768px) {
+    .cb-native-dev-toolbar,
+    .cb-native-dev-pager {
+        align-items: stretch;
+        justify-content: stretch;
+    }
+
+    .cb-native-dev-toolbar > *,
+    .cb-native-dev-pager > * {
+        width: 100%;
+    }
+
+    .cb-native-dev-search,
+    .cb-native-dev-page-size {
+        width: 100%;
+    }
+}
+

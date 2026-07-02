@@ -19,25 +19,77 @@
 <Concursus.PWA.Shared.MessageDisplay @ref="messageDisplay" />
 <h4><i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development</h4>
 
-<TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-    <TabStripTab Title="Development">
-        <HeaderTemplate>
-            <i class="bi bi-code me-2" style="font-size: 1.2rem;"></i> Development
-        </HeaderTemplate>
-        <Content>
+<div class="cb-native-tabstrip cb-dev-native-tabs">
+    <div class="cb-native-tab-list" role="tablist" aria-label="Development tabs">
+        <button type="button" class="@DevRootTabButtonCss(DevRootTab.Development)" role="tab" aria-selected="@IsDevRootTabActive(DevRootTab.Development)" @onclick="@(() => SelectDevRootTab(DevRootTab.Development))">
+            <i class="bi bi-code" aria-hidden="true"></i>
+            <span>Development</span>
+        </button>
+        <button type="button" class="@DevRootTabButtonCss(DevRootTab.DevAdvanced)" role="tab" aria-selected="@IsDevRootTabActive(DevRootTab.DevAdvanced)" @onclick="@(() => SelectDevRootTab(DevRootTab.DevAdvanced))">
+            <i class="bi bi-tools" aria-hidden="true"></i>
+            <span>Dev Advanced</span>
+        </button>
+    </div>
+
+    @if (HasVisitedDevRootTab(DevRootTab.Development))
+    {
+        <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevRootTabActive(DevRootTab.Development))">
             <div class="row">
                 <DynamicGrid GridCode="DEV" FullGrid="true" TransientVirtualProperties="@TransientVirtualProperties" />
             </div>
-        </Content>
-    </TabStripTab>
-    <TabStripTab Title="Dev Advanced">
-        <Content>
-            <TelerikTabStrip>
-                <TabStripTab Title="Routines">
-                    <HeaderTemplate>
-                        <i class="bi bi-collection-play me-2" style="font-size: 1.2rem;"></i> Routines
-                    </HeaderTemplate>
-                    <Content>
+        </section>
+    }
+
+    @if (HasVisitedDevRootTab(DevRootTab.DevAdvanced))
+    {
+        <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevRootTabActive(DevRootTab.DevAdvanced))">
+            <div class="cb-native-tabstrip cb-dev-advanced-native-tabs">
+                <div class="cb-native-tab-list" role="tablist" aria-label="Development advanced tabs">
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.Routines)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.Routines)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.Routines))">
+                        <i class="bi bi-collection-play" aria-hidden="true"></i>
+                        <span>Routines</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.Translation)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.Translation)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.Translation))">
+                        <i class="bi bi-translate" aria-hidden="true"></i>
+                        <span>Translation</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.UsageStatistics)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.UsageStatistics)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.UsageStatistics))">
+                        <i class="bi bi-bar-chart" aria-hidden="true"></i>
+                        <span>Usage Statistics</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.MemoryDiagnostics)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.MemoryDiagnostics)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.MemoryDiagnostics))">
+                        <i class="bi bi-memory" aria-hidden="true"></i>
+                        <span>Memory Diagnostics</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.WaitStats)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.WaitStats)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.WaitStats))">
+                        <i class="bi bi-speedometer2" aria-hidden="true"></i>
+                        <span>Wait Stats</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.SageApiTest)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.SageApiTest)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.SageApiTest))">
+                        <i class="bi bi-plug" aria-hidden="true"></i>
+                        <span>Sage API test</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.AiErrorAdmin)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.AiErrorAdmin)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.AiErrorAdmin))">
+                        <i class="bi bi-braces" aria-hidden="true"></i>
+                        <span>AI Error Admin</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.SyncQueue)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.SyncQueue)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.SyncQueue))">
+                        <i class="bi bi-upload" aria-hidden="true"></i>
+                        <span>Sync Queue</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.StepLogs)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.StepLogs)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.StepLogs))">
+                        <i class="bi bi-textarea" aria-hidden="true"></i>
+                        <span>Step Logs</span>
+                    </button>
+                    <button type="button" class="@DevAdvancedTabButtonCss(DevAdvancedTab.PostcodeLookup)" role="tab" aria-selected="@IsDevAdvancedTabActive(DevAdvancedTab.PostcodeLookup)" @onclick="@(() => SelectDevAdvancedTab(DevAdvancedTab.PostcodeLookup))">
+                        <i class="bi bi-mailbox-flag" aria-hidden="true"></i>
+                        <span>PostCode Lookup</span>
+                    </button>
+                </div>
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.Routines))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.Routines))">
                         <div class="container mt-3">
                             <div class="row mb-3">
                                 <div class="col-md-9">
@@ -45,7 +97,7 @@
                                     <p>This Routine will receive a collection of 'ALL JOBS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="UpdateJobs">Update Jobs</button>
+                                    <button type="button" class="btn btn-primary" @onclick="UpdateJobs">Update Jobs</button>
                                 </div>
                             </div>
 
@@ -55,7 +107,7 @@
                                     <p>This Routine will receive a collection of 'ALL ENQUIRIES' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="UpdateEnquiries">Update Enquiries</button>
+                                    <button type="button" class="btn btn-primary" @onclick="UpdateEnquiries">Update Enquiries</button>
                                 </div>
                             </div>
 
@@ -65,7 +117,7 @@
                                     <p>This Routine will receive a collection of 'ALL QUOTES' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="UpdateQuotes">Update Quotes</button>
+                                    <button type="button" class="btn btn-primary" @onclick="UpdateQuotes">Update Quotes</button>
                                 </div>
                             </div>
 
@@ -75,7 +127,7 @@
                                     <p>This Routine will receive a collection of 'ALL CRM ACCOUNTS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="UpdateAccounts">Update Accounts</button>
+                                    <button type="button" class="btn btn-primary" @onclick="UpdateAccounts">Update Accounts</button>
                                 </div>
                             </div>
 
@@ -85,17 +137,17 @@
                                     <p>This Routine will receive a collection of 'ALL ASSETS' DataObjects and run the routines to create the Sharepoint Folders and permissions.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="UpdateProperties">Update Properties</button>
+                                    <button type="button" class="btn btn-primary" @onclick="UpdateProperties">Update Properties</button>
                                 </div>
                             </div>
 
                             <div class="row mb-3">
                                 <div class="col-md-9">
-                                    <label for="routineJobs" class="fw-bold">Import Legacy Statuses</label>
+                                    <label for="routineLegacyStatuses" class="fw-bold">Import Legacy Statuses</label>
                                     <p>Used by the new status management system. This Routine will import the last status for enquiries, quotes, and jobs.</p>
                                 </div>
                                 <div class="col-md-3 text-end">
-                                    <button class="btn btn-primary" @onclick="ImportLegacyStatuses">Import Legacy Statuses</button>
+                                    <button type="button" class="btn btn-primary" @onclick="ImportLegacyStatuses">Import Legacy Statuses</button>
                                 </div>
                             </div>
 
@@ -105,83 +157,91 @@
                                 </div>
                             </div>
                         </div>
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Translation">
-                    <HeaderTemplate>
-                        <i class="bi bi-translate me-2" style="font-size: 1.2rem;"></i> Translation
-                    </HeaderTemplate>
-                    <Content>
-                        <label for="routineName">Create new Language definitions - This Routine will receive a collection of 'British English - Labels Text' and generate new content for the new selected Language.</label>
-                        <TelerikComboBox TItem="LanguageItemModel"
-                                         TValue="string"
-                                         Data="@Languages"
-                                         TextField="Text"
-                                         ValueField="Value"
-                                         @bind-Value="@SelectedLanguage"
-                                         Placeholder="Select Language">
-                        </TelerikComboBox>
-                        <button class="btn btn-primary" @onclick="CreateLanguages">Create Languages</button>
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Usage Statistics">
-                    <HeaderTemplate>
-                        <i class="bi bi-bar-chart me-2" style="font-size: 1.2rem;"></i> Usage Statistics
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.Translation))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.Translation))">
+                        <div class="container mt-3">
+                            <label for="languageSelect" class="form-label">Create new Language definitions - This Routine will receive a collection of 'British English - Labels Text' and generate new content for the new selected Language.</label>
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-6 col-lg-4">
+                                    <select id="languageSelect" class="form-select" @bind="SelectedLanguage">
+                                        <option value="">Select Language</option>
+                                        @foreach (var language in Languages)
+                                        {
+                                            <option value="@language.Value">@language.Text</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-primary" @onclick="CreateLanguages">Create Languages</button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.UsageStatistics))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.UsageStatistics))">
                         <UsageDashboard />
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Memory Diagnostics">
-                    <HeaderTemplate>
-                        <i class="bi bi-memory me-2" style="font-size: 1.2rem;"></i> Memory Diagnostics
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.MemoryDiagnostics))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.MemoryDiagnostics))">
                         <Concursus.PWA.Shared.Diagnostics.Memory />
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Wait Stats">
-                    <WaitStatsDashboard />
-                </TabStripTab>
-                <TabStripTab Title="Sage API test">
-                    <SageApiTest />
-                </TabStripTab>
-                <TabStripTab Title="AI Error Admin">
-                    <HeaderTemplate>
-                        <i class="bi bi-braces me-2" style="font-size: 1.2rem;"></i> AI Error Admin
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.WaitStats))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.WaitStats))">
+                        <WaitStatsDashboard />
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.SageApiTest))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.SageApiTest))">
+                        <SageApiTest />
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.AiErrorAdmin))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.AiErrorAdmin))">
                         <Concursus.PWA.Shared.AiErrorAdmin OnError="HandleAiError" />
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Sync Queue">
-                    <HeaderTemplate>
-                        <i class="bi bi-upload me-2" style="font-size: 1.2rem;"></i> Sync Queue
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.SyncQueue))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.SyncQueue))">
                         <DevSyncQueueTab />
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="Step Logs">
-                    <HeaderTemplate>
-                        <i class="bi bi-textarea me-2" style="font-size: 1.2rem;"></i> Step Logs
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.StepLogs))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.StepLogs))">
                         <DebugInteractions />
-                    </Content>
-                </TabStripTab>
-                <TabStripTab Title="PostCode Lookup">
-                    <HeaderTemplate>
-                        <i class="bi bi-mailbox-flag me-2" style="font-size: 1.2rem;"></i> PostCode Lookup
-                    </HeaderTemplate>
-                    <Content>
+                    </section>
+                }
+
+                @if (HasVisitedDevAdvancedTab(DevAdvancedTab.PostcodeLookup))
+                {
+                    <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsDevAdvancedTabActive(DevAdvancedTab.PostcodeLookup))">
                         <PostcodeLookupTab />
-                    </Content>
-                </TabStripTab>
-            </TelerikTabStrip>
-        </Content>
-    </TabStripTab>
-</TelerikTabStrip>
+                    </section>
+                }
+            </div>
+        </section>
+    }
+</div>
 
 <script>
     window.scrollToBottom = function (element) {
@@ -194,6 +254,58 @@
     private string logOutput = string.Empty;
     private ElementReference logOutputRef;
     private MessageDisplay? messageDisplay;
+
+    private enum DevRootTab
+    {
+        Development,
+        DevAdvanced
+    }
+
+    private enum DevAdvancedTab
+    {
+        Routines,
+        Translation,
+        UsageStatistics,
+        MemoryDiagnostics,
+        WaitStats,
+        SageApiTest,
+        AiErrorAdmin,
+        SyncQueue,
+        StepLogs,
+        PostcodeLookup
+    }
+
+    private DevRootTab activeDevRootTab = DevRootTab.Development;
+    private DevAdvancedTab activeDevAdvancedTab = DevAdvancedTab.Routines;
+    private readonly HashSet<DevRootTab> visitedDevRootTabs = new() { DevRootTab.Development };
+    private readonly HashSet<DevAdvancedTab> visitedDevAdvancedTabs = new() { DevAdvancedTab.Routines };
+
+    private void SelectDevRootTab(DevRootTab tab)
+    {
+        activeDevRootTab = tab;
+        visitedDevRootTabs.Add(tab);
+
+        if (tab == DevRootTab.DevAdvanced)
+        {
+            visitedDevAdvancedTabs.Add(activeDevAdvancedTab);
+        }
+    }
+
+    private void SelectDevAdvancedTab(DevAdvancedTab tab)
+    {
+        activeDevRootTab = DevRootTab.DevAdvanced;
+        visitedDevRootTabs.Add(DevRootTab.DevAdvanced);
+        activeDevAdvancedTab = tab;
+        visitedDevAdvancedTabs.Add(tab);
+    }
+
+    private bool IsDevRootTabActive(DevRootTab tab) => activeDevRootTab == tab;
+    private bool HasVisitedDevRootTab(DevRootTab tab) => visitedDevRootTabs.Contains(tab);
+    private bool IsDevAdvancedTabActive(DevAdvancedTab tab) => activeDevRootTab == DevRootTab.DevAdvanced && activeDevAdvancedTab == tab;
+    private bool HasVisitedDevAdvancedTab(DevAdvancedTab tab) => visitedDevAdvancedTabs.Contains(tab);
+
+    private string DevRootTabButtonCss(DevRootTab tab) => IsDevRootTabActive(tab) ? "cb-native-tab-button active" : "cb-native-tab-button";
+    private string DevAdvancedTabButtonCss(DevAdvancedTab tab) => IsDevAdvancedTabActive(tab) ? "cb-native-tab-button active" : "cb-native-tab-button";
 
     protected API.Client.FormHelper? formHelper;
     [Parameter]

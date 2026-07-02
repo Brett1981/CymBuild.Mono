@@ -1,0 +1,458 @@
+﻿@using Concursus.API.Client
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="shore-lookup @CssClass @(IsInvalid ? "is-invalid" : "is-data-valid")">
+    <div class="shore-lookup-control">
+        <input id="@Id"
+               class="form-control shore-lookup-input"
+               value="@InputText"
+               placeholder="@Placeholder"
+               readonly="@ReadOnly"
+               disabled="@ReadOnly"
+               autocomplete="off"
+               role="combobox"
+               aria-expanded="@_isOpen"
+               aria-controls="@ListBoxId"
+               title="@LookupTooltip"
+               @onfocus="OpenAsync"
+               @oninput="OnSearchInputAsync"
+               @onkeydown="OnKeyDownAsync"
+               @onblur="OnInputBlurAsync" />
+
+        @if (!ReadOnly && Value != Guid.Empty)
+        {
+            <button type="button"
+                    class="shore-lookup-clear"
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                    @onmousedown:preventDefault="true"
+                    @onclick="ClearAsync">
+                <span class="bi bi-x-lg" aria-hidden="true"></span>
+            </button>
+        }
+
+        <button type="button"
+                class="shore-lookup-toggle"
+                title="Show options"
+                aria-label="Show options"
+                disabled="@ReadOnly"
+                @onmousedown:preventDefault="true"
+                @onclick="ToggleAsync">
+            <span class="bi bi-chevron-down" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    @if (_isOpen && !ReadOnly)
+    {
+        <div id="@ListBoxId" class="shore-lookup-menu" role="listbox">
+            @if (_isLoading)
+            {
+                <div class="shore-lookup-state">
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <span>Loading...</span>
+                </div>
+            }
+            else if (_items.Count == 0)
+            {
+                <div class="shore-lookup-state text-muted">No matching records</div>
+            }
+            else
+            {
+                @for (var index = 0; index < _items.Count; index++)
+                {
+                    var item = _items[index];
+                    var isSelected = item.Value == Value;
+                    var isActive = index == _activeIndex;
+                    var itemClass = $"shore-lookup-item{(isSelected ? " is-selected" : string.Empty)}{(isActive ? " is-active" : string.Empty)}";
+                    var colour = ResolveItemColour(item);
+                    var itemStyle = string.IsNullOrWhiteSpace(colour) ? null : $"color: {colour}";
+
+                    <button type="button"
+                            class="@itemClass"
+                            role="option"
+                            aria-selected="@isSelected"
+                            title="@item.Name"
+                            @onmousedown:preventDefault="true"
+                            @onclick="() => SelectItemAsync(item)">
+                        <span class="shore-lookup-item-text" style="@itemStyle">@item.Name</span>
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public string DropDownListDefinitionGuid { get; set; } = string.Empty;
+    [Parameter] public string Id { get; set; } = string.Empty;
+    [Parameter] public bool IsInvalid { get; set; }
+    [Parameter] public Func<string, Task<IReadOnlyList<ComboDataItem>>>? LoadItems { get; set; }
+    [Parameter] public EventCallback OnUserInteraction { get; set; }
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public string TooltipText { get; set; } = string.Empty;
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public int ReloadKey { get; set; }
+    [Parameter] public Guid Value { get; set; }
+    [Parameter] public EventCallback<Guid> ValueChanged { get; set; }
+
+    private readonly string _componentId = Guid.NewGuid().ToString("N");
+    private ElementReference _controlElement;
+    private IJSObjectReference? _lookupModule;
+    private bool _menuIsFixed;
+    private bool _pendingMenuPlacementRefresh;
+    private string _menuStyle = string.Empty;
+    private int _activeIndex;
+    private bool _isLoading;
+    private bool _isOpen;
+    private int _lastReloadKey;
+    private Guid _lastValue;
+    private int _loadSequence;
+    private string _searchText = string.Empty;
+    private string _selectedText = string.Empty;
+    private List<ComboDataItem> _items = new();
+
+    private string InputText => _isOpen ? _searchText : _selectedText;
+    private string LookupTooltip => !string.IsNullOrWhiteSpace(TooltipText) ? TooltipText : InputText;
+    private string ListBoxId => string.IsNullOrWhiteSpace(Id)
+        ? $"shore-lookup-list-{_componentId}"
+        : $"{Id}-lookup-list";
+    /* 14I-R6 ShoreLookup viewport queue method repair.
+       Required by the viewport-positioned lookup menu added in 14I-R3/R5. */
+    private void QueueMenuPlacementRefresh()
+    {
+        if (!_isOpen || ReadOnly)
+        {
+            return;
+        }
+
+        _menuIsFixed = true;
+
+        if (string.IsNullOrWhiteSpace(_menuStyle))
+        {
+            _menuStyle = "visibility: hidden;";
+        }
+
+        _pendingMenuPlacementRefresh = true;
+    }
+
+    private string MenuCssClass => _menuIsFixed
+        ? "shore-lookup-menu is-fixed"
+        : "shore-lookup-menu";
+
+    private string MenuStyle => _menuStyle;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReloadKey != _lastReloadKey)
+        {
+            _lastReloadKey = ReloadKey;
+            await LoadAsync(_searchText, force: true);
+        }
+
+        if (Value == _lastValue)
+        {
+            return;
+        }
+
+        _lastValue = Value;
+
+        if (Value == Guid.Empty)
+        {
+            _selectedText = string.Empty;
+            if (!_isOpen)
+            {
+                _searchText = string.Empty;
+            }
+            return;
+        }
+
+        var existing = _items.FirstOrDefault(x => x.Value == Value);
+        if (existing is not null)
+        {
+            _selectedText = existing.Name ?? string.Empty;
+            if (!_isOpen)
+            {
+                _searchText = _selectedText;
+            }
+            return;
+        }
+
+        await ResolveSelectedValueAsync();
+    }
+
+    private async Task ResolveSelectedValueAsync()
+    {
+        if (LoadItems is null || Value == Guid.Empty)
+        {
+            return;
+        }
+
+        var items = await LoadItems(string.Empty);
+        var resolved = items.FirstOrDefault(x => x.Value == Value);
+
+        if (resolved is not null)
+        {
+            _selectedText = resolved.Name ?? string.Empty;
+            if (!_isOpen)
+            {
+                _searchText = _selectedText;
+            }
+        }
+    }
+
+    private async Task OpenAsync()
+    {
+        if (ReadOnly)
+        {
+            return;
+        }
+
+        if (OnUserInteraction.HasDelegate)
+        {
+            await OnUserInteraction.InvokeAsync();
+        }
+
+        _isOpen = true;
+        _searchText = string.Empty;
+        _activeIndex = 0;
+        QueueMenuPlacementRefresh();
+        await LoadAsync(_searchText, force: true);
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (ReadOnly)
+        {
+            return;
+        }
+
+        if (_isOpen)
+        {
+            CloseMenu();
+            return;
+        }
+
+        await OpenAsync();
+    }
+
+    private async Task OnSearchInputAsync(ChangeEventArgs args)
+    {
+        if (ReadOnly)
+        {
+            return;
+        }
+
+        if (OnUserInteraction.HasDelegate)
+        {
+            await OnUserInteraction.InvokeAsync();
+        }
+
+        _searchText = args.Value?.ToString() ?? string.Empty;
+        _isOpen = true;
+        _activeIndex = 0;
+        QueueMenuPlacementRefresh();
+        await LoadAsync(_searchText, force: true);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (!_isOpen || ReadOnly)
+        {
+            return;
+        }
+
+        switch (args.Key)
+        {
+            case "ArrowDown":
+                if (_items.Count > 0)
+                {
+                    _activeIndex = Math.Min(_activeIndex + 1, _items.Count - 1);
+                }
+                break;
+
+            case "ArrowUp":
+                if (_items.Count > 0)
+                {
+                    _activeIndex = Math.Max(_activeIndex - 1, 0);
+                }
+                break;
+
+            case "Enter":
+                if (_items.Count > 0 && _activeIndex >= 0 && _activeIndex < _items.Count)
+                {
+                    await SelectItemAsync(_items[_activeIndex]);
+                }
+                break;
+
+            case "Escape":
+                CloseMenu();
+                break;
+        }
+    }
+
+    private async Task OnInputBlurAsync(FocusEventArgs _)
+    {
+        await Task.Delay(160);
+        CloseMenu();
+    }
+
+    private async Task SelectItemAsync(ComboDataItem item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        _selectedText = item.Name ?? string.Empty;
+        _searchText = _selectedText;
+        _lastValue = item.Value;
+        CloseMenu();
+        await ValueChanged.InvokeAsync(item.Value);
+    }
+
+    private async Task ClearAsync()
+    {
+        _selectedText = string.Empty;
+        _searchText = string.Empty;
+        _lastValue = Guid.Empty;
+        CloseMenu();
+        _items.Clear();
+        await ValueChanged.InvokeAsync(Guid.Empty);
+    }
+
+    private async Task LoadAsync(string searchText, bool force)
+    {
+        if (LoadItems is null)
+        {
+            _items.Clear();
+            return;
+        }
+
+        var effectiveSearchText = searchText ?? string.Empty;
+        var sequence = ++_loadSequence;
+        _isLoading = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var loaded = await LoadItems(effectiveSearchText);
+
+            if (sequence != _loadSequence)
+            {
+                return;
+            }
+
+            var distinctItems = loaded
+                .Where(x => x is not null)
+                .GroupBy(x => x.Value)
+                .Select(x => x.First())
+                .ToList();
+
+            // Some metadata dropdowns return more than the usual top-10 list and do not
+            // always apply server-side filtering consistently. Keep the FormHelper/gRPC
+            // lookup path intact, but apply a local contains filter as a safety net so
+            // typing in the native combo always narrows the visible list.
+            _items = ApplyClientSearchFilter(distinctItems, effectiveSearchText).ToList();
+
+            if (_activeIndex >= _items.Count)
+            {
+                _activeIndex = Math.Max(0, _items.Count - 1);
+            }
+
+            if (Value != Guid.Empty)
+            {
+                var selected = distinctItems.FirstOrDefault(x => x.Value == Value);
+                if (selected is not null)
+                {
+                    _selectedText = selected.Name ?? string.Empty;
+                    if (!_isOpen)
+                    {
+                        _searchText = _selectedText;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (sequence == _loadSequence)
+            {
+                _isLoading = false;
+                QueueMenuPlacementRefresh();
+            }
+        }
+    }
+
+    private static IEnumerable<ComboDataItem> ApplyClientSearchFilter(
+        IEnumerable<ComboDataItem> items,
+        string searchText)
+    {
+        var terms = (searchText ?? string.Empty)
+            .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(term => term.Trim())
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .ToArray();
+
+        if (terms.Length == 0)
+        {
+            return items;
+        }
+
+        return items.Where(item =>
+        {
+            var name = item?.Name ?? string.Empty;
+
+            return terms.All(term =>
+                name.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
+        });
+    }
+
+    private void CloseMenu()
+    {
+        _isOpen = false;
+        _searchText = _selectedText;
+        _menuIsFixed = false;
+        _menuStyle = string.Empty;
+        _pendingMenuPlacementRefresh = false;
+        StateHasChanged();
+    }
+
+    private string ResolveItemColour(ComboDataItem item)
+    {
+        if (item is null || string.IsNullOrWhiteSpace(item.ColourHex))
+        {
+            return string.Empty;
+        }
+
+        // CBLD-570 preserved: Sage code lookup uses inverted red/black emphasis.
+        if (string.Equals(DropDownListDefinitionGuid, "0031902a-b82c-4b50-9b3d-194a5d30b931", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(item.ColourHex, "#000000", StringComparison.OrdinalIgnoreCase)
+                ? "#FF0000"
+                : "#000000";
+        }
+
+        return item.ColourHex;
+    }
+
+    /* 14I-R4 ShoreLookup async disposal compile repair.
+       Disposes the optional viewport-positioning JS module introduced by 14I-R3. */
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_lookupModule is not null)
+            {
+                await _lookupModule.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException || ex is InvalidOperationException)
+        {
+            // Component is being torn down; no user-visible action is required.
+        }
+    }
+}
+

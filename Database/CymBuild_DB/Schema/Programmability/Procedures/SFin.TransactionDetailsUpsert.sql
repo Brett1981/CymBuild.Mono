@@ -3,6 +3,10 @@ GO
 
 PRINT (N'Create procedure [SFin].[TransactionDetailsUpsert]')
 GO
+PRINT (N'Create procedure [SFin].[TransactionDetailsUpsert]')
+GO
+PRINT (N'Create procedure [SFin].[TransactionDetailsUpsert]')
+GO
 
 CREATE PROCEDURE [SFin].[TransactionDetailsUpsert]
 (

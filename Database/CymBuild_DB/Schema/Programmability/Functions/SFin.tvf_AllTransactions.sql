@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_AllTransactions]')
 GO
-
 CREATE FUNCTION [SFin].[tvf_AllTransactions] 
 (
     @UserId INT
@@ -38,13 +37,19 @@ SELECT  t.ID,
 		CASE 
 			WHEN t.SageTransactionReference <> N'' THEN 1
 			ELSE 0
-		END AS HasSageReference
+		END AS HasSageReference,
+		OrgUnit.Name AS Department,
+		OrgUnit2.Name AS OrgUnit
 FROM    SFin.Transactions t
 JOIN	SFin.TransactionCalculations tc ON (tc.ID = t.ID)
 JOIN    SFin.TransactionTypes tt ON (tt.ID = t.TransactionTypeID)
 JOIN	SCrm.Accounts a ON (a.ID = t.AccountID)
 JOIN	SCore.Identities i ON (i.ID = t.SurveyorUserId)
 JOIN	SJob.Jobs as j ON (j.ID = t.JobID)
+JOIN SCore.OrganisationalUnits AS OrgUnit
+    ON OrgUnit.ID = j.OrganisationalUnitID
+JOIN SCore.OrganisationalUnits AS OrgUnit2
+	ON OrgUnit.ParentID = OrgUnit2.ID
 LEFT JOIN SFin.TransactionSageSubmissionStatus s ON (s.TransactionGuid = t.Guid)
 CROSS APPLY SFin.tvf_OverdueInvoicesForJob(j.Guid) o
 OUTER APPLY (

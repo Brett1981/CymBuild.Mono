@@ -23,7 +23,9 @@ RETURN SELECT
 		e.Date AS CreatedOn,
 		CONVERT(DATE,e.DeclinedToQuoteDate, 103) AS DateDeclined,
 		asset.FormattedAddressComma as Asset,
-		ecf.EnquiryStatus
+		ecf.EnquiryStatus,
+		org.Name AS Department,
+		org2.Name AS BusinessUnit 
 		FROM			
 			SSop.Enquiries as e
 		OUTER APPLY (
@@ -39,6 +41,7 @@ RETURN SELECT
 					AND jt2.ID > jt.ID
 			  )
 		) AS JobType
+
 		JOIN
 			SCrm.Accounts as client ON (client.ID = e.ClientAccountId)
 		JOIN
@@ -47,7 +50,10 @@ RETURN SELECT
 			SJob.Assets as asset ON (asset.ID = e.PropertyId)
 		JOIN
 			SSop.Enquiry_CalculatedFields AS ecf ON (ecf.ID = e.ID)
-		
+		JOIN SCore.OrganisationalUnits AS org
+			ON org.ID = e.OrganisationalUnitID
+		LEFT JOIN SCore.OrganisationalUnits AS org2 
+			ON (org.ParentID = org2.ID)
 		WHERE		
 				(e.RowStatus NOT IN (0, 254))
 				--Ensure the record is  declined.

@@ -8,7 +8,7 @@ CREATE FUNCTION [SJob].[tvf_Jobs_TeamDormant]
     @UserId INT
 )
 RETURNS TABLE
-         --WITH SCHEMABINDING
+          --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -29,6 +29,8 @@ RETURN
         j.IsComplete,
         js.JobStatus,
         j.JobDormant,
+        COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnit,
+        COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS Department,
         orgu.Name AS OrgUnit
     FROM SJob.Jobs AS j
     JOIN SJob.JobStatus AS js ON (js.ID = j.ID)
@@ -38,7 +40,32 @@ RETURN
     JOIN SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
     JOIN SCore.OrganisationalUnits AS orgu ON (orgu.ID = j.OrganisationalUnitID)
-
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsBusinessUnit, 0) = 1
+          AND orgu.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND orgu.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS businessUnit
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsDepartment, 0) = 1
+          AND orgu.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND orgu.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS department
     -- Latest workflow status for this job (if any)
     OUTER APPLY
     (

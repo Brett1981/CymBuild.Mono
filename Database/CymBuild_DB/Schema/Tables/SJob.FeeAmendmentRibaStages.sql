@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[FeeAmendmentRibaStages]')
 GO
+PRINT (N'Create table [SJob].[FeeAmendmentRibaStages]')
+GO
 CREATE TABLE [SJob].[FeeAmendmentRibaStages] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_FeeAmendmentRibaStages_RowStatus] DEFAULT (1),
@@ -31,6 +33,12 @@ PRINT (N'Create foreign key [FK_FeeAmendmentRibaStages_DataObjects] on table [SJ
 GO
 ALTER TABLE [SJob].[FeeAmendmentRibaStages] WITH NOCHECK
   ADD CONSTRAINT [FK_FeeAmendmentRibaStages_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
+GO
+
+PRINT (N'Disable foreign key [FK_FeeAmendmentRibaStages_DataObjects] on table [SJob].[FeeAmendmentRibaStages]')
+GO
+ALTER TABLE [SJob].[FeeAmendmentRibaStages]
+  NOCHECK CONSTRAINT [FK_FeeAmendmentRibaStages_DataObjects]
 GO
 
 PRINT (N'Create foreign key [FK_FeeAmendmentRibaStages_FeeAmendment] on table [SJob].[FeeAmendmentRibaStages]')

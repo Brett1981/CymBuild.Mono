@@ -9,9 +9,8 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Newtonsoft.Json;
+using System.Globalization;
 using System.Web;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
 using EntityProperty = Concursus.API.Core.EntityProperty;
 
 namespace Concursus.PWA.Shared;
@@ -101,9 +100,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in BigIntValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/BigValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in BigIntValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/BigValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
             return 0;
@@ -125,9 +124,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in BigIntValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/BigValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in BigIntValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/BigValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
             InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{PWAFunctions.UnpackInt64(DataProperty.Value).ToString()}'");
@@ -175,9 +174,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in DateTimeValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/DateTimeValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in DateTimeValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/DateTimeValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
 
@@ -218,12 +217,16 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in DateTimeValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/DateTimeValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in DateTimeValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/DateTimeValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
-            InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{PWAFunctions.UnpackTimestamp(DataProperty.Value).ToString()}'");
+            var dateLogValue = value.HasValue
+                ? value.Value.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)
+                : string.Empty;
+
+            InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{dateLogValue}'");
         }
     }
 
@@ -242,9 +245,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in DoubleValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/DoubleValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in DoubleValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/DoubleValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
 
@@ -262,9 +265,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in DoubleValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/DoubleValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in DoubleValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/DoubleValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
             InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{PWAFunctions.UnpackDouble(DataProperty.Value).ToString()}'");
@@ -297,9 +300,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in GuidValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/GuidValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in GuidValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/GuidValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
 
@@ -329,9 +332,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in GuidValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/GuidValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in GuidValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/GuidValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
             InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{PWAFunctions.UnpackString(DataProperty.Value).ToString()}'");
@@ -352,9 +355,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in IntValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/IntValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in IntValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/IntValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
             return 0;
@@ -371,9 +374,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in IntValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/IntValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in IntValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/IntValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
             InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '{PWAFunctions.UnpackInt32(DataProperty.Value).ToString()}'");
@@ -394,9 +397,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in StringValueBinding GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/StringValueBinding(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in StringValueBinding GET.";
+                ex.Data["PageMethod"] = "ShoreInput/StringValueBinding(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
             return "";
@@ -419,9 +422,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in StringValueBinding SET.");
-                ex.Data.Add("PageMethod", "ShoreInput/StringValueBinding(SET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in StringValueBinding SET.";
+                ex.Data["PageMethod"] = "ShoreInput/StringValueBinding(SET)";
                 _ = OnError.InvokeAsync(ex);
             }
             InteractionTracker.Log(NavManager.Uri, $"Field Updated - '{PropertyName}' with value: '*****Value Hidden*****'");
@@ -432,8 +435,8 @@ public partial class ShoreInput : IDisposable
 
     #region Private Properties
 
-    private TelerikComboBox<ComboDataItem, Guid> Combo { get; set; } = new();
-    private int DebounceDelay { get; set; } = 100;
+    private int _lookupRefreshKey;
+private int DebounceDelay { get; set; } = 100;
     private List<EntityPropertyDependant> Dependents { get; set; } = new();
     private bool HideCurrentUserOnFirstRender { get; set; } = true;
 
@@ -449,7 +452,15 @@ public partial class ShoreInput : IDisposable
 
     private bool ModalIsVisible { get; set; } = false;
 
-    private TelerikWindow? ModalWindow { get; set; }
+    private bool NativeModalIsMaximized { get; set; }
+
+    private string NativeModalCardCss => NativeModalIsMaximized
+        ? "shore-input-modal-card is-maximized"
+        : "shore-input-modal-card";
+
+    private System.Type? DetailPageComponentType => ResolvePageComponentType(EntityProperty?.DetailPageUri);
+
+    private System.Type? InformationPageComponentType => ResolvePageComponentType(EntityProperty?.InformationPageUri);
 
     [CascadingParameter] private FlexPropertyGroup Parent { get; set; } = new();
 
@@ -476,9 +487,9 @@ public partial class ShoreInput : IDisposable
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "Error in StepValue GET.");
-                ex.Data.Add("PageMethod", "ShoreInput/StepValue(GET)");
+                ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+                ex.Data["AdditionalInfo"] = "Error in StepValue GET.";
+                ex.Data["PageMethod"] = "ShoreInput/StepValue(GET)";
                 _ = OnError.InvokeAsync(ex);
             }
 
@@ -493,6 +504,149 @@ public partial class ShoreInput : IDisposable
     private string? WindowTitle { get; set; }
 
     #endregion Private Properties
+
+    // BEGIN 14S-R18 metadata tooltip helpers
+    private string LabelTooltip => BuildLabelTooltip();
+
+    private string ValueTooltip => BuildValueTooltip();
+
+    private string BuildLabelTooltip()
+    {
+        var helpText = GetEntityPropertyTextValue(
+            EntityProperty,
+            "HelpText",
+            "LanguageLabelHelpText",
+            "LanguageLabelTranslationHelpText",
+            "LanguageLabelTranslation.HelpText",
+            "LanguageLabel.HelpText");
+
+        if (!string.IsNullOrWhiteSpace(helpText))
+        {
+            return CleanTooltipText(helpText);
+        }
+
+        var label = GetEntityPropertyTextValue(
+            EntityProperty,
+            "Label",
+            "LanguageLabel",
+            "LanguageLabelTranslation.Value",
+            "LanguageLabelTranslation.Label",
+            "LanguageLabel.Name");
+
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            return CleanTooltipText(label);
+        }
+
+        if (!string.IsNullOrWhiteSpace(PropertyName))
+        {
+            return CleanTooltipText(PropertyName);
+        }
+
+        return CleanTooltipText(EntityProperty?.Name);
+    }
+
+    private string BuildValueTooltip()
+    {
+        try
+        {
+            if (EntityProperty == null)
+            {
+                return string.Empty;
+            }
+
+            // Lookup selected display text is owned by ShoreLookupInput and rendered there as the tooltip.
+            // Returning empty here avoids showing the stored Guid when hovering between lookup pieces.
+            if (IsLookupEntityProperty())
+            {
+                return string.Empty;
+            }
+
+            var dataTypeName = EntityProperty.EntityDataTypeName?.Trim() ?? string.Empty;
+
+            return dataTypeName.ToUpperInvariant() switch
+            {
+                "BIT" => BoolValueBinding ? "True" : "False",
+                "DATE" or "DATETIME2" => DateTimeValueBinding.HasValue
+                    ? DateTimeValueBinding.Value.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)
+                    : string.Empty,
+                "INT" or "SMALLINT" or "TINYINT" => IntValueBinding.ToString(CultureInfo.InvariantCulture),
+                "BIGINT" => BigIntValueBinding.ToString(CultureInfo.InvariantCulture),
+                "DOUBLE" or "DECIMAL" or "MONEY" => DoubleValueBinding.ToString(CultureInfo.InvariantCulture),
+                "UNIQUEIDENTIFIER" => GuidValueBinding == Guid.Empty ? string.Empty : GuidValueBinding.ToString(),
+                _ => CleanTooltipText(StringValueBinding)
+            };
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private bool IsLookupEntityProperty()
+    {
+        return !string.IsNullOrWhiteSpace(EntityProperty?.DropDownListDefinitionGuid)
+            && EntityProperty.DropDownListDefinitionGuid != Guid.Empty.ToString();
+    }
+
+    private static string CleanTooltipText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return string.Join(
+            " ",
+            value.Split(new[] { ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string GetEntityPropertyTextValue(object? source, params string[] propertyPaths)
+    {
+        foreach (var propertyPath in propertyPaths)
+        {
+            var value = GetObjectTextValueByPath(source, propertyPath);
+
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetObjectTextValueByPath(object? source, string propertyPath)
+    {
+        if (source == null || string.IsNullOrWhiteSpace(propertyPath))
+        {
+            return string.Empty;
+        }
+
+        object? current = source;
+
+        foreach (var part in propertyPath.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (current == null)
+            {
+                return string.Empty;
+            }
+
+            var property = current.GetType()
+                .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .FirstOrDefault(p => string.Equals(p.Name, part, StringComparison.OrdinalIgnoreCase));
+
+            if (property == null)
+            {
+                return string.Empty;
+            }
+
+            current = property.GetValue(current);
+        }
+
+        return current?.ToString() ?? string.Empty;
+    }
+    // END 14S-R18 metadata tooltip helpers
 
     #region Public Methods
 
@@ -523,13 +677,13 @@ public partial class ShoreInput : IDisposable
             }
 
             // Step 3: Rebind combo only when ParentGuid has changed meaningfully
-            Combo.Rebind();
+            _lookupRefreshKey++;
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in RebindFromPropertyChange.");
-            ex.Data.Add("PageMethod", "ShoreInput/RebindFromPropertyChange()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in RebindFromPropertyChange.";
+            ex.Data["PageMethod"] = "ShoreInput/RebindFromPropertyChange()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -553,14 +707,15 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in CloseWindow().");
-            ex.Data.Add("PageMethod", "ShoreInput/CloseWindow()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in CloseWindow().";
+            ex.Data["PageMethod"] = "ShoreInput/CloseWindow()";
             _ = OnError.InvokeAsync(ex);
         }
 
         WindowIsVisible = false;
         ModalIsVisible = false;
+        NativeModalIsMaximized = false;
         RebindComboBox();
     }
 
@@ -607,9 +762,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in HandleModelOnClick().");
-            ex.Data.Add("PageMethod", "ShoreInput/HandleModelOnClick()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in HandleModelOnClick().";
+            ex.Data["PageMethod"] = "ShoreInput/HandleModelOnClick()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -652,9 +807,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in NavigateToDetailPage().");
-            ex.Data.Add("PageMethod", "ShoreInput/NavigateToDetailPage()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in NavigateToDetailPage().";
+            ex.Data["PageMethod"] = "ShoreInput/NavigateToDetailPage()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -698,9 +853,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in OnParametersSet().");
-            ex.Data.Add("PageMethod", "ShoreInput/OnParametersSet()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in OnParametersSet().";
+            ex.Data["PageMethod"] = "ShoreInput/OnParametersSet()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -715,9 +870,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in OnInitializedAsync().");
-            ex.Data.Add("PageMethod", "ShoreInput/OnInitializedAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in OnInitializedAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/OnInitializedAsync()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -735,9 +890,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in PausedStringUpdateNotificationAsync().");
-            ex.Data.Add("PageMethod", "ShoreInput/PausedStringUpdateNotificationAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in PausedStringUpdateNotificationAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/PausedStringUpdateNotificationAsync()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -768,9 +923,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in SetDefaultWindowParameters().");
-            ex.Data.Add("PageMethod", "ShoreInput/SetDefaultWindowParameters()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in SetDefaultWindowParameters().";
+            ex.Data["PageMethod"] = "ShoreInput/SetDefaultWindowParameters()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -846,9 +1001,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in SetDetailWindowParameters().");
-            ex.Data.Add("PageMethod", "ShoreInput/SetDetailWindowParameters()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in SetDetailWindowParameters().";
+            ex.Data["PageMethod"] = "ShoreInput/SetDetailWindowParameters()";
             Console.WriteLine($"Exception: {ex.Message}");
             _ = OnError.InvokeAsync(ex);
         }
@@ -899,9 +1054,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in HandleOnBlur().");
-            ex.Data.Add("PageMethod", "ShoreInput/HandleOnChange()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in HandleOnBlur().";
+            ex.Data["PageMethod"] = "ShoreInput/HandleOnChange()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -934,9 +1089,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in HandleOnChange().");
-            ex.Data.Add("PageMethod", "ShoreInput/HandleOnChange()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in HandleOnChange().";
+            ex.Data["PageMethod"] = "ShoreInput/HandleOnChange()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -983,9 +1138,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in HandleOnClick().");
-            ex.Data.Add("PageMethod", "ShoreInput/HandleOnClick()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in HandleOnClick().";
+            ex.Data["PageMethod"] = "ShoreInput/HandleOnClick()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -1003,6 +1158,192 @@ public partial class ShoreInput : IDisposable
         Console.WriteLine($"Signature saved. Size: {signatureBytes.Length} bytes");
     }
 
+    private string NativeDateMin => _min.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private string NativeDateMax => _max.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private string NativeDateTimeMin => _min.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+
+    private string NativeDateTimeMax => _max.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+
+    private string NativeDateValue => DateTimeValueBinding?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private string NativeDateTimeValue => DateTimeValueBinding?.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private bool IsNativeDateInputDisabled => DataProperty.IsReadOnly || EffectiveDisabled;
+
+    private Task OnNativeDateInputChangeAsync(ChangeEventArgs args)
+    {
+        try
+        {
+            var value = args.Value?.ToString();
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                DateTimeValueBinding = null;
+                return Task.CompletedTask;
+            }
+
+            if (DateTime.TryParseExact(
+                    value,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedDate))
+            {
+                DateTimeValueBinding = UiFormattingHelper.EnsureNoUtcRollback(parsedDate.Date);
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in OnNativeDateInputChangeAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/OnNativeDateInputChangeAsync()";
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static readonly string[] NativeDateTimeHourOptions = Enumerable
+        .Range(0, 24)
+        .Select(x => x.ToString("00", CultureInfo.InvariantCulture))
+        .ToArray();
+
+    private static readonly string[] NativeDateTimeMinuteOptions =
+    {
+        "00",
+        "15",
+        "30",
+        "45"
+    };
+
+    private string NativeDateTimeDateValue => DateTimeValueBinding?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private string NativeDateTimeHourValue => (DateTimeValueBinding?.Hour ?? 0).ToString("00", CultureInfo.InvariantCulture);
+
+    private string NativeDateTimeMinuteValue => NormaliseMinuteToQuarter(DateTimeValueBinding?.Minute ?? 0).ToString("00", CultureInfo.InvariantCulture);
+
+    private static int NormaliseMinuteToQuarter(int minute)
+    {
+        if (minute <= 0)
+        {
+            return 0;
+        }
+
+        if (minute >= 45)
+        {
+            return 45;
+        }
+
+        return (minute / 15) * 15;
+    }
+
+    private Task OnNativeDateTimeDatePartChangeAsync(ChangeEventArgs args)
+    {
+        return UpdateNativeDateTimeFromPartsAsync(dateText: args.Value?.ToString());
+    }
+
+    private Task OnNativeDateTimeHourPartChangeAsync(ChangeEventArgs args)
+    {
+        return UpdateNativeDateTimeFromPartsAsync(hourText: args.Value?.ToString());
+    }
+
+    private Task OnNativeDateTimeMinutePartChangeAsync(ChangeEventArgs args)
+    {
+        return UpdateNativeDateTimeFromPartsAsync(minuteText: args.Value?.ToString());
+    }
+
+    private Task UpdateNativeDateTimeFromPartsAsync(
+        string? dateText = null,
+        string? hourText = null,
+        string? minuteText = null)
+    {
+        try
+        {
+            var existingValue = DateTimeValueBinding;
+            var effectiveDateText = dateText ?? existingValue?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(effectiveDateText))
+            {
+                DateTimeValueBinding = null;
+                return Task.CompletedTask;
+            }
+
+            if (!DateTime.TryParseExact(
+                    effectiveDateText,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedDate))
+            {
+                return Task.CompletedTask;
+            }
+
+            var hour = existingValue?.Hour ?? 0;
+            if (!string.IsNullOrWhiteSpace(hourText) &&
+                int.TryParse(hourText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedHour))
+            {
+                hour = Math.Clamp(parsedHour, 0, 23);
+            }
+
+            var minute = NormaliseMinuteToQuarter(existingValue?.Minute ?? 0);
+            if (!string.IsNullOrWhiteSpace(minuteText) &&
+                int.TryParse(minuteText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMinute))
+            {
+                minute = NormaliseMinuteToQuarter(Math.Clamp(parsedMinute, 0, 59));
+            }
+
+            DateTimeValueBinding = parsedDate.Date.AddHours(hour).AddMinutes(minute);
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in UpdateNativeDateTimeFromPartsAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/UpdateNativeDateTimeFromPartsAsync()";
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+    private Task OnNativeDateTimeInputChangeAsync(ChangeEventArgs args)
+    {
+        try
+        {
+            var value = args.Value?.ToString();
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                DateTimeValueBinding = null;
+                return Task.CompletedTask;
+            }
+
+            var formats = new[]
+            {
+                "yyyy-MM-ddTHH:mm",
+                "yyyy-MM-ddTHH:mm:ss"
+            };
+
+            if (DateTime.TryParseExact(
+                    value,
+                    formats,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsedDateTime))
+            {
+                DateTimeValueBinding = parsedDateTime;
+            }
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in OnNativeDateTimeInputChangeAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/OnNativeDateTimeInputChangeAsync()";
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
     private async Task OnPickerChangeAsync(object newValue)
     {
         try
@@ -1026,9 +1367,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in OnPickerChangeAsync().");
-            ex.Data.Add("PageMethod", "ShoreInput/OnPickerChangeAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in OnPickerChangeAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/OnPickerChangeAsync()";
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -1049,31 +1390,19 @@ public partial class ShoreInput : IDisposable
             // preserving the existing user-facing dropdown behaviour.
             if (_lookupInitialEmptyReadDeferred)
             {
-                await InvokeAsync(() =>
-                {
-                    try
-                    {
-                        Combo?.Rebind();
-                    }
-                    catch
-                    {
-                        // Rebind is a UI convenience only. If Telerik has not finished initialising
-                        // the component yet, the next OnRead will still load normally because the
-                        // lookup has now been marked as user-requested.
-                    }
-                });
+                _lookupRefreshKey++;
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error while preparing lookup options after user interaction.");
-            ex.Data.Add("PageMethod", "ShoreInput/HandleLookupUserInteractionAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error while preparing lookup options after user interaction.";
+            ex.Data["PageMethod"] = "ShoreInput/HandleLookupUserInteractionAsync()";
             _ = OnError.InvokeAsync(ex);
         }
     }
-
-    private bool ShouldDeferInitialEmptyLookupRead(ComboBoxReadEventArgs args)
+    private bool ShouldDeferInitialEmptyLookupRead(string? searchText)
     {
         try
         {
@@ -1082,7 +1411,7 @@ public partial class ShoreInput : IDisposable
                 return false;
             }
 
-            if (args?.Request?.Filters?.Count > 0)
+            if (!string.IsNullOrWhiteSpace(searchText))
             {
                 return false;
             }
@@ -1113,23 +1442,20 @@ public partial class ShoreInput : IDisposable
         }
     }
 
-    private async Task ReadItemsAsync(ComboBoxReadEventArgs args)
+    private Task OnNativeLookupValueChangedAsync(Guid value)
+    {
+        GuidValueBinding = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task<IReadOnlyList<ComboDataItem>> LoadNativeLookupItemsAsync(string? searchText)
     {
         try
         {
             /*
              * Pertaining to CBLD-616:
-             *
-             * Whenever a new Data Object Transition record is created,
-             * the "StatusID" dropdown does not rebind properly - the user would have to reopen the record the dropdown to load up.
-             *
-             * Cause: The "ParentGuid" defaults to Guid.Empty which causes the dropdown to not load up correctly.
-             *
-             * Fix: We simply capture the ParentGuid before it defaults to Guid.Empty and add it to  stateService.ChildRecordGuid
-             *
-             * This is a quick fix for now due to time constraints.  TODO
-             *
-             * **/
+             * Preserve the workflow status lookup parent-guid fix from the Telerik OnRead path.
+             */
             if (EntityProperty.DropDownListDefinition.Guid.ToString() == "192f12f6-c7b0-4626-8e8d-8c5091456b93")
             {
                 if (ParentGuid != Guid.Empty.ToString() || ParentGuid == null)
@@ -1142,10 +1468,9 @@ public partial class ShoreInput : IDisposable
                     ParentGuid = stateService.OriginalRecordGuid;
             }
 
-            if (ShouldDeferInitialEmptyLookupRead(args))
+            if (ShouldDeferInitialEmptyLookupRead(searchText))
             {
                 _lookupInitialEmptyReadDeferred = true;
-                args.Data = Array.Empty<ComboDataItem>();
 
                 try
                 {
@@ -1156,7 +1481,7 @@ public partial class ShoreInput : IDisposable
                     // Logging must never affect user workflows.
                 }
 
-                return;
+                return Array.Empty<ComboDataItem>();
             }
 
             var dropDownDataListRequest = new DropDownDataListRequest
@@ -1169,42 +1494,31 @@ public partial class ShoreInput : IDisposable
                     .ToString()
             };
 
-            if (args.Request.Filters.Count > 0)
+            if (!string.IsNullOrWhiteSpace(searchText))
             {
                 var compositeFilter = new DataObjectCompositeFilter
                 {
-                    LogicalOperator = FilterOperator.Contains.ToString()
+                    LogicalOperator = "Contains"
                 };
 
-                foreach (var filterDescriptor in args.Request.Filters)
+                compositeFilter.Filters.Add(new DataObjectFilter
                 {
-                    var filter = filterDescriptor as FilterDescriptor;
-                    var userInput = filter?.Value.ToString();
-                    var method = filter?.Operator.ToString();
-
-                    var filterItem = new DataObjectFilter
-                    {
-                        Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty.DropDownListDefinitionGuid)
-                            .ToString(),
-                        Value = new Value { StringValue = userInput },
-                        Operator = method,
-                        ColumnName = EntityProperty.DropDownListDefinition.NameColumn,
-                        DataType = "string"
-                    };
-
-                    compositeFilter.Filters.Add(filterItem);
-                }
+                    Guid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty.DropDownListDefinitionGuid)
+                        .ToString(),
+                    Value = new Value { StringValue = searchText.Trim() },
+                    Operator = "Contains",
+                    ColumnName = EntityProperty.DropDownListDefinition.NameColumn,
+                    DataType = "string"
+                });
 
                 dropDownDataListRequest.Filters.Add(compositeFilter);
             }
 
-            //If the parentguid is Guid.Empty -> Try to get it from the stateService
+            // If the parentguid is Guid.Empty -> Try to get it from the stateService
             if (ParentGuid == Guid.Empty.ToString())
             {
                 dropDownDataListRequest.ParentGuid = stateService.OriginalRecordGuid;
             }
-
-
 
             DropDownDataListReply dropDownDataListReply;
 
@@ -1230,22 +1544,22 @@ public partial class ShoreInput : IDisposable
             }
 
             var comboItems = dropDownDataListReply.Items
-    .Select(item => new ComboDataItem(item))
-    .ToList();
-
-            args.Data = comboItems;
+                .Select(item => new ComboDataItem(item))
+                .ToList();
 
             await NotifyParentOfSelectedLookupDisplayValueAsync(comboItems);
+
+            return comboItems;
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in ReadItemsAsync().");
-            ex.Data.Add("PageMethod", "ShoreInput/ReadItemsAsync()");
-            _ = OnError.InvokeAsync(ex);
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in LoadNativeLookupItemsAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/LoadNativeLookupItemsAsync()";
+            await OnError.InvokeAsync(ex);
+            return Array.Empty<ComboDataItem>();
         }
     }
-
     private async Task NotifyParentOfSelectedLookupDisplayValueAsync(IReadOnlyCollection<ComboDataItem> comboItems)
     {
         try
@@ -1287,9 +1601,9 @@ public partial class ShoreInput : IDisposable
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error notifying EditPage of selected lookup display value.");
-            ex.Data.Add("PageMethod", "ShoreInput/NotifyParentOfSelectedLookupDisplayValueAsync()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error notifying EditPage of selected lookup display value.";
+            ex.Data["PageMethod"] = "ShoreInput/NotifyParentOfSelectedLookupDisplayValueAsync()";
             await OnError.InvokeAsync(ex);
         }
     }
@@ -1318,29 +1632,75 @@ public partial class ShoreInput : IDisposable
 
             if (currentContextVal != null && currentContextVal["OriginalRecordGuid"] != Guid.Empty.ToString())
             {
-                Combo.ValueChanged.InvokeAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(currentContextVal["OriginalRecordGuid"]));
+                GuidValueBinding = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(currentContextVal["OriginalRecordGuid"]);
             }
 
             _lookupHasUserRequestedData = true;
-            Combo.Rebind();
+            _lookupRefreshKey++;
 
             PWAFunctions.ResetStateService(stateService);
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "Error in RebindComboBox().");
-            ex.Data.Add("PageMethod", "ShoreInput/RebindComboBox()");
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in RebindComboBox().";
+            ex.Data["PageMethod"] = "ShoreInput/RebindComboBox()";
             _ = OnError.InvokeAsync(ex);
         }
     }
 
+    private void ToggleNativeModalMaximized()
+    {
+        NativeModalIsMaximized = !NativeModalIsMaximized;
+        StateHasChanged();
+    }
+
+    private static System.Type? ResolvePageComponentType(string? pageUri)
+    {
+        var trimmedPageUri = pageUri?.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedPageUri))
+        {
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            trimmedPageUri,
+            $"{trimmedPageUri}, Concursus.PWA",
+            $"Concursus.PWA.Pages.{trimmedPageUri}",
+            $"Concursus.PWA.Pages.{trimmedPageUri}, Concursus.PWA",
+            $"Concursus.PWA.Shared.{trimmedPageUri}",
+            $"Concursus.PWA.Shared.{trimmedPageUri}, Concursus.PWA"
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var type = System.Type.GetType(candidate, throwOnError: false, ignoreCase: false);
+
+            if (type is not null)
+            {
+                return type;
+            }
+        }
+
+        return AppDomain.CurrentDomain
+            .GetAssemblies()
+            .Select(assembly => assembly.GetType($"Concursus.PWA.Pages.{trimmedPageUri}", throwOnError: false, ignoreCase: false)
+                             ?? assembly.GetType($"Concursus.PWA.Shared.{trimmedPageUri}", throwOnError: false, ignoreCase: false)
+                             ?? assembly.GetType(trimmedPageUri, throwOnError: false, ignoreCase: false))
+            .FirstOrDefault(type => type is not null);
+    }
     private void WindowVisibleChangedHandler(bool currVisible)
     {
         if (WindowIsClosable)
         {
             WindowIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
             ModalIsVisible = currVisible; // if you don't do this, the window won't close because of the user action
+            if (!currVisible)
+            {
+                NativeModalIsMaximized = false;
+            }
         }
         else
         {
@@ -1350,3 +1710,4 @@ public partial class ShoreInput : IDisposable
 
     #endregion Private Methods
 }
+

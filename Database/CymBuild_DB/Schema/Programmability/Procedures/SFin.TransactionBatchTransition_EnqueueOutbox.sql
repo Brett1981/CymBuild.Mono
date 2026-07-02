@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
 GO
+PRINT (N'Create procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
+GO
 
 CREATE PROCEDURE [SFin].[TransactionBatchTransition_EnqueueOutbox]
 (
@@ -24,7 +26,8 @@ BEGIN
         @OccurredOnUtc DATETIME2(7),
         @CreatedByUserId INT,
         @SurveyorUserId INT,
-        @PayloadJson NVARCHAR(MAX);
+        @PayloadJson NVARCHAR(MAX),
+        @TransactionResolved BIT = 0;
 
     SELECT
         @TransitionID = tbt.ID,
@@ -38,9 +41,12 @@ BEGIN
         AND tbt.RowStatus NOT IN (0, 254);
 
     IF @TransitionID IS NULL
+    BEGIN
         RETURN;
+    END;
 
     SELECT
+        @TransactionResolved = 1,
         @Number = t.Number,
         @JobID = t.JobID,
         @AccountID = t.AccountID,
@@ -50,8 +56,59 @@ BEGIN
         AND t.Guid = @TransactionGuid
         AND t.RowStatus NOT IN (0, 254);
 
-    IF @TransactionID IS NULL
+    IF ISNULL(@TransactionResolved, 0) = 0
+    BEGIN
         RETURN;
+    END;
+
+    -------------------------------------------------------------------------
+    -- CYB-414
+    -- Do not enqueue Sage submission if the transaction already has confirmed
+    -- Sage success/reference.
+    -------------------------------------------------------------------------
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SFin.Transactions AS t
+        LEFT JOIN SFin.TransactionSageSubmissionStatus AS s
+            ON s.TransactionGuid = t.Guid
+           AND s.RowStatus NOT IN (0, 254)
+        WHERE t.ID = @TransactionID
+          AND t.Guid = @TransactionGuid
+          AND t.RowStatus NOT IN (0, 254)
+          AND
+          (
+                s.StatusCode = N'Succeeded'
+             OR s.LastSucceededOnUtc IS NOT NULL
+             OR NULLIF(LTRIM(RTRIM(ISNULL(s.SageOrderId, N''))), N'') IS NOT NULL
+             OR NULLIF(LTRIM(RTRIM(ISNULL(s.SageOrderNumber, N''))), N'') IS NOT NULL
+             OR NULLIF(LTRIM(RTRIM(ISNULL(t.SageTransactionReference, N''))), N'') IS NOT NULL
+             OR NULLIF(LTRIM(RTRIM(ISNULL(t.SageInvoiceNumber, N''))), N'') IS NOT NULL
+             OR NULLIF(LTRIM(RTRIM(ISNULL(t.SageSalesOrderNumber, N''))), N'') IS NOT NULL
+          )
+    )
+    BEGIN
+        RETURN;
+    END;
+
+    -------------------------------------------------------------------------
+    -- CYB-414
+    -- Do not enqueue a second active/unpublished event for the same transaction.
+    -- Published historical events are preserved for auditability.
+    -------------------------------------------------------------------------
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SCore.IntegrationOutbox AS io
+        WHERE io.RowStatus NOT IN (0, 254)
+          AND io.EventType = N'TransactionApprovedForSageSubmission'
+          AND io.PublishedOnUtc IS NULL
+          AND ISJSON(io.PayloadJson) = 1
+          AND TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transactionGuid')) = @TransactionGuid
+    )
+    BEGIN
+        RETURN;
+    END;
 
     SET @PayloadJson =
     (
@@ -67,8 +124,8 @@ BEGIN
             @JobID AS jobId,
             @AccountID AS accountId,
             @OrganisationalUnitId AS organisationalUnitId,
-            @CreatedByUserId AS actorIdentityId,
-            @SurveyorUserId AS surveyorIdentityId
+            ISNULL(@CreatedByUserId, -1) AS actorIdentityId,
+            ISNULL(@SurveyorUserId, -1) AS surveyorIdentityId
         FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
     );
 

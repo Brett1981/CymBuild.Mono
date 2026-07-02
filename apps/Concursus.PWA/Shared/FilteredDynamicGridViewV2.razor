@@ -1,13 +1,10 @@
-﻿@using System.Dynamic
+@using System.Dynamic
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Concursus.PWA.Services
-@using Telerik.DataSource
-@using Telerik.DataSource.Extensions
 @using Concursus.Components.Shared.Services
 @using System.Globalization
 @using Microsoft.AspNetCore.Components.Web
-@using Telerik.Blazor.Components
 
 @inject UserService userService
 @inject Core.CoreClient coreClient
@@ -65,33 +62,40 @@
                         <div class="quick-filter-toolbar">
                             <div class="d-flex flex-column gap-2">
                                 <div class="d-flex gap-2 flex-wrap align-items-center">
-                                    <TelerikButton Class="@AuthorisationAllCss"
-                                                   OnClick="@(() => SetAuthorisationTypeAsync(null))">
+                                    <button type="button"
+                                            class="@AuthorisationAllCss"
+                                            @onclick="async () => await SetAuthorisationTypeAsync(null)">
                                         All (@AuthorisationTotalPending)
-                                    </TelerikButton>
+                                    </button>
 
-                                    <TelerikButton Class="@AuthorisationEnquiriesCss"
-                                                   OnClick="@(() => SetAuthorisationTypeAsync("Enquiries"))">
+                                    <button type="button"
+                                            class="@AuthorisationEnquiriesCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Enquiries")'>
                                         Enquiries (@AuthorisationEnquiriesPending)
-                                    </TelerikButton>
+                                    </button>
 
-                                    <TelerikButton Class="@AuthorisationQuotesCss"
-                                                   OnClick="@(() => SetAuthorisationTypeAsync("Quotes"))">
+                                    <button type="button"
+                                            class="@AuthorisationQuotesCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Quotes")'>
                                         Quotes (@AuthorisationQuotesPending)
-                                    </TelerikButton>
+                                    </button>
 
-                                    <TelerikButton Class="@AuthorisationJobsCss"
-                                                   OnClick="@(() => SetAuthorisationTypeAsync("Jobs"))">
+                                    <button type="button"
+                                            class="@AuthorisationJobsCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Jobs")'>
                                         Jobs (@AuthorisationJobsPending)
-                                    </TelerikButton>
+                                    </button>
 
-                                    <div class="auth-toggle">
-                                        <span class="auth-toggle-label">My Items</span>
-
-                                        <TelerikSwitch Value="@AuthorisationMyItemsOnly"
-                                                       ValueChanged="@AuthorisationMyItemsChanged" />
-
+                                    <div class="auth-toggle form-check form-switch">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               role="switch"
+                                               id="auth-my-items-only"
+                                               checked="@AuthorisationMyItemsOnly"
+                                               @onchange="async e => await ToggleAuthorisationMyItemsAsync(e.Value is bool b && b)" />
+                                        <label class="auth-toggle-label form-check-label" for="auth-my-items-only">My Items</label>
                                     </div>
+
                                     @if (_authorisationIsUpdating)
                                     {
                                         <span class="auth-updating-pill" role="status" aria-live="polite">
@@ -150,280 +154,359 @@
                             {
                                 <li><span class="dot green"></span> @GreenIndicator</li>
                             }
-
-                       
-                            
                         </ul>
                     </div>
 
                     <div class="quick-filter-toolbar">
                         @if (CreatedOnColumn != "")
                         {
-                            <div>
-                                <TelerikButton Class="@QuickFilter7DaysCSS"
-                                               OnClick="@(() => ShowRecordsFromXDay(-7))">
+                            <div class="d-flex gap-2 flex-wrap align-items-center">
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilter7DaysCSS"
+                                        @onclick="() => ShowRecordsFromXDay(-7)">
                                     Last 7 Days
-                                </TelerikButton>
+                                </button>
 
-                                <TelerikButton Class="@QuickFilter90DaysCSS"
-                                               OnClick="@(() => ShowRecordsFromXDay(-90))">
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilter90DaysCSS"
+                                        @onclick="() => ShowRecordsFromXDay(-90)">
                                     Last 90 Days
-                                </TelerikButton>
+                                </button>
 
-                                <TelerikButton OnClick="@ToggleCustomRange">
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        @onclick="ToggleCustomRange">
                                     Custom Range...
-                                </TelerikButton>
+                                </button>
 
-                                <TelerikButton Class="@QuickFilterGroupByCSS"
-                                               OnClick="@(() => GroupByButton())">
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilterGroupByCSS"
+                                        @onclick="GroupByButton">
                                     Group by @GroupByColumTranslation
-                                </TelerikButton>
+                                </button>
                             </div>
                         }
                     </div>
 
                     @if (showCustomRange)
                     {
-                        <div class="custom-range-panel">
-                            <label for="StartDate" class="form-label">From:</label>
-                            <TelerikDatePicker Id="StartDate"
-                                               Format="dd/MM/yyyy"
-                                               @bind-Value="@customStartDate" />
+                        <div class="custom-range-panel align-items-end flex-wrap">
+                            <div>
+                                <label for="StartDate" class="form-label">From:</label>
+                                <input id="StartDate"
+                                       type="date"
+                                       class="form-control form-control-sm"
+                                       value="@DateOnlyToInputValue(customStartDate)"
+                                       @onchange="OnCustomStartDateChanged" />
+                            </div>
 
-                            <label for="EndDate" class="form-label">To:</label>
-                            <TelerikDatePicker Id="EndDate"
-                                               Format="dd/MM/yyyy"
-                                               @bind-Value="@customEndDate" />
+                            <div>
+                                <label for="EndDate" class="form-label">To:</label>
+                                <input id="EndDate"
+                                       type="date"
+                                       class="form-control form-control-sm"
+                                       value="@DateOnlyToInputValue(customEndDate)"
+                                       @onchange="OnCustomEndDateChanged" />
+                            </div>
 
-                            <TelerikButton OnClick="@ApplyCustomRange">Apply</TelerikButton>
-                            <TelerikButton OnClick="@ToggleCustomRange">Cancel</TelerikButton>
+                            <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyCustomRange">Apply</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ToggleCustomRange">Cancel</button>
                         </div>
                     }
                 </div>
             }
 
             @* =============================================================
-               Grid wrapper
-               IMPORTANT: auth-queue-grid scopes the scroll/alignment fixes
+               Native search, filters and grid wrapper
             ============================================================== *@
-            <div class="grid-container @(IsClosureReviewQueueGrid ? "auth-queue-grid" : "")">
-                <TelerikGrid TItem="ExpandoObject"
-                             OnRead="@ReadItems"
-                             Pageable="true"
-                             Groupable="false"
-                             Sortable="true"
-                             PageSize="50"
-                             Height="100%"
-                             Width="100%"
-                             Resizable="true"
-                             OnRowDoubleClick="@OnRowDoubleClickHandler"
-                             @ref="@GridRef"
-                             OnRowRender="@OnRowRenderHandler"
-                             FilterMode="@GridFilterMode.FilterMenu"
-                             SelectionMode="GridSelectionMode.Single"
-                             OnStateInit="@((GridStateEventArgs<ExpandoObject> args) => OnStateInitHandler(args))"
-                             ScrollMode="@GridScrollMode.Scrollable"
-                             OnStateChanged="@((GridStateEventArgs<ExpandoObject> args) => OnGridStateChanged(args))">
+            <div class="cb-dynamic-grid-view filtered-dynamic-grid-view-v2-shell @(Disabled ? "is-disabled" : string.Empty)">
+                <div class="cb-v2-card filtered-grid-v2-toolbar-card">
+                    <div class="cb-v2-toolbar dynamic-grid-view-v2-toolbar filtered-grid-v2-toolbar">
+                        <div class="cb-v2-toolbar-left dynamic-grid-view-v2-toolbar-left">
+                            <input class="cb-v2-input dynamic-grid-view-v2-search filtered-grid-v2-search"
+                                   placeholder="@NativeSearchPlaceholder"
+                                   value="@NativeSearchText"
+                                   @oninput="OnNativeSearchChanged"
+                                   @onkeydown="OnNativeSearchKeyDown"
+                                   disabled="@NativeIsLoading" />
 
-                    <GridSettings>
-                        <GridPagerSettings InputType="PagerInputType.Input"
-                                           PageSizes="null"
-                                           ButtonCount="5"
-                                           Position="PagerPosition.Bottom" />
-                    </GridSettings>
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ApplyNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Search
+                            </button>
 
-                    <GridColumns>
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Clear
+                            </button>
 
-                        @* =============================================================
-                           Actions column: closure queue only
-                           NOTE: HeaderClass exists; Class does NOT. :contentReference[oaicite:1]{index=1}
-                        ============================================================== *@
-                        @if (IsClosureReviewQueueGrid)
-                        {
-                            <GridColumn Title="Actions"
-                                        Width="260px"
-                                        MinResizableWidth="260"
-                                        HeaderClass="actions-col"
-                                        Filterable="false"
-                                        Sortable="false"
-                                        Resizable="false">
-                                <Template>
-                                    @{
-                                        var row = (IDictionary<string, object>)context;
+                            <button type="button"
+                                    class="cb-v2-btn-secondary dynamic-grid-view-v2-filter-toggle @(NativeFilterPanelOpen ? "is-active" : string.Empty)"
+                                    @onclick="ToggleNativeFilterPanel"
+                                    disabled="@NativeIsLoading">
+                                <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+                                Filters
+                                @if (NativeActiveFilterCount > 0)
+                                {
+                                    <span class="dynamic-grid-view-v2-filter-count">@NativeActiveFilterCount</span>
+                                }
+                            </button>
+                        </div>
 
-                                        var recordGuid = TryGetGuidFromRow(row, "Guid");
-                                        var hasGuid = recordGuid != Guid.Empty;
+                        <div class="cb-v2-toolbar-right dynamic-grid-view-v2-toolbar-right">
+                            @if (HasActiveNativeSearch)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Search</span>
+                                    <span class="cb-v2-pill-value">Active</span>
+                                </div>
+                            }
 
-                                        var entityTypeName =
-                                        row.TryGetValue("EntityTypeName", out var et) ? et?.ToString() :
-                                        row.TryGetValue("Type", out var t) ? t?.ToString() :
-                                        "";
+                            @if (HasActiveNativeColumnFilters)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filters</span>
+                                    <span class="cb-v2-pill-value">@NativeActiveFilterCount</span>
+                                </div>
+                            }
 
-                                        var isActionableEntity =
-                                        string.Equals(entityTypeName, "Jobs", StringComparison.OrdinalIgnoreCase) ||
-                                        string.Equals(entityTypeName, "Quotes", StringComparison.OrdinalIgnoreCase) ||
-                                        string.Equals(entityTypeName, "Enquiries", StringComparison.OrdinalIgnoreCase);
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@NativeTotalRows</span>
+                            </div>
 
-                                        // enable approve/reject for Jobs/Quotes/Enquiries when CanActionForUser=1
-                                        var canApproveReject = hasGuid && isActionableEntity && TryGetBoolFromRow(row, "CanActionForUser");
+                            <label class="dynamic-grid-view-v2-page-size-label" for="filtered-dynamic-grid-view-page-size-@ViewDefinition.Code">
+                                Rows per page
+                            </label>
+                            <select id="filtered-dynamic-grid-view-page-size-@ViewDefinition.Code"
+                                    class="cb-v2-input dynamic-grid-view-v2-page-size-select"
+                                    value="@NativePageSize"
+                                    @onchange="ChangeNativePageSizeAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (NativeFilterPanelOpen)
+                    {
+                        <div class="dynamic-grid-view-v2-filter-panel filtered-grid-v2-filter-panel cb-v2-card shadow-sm">
+                            <div class="dynamic-grid-view-v2-filter-panel-header">
+                                <div class="dynamic-grid-view-v2-filter-panel-title">
+                                    <span class="dynamic-grid-view-v2-filter-panel-icon">
+                                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="dynamic-grid-view-v2-filter-panel-heading">Column filters</div>
+                                        <div class="dynamic-grid-view-v2-filter-panel-subtitle">Refine the current grid view, then apply when ready.</div>
+                                    </div>
+                                </div>
+
+                                <div class="dynamic-grid-view-v2-filter-panel-summary">
+                                    @NativeActiveFilterCount active
+                                </div>
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-grid filtered-grid-v2-filter-grid">
+                                @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
+                                {
+                                    <div class="dynamic-grid-view-v2-filter-field filtered-grid-v2-filter-field">
+                                        <label class="form-label" for="filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                        <div class="dynamic-grid-view-v2-filter-input-shell input-group">
+                                            <i class="bi bi-search" aria-hidden="true"></i>
+                                            <input id="filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                   class="form-control cb-v2-input dynamic-grid-view-v2-filter"
+                                                   placeholder="Filter @column.Title..."
+                                                   value="@GetNativeFilterValue(column.Name)"
+                                                   aria-label="Filter @column.Title"
+                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                   @onkeydown="OnNativeFilterKeyDown"
+                                                   disabled="@NativeIsLoading" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-actions">
+                                <button type="button"
+                                        class="btn btn-primary cb-v2-btn-primary d-inline-flex align-items-center gap-2"
+                                        @onclick="ApplyNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                    Apply Filters
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary cb-v2-btn-secondary d-inline-flex align-items-center gap-2"
+                                        @onclick="ClearAllNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="grid-container native-grid-container cb-v2-card dynamic-grid-view-v2-grid-card @(IsClosureReviewQueueGrid ? "auth-queue-grid" : "")">
+                    <div class="native-grid-shell">
+                    @if (NativeIsLoading)
+                    {
+                        <div class="native-grid-loading" role="status" aria-live="polite">
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span>Loading…</span>
+                        </div>
+                    }
+
+                    <div class="native-grid-scroll">
+                        <table class="cb-v2-table dynamic-grid-view-v2-grid-table native-grid-table">
+                            <thead>
+                                <tr>
+                                    @if (IsClosureReviewQueueGrid)
+                                    {
+                                        <th class="actions-col native-grid-actions-header">Actions</th>
                                     }
 
-                                    <div class="d-flex gap-2 actions-cell">
-                                        <TelerikButton Size="sm"
-                                                       Enabled="@hasGuid"
-                                                       OnClick="@((MouseEventArgs e) => OpenClosureReviewModal(row))">
-                                            Review
-                                        </TelerikButton>
-
-                                        <TelerikButton Size="sm"
-                                                       ThemeColor="@ThemeConstants.Button.ThemeColor.Success"
-                                                       Enabled="@canApproveReject"
-                                                       OnClick="@((MouseEventArgs e) => OpenClosureApproveModal(row))">
-                                            Approve
-                                        </TelerikButton>
-
-                                        <TelerikButton Size="sm"
-                                                       ThemeColor="@ThemeConstants.Button.ThemeColor.Error"
-                                                       Enabled="@canApproveReject"
-                                                       OnClick="@((MouseEventArgs e) => OpenClosureRejectModal(row))">
-                                            Reject
-                                        </TelerikButton>
-                                    </div>
-                                </Template>
-                            </GridColumn>
-                        }
-
-                        @{
-                            int index = 0;
-                            bool isLocked = false;
-                            int numOfItems = ViewDefinition.Columns
-                            .Where(o => !o.IsHidden)
-                            .OrderBy(o => o.ColumnOrder)
-                            .Count();
-                        }
-
-                        @foreach (GridViewColumnDefinition? gvcd in ViewDefinition.Columns
-                                            .Where(o => !o.IsHidden)
-                                            .OrderBy(o => o.ColumnOrder))
-                        {
-                            @if (gvcd.Name == "ID")
-                            {
-                                <GridColumn Field="@gvcd.Name"
-                                            Title="@gvcd.Title"
-                                            FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                            Visible="gvcd.IsHidden != true"
-                                            Filterable="@gvcd.IsFiltered"
-                                            Width="@gvcd.Width"
-                                            Sortable="true"
-                                            Resizable="true">
-                                    <Template>
-                                        @{
-                                            var overdue = "dot red";
-                                            var pending = "dot yellow";
-                                            var paid = "dot green";
-
-                                            var indicatorToAssign = "";
-
-                                            var item = (IDictionary<string, object>)context;
-
-                                            var paymentStatus = item.ContainsKey("InvoicePaymentStatus")
-                                            ? item["InvoicePaymentStatus"]?.ToString() ?? ""
-                                            : "";
-
-                                            if (paymentStatus != "")
-                                            {
-                                                if (paymentStatus == "Overdue") indicatorToAssign = overdue;
-                                                else if (paymentStatus == "Pending") indicatorToAssign = pending;
-                                                else if (paymentStatus == "Paid") indicatorToAssign = paid;
-                                            }
-                                        }
-
-                                        <div class="custom-ellipsis">
-                                        <li>
-                                            <span class="@indicatorToAssign"></span>
-                                            @item["ID"]
-                                        </li>
-                                </div>
-                                </Template>
-                                </GridColumn>
-                                }
-                                else if (gvcd.Name == "Date")
+                                    @foreach (var gvcd in VisibleGridColumns)
+                                    {
+                                        <th style="@GetColumnWidthStyle(gvcd.Width)">
+                                            <button type="button"
+                                                    class="native-grid-sort-button @GetNativeSortCss(gvcd.Name)"
+                                                    title="Sort by @gvcd.Title"
+                                                    @onclick="async () => await SortNativeGridAsync(gvcd.Name)">
+                                                <span>@gvcd.Title</span>
+                                                <span class="native-grid-sort-indicator">@GetNativeSortIndicator(gvcd.Name)</span>
+                                            </button>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!NativeGridItems.Any())
                                 {
-
-                                    //Status Indicator labels
-                                    var chaseOverdueLabel = "dot red";
-                                    var chaseDueThisWeekLabel = "dot yellow";
-                                    var noChaseDateNeededLabel = "dot green";
-                                    var labelToAssign = "";
-
-
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="@(PWAFunctions.DetermineFieldType(gvcd.DisplayFormat))"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true">
-                                        <Template>
-                                            @{
-                                                var item = (IDictionary<string, object>)context;
-                                                //If the IsOverdue <> "", it means it needs to be chased.
-                                                var IsOverdue = item["IsOverdue"].ToString();
-
-
-
-
-                                                if (IsOverdue != "")
-                                                    labelToAssign = chaseOverdueLabel;
-                                                else
-                                                    //If there is not date returned, assume the chase date 1 field is empty (no chase)
-                                                    labelToAssign = noChaseDateNeededLabel;
-
-
-
-                                            }
-                                            <div class="custom-ellipsis">
-                                                @if (IsOverdue != "")
-                                                {
-                                                <li><span class="@labelToAssign"></span> @item[gvcd.Name]</li>
-                                            }
-                                            else
-                                            {
-                                                @item[gvcd.Name]
-                                            }
-
-                                            </div>
-
-                                        </Template>
-                                    </GridColumn>
+                                    <tr>
+                                        <td colspan="@NativeGridColumnCount" class="text-muted text-center py-4">
+                                            No records found.
+                                        </td>
+                                    </tr>
                                 }
                                 else
                                 {
-                                    <GridColumn Field="@gvcd.Name"
-                                                Title="@gvcd.Title"
-                                                FieldType="typeof(string)"
-                                                Visible="gvcd.IsHidden != true"
-                                                Filterable="@gvcd.IsFiltered"
-                                                Width="@gvcd.Width"
-                                                Sortable="true"
-                                                Resizable="true"
-                                                DisplayFormat="@gvcd.DisplayFormat">
-                                        <Template>
-                                            <div class="custom-ellipsis">
-                                                @(GetColumnTemplate(gvcd.Name)(context))
-                                            </div>
-                                        </Template>
-                                    </GridColumn>
-                                }
+                                    @foreach (var row in NativeGridItems)
+                                    {
+                                        var rowDict = (IDictionary<string, object>)row;
+                                        <tr class="@GetNativeRowCssClass(row)" @ondblclick="() => OnRowDoubleClickHandler(row)">
+                                            @if (IsClosureReviewQueueGrid)
+                                            {
+                                                var recordGuid = TryGetGuidFromRow(rowDict, "Guid");
+                                                var hasGuid = recordGuid != Guid.Empty;
 
-                if (!gvcd.IsHidden)
-                {
-                    index++;
-                }
-            }
-            </GridColumns>
-            </TelerikGrid>
+                                                var entityTypeName =
+                                                    rowDict.TryGetValue("EntityTypeName", out var et) ? et?.ToString() :
+                                                    rowDict.TryGetValue("Type", out var t) ? t?.ToString() :
+                                                    "";
+
+                                                var isActionableEntity =
+                                                    string.Equals(entityTypeName, "Jobs", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(entityTypeName, "Quotes", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(entityTypeName, "Enquiries", StringComparison.OrdinalIgnoreCase);
+
+                                                var canApproveReject = hasGuid && isActionableEntity && TryGetBoolFromRow(rowDict, "CanActionForUser");
+
+                                                <td class="native-grid-actions-cell">
+                                                    <div class="d-flex gap-2 actions-cell">
+                                                        <button type="button"
+                                                                class="btn btn-outline-primary btn-sm"
+                                                                disabled="@(!hasGuid)"
+                                                                @onclick="() => OpenClosureReviewModal(rowDict)">
+                                                            Review
+                                                        </button>
+
+                                                        <button type="button"
+                                                                class="btn btn-success btn-sm"
+                                                                disabled="@(!canApproveReject)"
+                                                                @onclick="() => OpenClosureApproveModal(rowDict)">
+                                                            Approve
+                                                        </button>
+
+                                                        <button type="button"
+                                                                class="btn btn-danger btn-sm"
+                                                                disabled="@(!canApproveReject)"
+                                                                @onclick="() => OpenClosureRejectModal(rowDict)">
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            }
+
+                                            @foreach (var gvcd in VisibleGridColumns)
+                                            {
+                                                <td style="@GetColumnWidthStyle(gvcd.Width)">
+                                                    @if (string.Equals(gvcd.Name, "ID", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        var indicator = GetInvoicePaymentStatusDot(row);
+                                                        <div class="custom-ellipsis">
+                                                            @if (!string.IsNullOrWhiteSpace(indicator))
+                                                            {
+                                                                <span class="@indicator"></span>
+                                                            }
+                                                            @GetNativeCellValue(row, gvcd.Name)
+                                                        </div>
+                                                    }
+                                                    else if (string.Equals(gvcd.Name, "Date", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        var chaseIndicator = GetDateChaseDot(row);
+                                                        <div class="custom-ellipsis">
+                                                            @if (!string.IsNullOrWhiteSpace(chaseIndicator))
+                                                            {
+                                                                <span class="@chaseIndicator"></span>
+                                                            }
+                                                            @GetNativeCellValue(row, gvcd.Name)
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="custom-ellipsis">@GetNativeCellValue(row, gvcd.Name)</div>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="native-grid-pager">
+                    <div class="native-grid-pager-left">
+                        <span>Page @NativePage of @NativeTotalPages</span>
+                        <span class="text-muted">@NativeGridSummaryText</span>
+                    </div>
+                    <div class="native-grid-pager-right dynamic-grid-view-v2-pager">
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn"
+                                disabled="@(!CanGoPreviousPage)"
+                                @onclick="GoToPreviousNativePageAsync">
+                            Previous
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn"
+                                disabled="@(!CanGoNextPage)"
+                                @onclick="GoToNextNativePageAsync">
+                            Next
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             </div>
 
             <div class="back-to-top-button">
@@ -436,27 +519,18 @@
         @* =============================================================
            Closure Review Modal (queue ONLY)
         ============================================================== *@
-        @if (IsClosureReviewQueueGrid)
+        @if (IsClosureReviewQueueGrid && _closureModalVisible)
         {
-            <TelerikWindow Visible="@_closureModalVisible"
-                           Modal="true"
-                           Draggable="true"
-                           Resizable="true"
-                           Class="closure-review-window"
-                           Width="auto">
+            <div class="cb-native-modal-backdrop closure-review-backdrop" role="presentation">
+                <div class="cb-native-modal closure-review-window" role="dialog" aria-modal="true" aria-labelledby="closure-review-title">
+                    <div class="cb-native-modal-header">
+                        <h5 id="closure-review-title" class="m-0">@_closureModalTitle</h5>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseClosureModal" aria-label="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
 
-                <WindowContent>
-                    <div class="p-3">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="m-0">@_closureModalTitle</h5>
-
-                            <TelerikButton Size="sm"
-                                           FillMode="@ThemeConstants.Button.FillMode.Flat"
-                                           OnClick="@((MouseEventArgs e) => CloseClosureModal())">
-                                <i class="bi bi-x-lg"></i>
-                            </TelerikButton>
-                        </div>
-
+                    <div class="cb-native-modal-body">
                         <div class="mb-2">
                             <div><strong>Type:</strong> @_closureEntityTypeName</div>
                             <div><strong>#.:</strong> @_closureNumber</div>
@@ -492,18 +566,14 @@
                         </div>
 
                         <div class="mb-3">
-                            <TelerikButton Size="sm"
-                                           FillMode="@ThemeConstants.Button.FillMode.Outline"
-                                           OnClick="@((MouseEventArgs e) => OpenFullRecord())">
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenFullRecord">
                                 Open Full Record
-                            </TelerikButton>
+                            </button>
                         </div>
 
                         <div class="mb-2">
                             <label class="form-label"><strong>Comment</strong></label>
-                            <TelerikTextArea @bind-Value="_closureComment"
-                                             Rows="4"
-                                             Width="100%" />
+                            <textarea class="form-control" rows="4" @bind="_closureComment"></textarea>
 
                             @if (!string.IsNullOrWhiteSpace(_closureValidationMessage))
                             {
@@ -514,54 +584,47 @@
                                 Reject: comment required. Approve: optional (defaults to “Closure Approved by {USER}”).
                             </div>
                         </div>
-
-                        <div class="d-flex justify-content-end gap-2 mt-3">
-                            <TelerikButton OnClick="@((MouseEventArgs e) => CloseClosureModal())">
-                                Cancel
-                            </TelerikButton>
-
-                            <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Success"
-                                           Enabled="@(!_closureBusy)"
-                                           OnClick="@((MouseEventArgs e) => SubmitClosureApprove())">
-
-                            @(_closureEntityTypeName == "Enquiries"
-                                                        ? "Approve Inquiry"
-                                                        : "Approve Closure")
-
-
-                            </TelerikButton>
-
-                            <TelerikButton ThemeColor="@ThemeConstants.Button.ThemeColor.Error"
-                                           Enabled="@(!_closureBusy)"
-                                           OnClick="@((MouseEventArgs e) => SubmitClosureReject())">
-                            @(_closureEntityTypeName == "Enquiries"
-                                                        ? "Reject Inquiry"
-                                                        : "Reject Closuse")
-                            </TelerikButton>
-                        </div>
                     </div>
-                </WindowContent>
-            </TelerikWindow>
+
+                    <div class="cb-native-modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseClosureModal">
+                            Cancel
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-success"
+                                disabled="@_closureBusy"
+                                @onclick="SubmitClosureApprove">
+                            @(_closureEntityTypeName == "Enquiries" ? "Approve Inquiry" : "Approve Closure")
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-danger"
+                                disabled="@_closureBusy"
+                                @onclick="SubmitClosureReject">
+                            @(_closureEntityTypeName == "Enquiries" ? "Reject Inquiry" : "Reject Closure")
+                        </button>
+                    </div>
+                </div>
+            </div>
         }
 
-        @if (ViewDefinition?.IsDetailWindowed == true)
+        @if (ViewDefinition?.IsDetailWindowed == true && WindowIsVisible)
         {
-            <TelerikWindow @ref="ModalWindow"
-                           Class="responsive-window"
-                           Visible="@WindowIsVisible"
-                           Modal="true"
-                           CloseOnOverlayClick="false"
-                           VisibleChanged="@WindowVisibleChangedHandler"
-                           MaxHeight="100vh">
-                <WindowTitle>@WindowTitle</WindowTitle>
-                <WindowContent>
-                    <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{_detailPageTypeName}")"
-                                      Parameters="@_detailPageParameters" />
-                </WindowContent>
-                <WindowActions>
-                    <WindowAction Name="Close" OnClick="@CloseWindow"></WindowAction>
-                </WindowActions>
-            </TelerikWindow>
+            <div class="cb-native-modal-backdrop detail-window-backdrop" role="presentation">
+                <div class="cb-native-modal responsive-window detail-window-modal" role="dialog" aria-modal="true" aria-labelledby="detail-window-title">
+                    <div class="cb-native-modal-header">
+                        <h5 id="detail-window-title" class="m-0">@WindowTitle</h5>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseWindow" aria-label="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="cb-native-modal-body detail-window-body">
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{_detailPageTypeName}")"
+                                          Parameters="@_detailPageParameters" />
+                    </div>
+                </div>
+            </div>
         }
     </ChildContent>
 
@@ -569,16 +632,3 @@
         <ErrorDisplay ErrorMessage="@ex.Message" />
     </ErrorContent>
 </ErrorBoundary>
-
-<script>
-    document.addEventListener("keypress", function (e) {
-        const filterButton = document.querySelector(".k-button-solid-primary");
-        const enterPressed = (e.key === "Enter");
-
-        if (enterPressed && filterButton) {
-            filterButton.click();
-        }
-    });
-</script>
-
-

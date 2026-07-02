@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_Jobs_ClientDutiesNotIssued]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_Jobs_ClientDutiesNotIssued]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -27,7 +26,9 @@ RETURN
         js.IsSubjectToNDA,
         asset.FormattedAddressComma         AS Asset,
         j.ExternalReference,
-        j.CreatedOn
+        j.CreatedOn,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
     FROM SJob.Jobs            AS j
     JOIN SJob.JobStatus       AS js    ON (js.ID = j.ID)
     JOIN SJob.JobTypes        AS jt    ON (j.JobTypeID = jt.ID)
@@ -35,7 +36,8 @@ RETURN
     JOIN SCrm.Accounts        AS client ON (client.ID = j.ClientAccountID)
     JOIN SCrm.Accounts        AS agent  ON (agent.ID = j.AgentAccountID)
     JOIN SJob.Assets          AS asset  ON (asset.ID = j.UprnID)
-
+	JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+	JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     -- Latest workflow status for this job (if any). If none, this returns NULLs.
     OUTER APPLY
     (

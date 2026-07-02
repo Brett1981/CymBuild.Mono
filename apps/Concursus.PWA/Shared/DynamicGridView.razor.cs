@@ -175,6 +175,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private bool ShouldShowCsvExportButton =>
         ViewDefinition is not null &&
         (string.Equals(ViewDefinition.Code, "OVERDUEACTIVITIES", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(ViewDefinition.Code, "ENGJOBSFINANCE", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(ViewDefinition.Code, "OVERDUEMILESTONES", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(GridCode, "OVERDUEACTIVITIES", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(GridCode, "OVERDUEMILESTONES", StringComparison.OrdinalIgnoreCase));

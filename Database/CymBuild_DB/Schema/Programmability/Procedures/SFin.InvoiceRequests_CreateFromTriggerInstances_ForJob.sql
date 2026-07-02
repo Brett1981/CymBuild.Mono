@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceRequests_CreateFromTriggerInstances_ForJob]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceRequests_CreateFromTriggerInstances_ForJob]')
+GO
 
 CREATE PROCEDURE [SFin].[InvoiceRequests_CreateFromTriggerInstances_ForJob]
 (
@@ -113,6 +115,7 @@ BEGIN
               END AS ParsedActivityId
         FROM ToCreate AS t
     )
+    -- CYB-419: ACT trigger-instance requests use the activity assignee as consultant/requester.
     INSERT SFin.InvoiceRequests
     (
           RowStatus
@@ -143,7 +146,7 @@ BEGIN
                                CONCAT(N'Created from TriggerInstance. InstanceType=', i.InstanceType, N', InstanceKey=', i.InstanceKey))
               ELSE CONCAT(N'Created from TriggerInstance. InstanceType=', i.InstanceType, N', InstanceKey=', i.InstanceKey)
           END
-        , @RequesterUserId
+        , COALESCE(activityAssignee.ID, @RequesterUserId)
         , SYSUTCDATETIME()
         , i.JobId
         , i.InvoicingType
@@ -163,7 +166,10 @@ BEGIN
     FROM ToInsert AS i
     LEFT JOIN SJob.Activities AS a
       ON a.ID = i.ParsedActivityId
-     AND a.RowStatus NOT IN (0,254);
+     AND a.RowStatus NOT IN (0,254)
+    LEFT JOIN SCore.Identities AS activityAssignee
+      ON activityAssignee.ID = a.SurveyorID
+     AND activityAssignee.RowStatus NOT IN (0,254);
 
     IF OBJECT_ID('tempdb..#ItemSeed') IS NOT NULL DROP TABLE #ItemSeed;
 
@@ -422,4 +428,5 @@ BEGIN
 
     COMMIT;
 END;
+
 GO

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using Concursus.API.Core;
 
 namespace Concursus.API.Services.AIAssistant;
@@ -81,6 +81,21 @@ public sealed class AIAssistantPromptBuilder : IAIAssistantPromptBuilder
             builder.AppendLine("No trusted knowledge source was found. Provide a cautious generated suggestion and clearly say what should be checked.");
         }
 
+        if (context.AttachedFiles.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("User-provided attachments:");
+            builder.AppendLine("The user attached the following file(s). Inspect them before answering. If an attachment is a screenshot, describe the visible CymBuild screen, fields, panels, buttons, data, errors, and likely purpose. If the attachment cannot be inspected by the provider, say that clearly and do not pretend to have seen it.");
+
+            for (var i = 0; i < context.AttachedFiles.Count; i++)
+            {
+                var file = context.AttachedFiles[i];
+                builder.AppendLine($"Attachment {i + 1}: {file.FileName}");
+                builder.AppendLine($"Content type: {file.ContentType}");
+                builder.AppendLine($"URL/reference: {file.Url}");
+            }
+        }
+
         builder.AppendLine();
         builder.AppendLine("Return the answer using this structure when useful:");
         builder.AppendLine("1. Short answer");
@@ -103,4 +118,6 @@ public sealed class AIAssistantPromptContext
     public string? LanguageCode { get; init; }
 
     public IReadOnlyList<AIAssistantKnowledgeItem> KnowledgeItems { get; init; } = Array.Empty<AIAssistantKnowledgeItem>();
+
+    public IReadOnlyList<BlueGenFileReference> AttachedFiles { get; init; } = Array.Empty<BlueGenFileReference>();
 }

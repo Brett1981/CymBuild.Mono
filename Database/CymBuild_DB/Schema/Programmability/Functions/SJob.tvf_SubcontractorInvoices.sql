@@ -19,7 +19,10 @@ RETURN
 				si.Guid,
 				si.RowVersion,
 				si.RowStatus,
-				si.SubContractorName,
+				CASE 
+					WHEN (si.SubContractorName = N'' AND si.SubContractorId = -1 ) THEN acc.Name ELSE si.SubContractorName
+				END AS SubContractorName,
+				--si.SubContractorName,
 				si.DescriptionOfWork,
 				si.InvoiceDate,
 				si.ValueWithVAT,
@@ -29,6 +32,7 @@ RETURN
 		FROM    SJob.SubContractorInvoices AS si
 		JOIN    SJob.Jobs AS j 
 				ON j.ID = si.JobId
+		JOIN SCrm.Accounts acc ON (acc.ID = si.SubContractorId)
 		WHERE   si.RowStatus NOT IN (0, 254)
 			AND si.ID > 0
 			AND j.Guid = @ParentGuid

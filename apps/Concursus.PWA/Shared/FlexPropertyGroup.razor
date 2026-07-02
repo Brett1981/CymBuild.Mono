@@ -10,7 +10,7 @@
     {
         <ErrorBoundary>
             <ChildContent>
-                <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup">
+                <div class="@GetGroupCardCss()" style="@GetGroupCardStyle()" data-property-group-layout="@GetNormalisedPropertyGroupLayout()">
                     <div class="card-body">
                         <div class="d-flex justify-content-between align-items-center mb-2" @onclick="ToggleCollapse" style="cursor: pointer;">
                             <div class="d-flex flex-row justify-content-between">
@@ -145,7 +145,7 @@
                                 </div>
                             </div>
                         }
-                        <div class="d-flex @(entityPropertyGroup.Layout == "Column" ? "flex-column" : "flex-row") flex-wrap align-items-top">
+                        <div class="@GetGroupFieldsCss()">
                             <CascadingValue Value="this">
                                 @foreach (var ep in FilteredEntityProperties)
                                 {
@@ -159,30 +159,46 @@
                                     {
                                         @if (!IsBulkEdit)
                                         {
-                                            <ShoreInput EntityProperty="@ep"
-                                                        @bind-DataProperty="@dataProperty"
-                                                        IsMainRecordContext="@IsMainRecordContext"
-                                                        FormHelper="@FormHelper"
-                                                        RecordGuid="@RecordGuid"
-                                                        InputUpdated="@HandleInputUpdated" />
+                                            <div class="@GetPropertyHostCss(ep)" style="@GetPropertyHostStyle(ep, dataProperty)">
+                                                <DeveloperInspectable EntityProperty="@ep"
+                                                                      DataProperty="@dataProperty"
+                                                                      FormHelper="@FormHelper"
+                                                                      RecordGuid="@RecordGuid"
+                                                                      ComponentName="@GetInspectorComponentName(ep)">
+                                                    <ShoreInput EntityProperty="@ep"
+                                                                @bind-DataProperty="@dataProperty"
+                                                                IsMainRecordContext="@IsMainRecordContext"
+                                                                FormHelper="@FormHelper"
+                                                                RecordGuid="@RecordGuid"
+                                                                InputUpdated="@HandleInputUpdated" />
+                                                </DeveloperInspectable>
+                                            </div>
                                         }
                                         else
                                         {
-                                            <div class="property-row d-flex align-items-center">
-                                                <input type="checkbox"
-                                                       class="form-check-input me-2"
-                                                       @bind="ep.IsSelectedForBulkChange"
-                                                       disabled="@(!ep.AllowBulkChange || Disabled)"
-                                                       aria-label="Enable editing for @ep.Name" />
+                                            <div class="@GetPropertyHostCss(ep, true)" style="@GetPropertyHostStyle(ep, dataProperty)">
+                                                <div class="property-row d-flex align-items-center">
+                                                    <input type="checkbox"
+                                                           class="form-check-input me-2"
+                                                           @bind="ep.IsSelectedForBulkChange"
+                                                           disabled="@(!ep.AllowBulkChange || Disabled)"
+                                                           aria-label="Enable editing for @ep.Name" />
 
-                                                <ShoreInput EntityProperty="@ep"
-                                                            IsBulkEdit="true"
-                                                            IsMainRecordContext="@IsMainRecordContext"
-                                                            FormHelper="@FormHelper"
-                                                            @bind-DataProperty="@dataProperty"
-                                                            Disabled="@(!ep.IsSelectedForBulkChange || ep.IsReadOnly)"
-                                                            RecordGuid="@RecordGuid"
-                                                            InputUpdated="@HandleInputUpdated" />
+                                                    <DeveloperInspectable EntityProperty="@ep"
+                                                                          DataProperty="@dataProperty"
+                                                                          FormHelper="@FormHelper"
+                                                                          RecordGuid="@RecordGuid"
+                                                                          ComponentName='@(GetInspectorComponentName(ep) + "(BulkEdit)")'>
+                                                        <ShoreInput EntityProperty="@ep"
+                                                                    IsBulkEdit="true"
+                                                                    IsMainRecordContext="@IsMainRecordContext"
+                                                                    FormHelper="@FormHelper"
+                                                                    @bind-DataProperty="@dataProperty"
+                                                                    Disabled="@(!ep.IsSelectedForBulkChange || ep.IsReadOnly)"
+                                                                    RecordGuid="@RecordGuid"
+                                                                    InputUpdated="@HandleInputUpdated" />
+                                                    </DeveloperInspectable>
+                                                </div>
                                             </div>
                                         }
                                     }
@@ -198,3 +214,5 @@
         </ErrorBoundary>
     }
 }
+
+

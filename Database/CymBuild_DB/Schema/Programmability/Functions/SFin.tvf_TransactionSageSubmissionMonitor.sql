@@ -3,12 +3,14 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
 GO
-
+PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
+GO
 CREATE FUNCTION [SFin].[tvf_TransactionSageSubmissionMonitor]
 (
     @UserID INT
 )
 RETURNS TABLE
+     --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -94,6 +96,8 @@ RETURN
         OutboxPublishedOnUtc = lo.PublishedOnUtc,
         OutboxPublishAttempts = ISNULL(lo.PublishAttempts, 0),
         LatestOutboxError = ISNULL(lo.LastError, N''),
+		org.Name AS Department,
+		org2.Name AS BusinessUnit,
 
         CanRequeue =
             CAST(
@@ -116,6 +120,8 @@ RETURN
     LEFT JOIN LatestAttempt la
         ON la.TransactionGuid = t.Guid
        AND la.rn = 1
+	LEFT JOIN SCore.OrganisationalUnits AS org ON (t.OrganisationalUnitId = org.ID)
+	LEFT JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
     WHERE t.RowStatus NOT IN (0, 254)
       AND
       (

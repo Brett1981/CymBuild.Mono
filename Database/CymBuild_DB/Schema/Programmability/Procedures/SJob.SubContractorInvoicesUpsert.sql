@@ -15,7 +15,8 @@ CREATE PROCEDURE [SJob].[SubContractorInvoicesUpsert]
 		@ValueWithVAT DECIMAL(19,2),
 		@ValueWithoutVAT DECIMAL(19,2),
 		@SubContractorName NVARCHAR(100),
-		@JobGuid UNIQUEIDENTIFIER
+		@JobGuid UNIQUEIDENTIFIER,
+		@SubContractorGuid UNIQUEIDENTIFIER
 		
 	)
 AS
@@ -24,7 +25,8 @@ BEGIN
 			@ActivityId		BIGINT,
 			@MilestoneId	BIGINT,
 			@JobId			INT,
-			@IsInsert		BIT;
+			@IsInsert		BIT,
+			@SubContractorId INT;
 
 
 	SELECT @MilestoneId = ID
@@ -38,6 +40,10 @@ BEGIN
 	SELECT @JobId = ID
 	FROM SJob.Jobs
 	WHERE ([Guid] = @JobGuid);
+
+	SELECT @SubContractorId = ID
+	FROM SCrm.Accounts
+	WHERE ([Guid] = @SubContractorGuid)
 
 	
 
@@ -62,7 +68,8 @@ BEGIN
 				ValueWithVAT,
 				ValueWithoutVAT,
 				SubContractorName,
-				JobId
+				JobId,
+				SubContractorId
 			) 
 		VALUES
 			 (
@@ -77,7 +84,8 @@ BEGIN
 				 @ValueWithVAT,
 				 @ValueWithoutVAT,
 				 @SubContractorName,
-				 @JobId
+				 @JobId,
+				 @SubContractorId
 			 );
 	END;
 	ELSE
@@ -93,7 +101,7 @@ BEGIN
 				ValueWithVAT = @ValueWithVAT,
 				ValueWithoutVAT = @ValueWithoutVAT,
 				SubContractorName = @SubContractorName,
-				JobId = @JobId
+				SubContractorId = @SubContractorId
 		WHERE	(Guid = @Guid);
 	END;
 

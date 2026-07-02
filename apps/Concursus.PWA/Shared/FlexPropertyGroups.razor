@@ -2,7 +2,7 @@
 @using Google.Protobuf.WellKnownTypes
 @inject Core.CoreClient coreClient
 
-<div class="d-flex flex-row flex-wrap flexpropertygroups">
+<div class="flexpropertygroups" style="display: grid !important; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)) !important; gap: 0.75rem !important; align-items: stretch !important; justify-items: stretch !important; grid-auto-flow: row !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;">
     <CascadingValue Value="this">
 
         @foreach (var eg in entityPropertyGroups.Where(g => g.IsHidden == false).OrderBy(g => g.SortOrder))
@@ -20,3 +20,4 @@
 
     </CascadingValue>
 </div>
+

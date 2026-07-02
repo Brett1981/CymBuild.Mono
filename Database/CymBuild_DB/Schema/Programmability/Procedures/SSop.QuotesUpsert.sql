@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SSop].[QuotesUpsert]')
 GO
+PRINT (N'Create procedure [SSop].[QuotesUpsert]')
+GO
 
 CREATE PROCEDURE [SSop].[QuotesUpsert]
 (
@@ -268,28 +270,90 @@ BEGIN
                 @_emailRecipient NVARCHAR(MAX),
                 @_emailBody NVARCHAR(MAX),
                 @_emailSubject NVARCHAR(MAX),
-                @_quoteNumber NVARCHAR(MAX);
+                @_quoteNumber NVARCHAR(MAX),
+                @QuoteItemCount INT = 0,
+                @ExistingEffectiveQuoteJobTypeId INT = -1,
+                @NewEffectiveQuoteJobTypeId INT = -1;
 
         SELECT @_quotingConsultant = q.QuotingConsultantId,
                @_isFinal = q.IsFinal,
-               @_quoteNumber = q.Number
+               @_quoteNumber = q.Number,
+               @QuoteId = q.ID
         FROM SSop.Quotes AS q
-        WHERE q.Guid = @Guid;
+        WHERE q.Guid = @Guid
+          AND q.RowStatus NOT IN (0,254);
+
+        IF ISNULL(@QuoteId, -1) <= 0
+        BEGIN
+            THROW 604160, N'CYB-416: Quote could not be resolved for update.', 1;
+        END;
+
+        SELECT @QuoteItemCount = COUNT(1)
+        FROM SSop.QuoteItems AS qi
+        WHERE qi.QuoteId = @QuoteId
+          AND qi.RowStatus NOT IN (0,254);
 
         IF (@DateSent IS NOT NULL OR @DateAccepted IS NOT NULL)
         BEGIN
-            DECLARE @QuoteItemCount INT = 0;
-
-            SELECT @QuoteItemCount = COUNT(1)
-            FROM SSop.QuoteItems AS qi
-            JOIN SSop.Quotes AS q
-                ON q.ID = qi.QuoteId
-            WHERE q.Guid = @Guid
-              AND q.RowStatus NOT IN (0,254)
-              AND qi.RowStatus NOT IN (0,254);
-
             IF (ISNULL(@QuoteItemCount, 0) <= 0)
                 THROW 60032, N'CYB-101: Cannot set Quote to Sent/Accepted (DateSent/DateAccepted) until at least one Quote Item exists.', 1;
+        END;
+
+        ---------------------------------------------------------------------
+        -- CYB-416
+        -- A quote job type cannot be changed once active quote items exist.
+        -- Quote item products are scoped by job type and later drive job
+        -- creation, delivery and finance behaviour.
+        ---------------------------------------------------------------------
+        IF ISNULL(@QuoteItemCount, 0) > 0
+        BEGIN
+            SELECT @ExistingEffectiveQuoteJobTypeId =
+                COALESCE
+                (
+                    NULLIF(NULLIF(q.JobTypeId, 0), -1),
+                    NULLIF(NULLIF(es.JobTypeId, 0), -1),
+                    (
+                        SELECT MIN(NULLIF(NULLIF(p.CreatedJobType, 0), -1))
+                        FROM SSop.QuoteItems AS qiExisting
+                        JOIN SProd.Products AS p
+                            ON p.ID = qiExisting.ProductId
+                           AND p.RowStatus NOT IN (0,254)
+                        WHERE qiExisting.QuoteId = q.ID
+                          AND qiExisting.RowStatus NOT IN (0,254)
+                          AND ISNULL(p.CreatedJobType, -1) <> -1
+                    ),
+                    -1
+                )
+            FROM SSop.Quotes AS q
+            LEFT JOIN SSop.EnquiryServices AS es
+                ON es.ID = q.EnquiryServiceID
+               AND es.RowStatus NOT IN (0,254)
+            WHERE q.ID = @QuoteId
+              AND q.Guid = @Guid
+              AND q.RowStatus NOT IN (0,254);
+
+            SET @NewEffectiveQuoteJobTypeId = ISNULL(NULLIF(NULLIF(@JobTypeId, 0), -1), -1);
+
+            IF ISNULL(@ExistingEffectiveQuoteJobTypeId, -1) > 0
+            BEGIN
+                IF ISNULL(@NewEffectiveQuoteJobTypeId, -1) <= 0
+                BEGIN
+                    SET @JobTypeId = @ExistingEffectiveQuoteJobTypeId;
+                    SET @NewEffectiveQuoteJobTypeId = @ExistingEffectiveQuoteJobTypeId;
+                END;
+
+                IF @NewEffectiveQuoteJobTypeId <> @ExistingEffectiveQuoteJobTypeId
+                BEGIN
+                    THROW 604161, N'CYB-416: Job type cannot be changed while quote items exist. Remove the quote items first, then change the job type.', 1;
+                END;
+            END;
+            ELSE
+            BEGIN
+                IF ISNULL(@NewEffectiveQuoteJobTypeId, -1) > 0
+                BEGIN
+                    THROW 604162, N'CYB-416: Job type cannot be set or changed while quote items exist. Remove the quote items first, then change the job type.', 1;
+                END;
+            END;
         END;
 
         UPDATE SSop.Quotes
@@ -420,5 +484,5 @@ BEGIN
         @Number = @QuoteNumberString,
         @Name = @FilingObjectName,
         @FilingLocation = @FilingLocation;
-END;
+END
 GO

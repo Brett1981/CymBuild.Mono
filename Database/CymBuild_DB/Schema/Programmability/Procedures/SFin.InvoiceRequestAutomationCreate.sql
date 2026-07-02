@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceRequestAutomationCreate]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceRequestAutomationCreate]')
+GO
 
 CREATE PROCEDURE [SFin].[InvoiceRequestAutomationCreate]
 (
@@ -68,6 +70,41 @@ BEGIN
     BEGIN
         SELECT @RequesterUserId = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
     END
+
+
+    -------------------------------------------------------------------------
+    -- CYB-419: activity-triggered automated requests should be owned by the
+    -- activity assignee (SJob.Activities.SurveyorID), not the service/session user.
+    -- This keeps legacy/helper-based trigger-instance creation aligned with the
+    -- activity grid, while preserving the existing fallback for non-activity flows.
+    -------------------------------------------------------------------------
+    IF (ISNULL(@SourceType, N'') = N'TriggerInstance' AND @SourceGuid IS NOT NULL)
+    BEGIN
+        DECLARE @ActivityRequesterUserId INT;
+
+        SELECT TOP (1)
+            @ActivityRequesterUserId = assignee.ID
+        FROM SFin.InvoiceScheduleTriggerInstances AS ti
+        JOIN SJob.Activities AS a
+            ON a.RowStatus NOT IN (0,254)
+           AND a.ID =
+               CASE
+                   WHEN ti.InstanceKey LIKE N'ACT:%'
+                       THEN TRY_CONVERT(BIGINT, SUBSTRING(ti.InstanceKey, 5, 200))
+                   WHEN CHARINDEX(N'|A', ti.InstanceKey) > 0
+                       THEN TRY_CONVERT(BIGINT, SUBSTRING(ti.InstanceKey, CHARINDEX(N'|A', ti.InstanceKey) + 2, 50))
+                   ELSE NULL
+               END
+        JOIN SCore.Identities AS assignee
+            ON assignee.ID = a.SurveyorID
+           AND assignee.RowStatus NOT IN (0,254)
+        WHERE ti.Guid = @SourceGuid
+          AND ti.RowStatus NOT IN (0,254)
+          AND ti.InstanceType IN (N'Activity', N'ACT');
+
+        IF (@ActivityRequesterUserId IS NOT NULL)
+            SET @RequesterUserId = @ActivityRequesterUserId;
+    END;
 
     SELECT @PaymentStatusId = ips.ID
     FROM SFin.InvoicePaymentStatus ips

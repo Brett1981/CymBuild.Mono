@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromMonthConfig]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromMonthConfig]')
+GO
 
 CREATE PROCEDURE [SFin].[InvoiceAutomation_CreateInvoiceRequests_FromMonthConfig]
 (
@@ -276,14 +278,7 @@ BEGIN
                         CASE WHEN ISNULL(@Amt, 0) <= 0 THEN 1 ELSE 0 END;
 
 				
-					/*
-						Handler for creating fee amendment for RIBA stages
-						where the accepted RIBA stage value = 0.						
-					*/
-					EXEC [SFin].[CreateFeeAmendmentForInvoiceSchedule]
-										@RIBAStageId	= @RIBAStageId,
-										@Amt			= @Amt,
-										@JobId			= @JobId;
+				
 
 
                     INSERT INTO SFin.InvoiceRequests

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[TransactionDetails]')
 GO
+PRINT (N'Create table [SFin].[TransactionDetails]')
+GO
 CREATE TABLE [SFin].[TransactionDetails] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_TransactionDetails_RowStatus] DEFAULT (0),
@@ -253,6 +255,24 @@ BEGIN
 			END 
 			
 			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[InvoiceRequestItemId]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[InvoiceRequestItemId]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[InvoiceRequestItemId] IS DISTINCT FROM i.[InvoiceRequestItemId])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'InvoiceRequestItemId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2815)
+			END 
+			
+			SELECT	
 					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[JobPaymentStageId]), N''),
 					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[JobPaymentStageId]), N'')
 			FROM	Inserted i
@@ -289,6 +309,24 @@ BEGIN
 			END 
 			
 			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[LegacySystemID]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[LegacySystemID]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[LegacySystemID] IS DISTINCT FROM i.[LegacySystemID])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'LegacySystemID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2816)
+			END 
+			
+			SELECT	
 					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[MilestoneID]), N''),
 					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[MilestoneID]), N'')
 			FROM	Inserted i
@@ -322,6 +360,42 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'Net', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 496)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[Qty]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[Qty]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[Qty] IS DISTINCT FROM i.[Qty])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'Qty', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2814)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[RIBAStageId]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[RIBAStageId]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[RIBAStageId] IS DISTINCT FROM i.[RIBAStageId])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'RIBAStageId', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2599)
 			END 
 			
 			SELECT	
@@ -376,6 +450,24 @@ BEGIN
 					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
 				)
 				VALUES(1, @SchemaName, @TableName, N'Vat', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 500)
+			END 
+			
+			SELECT	
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[VatCodeID]), N''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[VatCodeID]), N'')
+			FROM	Inserted i
+			JOIN	Deleted d ON (i.[ID] = d.[ID])
+			WHERE	(i.[ID] = @CurrentInsertedID)
+                AND (d.[VatCodeID] IS DISTINCT FROM i.[VatCodeID])
+
+
+			IF (@@RowCount > 0)
+			BEGIN 
+				INSERT	SCore.RecordHistory
+				(
+					RowStatus, SchemaName, TableName, ColumnName, RowID, RowGuid, UserID, PreviousValue, NewValue, SQLUser, EntityPropertyID
+				)
+				VALUES(1, @SchemaName, @TableName, N'VatCodeID', @CurrentInsertedID, @CurrentInsertedGuid, @UserID, @PreviousValue, @NewValue, SYSTEM_USER, 2813)
 			END 
 			
 			SELECT	

@@ -1,0 +1,220 @@
+@using Concursus.PWA.Shared.Scheduler.Classes
+@using Concursus.PWA.Helpers
+@using System.Globalization
+
+<div class="cb-team-availability-board">
+    <div class="cb-team-availability-board__header">
+        <div>
+            <div class="cb-team-availability-board__title">@RangeTitle</div>
+            <div class="cb-team-availability-board__subtitle">@TeamMembers.Count team members, @Events.Count events</div>
+        </div>
+    </div>
+
+    <div class="cb-team-availability-table-wrap">
+        <table class="cb-team-availability-table">
+            <thead>
+                <tr>
+                    <th class="cb-team-member-col">Team member</th>
+                    @foreach (var day in VisibleDays)
+                    {
+                        <th class="@GetDayHeaderClass(day)" @key="day">
+                            <span>@day.ToString("ddd", CultureInfo.CurrentCulture)</span>
+                            <strong>@day.ToString("dd", CultureInfo.CurrentCulture)</strong>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var member in TeamMembers)
+                {
+                    <tr @key="member.Id">
+                        <th class="cb-team-member-col">
+                            <span class="cb-team-member-colour" style="background:@member.Color"></span>
+                            <span>@member.Name</span>
+                        </th>
+                        @foreach (var day in VisibleDays)
+                        {
+                            <td class="@GetDayCellClass(day)" @ondblclick="() => SelectSlotAsync(member, day)">
+                                @{
+                                    var eventsForDay = GetEventsForMemberDay(member.Id, day).ToList();
+                                }
+                                @foreach (var item in eventsForDay)
+                                {
+                                    <button type="button"
+                                            class="@GetEventClass(item)"
+                                            title="@GetHint(item)"
+                                            @ondblclick="() => SelectEventAsync(item)"
+                                            @ondblclick:stopPropagation="true">
+                                        <span>@GetEventText(item)</span>
+                                    </button>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<Classes.AvailabilityEvent> Events { get; set; } = Array.Empty<Classes.AvailabilityEvent>();
+    [Parameter] public IReadOnlyList<Classes.TeamMember> TeamMembers { get; set; } = Array.Empty<Classes.TeamMember>();
+    [Parameter] public IReadOnlyCollection<DateTime> Holidays { get; set; } = Array.Empty<DateTime>();
+    [Parameter] public DateTime StartDate { get; set; }
+    [Parameter] public NativeScheduleViewMode View { get; set; } = NativeScheduleViewMode.Timeline;
+    [Parameter] public bool ShowHolidays { get; set; } = true;
+    [Parameter] public EventCallback<Classes.AvailabilityEvent> OnEventSelected { get; set; }
+
+    private IReadOnlyList<DateTime> VisibleDays => BuildVisibleDays().ToList();
+
+    private string RangeTitle
+    {
+        get
+        {
+            var days = VisibleDays;
+            if (days.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return days.Count == 1
+                ? days[0].ToString("dddd, dd MMMM yyyy", CultureInfo.CurrentCulture)
+                : $"{days[0]:dd MMM yyyy} - {days[^1]:dd MMM yyyy}";
+        }
+    }
+
+    private IEnumerable<DateTime> BuildVisibleDays()
+    {
+        var start = View switch
+        {
+            NativeScheduleViewMode.Day => StartDate.Date,
+            NativeScheduleViewMode.Week => GetWeekStart(StartDate),
+            NativeScheduleViewMode.Month => new DateTime(StartDate.Year, StartDate.Month, 1),
+            NativeScheduleViewMode.Timeline => new DateTime(StartDate.Year, StartDate.Month, 1),
+            _ => GetWeekStart(StartDate)
+        };
+
+        var count = View switch
+        {
+            NativeScheduleViewMode.Day => 1,
+            NativeScheduleViewMode.Week => 7,
+            NativeScheduleViewMode.Month => DateTime.DaysInMonth(StartDate.Year, StartDate.Month),
+            NativeScheduleViewMode.Timeline => 31,
+            _ => 7
+        };
+
+        for (var index = 0; index < count; index++)
+        {
+            yield return start.AddDays(index);
+        }
+    }
+
+    private static DateTime GetWeekStart(DateTime date)
+    {
+        var diff = (7 + (date.DayOfWeek - DayOfWeek.Monday)) % 7;
+        return date.Date.AddDays(-diff);
+    }
+
+    private IEnumerable<Classes.AvailabilityEvent> GetEventsForMemberDay(int memberId, DateTime day)
+    {
+        return Events
+            .Where(item => item.TeamMemberId == memberId && item.Start.Date <= day.Date && item.End.Date >= day.Date)
+            .OrderBy(item => item.Start)
+            .ThenBy(item => item.Title);
+    }
+
+    private string GetDayHeaderClass(DateTime day)
+    {
+        var classes = new List<string> { "cb-team-day-header" };
+        if (IsWeekend(day))
+        {
+            classes.Add("scheduler-weekend");
+        }
+
+        if (ShowHolidays && Holidays.Contains(day.Date))
+        {
+            classes.Add("scheduler-holiday");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private string GetDayCellClass(DateTime day)
+    {
+        var classes = new List<string> { "cb-team-day-cell" };
+        if (IsWeekend(day))
+        {
+            classes.Add("scheduler-weekend");
+        }
+
+        if (ShowHolidays && Holidays.Contains(day.Date))
+        {
+            classes.Add("scheduler-holiday");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private static bool IsWeekend(DateTime date)
+    {
+        return date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+    }
+
+    private string GetEventClass(Classes.AvailabilityEvent item)
+    {
+        var clickable = item.CssClass == "scheduled-work" ? "cb-team-event--read-only" : "cb-team-event--clickable";
+        return $"cb-team-event {item.CssClass} {clickable}";
+    }
+
+    private string GetEventText(Classes.AvailabilityEvent item)
+    {
+        if (item.CssClass == "scheduled-work" && !string.IsNullOrWhiteSpace(item.JobNumber))
+        {
+            return $"Job {item.JobNumber}";
+        }
+
+        return string.IsNullOrWhiteSpace(item.Title) ? "Event" : item.Title;
+    }
+
+    private string GetHint(Classes.AvailabilityEvent item)
+    {
+        var start = UiFormattingHelper.FormatDateForUI(item.Start, false);
+        if (item.CssClass == "scheduled-work")
+        {
+            return $"Job: {item.JobNumber} {item.Title} - {start}";
+        }
+
+        return $"{item.Title} - {start}";
+    }
+
+    private Task SelectEventAsync(Classes.AvailabilityEvent item)
+    {
+        return OnEventSelected.InvokeAsync(item);
+    }
+
+    private Task SelectSlotAsync(Classes.TeamMember member, DateTime day)
+    {
+        if (member == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var appointment = new Classes.AvailabilityEvent
+        {
+            Id = -1,
+            Title = string.Empty,
+            TeamMemberId = member.Id,
+            TeamMemberNameAsString = member.Name,
+            Start = DateTime.SpecifyKind(day.Date, DateTimeKind.Utc),
+            End = DateTime.SpecifyKind(day.Date, DateTimeKind.Utc),
+            CssClass = string.Empty,
+            IsAbsence = true,
+            IsAllDay = false,
+            Guid = Guid.Empty.ToString(),
+            AbsenceTypeID = -1
+        };
+
+        return OnEventSelected.InvokeAsync(appointment);
+    }
+}

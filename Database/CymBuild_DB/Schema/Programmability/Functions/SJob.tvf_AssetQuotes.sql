@@ -21,13 +21,17 @@ SELECT  q.ID,
 		LEFT(q.Overview, 200) AS Overview,
 		i.Guid QuotingUserGuid,
 		i.FullName AS QuotingUserName,
-		qc.FullName AS QuotingConsultant
+		qc.FullName AS QuotingConsultant,
+		ou.Name AS Department,
+		ou2.Name AS BusinessUnit
 FROM    SSop.Quotes q
 JOIN	SSop.EnquiryServices es on (es.Id = q.EnquiryServiceID)
 join	SSop.Enquiries e on (e.Id = es.EnquiryId)
 JOIN	SJob.Assets p ON (p.ID = e.PropertyId)
 JOIN    SCore.Identities i ON (q.QuotingUserId = i.ID)
 JOIN	SCore.Identities qc ON (qc.ID = q.QuotingConsultantId)
+LEFT JOIN SCore.OrganisationalUnits AS ou ON (q.OrganisationalUnitID = ou.ID)
+LEFT JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 WHERE   (q.RowStatus  NOT IN (0, 254))
 	AND	(q.Id > 0)
 	AND	(p.ID > 0)

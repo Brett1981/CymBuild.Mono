@@ -1,0 +1,114 @@
+﻿.developer-inspectable {
+    position: relative;
+}
+
+.developer-inspectable-active {
+    outline: 1px dashed rgba(255, 193, 7, 0.95);
+    outline-offset: 2px;
+    border-radius: 0.35rem;
+    cursor: help;
+}
+
+.developer-inspectable-active:hover {
+    outline-style: solid;
+    background: rgba(255, 243, 205, 0.22);
+}
+
+.developer-inspectable-tip {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.35rem);
+    z-index: 2147483000;
+    min-width: 20rem;
+    max-width: 34rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(33, 37, 41, 0.22);
+    border-radius: 0.5rem;
+    background: #212529;
+    color: #fff;
+    box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.22);
+    font-size: 0.78rem;
+    pointer-events: none;
+}
+
+.developer-inspectable-active:hover > .developer-inspectable-tip,
+.developer-inspectable-active:focus-within > .developer-inspectable-tip {
+    display: block;
+}
+
+.developer-inspectable-tip-title {
+    margin-bottom: 0.35rem;
+    font-weight: 700;
+    color: #ffc107;
+}
+
+.developer-inspectable-tip div:not(.developer-inspectable-tip-title):not(.developer-inspectable-tip-action) {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    column-gap: 0.5rem;
+    margin-top: 0.15rem;
+}
+
+.developer-inspectable-tip span {
+    color: rgba(255, 255, 255, 0.66);
+}
+
+.developer-inspectable-tip strong {
+    overflow-wrap: anywhere;
+    font-weight: 500;
+}
+
+.developer-inspectable-tip-action {
+    margin-top: 0.45rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    color: #ffc107;
+    font-weight: 600;
+}
+
+
+/* 14S-R7 metadata layout bridge.
+   DeveloperInspectable wraps every metadata field. Make the wrapper transparent to sizing so
+   ShoreInput can fill the FlexPropertyGroup field host. */
+.developer-inspectable {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 14S-R10 ensure inspector wrapper remains transparent to metadata layout sizing. */
+.developer-inspectable > :first-child {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* 14S-R11 keep Developer Inspector transparent to form layout. */
+.developer-inspectable,
+.developer-inspectable > :first-child {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* BEGIN 14S-R15 DeveloperInspectable field fill reinforcement */
+.developer-inspectable {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.developer-inspectable > :first-child {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+/* END 14S-R15 DeveloperInspectable field fill reinforcement */
+

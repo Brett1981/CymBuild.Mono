@@ -146,3 +146,139 @@
     --cb-job-summary-label: #6d28d9;
 }
 
+
+/* 14L JobDetail native Telerik-removal helpers.
+   Supports CymBuild native tabs and native modal windows without changing JobDetail save/workflow logic. */
+.cb-job-detail-tabs .cb-native-tab-list {
+    margin-bottom: 1rem;
+}
+
+.cb-job-native-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2140;
+    background: rgba(15, 23, 42, 0.50);
+    backdrop-filter: blur(2px);
+}
+
+.cb-job-native-modal-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2150;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    overflow: auto;
+    padding: 2rem 1rem;
+}
+
+.cb-job-native-modal-shell-lg {
+    padding: 1.25rem;
+}
+
+.cb-job-native-modal-card {
+    width: min(100%, 560px);
+    max-height: calc(100vh - 4rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-border-mid, var(--cb-v2-control-border-soft, #94a3b8));
+    border-radius: var(--cb-v2-radius-lg, 18px);
+    background: var(--cb-v2-bg, #ffffff);
+    box-shadow: var(--cb-v2-shadow-modal, 0 24px 80px rgba(15, 23, 42, 0.24));
+}
+
+.cb-job-native-modal-card-sm {
+    width: min(100%, 520px);
+}
+
+.cb-job-native-modal-card-md {
+    width: min(100%, 560px);
+}
+
+.cb-job-native-modal-card-lg {
+    width: min(980px, calc(100vw - 2.5rem));
+    max-height: calc(100vh - 2.5rem);
+}
+
+.cb-job-native-modal-header,
+.cb-job-native-modal-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: var(--cb-v2-bg-soft, #f8fafc);
+}
+
+.cb-job-native-modal-header {
+    justify-content: space-between;
+    border-bottom: 1px solid var(--cb-v2-border, #e5eaf3);
+}
+
+.cb-job-native-modal-footer {
+    justify-content: flex-end;
+    border-top: 1px solid var(--cb-v2-border, #e5eaf3);
+}
+
+.cb-job-native-modal-body {
+    min-height: 0;
+    overflow: auto;
+    padding: 1.25rem;
+    background: var(--cb-v2-bg, #ffffff);
+}
+
+.cb-job-native-modal-title {
+    color: var(--cb-v2-text-strong, #0f172a);
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.cb-job-native-modal-subtitle {
+    margin-top: 0.15rem;
+    color: var(--cb-v2-text-muted, #64748b);
+    font-size: 0.84rem;
+}
+
+.cb-job-native-modal-card .btn {
+    border-color: var(--cb-v2-control-border-soft, #94a3b8);
+}
+
+.cb-job-native-modal-card .btn-primary {
+    border-color: var(--cb-v2-primary, #2563eb);
+}
+
+.cb-job-native-modal-card .automation-modal-body {
+    flex: 1 1 auto;
+    padding-right: 1.25rem;
+}
+
+.cb-job-native-modal-card .automation-modal-footer {
+    margin-top: 0;
+    padding-top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .cb-job-native-modal-shell,
+    .cb-job-native-modal-shell-lg {
+        padding: 0.75rem;
+    }
+
+    .cb-job-native-modal-card,
+    .cb-job-native-modal-card-lg {
+        width: calc(100vw - 1.5rem);
+        max-height: calc(100vh - 1.5rem);
+        border-radius: var(--cb-v2-radius-md, 16px);
+    }
+
+    .cb-job-native-modal-header,
+    .cb-job-native-modal-body,
+    .cb-job-native-modal-footer {
+        padding: 0.85rem;
+    }
+
+    .cb-job-native-modal-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+}

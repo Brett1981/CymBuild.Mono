@@ -623,3 +623,32 @@
     transform: rotate(45deg);
     pointer-events: none;
 }
+
+/* DynamicBatchGrid row accent border repair */
+.dynamic-batch-grid-v2-grid-table tbody tr.row-accent-green,
+.dynamic-batch-grid-v2-grid-table tbody tr.row-accent-amber,
+.dynamic-batch-grid-v2-grid-table tbody tr.row-accent-red,
+.dynamic-batch-grid-v2-grid-table tbody tr.row-accent-blue,
+.dynamic-batch-grid-v2-grid-table tbody tr.row-accent-purple {
+    box-shadow: none !important;
+}
+
+    .dynamic-batch-grid-v2-grid-table tbody tr.row-accent-green > td:first-child {
+        border-left: 4px solid rgba(16, 185, 129, 0.85) !important;
+    }
+
+    .dynamic-batch-grid-v2-grid-table tbody tr.row-accent-amber > td:first-child {
+        border-left: 4px solid rgba(245, 158, 11, 0.85) !important;
+    }
+
+    .dynamic-batch-grid-v2-grid-table tbody tr.row-accent-red > td:first-child {
+        border-left: 4px solid rgba(239, 68, 68, 0.85) !important;
+    }
+
+    .dynamic-batch-grid-v2-grid-table tbody tr.row-accent-blue > td:first-child {
+        border-left: 4px solid rgba(59, 130, 246, 0.85) !important;
+    }
+
+    .dynamic-batch-grid-v2-grid-table tbody tr.row-accent-purple > td:first-child {
+        border-left: 4px solid rgba(139, 92, 246, 0.85) !important;
+    }

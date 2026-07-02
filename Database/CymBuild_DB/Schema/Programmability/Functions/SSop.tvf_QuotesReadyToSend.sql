@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create function [SSop].[tvf_QuotesReadyToSend]')
 GO
-
 CREATE FUNCTION [SSop].[tvf_QuotesReadyToSend]
 (
     @UserId INT
@@ -26,7 +25,9 @@ RETURN
         acc.Name + N' / ' + aacc.Name AS Account,
         uprn.FormattedAddressComma,
         i.FullName AS QuotingConsultant,
-        qcf.QuoteStatus AS QuoteStatus
+        qcf.QuoteStatus AS QuoteStatus,
+		ou2.Name AS BusinessUnit,
+		ou.Name AS Department
     FROM SSop.Quotes AS q
     JOIN SSop.EnquiryServices AS es ON (es.ID = q.EnquiryServiceID)
     JOIN SSop.Enquiries AS e ON (e.ID = es.EnquiryId)
@@ -35,6 +36,8 @@ RETURN
     JOIN SCore.Identities AS i ON (i.ID = q.QuotingConsultantId)
     JOIN SJob.Assets AS uprn ON (uprn.ID = q.UprnId)
     JOIN SSop.Quote_CalculatedFields AS qcf ON (qcf.ID = q.ID)
+	JOIN SCore.OrganisationalUnits AS ou ON (q.OrganisationalUnitID = ou.ID)
+	JOIN SCore.OrganisationalUnits AS ou2 ON (ou.ParentID = ou2.ID)
 
     OUTER APPLY
     (

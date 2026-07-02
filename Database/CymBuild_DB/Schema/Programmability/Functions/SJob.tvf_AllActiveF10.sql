@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_AllActiveF10]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_AllActiveF10]
 (
     @UserId INT
 )
 RETURNS TABLE
-       --WITH SCHEMABINDING
+        --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -30,6 +29,8 @@ RETURN
         p.FormattedAddressComma,
         m.StartDateTimeUTC,
         ISNULL(m.DueDateTimeUTC, m.ScheduledDateTimeUTC) AS NextAction,
+        COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnit,
+        COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS Department,
         m.Reference,
         js.JobStatus
     FROM SJob.Jobs          AS j
@@ -37,9 +38,35 @@ RETURN
     JOIN SCore.Identities   AS i  ON (i.ID = j.SurveyorID)
     JOIN SJob.Milestones    AS m  ON (m.JobID = j.ID)
     JOIN SJob.MilestoneTypes AS mt ON (mt.ID = m.MilestoneTypeID)
-    JOIN SJob.Assets        AS p  ON (p.ID = j.UprnID)
+    JOIN SJob.Assets        AS p  ON (p.ID = j.UprnID)    
+    JOIN SCore.OrganisationalUnits AS ou ON ou.ID = j.OrganisationalUnitID
     CROSS JOIN StatusDefs   AS sd
-
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsBusinessUnit, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS businessUnit
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            ancestor.Name
+        FROM SCore.OrganisationalUnits AS ancestor
+        WHERE ancestor.RowStatus NOT IN (0,254)
+          AND ISNULL(ancestor.IsDepartment, 0) = 1
+          AND ou.OrgNode IS NOT NULL
+          AND ancestor.OrgNode IS NOT NULL
+          AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+        ORDER BY ancestor.OrgNode.GetLevel() DESC,
+                 ancestor.ID DESC
+    ) AS department
     -- Latest workflow status for this job (rowstatus safe)
     OUTER APPLY
     (

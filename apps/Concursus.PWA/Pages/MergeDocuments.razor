@@ -1,4 +1,4 @@
-﻿@page "/MergeDocuments/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/MergeDocuments/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 @using Concursus.API.Client.Models
 @using Google.Protobuf.WellKnownTypes
 @using Newtonsoft.Json
@@ -22,35 +22,58 @@
         <i class="bi bi-file-spreadsheet me-2" style="font-size: 1.2rem;"></i>
     </FormTitle>
     <FormBody>
-        <TelerikTabStrip TabPosition="TabPosition.Top" PersistTabContent="true">
-        <TabStripTab Title="Merge Documents">
-            <HeaderTemplate>
-                <i class="bi bi-file-spreadsheet me-2" style="font-size: 1.2rem;"></i> Merge Documents
-            </HeaderTemplate>
-            <Content>
-                <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
-                            entityProperties="@editPage.entityProperties"
-                            entityPropertyGroups="@editPage.entityPropertyGroups"
+        <div class="cb-native-tabstrip">
+            <div class="cb-native-tab-list" role="tablist" aria-label="Merge document tabs">
+                <button type="button" class="@NativeTabButtonCss(0)" role="tab" aria-selected="@(_nativeActiveTab == 0)" @onclick="@(() => SelectNativeTab(0))">
+                    <i class="bi bi-file-spreadsheet" aria-hidden="true"></i>
+                    <span>Merge Documents</span>
+                </button>
+                <button type="button" class="@NativeTabButtonCss(1)" role="tab" aria-selected="@(_nativeActiveTab == 1)" @onclick="@(() => SelectNativeTab(1))">
+                    <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                    <span>Merge Fields</span>
+                </button>
+            </div>
+
+            @if (ShouldRenderNativeTab(0))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 0)">
+                    <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                                        entityProperties="@editPage.entityProperties"
+                                        entityPropertyGroups="@editPage.entityPropertyGroups"
                                         IsMainRecordContext="@IsMainRecordContext"
-                            dataObject="@editPage.dataObject"
-                            RecordGuid="@RecordGuid"
-                            inputUpdated="@editPage.HandleInputUpdated" />
+                                        dataObject="@editPage.dataObject"
+                                        RecordGuid="@RecordGuid"
+                                        inputUpdated="@editPage.HandleInputUpdated" />
                     <DynamicGrid GridCode="MERGEDOCUMENTITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-            </Content>
-        </TabStripTab>
-        <TabStripTab Title="Merge Fields">
-            <HeaderTemplate>
-                <i class="bi bi-diagram-3 me-2" style="font-size: 1.2rem;"></i> Merge Fields
-            </HeaderTemplate>
-            <Content>
+                </section>
+            }
+
+            @if (ShouldRenderNativeTab(1))
+            {
+                <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 1)">
                     <DynamicGrid GridCode="MERGEDOCUMENTFIELDS" FullGrid="true" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-            </Content>
-        </TabStripTab>
-        </TelerikTabStrip>
+                </section>
+            }
+        </div>
     </FormBody>
 </EditPage>
 
 @code {
+
+    private int _nativeActiveTab;
+    private readonly System.Collections.Generic.HashSet<int> _nativeVisitedTabs = new() { 0 };
+
+    private void SelectNativeTab(int index)
+    {
+        _nativeActiveTab = index;
+        _nativeVisitedTabs.Add(index);
+    }
+
+    private bool ShouldRenderNativeTab(int index) => _nativeVisitedTabs.Contains(index);
+
+    private string NativeTabButtonCss(int index) =>
+        _nativeActiveTab == index ? "cb-native-tab-button active" : "cb-native-tab-button";
+
     [Parameter]
     public string? SerializedDataObjectReference { get; set; }
     [Parameter] public string? ModalId { get; set; }

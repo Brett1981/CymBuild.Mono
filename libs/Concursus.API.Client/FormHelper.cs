@@ -1616,6 +1616,22 @@ public partial class FormHelper
         return EntityType;
     }
 
+
+
+    public async Task<QuoteCreateJobsStageScheduleValidationResponse> QuoteCreateJobsStageScheduleValidateAsync(
+        Guid quoteGuid,
+        bool allowQuoteItemStageFallback,
+        CancellationToken ct = default)
+    {
+        return await _coreClient.QuoteCreateJobsStageScheduleValidateAsync(
+            new QuoteCreateJobsStageScheduleValidationRequest
+            {
+                QuoteGuid = quoteGuid.ToString(),
+                AllowQuoteItemStageFallback = allowQuoteItemStageFallback
+            },
+            cancellationToken: ct);
+    }
+
     public async Task<ExecuteMenuItemResponse> MenuItemPostAsync(string entityQueryGuid, DataObject dataObject)
     {
         ExecuteMenuItemResponse executeMenuItemResponse = new ExecuteMenuItemResponse();

@@ -39,7 +39,9 @@ RETURN SELECT
 			1
 		ELSE
 		0
-	END	   AS IsCurrentMonth
+	END	   AS IsCurrentMonth,
+	org.Name AS Department,
+	org2.Name AS BusinessUnit
  
 FROM
     SFin.Transactions AS t
@@ -65,6 +67,10 @@ JOIN
 	SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
 JOIN
 	SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
+LEFT JOIN 
+	SCore.OrganisationalUnits AS org ON (t.OrganisationalUnitId = org.ID)
+LEFT JOIN 
+	SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 WHERE
     t.RowStatus NOT IN (0, 254)
     AND td.RowStatus NOT IN (0, 254)

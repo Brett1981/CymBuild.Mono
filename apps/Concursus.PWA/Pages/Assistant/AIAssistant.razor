@@ -1,11 +1,13 @@
-﻿@page "/ai-assistant"
+@page "/ai-assistant"
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.API.Core
 @using Concursus.PWA.Classes
+@using Microsoft.AspNetCore.Components.Forms
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject HttpClient httpClient
 @attribute [Authorize]
 
 
@@ -115,7 +117,7 @@
                                 @(SelectedConversation?.Title ?? "Ask CymBuild")
                             </h3>
                             <div class="cb-v2-description">
-                                Answers come through FormHelper → gRPC API → BlueGen and CymBuild knowledge.
+                                Answers show whether they came from BlueGen, CymBuild knowledge, attachments, or internal fallback.
                             </div>
                         </div>
                     </div>
@@ -150,20 +152,18 @@
                                             @(message.MessageRoleCode == "USER" ? "You" : "Assistant")
                                         </span>
 
-                                        @if (!string.IsNullOrWhiteSpace(message.AnswerTypeCode))
+                                        @if (string.Equals(message.MessageRoleCode, "ASSISTANT", StringComparison.OrdinalIgnoreCase))
                                         {
-                                            @if (string.Equals(message.MessageRoleCode, "ASSISTANT", StringComparison.OrdinalIgnoreCase))
+                                            @foreach (var badge in GetAssistantMessageBadges(message))
                                             {
-                                                <span class="@GetAssistantAnswerBadgeCss(message)">
-                                                    @GetAssistantAnswerDisplayLabel(message)
-                                                </span>
+                                                <span class="@badge.CssClass">@badge.Label</span>
+                                            }
 
-                                                @if (message.ConfidenceScore > 0)
-                                                {
-                                                    <span class="cb-v2-badge cb-v2-badge-info">
-                                                        @GetConfidenceDisplay(message)
-                                                    </span>
-                                                }
+                                            @if (message.ConfidenceScore > 0)
+                                            {
+                                                <span class="cb-v2-badge cb-v2-badge-info">
+                                                    @GetConfidenceDisplay(message)
+                                                </span>
                                             }
                                         }
                                     </div>
@@ -208,16 +208,32 @@
                             <div class="ai-assistant-source-grid">
                                 @foreach (var source in LastSources)
                                 {
-                                    <a class="ai-assistant-source-card" href="@source.Url" target="_blank" rel="noopener noreferrer">
-                                        <span class="ai-assistant-source-card-title">@source.Title</span>
-                                        <span class="ai-assistant-source-card-meta">
-                                            @source.TypeCode
-                                            @if (source.IsAuthoritative)
-                                            {
-                                                <span> · Authoritative</span>
-                                            }
-                                        </span>
-                                    </a>
+                                    @if (!string.IsNullOrWhiteSpace(source.Url))
+                                    {
+                                        <a class="ai-assistant-source-card" href="@source.Url" target="_blank" rel="noopener noreferrer">
+                                            <span class="ai-assistant-source-card-title">@source.Title</span>
+                                            <span class="ai-assistant-source-card-meta">
+                                                @source.TypeCode
+                                                @if (source.IsAuthoritative)
+                                                {
+                                                    <span> · Authoritative</span>
+                                                }
+                                            </span>
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <div class="ai-assistant-source-card">
+                                            <span class="ai-assistant-source-card-title">@source.Title</span>
+                                            <span class="ai-assistant-source-card-meta">
+                                                @source.TypeCode
+                                                @if (source.IsAuthoritative)
+                                                {
+                                                    <span> · Authoritative</span>
+                                                }
+                                            </span>
+                                        </div>
+                                    }
                                 }
                             </div>
                         </div>
@@ -234,6 +250,47 @@
                                         @onclick="@(() => UseStarterQuestionAsync(followUp.Prompt))">
                                     @followUp.Text
                                 </button>
+                            }
+                        </div>
+                    }
+
+                    <div class="ai-assistant-upload-strip">
+                        <div class="ai-assistant-upload-copy">
+                            <strong>Screenshot or file context</strong>
+                            <span>Attach a CymBuild screenshot or file, wait until it appears as ready below, then send your question.</span>
+                        </div>
+                        <label class="cb-v2-btn-chip ai-assistant-upload-button">
+                            Attach file
+                            <InputFile class="ai-assistant-file-input"
+                                       OnChange="OnAssistantFileSelectedAsync"
+                                       disabled="@(IsBusy || IsUploadBusy)" />
+                        </label>
+                    </div>
+
+                    @if (IsUploadBusy)
+                    {
+                        <div class="ai-assistant-upload-status">
+                            <span class="cb-v2-badge cb-v2-badge-info">Uploading</span>
+                            <span>Preparing the attachment for the assistant...</span>
+                        </div>
+                    }
+
+                    @if (PendingUploads.Count > 0)
+                    {
+                        <div class="ai-assistant-upload-list" aria-label="Ready assistant attachments">
+                            @foreach (var upload in PendingUploads)
+                            {
+                                var isReady = IsAssistantUploadReadyForSend(upload);
+                                <div class="ai-assistant-upload-item @(isReady ? "ready" : "not-ready")">
+                                    <span class="ai-assistant-upload-file-name">@upload.FileName</span>
+                                    <span class="@GetUploadStatusBadgeCss(upload)">@GetUploadStatusLabel(upload)</span>
+                                    <button type="button"
+                                            class="cb-v2-btn-link"
+                                            disabled="@(IsBusy || IsUploadBusy)"
+                                            @onclick="@(() => RemovePendingUpload(upload.Guid))">
+                                        Remove
+                                    </button>
+                                </div>
                             }
                         </div>
                     }
@@ -288,6 +345,7 @@
     private string Message = string.Empty;
     private string Error = string.Empty;
     private bool IsBusy;
+    private bool IsUploadBusy;
     private bool _loaded;
 
     private AIAssistantConversation? SelectedConversation;
@@ -295,8 +353,11 @@
     private List<AIAssistantMessage> Messages = new();
     private List<AIAssistantSource> LastSources = new();
     private List<AIAssistantFollowUp> LastFollowUps = new();
+    private List<AIAssistantUpload> PendingUploads = new();
 
-    private bool IsSendDisabled => IsBusy || string.IsNullOrWhiteSpace(Prompt) || userService.UserId <= 0;
+    private const long MaxAssistantUploadBytes = 20L * 1024L * 1024L;
+
+    private bool IsSendDisabled => IsBusy || IsUploadBusy || string.IsNullOrWhiteSpace(Prompt) || userService.UserId <= 0;
 
     private API.Client.FormHelper FormHelper =>
         _formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
@@ -437,19 +498,44 @@
                 throw new InvalidOperationException("The selected conversation Guid is invalid.");
             }
 
+            if (PendingUploads.Count > 0)
+            {
+                await EnsurePendingUploadsLinkedToConversationAsync(conversationGuid);
+            }
+
             Prompt = string.Empty;
+
+            var attachedUploadGuids = PendingUploads
+                .Where(IsAssistantUploadReadyForSend)
+                .Select(upload => upload.Guid)
+                .Where(guid => !string.IsNullOrWhiteSpace(guid))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (PendingUploads.Count > 0 && attachedUploadGuids.Count == 0)
+            {
+                throw new InvalidOperationException("The selected attachment is not ready yet. Please wait for it to show as Ready, then send your question.");
+            }
 
             var response = await FormHelper.AIAssistantMessageSendAsync(
                 userService.UserId,
                 conversationGuid,
                 promptToSend,
-                ModeCode);
+                ModeCode,
+                attachedUploadGuids: attachedUploadGuids);
 
             Messages.Add(response.UserMessage);
             Messages.Add(response.AssistantMessage);
 
             LastSources = response.Sources.ToList();
             LastFollowUps = response.FollowUps.ToList();
+
+            if (attachedUploadGuids.Count > 0 && !response.AssistantMessage.UsedAttachments)
+            {
+                Message = "The question was sent, but the assistant did not report the attachment as used. Please re-attach and try again if the answer needed file or screenshot analysis.";
+            }
+
+            PendingUploads.Clear();
 
             await LoadConversationsAsync();
 
@@ -504,6 +590,135 @@
 
             Message = "Feedback saved.";
         }, clearMessage: false);
+    }
+
+
+    private async Task OnAssistantFileSelectedAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        await ExecuteAsync(async () =>
+        {
+            IsUploadBusy = true;
+
+            try
+            {
+                if (userService.UserId <= 0)
+                {
+                    throw new InvalidOperationException("A valid user is required before uploading files.");
+                }
+
+                if (file.Size <= 0)
+            {
+                throw new InvalidOperationException("The selected file is empty.");
+            }
+
+            if (file.Size > MaxAssistantUploadBytes)
+            {
+                throw new InvalidOperationException($"The selected file is too large. Maximum allowed size is {MaxAssistantUploadBytes / 1024 / 1024} MB.");
+            }
+
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? "application/octet-stream"
+                : file.ContentType;
+
+            var conversationGuid = SelectedConversation?.Guid ?? string.Empty;
+            var uploadPurposeCode = ResolveAssistantUploadPurposeCode(contentType);
+
+            var presign = await FormHelper.AIAssistantUploadPresignAsync(
+                userService.UserId,
+                file.Name,
+                contentType,
+                file.Size,
+                uploadPurposeCode: uploadPurposeCode,
+                conversationGuid: conversationGuid);
+
+            await using var fileStream = file.OpenReadStream(MaxAssistantUploadBytes);
+            using var uploadRequest = new HttpRequestMessage(HttpMethod.Put, presign.UploadUrl);
+            uploadRequest.Content = new StreamContent(fileStream);
+            uploadRequest.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+
+            foreach (var header in presign.UploadHeaders)
+            {
+                if (!uploadRequest.Headers.TryAddWithoutValidation(header.Key, header.Value))
+                {
+                    uploadRequest.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+
+            using var uploadResponse = await httpClient.SendAsync(uploadRequest);
+            uploadResponse.EnsureSuccessStatusCode();
+
+            var uploaded = await FormHelper.AIAssistantUploadCompleteAsync(
+                userService.UserId,
+                presign.UploadGuid,
+                string.IsNullOrWhiteSpace(presign.StorageUrl) ? presign.UploadUrl : presign.StorageUrl,
+                file.Name,
+                contentType,
+                file.Size,
+                uploadPurposeCode: uploadPurposeCode,
+                processingStatusCode: "UPLOADED",
+                conversationGuid: conversationGuid);
+
+                PendingUploads.Add(uploaded);
+                Message = $"Attached {file.Name}. It is ready and will be sent with your next question.";
+            }
+            finally
+            {
+                IsUploadBusy = false;
+            }
+        }, clearMessage: false);
+    }
+
+    private async Task EnsurePendingUploadsLinkedToConversationAsync(Guid conversationGuid)
+    {
+        if (PendingUploads.Count == 0)
+        {
+            return;
+        }
+
+        var conversationGuidText = conversationGuid.ToString();
+        var updatedUploads = new List<AIAssistantUpload>(PendingUploads.Count);
+
+        foreach (var upload in PendingUploads)
+        {
+            if (string.Equals(upload.ConversationGuid, conversationGuidText, StringComparison.OrdinalIgnoreCase))
+            {
+                updatedUploads.Add(upload);
+                continue;
+            }
+
+            var updated = await FormHelper.AIAssistantUploadCompleteAsync(
+                userService.UserId,
+                upload.Guid,
+                upload.StorageUrl,
+                upload.FileName,
+                upload.ContentType,
+                upload.FileSizeBytes,
+                uploadPurposeCode: string.IsNullOrWhiteSpace(upload.UploadPurposeCode) ? ResolveAssistantUploadPurposeCode(upload.ContentType) : upload.UploadPurposeCode,
+                processingStatusCode: string.IsNullOrWhiteSpace(upload.ProcessingStatusCode) ? "UPLOADED" : upload.ProcessingStatusCode,
+                conversationGuid: conversationGuidText);
+
+            updatedUploads.Add(updated);
+        }
+
+        PendingUploads = updatedUploads;
+    }
+
+    private void RemovePendingUpload(string uploadGuid)
+    {
+        if (string.IsNullOrWhiteSpace(uploadGuid))
+        {
+            return;
+        }
+
+        PendingUploads = PendingUploads
+            .Where(upload => !string.Equals(upload.Guid, uploadGuid, StringComparison.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private void SetMode(string modeCode)
@@ -567,44 +782,73 @@
             .Replace("**", string.Empty, StringComparison.Ordinal);
     }
 
-    private static string GetAssistantAnswerDisplayLabel(AIAssistantMessage message)
+    private static IReadOnlyList<AssistantBadge> GetAssistantMessageBadges(AIAssistantMessage message)
     {
         if (!string.Equals(message.MessageRoleCode, "ASSISTANT", StringComparison.OrdinalIgnoreCase))
         {
-            return string.Empty;
+            return Array.Empty<AssistantBadge>();
         }
 
-        if (string.Equals(message.AnswerTypeCode, "TRUSTED_KNOWLEDGE", StringComparison.OrdinalIgnoreCase))
+        var isBlueGenUnavailable = string.Equals(message.AnswerTypeCode, "BLUEGEN_UNAVAILABLE", StringComparison.OrdinalIgnoreCase);
+
+        var badges = new List<AssistantBadge>
         {
-            return "Trusted knowledge";
-        }
+            isBlueGenUnavailable
+                ? new AssistantBadge("Provider: BlueGen unavailable", "cb-v2-badge cb-v2-badge-danger")
+                : message.UsedBlueGen
+                    ? new AssistantBadge("Provider: BlueGen", "cb-v2-badge cb-v2-badge-bluegen")
+                    : new AssistantBadge("Provider: Internal", "cb-v2-badge cb-v2-badge-internal")
+        };
 
-        if (message.ConfidenceScore >= 0.60d)
+        if (message.UsedInternalKnowledge
+            || string.Equals(message.AnswerTypeCode, "TRUSTED_KNOWLEDGE", StringComparison.OrdinalIgnoreCase))
         {
-            return "Related match";
+            badges.Add(new AssistantBadge("CymBuild knowledge", "cb-v2-badge cb-v2-badge-bluegen-knowledge"));
         }
 
-        return "General response";
+        if (string.Equals(message.AnswerTypeCode, "ATTACHMENT_UNAVAILABLE", StringComparison.OrdinalIgnoreCase))
+        {
+            badges.Add(new AssistantBadge("Attachment not available", "cb-v2-badge cb-v2-badge-danger"));
+        }
+        else if (message.UsedAttachments
+            || string.Equals(message.AnswerTypeCode, "ATTACHMENT_ANALYSIS", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(message.AnswerTypeCode, "ATTACHMENT_RECEIVED", StringComparison.OrdinalIgnoreCase))
+        {
+            badges.Add(new AssistantBadge("Attachment used", "cb-v2-badge cb-v2-badge-attachment"));
+        }
+
+        if (!isBlueGenUnavailable && badges.Count == 1 && !message.UsedBlueGen && message.ConfidenceScore < 0.60d)
+        {
+            badges.Add(new AssistantBadge("General response", "cb-v2-badge cb-v2-badge-muted"));
+        }
+
+        return badges;
     }
 
-    private static string GetAssistantAnswerBadgeCss(AIAssistantMessage message)
+    private static string GetUploadStatusLabel(AIAssistantUpload upload)
     {
-        if (!string.Equals(message.MessageRoleCode, "ASSISTANT", StringComparison.OrdinalIgnoreCase))
+        return IsAssistantUploadReadyForSend(upload)
+            ? "Ready to send"
+            : string.IsNullOrWhiteSpace(upload.ProcessingStatusCode) ? "Not ready" : upload.ProcessingStatusCode;
+    }
+
+    private static string GetUploadStatusBadgeCss(AIAssistantUpload upload)
+    {
+        return IsAssistantUploadReadyForSend(upload)
+            ? "cb-v2-badge cb-v2-badge-success"
+            : "cb-v2-badge cb-v2-badge-warning";
+    }
+
+    private static bool IsAssistantUploadReadyForSend(AIAssistantUpload upload)
+    {
+        if (upload is null || string.IsNullOrWhiteSpace(upload.Guid))
         {
-            return "cb-v2-badge";
+            return false;
         }
 
-        if (string.Equals(message.AnswerTypeCode, "TRUSTED_KNOWLEDGE", StringComparison.OrdinalIgnoreCase))
-        {
-            return "cb-v2-badge cb-v2-badge-success";
-        }
-
-        if (message.ConfidenceScore >= 0.60d)
-        {
-            return "cb-v2-badge cb-v2-badge-warning";
-        }
-
-        return "cb-v2-badge cb-v2-badge-muted";
+        return string.Equals(upload.ProcessingStatusCode, "UPLOADED", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(upload.ProcessingStatusCode, "EXTRACTED", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(upload.ProcessingStatusCode, "PUBLISHED", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetConfidenceDisplay(AIAssistantMessage message)
@@ -617,5 +861,16 @@
         return $"Confidence {Math.Round(message.ConfidenceScore * 100, 0)}%";
     }
 
+    private static string ResolveAssistantUploadPurposeCode(string? contentType)
+    {
+        return !string.IsNullOrWhiteSpace(contentType)
+            && contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            ? "SCREENSHOT"
+            : "ATTACHMENT";
+    }
+
+    private sealed record AssistantBadge(string Label, string CssClass);
+
     private sealed record QuickAction(string Title, string Description, string Prompt);
 }
+

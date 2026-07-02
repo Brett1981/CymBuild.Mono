@@ -3,7 +3,6 @@
 @using Concursus.Components.Shared.Helpers
 @using Concursus.Components.Shared.Services
 @using System.Text
-@using Telerik.Blazor.Components
 
 @inject HttpClient Http
 @inject IConfiguration Config
@@ -20,156 +19,177 @@
 
 @if (isLoading)
 {
-    <TelerikLoaderContainer LoaderType="LoaderType.Pulsing" Text="Refreshing Jira Status'" />
+    <div class="alert alert-info d-flex align-items-center gap-2" role="status">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Refreshing Jira Status</span>
+    </div>
 }
 
-<TelerikGrid TItem="AiErrorReportDto"
-OnRead="@GridRead"
-Pageable="true"
-FilterMode="GridFilterMode.FilterRow"
-Sortable="true"
-PageSize="10">
-    <GridColumns>
-        <GridColumn Title="Date">
-            <Template Context="item">
-                @(((AiErrorReportDto)item).CreatedUtc.ToString("g"))
-            </Template>
-        </GridColumn>
-
-        <GridColumn Field="JiraStatus" Title="Status">
-            <Template Context="item">
-                @{
-                    var status = ((AiErrorReportDto)item).JiraStatus ?? "";
-                    var cssClass = "badge-jira-status status-" + status.ToLowerInvariant().Replace(" ", "-").Replace("'", "").Replace(".", "").Replace("/", "-");
-                }
-                <span class="@cssClass">
-                    @(!string.IsNullOrWhiteSpace(status) ? status : "N/A")
-                </span>
-            </Template>
-        </GridColumn>
-
-        <GridColumn Field="JiraTicketKey" Title="Ticket" Filterable="true" />
-        <GridColumn Field="ErrorMessage" Title="Title">
-            <Template Context="item">
-                @{
-                    var aiItem = (AiErrorReportDto)item;
-                }
-                <span title="@aiItem.ErrorMessage">
-                    @(aiItem.ErrorMessage?.Length > 50 ? aiItem.ErrorMessage.Substring(0, 50) + "..." : aiItem.ErrorMessage)
-                </span>
-            </Template>
-        </GridColumn>
-
-        <GridColumn Field="JiraPriority" Title="Priority">
-            <Template Context="item">
-                @{
-                    var priority = ((AiErrorReportDto)item).JiraPriority ?? "";
-                    var cssClass = "badge-jira-priority " +
-                    (priority.StartsWith("P1") ? "priority-p1" :
-                    priority.StartsWith("P2") ? "priority-p2" :
-                    priority.StartsWith("P3") ? "priority-p3" :
-                    priority.StartsWith("P4") ? "priority-p4" :
-                    priority.StartsWith("P5") ? "priority-p5" : "priority-p5");
-                }
-                <span class="@cssClass">@priority</span>
-            </Template>
-        </GridColumn>
-
-        <GridColumn Title="Actions">
-            <Template Context="item">
-                @{
-                    var aiItem = (AiErrorReportDto)item;
-                }
-                <TelerikButton OnClick="@(() => ShowDetails(aiItem))">👁 View</TelerikButton>
-            </Template>
-        </GridColumn>
-
-    </GridColumns>
-</TelerikGrid>
-
-<TelerikWindow @bind-Visible="@detailsVisible" Width="700px">
-    <WindowTitle>Jira Details</WindowTitle>
-    <WindowContent>
-        <p><strong>Ticket:</strong></p>
-        <pre>@selected?.JiraTicketKey</pre>
-
-        <p><strong>Status:</strong></p>
-        @{
-            var rawStatus = selected?.JiraStatus?.ToLowerInvariant() ?? "other";
-            var normalizedStatus = System.Text.RegularExpressions.Regex.Replace(rawStatus, @"[^a-z0-9\-]", "-");
-            var statusClass = $"badge-jira-status status-{normalizedStatus}";
-
-        }
-        <span class="@statusClass">@selected?.JiraStatus</span>
-
-        <p class="mt-2"><strong>Priority:</strong></p>
-        @{
-            var prio = selected?.JiraPriority ?? "";
-            var prioClass = prio.StartsWith("P1") ? "priority-p1" :
-            prio.StartsWith("P2") ? "priority-p2" :
-            prio.StartsWith("P3") ? "priority-p3" :
-            prio.StartsWith("P4") ? "priority-p4" :
-            prio.StartsWith("P5") ? "priority-p5" : "priority-p5";
-        }
-        <span class="badge-jira-priority @prioClass">@prio</span>
-
-        <p><strong>Title:</strong></p>
-        <textarea class="form-control ai-field" readonly style="height:40px">@selected?.ErrorMessage</textarea>
-
-        <p><strong>Jira Description:</strong></p>
-        @if (!string.IsNullOrWhiteSpace(selected?.JiraDescription) && selected.JiraDescription.Trim().StartsWith("{"))
-        {
-            <div class="jira-description-box">
-                @((MarkupString)JiraDescriptionFormatter.ConvertAdfToHtml(selected.JiraDescription))
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <strong>Jira Tickets</strong>
+                <span class="badge rounded-pill text-bg-light ms-2">Rows @FilteredErrorReports.Count</span>
             </div>
-        }
-        else
-        {
-            <p><em>No Jira description available</em></p>
-        }
-
-
-
-        <div class="text-end mt-3">
-            <TelerikButton OnClick="@(() => detailsVisible = false)" ThemeColor="Primary" Class="me-2">Close</TelerikButton>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <input class="form-control form-control-sm" style="width: 260px;" placeholder="Search tickets..." @bind-value="SearchTerm" @bind-value:event="oninput" />
+                <select class="form-select form-select-sm" style="width: 92px;" @bind="PageSize">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LoadErrorReportsAsync" disabled="@isLoading">Refresh</button>
+            </div>
         </div>
-    </WindowContent>
-</TelerikWindow>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Ticket</th>
+                    <th>Title</th>
+                    <th>Priority</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (CurrentPageItems.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6" class="text-muted text-center py-4">No Jira tickets found.</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var item in CurrentPageItems)
+                    {
+                        <tr>
+                            <td>@item.CreatedUtc.ToString("g")</td>
+                            <td><span class="@GetStatusCss(item.JiraStatus)">@SafeText(item.JiraStatus, "N/A")</span></td>
+                            <td>@SafeText(item.JiraTicketKey, "-")</td>
+                            <td><span title="@item.ErrorMessage">@Truncate(item.ErrorMessage, 50)</span></td>
+                            <td><span class="@GetPriorityCss(item.JiraPriority)">@SafeText(item.JiraPriority, "-")</span></td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="@(() => ShowDetails(item))">👁 View</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card-footer bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="text-muted small">Page @EffectivePage of @TotalPages</span>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Jira ticket paging">
+            <button type="button" class="btn btn-outline-secondary" disabled="@(EffectivePage <= 1)" @onclick="@(async () => await ChangePageAsync(EffectivePage - 1))">Previous</button>
+            <button type="button" class="btn btn-outline-secondary" disabled="@(EffectivePage >= TotalPages)" @onclick="@(async () => await ChangePageAsync(EffectivePage + 1))">Next</button>
+        </div>
+    </div>
+</div>
+
+@if (detailsVisible && selected is not null)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="jira-details-title">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 id="jira-details-title" class="modal-title">Jira Details</h5>
+                    <button type="button" class="btn-close" aria-label="Close" @onclick="CloseDetails"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Ticket:</strong></p>
+                    <pre>@selected.JiraTicketKey</pre>
+
+                    <p><strong>Status:</strong></p>
+                    <span class="@GetStatusCss(selected.JiraStatus)">@selected.JiraStatus</span>
+
+                    <p class="mt-2"><strong>Priority:</strong></p>
+                    <span class="@GetPriorityCss(selected.JiraPriority)">@selected.JiraPriority</span>
+
+                    <p><strong>Title:</strong></p>
+                    <textarea class="form-control ai-field" readonly style="height:40px">@selected.ErrorMessage</textarea>
+
+                    <p><strong>Jira Description:</strong></p>
+                    @if (!string.IsNullOrWhiteSpace(selected.JiraDescription) && selected.JiraDescription.Trim().StartsWith("{"))
+                    {
+                        <div class="jira-description-box">
+                            @((MarkupString)JiraDescriptionFormatter.ConvertAdfToHtml(selected.JiraDescription))
+                        </div>
+                    }
+                    else
+                    {
+                        <p><em>No Jira description available</em></p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" @onclick="CloseDetails">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public EventCallback<Exception> OnError { get; set; }
 
     private List<AiErrorReportDto> errorReports = new();
-    private List<AiErrorReportDto> pagedItems = new();
-    private bool isLoading = false;
-    private bool isInitialLoad = true;
-    private bool hasLoadedOnce = false;
-    private AiErrorReportDto selected;
-    private bool detailsVisible = false;
+    private bool isLoading;
+    private AiErrorReportDto? selected;
+    private bool detailsVisible;
     private string baseUrl => Config["AiErrorService:BaseUrl"].TrimEnd('/') + "/";
-    private int totalCount = 0;
-    private GridReadEventArgs? lastGridArgs = null;
-    private TelerikGrid<AiErrorReportDto> GridRef { get; set; }
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private string searchTerm = string.Empty;
 
+    private string SearchTerm
+    {
+        get => searchTerm;
+        set
+        {
+            searchTerm = value ?? string.Empty;
+            currentPage = 1;
+        }
+    }
 
-    private async Task GridRead(GridReadEventArgs args)
+    private int PageSize
+    {
+        get => pageSize;
+        set
+        {
+            pageSize = Math.Max(1, value);
+            currentPage = 1;
+        }
+    }
+
+    private List<AiErrorReportDto> FilteredErrorReports => ApplyErrorFilter(errorReports).ToList();
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredErrorReports.Count / (double)PageSize));
+    private int EffectivePage => Math.Min(Math.Max(currentPage, 1), TotalPages);
+    private List<AiErrorReportDto> CurrentPageItems => FilteredErrorReports.Skip((EffectivePage - 1) * PageSize).Take(PageSize).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadErrorReportsAsync();
+    }
+
+    private async Task LoadErrorReportsAsync()
     {
         try
         {
             isLoading = true;
-
-            var response = await Http.PostAsJsonAsync($"{baseUrl}api/ErrorReport/paged-source", args.Request);
-
-            var result = await response.Content.ReadFromJsonAsync<DataSourceResult<AiErrorReportDto>>();
-
-            args.Data = result?.Data ?? new List<AiErrorReportDto>();
-            args.Total = result?.Total ?? 0;
-
-            await RefreshStatusesForVisibleAsync(args.Data.Cast<AiErrorReportDto>().ToList());
+            errorReports = await Http.GetFromJsonAsync<List<AiErrorReportDto>>($"{baseUrl}api/ErrorReport/all") ?? new List<AiErrorReportDto>();
+            errorReports = errorReports.OrderByDescending(e => e.CreatedUtc).ToList();
+            currentPage = Math.Min(currentPage, TotalPages);
+            await RefreshStatusesForVisibleAsync(CurrentPageItems);
         }
         catch (Exception ex)
         {
-            Toast.ShowError($"❌ Grid read failed: {ex.Message}");
+            Toast.ShowError($"❌ Failed to load Jira tickets: {ex.Message}");
         }
         finally
         {
@@ -177,22 +197,31 @@ PageSize="10">
         }
     }
 
-
-
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private IEnumerable<AiErrorReportDto> ApplyErrorFilter(IEnumerable<AiErrorReportDto> rows)
     {
-        if (firstRender && !hasLoadedOnce)
+        if (string.IsNullOrWhiteSpace(SearchTerm))
         {
-            hasLoadedOnce = true;
-            if (GridRef != null)
-            {
-                await GridRef.SetStateAsync(new GridState<AiErrorReportDto>());
-            }
+            return rows;
         }
+
+        var term = SearchTerm.Trim();
+        return rows.Where(row =>
+            Contains(row.JiraTicketKey, term) ||
+            Contains(row.JiraStatus, term) ||
+            Contains(row.JiraPriority, term) ||
+            Contains(row.ErrorMessage, term) ||
+            Contains(row.UserId, term));
     }
 
-    private async Task RefreshStatusesForVisibleAsync(List<AiErrorReportDto> visibleRows)
+    private static bool Contains(string? value, string term) => value?.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0;
+
+    private async Task ChangePageAsync(int page)
+    {
+        currentPage = Math.Min(Math.Max(page, 1), TotalPages);
+        await RefreshStatusesForVisibleAsync(CurrentPageItems);
+    }
+
+    private async Task RefreshStatusesForVisibleAsync(IReadOnlyList<AiErrorReportDto> visibleRows)
     {
         foreach (var row in visibleRows.Where(r => !string.IsNullOrWhiteSpace(r.JiraTicketKey)))
         {
@@ -206,7 +235,6 @@ PageSize="10">
                     row.JiraLastSyncedUtc = result.JiraLastSyncedUtc;
                     row.JiraDescription = result.JiraDescription;
                 }
-
             }
             catch (Exception ex)
             {
@@ -217,20 +245,49 @@ PageSize="10">
         StateHasChanged();
     }
 
-
-
     private void ShowDetails(AiErrorReportDto report)
     {
         selected = report;
         detailsVisible = true;
     }
 
-    private int ParseJiraKey(string key)
+    private void CloseDetails()
     {
-        if (string.IsNullOrWhiteSpace(key)) return 0;
-        var parts = key.Split('-');
-        return parts.Length == 2 && int.TryParse(parts[1], out var num) ? num : 0;
+        detailsVisible = false;
+        selected = null;
     }
+
+    private static string Truncate(string? value, int length)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Length > length ? value.Substring(0, length) + "..." : value;
+    }
+
+    private static string SafeText(string? value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    private static string GetStatusCss(string? status)
+    {
+        var safeStatus = string.IsNullOrWhiteSpace(status) ? "other" : status;
+        return "badge-jira-status status-" + NormalizeCssToken(safeStatus);
+    }
+
+    private static string GetPriorityCss(string? priority)
+    {
+        var safePriority = priority ?? string.Empty;
+        var priorityClass = safePriority.StartsWith("P1") ? "priority-p1" :
+            safePriority.StartsWith("P2") ? "priority-p2" :
+            safePriority.StartsWith("P3") ? "priority-p3" :
+            safePriority.StartsWith("P4") ? "priority-p4" :
+            safePriority.StartsWith("P5") ? "priority-p5" : "priority-p5";
+
+        return $"badge-jira-priority {priorityClass}";
+    }
+
+    private static string NormalizeCssToken(string value) => System.Text.RegularExpressions.Regex.Replace(value.ToLowerInvariant(), @"[^a-z0-9\-]", "-");
 
     public class AiStatusDto
     {
@@ -256,8 +313,6 @@ PageSize="10">
         public DateTime CreatedUtc { get; set; }
         public DateTime? JiraLastSyncedUtc { get; set; }
     }
-
-
 }
 
 <style>
@@ -283,22 +338,10 @@ PageSize="10">
         white-space: normal;
     }
 
-        .jira-description-box p {
-            margin: 0 0 8px 0;
-        }
-
-        .jira-description-box ul {
-            margin-left: 1.5em;
-            padding-left: 1em;
-        }
-
-        .jira-description-box strong {
-            font-weight: bold;
-        }
-
-        .jira-description-box em {
-            font-style: italic;
-        }
+    .jira-description-box p { margin: 0 0 8px 0; }
+    .jira-description-box ul { margin-left: 1.5em; padding-left: 1em; }
+    .jira-description-box strong { font-weight: bold; }
+    .jira-description-box em { font-style: italic; }
 
     .badge-jira-status {
         padding: 0.4em 0.6em;
@@ -308,98 +351,25 @@ PageSize="10">
         display: inline-block;
     }
 
-    .status-new {
-        background-color: #e74c3c;
-        color: #fff;
-    }
-    /* New */
-    .status-in-progress {
-        background-color: #f39c12;
-        color: #fff;
-    }
-    /* In Progress */
-    .status-resolved {
-        background-color: #27ae60;
-        color: #fff;
-    }
-    /* Resolved */
-    .status-awaiting-approval {
-        background-color: #95a5a6;
-        color: #fff;
-    }
+    .status-new { background-color: #e74c3c; color: #fff; }
+    .status-in-progress { background-color: #f39c12; color: #fff; }
+    .status-resolved { background-color: #27ae60; color: #fff; }
+    .status-awaiting-approval { background-color: #95a5a6; color: #fff; }
+    .status-awaiting-discovery { background-color: #c0392b; color: #fff; }
+    .status-awaiting-development { background-color: #8e44ad; color: #fff; }
+    .status-ready-for-test { background-color: #2980b9; color: #fff; }
+    .status-ready-for-development { background-color: #1abc9c; color: #fff; }
+    .status-prioritised { background-color: #d35400; color: #fff; }
+    .status-testing-failed { background-color: #c0392b; color: #fff; }
+    .status-other { background-color: #7f8c8d; color: #fff; }
+    .status-won-t-do { background-color: #7f8c8d; color: white; }
+    .status-to-do { background-color: #bdc3c7; color: black; }
+    .status-deployed-live { background-color: #2ecc71; color: #fff; }
+    .status-development-in-progress { background-color: #f1c40f; color: #fff; }
+    .status-in-testing { background-color: #3498db; color: #fff; }
+    .status-ready-to-merge { background-color: #9b59b6; color: #fff; }
+    .status-technical-review { background-color: #34495e; color: #fff; }
 
-    .status-awaiting-discovery {
-        background-color: #c0392b;
-        color: #fff;
-    }
-
-    .status-awaiting-development {
-        background-color: #8e44ad;
-        color: #fff;
-    }
-
-    .status-ready-for-test {
-        background-color: #2980b9;
-        color: #fff;
-    }
-
-    .status-ready-for-development {
-        background-color: #1abc9c;
-        color: #fff;
-    }
-
-    .status-prioritised {
-        background-color: #d35400;
-        color: #fff;
-    }
-
-    .status-testing-failed {
-        background-color: #c0392b;
-        color: #fff;
-    }
-
-    .status-other {
-        background-color: #7f8c8d;
-        color: #fff;
-    }
-
-    .status-won-t-do {
-        background-color: #7f8c8d;
-        color: white;
-    }
-
-    .status-to-do {
-        background-color: #bdc3c7;
-        color: black;
-    }
-
-    .status-deployed-live {
-        background-color: #2ecc71;
-        color: #fff;
-    }
-
-    .status-development-in-progress {
-        background-color: #f1c40f;
-        color: #fff;
-    }
-
-    .status-in-testing {
-        background-color: #3498db;
-        color: #fff;
-    }
-
-    .status-ready-to-merge {
-        background-color: #9b59b6;
-        color: #fff;
-    }
-
-    .status-technical-review {
-        background-color: #34495e;
-        color: #fff;
-    }
-
-
-    /* Priority Colors */
     .badge-jira-priority {
         padding: 0.4em 0.6em;
         border-radius: 0.5em;
@@ -408,30 +378,9 @@ PageSize="10">
         display: inline-block;
     }
 
-    .priority-p1 {
-        background-color: #c0392b;
-        color: #fff;
-    }
-    /* Critical */
-    .priority-p2 {
-        background-color: #e67e22;
-        color: #fff;
-    }
-    /* High */
-    .priority-p3 {
-        background-color: #f1c40f;
-        color: #000;
-    }
-    /* Medium */
-    .priority-p4 {
-        background-color: #3498db;
-        color: #fff;
-    }
-    /* Low */
-    .priority-p5 {
-        background-color: #95a5a6;
-        color: #000;
-    }
-    /* Lowest */
-
+    .priority-p1 { background-color: #c0392b; color: #fff; }
+    .priority-p2 { background-color: #e67e22; color: #fff; }
+    .priority-p3 { background-color: #f1c40f; color: #000; }
+    .priority-p4 { background-color: #3498db; color: #fff; }
+    .priority-p5 { background-color: #95a5a6; color: #000; }
 </style>

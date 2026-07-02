@@ -32,7 +32,9 @@ RETURN SELECT
 	j.ExternalReference,
 	jt.Name AS JobTypeName,
 	CONVERT(DATE, j.CreatedOn, 106) AS CreatedOn,
-	client.Name + N' / ' + agent.Name AS ClientAgent
+	client.Name + N' / ' + agent.Name AS ClientAgent,
+	org.Name AS Department,
+	org2.Name AS BusinessUnit
 FROM
     SFin.Transactions AS t
 CROSS APPLY
@@ -64,6 +66,10 @@ JOIN
 	SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
 JOIN
 	SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
+LEFT JOIN 
+	SCore.OrganisationalUnits AS org ON (t.OrganisationalUnitId = org.ID)
+LEFT JOIN 
+	SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 WHERE
     t.RowStatus NOT IN (0, 254)
     AND td.RowStatus NOT IN (0, 254)

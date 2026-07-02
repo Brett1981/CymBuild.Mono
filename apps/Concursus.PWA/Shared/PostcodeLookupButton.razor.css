@@ -1,0 +1,131 @@
+/* 14N PostcodeLookupButton native UI.
+   Replaces Telerik modal, loader, dropdown and combobox styling with scoped CymBuild/native controls. */
+.postcode-lookup-open-button {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+}
+
+.postcode-lookup-loader-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1085;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, .68);
+    backdrop-filter: blur(2px);
+}
+
+.postcode-lookup-spinner {
+    width: 2.75rem;
+    height: 2.75rem;
+}
+
+.postcode-lookup-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1070;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .38);
+    backdrop-filter: blur(3px);
+}
+
+.postcode-lookup-modal {
+    width: min(1180px, 96vw);
+    max-height: 96vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-border, #cbd5e1);
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+}
+
+.postcode-lookup-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--cb-v2-border-soft, #e2e8f0);
+    background: linear-gradient(135deg, #f8fafc 0%, #eef4ff 100%);
+}
+
+.postcode-lookup-modal-title {
+    margin: 0;
+    font-weight: 700;
+    color: var(--cb-v2-text-strong, #0f172a);
+}
+
+.postcode-lookup-modal-subtitle {
+    margin-top: .15rem;
+    font-size: .82rem;
+    color: var(--cb-v2-text-muted, #64748b);
+}
+
+.postcode-lookup-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 1.25rem;
+}
+
+.postcode-lookup-info-card,
+.postcode-lookup-card {
+    border: 1px solid var(--cb-v2-border-soft, #e2e8f0);
+    border-radius: 16px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
+}
+
+.postcode-lookup-info-button {
+    border-radius: 16px !important;
+    background: #eff6ff;
+    color: var(--cb-v2-primary, #2563eb);
+    font-weight: 700;
+}
+
+.postcode-lookup-card-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.postcode-lookup-search-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 180px);
+    gap: .75rem;
+    align-items: start;
+}
+
+.postcode-lookup-form .form-control,
+.postcode-lookup-form .form-select,
+.postcode-lookup-body .form-control,
+.postcode-lookup-body .form-select {
+    min-height: 38px;
+    border-color: var(--cb-v2-border, #cbd5e1);
+    border-radius: 10px;
+}
+
+.postcode-lookup-body .form-control:focus,
+.postcode-lookup-body .form-select:focus {
+    border-color: var(--cb-v2-primary, #2563eb);
+    box-shadow: 0 0 0 .18rem rgba(37, 99, 235, .16);
+}
+
+@media (max-width: 900px) {
+    .postcode-lookup-card-grid,
+    .postcode-lookup-search-row {
+        grid-template-columns: 1fr;
+    }
+
+    .postcode-lookup-modal {
+        width: 98vw;
+        max-height: 98vh;
+    }
+}

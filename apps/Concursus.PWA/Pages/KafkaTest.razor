@@ -1,27 +1,62 @@
-﻿@page "/kafkatest"
+@page "/kafkatest"
 @inject IHttpClientFactory HttpClientFactory
 
-<h3>Stephen Magic Test</h3>
+<section class="cb-v2-page cb-native-dev-page">
+    <div class="cb-v2-card cb-native-dev-card">
+        <div class="cb-v2-card-body">
+            <div class="cb-v2-panel-header cb-native-dev-header">
+                <div class="cb-native-dev-title-wrap">
+                    <div class="cb-v2-icon-wrap"><i class="bi bi-send"></i></div>
+                    <div>
+                        <h3 class="cb-v2-title mb-1">Kafka Test Publisher</h3>
+                        <div class="cb-v2-description">Send a test customer transaction message, then review recent transaction records.</div>
+                    </div>
+                </div>
+            </div>
 
-<TelerikForm Model="@testModel" OnValidSubmit="@SendToKafka">
-    <FormValidation>
-        <DataAnnotationsValidator />
-    </FormValidation>
-    <FormItems>
-        <FormItem Field="SourceTransactionId" Label="Transaction ID" />
-        <FormItem Field="CustomerAccountNumber" Label="Customer No" />
-        <FormItem Field="CustomerAccountName" Label="Customer Name" />
-        <FormItem Field="ExternalReferenceId" Label="External Ref" />
-    </FormItems>
-    <FormButtons>
-        <TelerikButton ButtonType="@Telerik.Blazor.ButtonType.Submit">Send</TelerikButton>
-    </FormButtons>
-</TelerikForm>
-<KafkaTransactionViewer  />
-@if (!string.IsNullOrWhiteSpace(statusMessage))
-{
-    <div class="mt-3 alert alert-info">@statusMessage</div>
-}
+            <EditForm Model="@testModel" OnValidSubmit="@SendToKafka" class="cb-native-dev-form mt-3">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="cb-native-dev-form-grid">
+                    <div class="cb-native-dev-field">
+                        <label for="sourceTransactionId">Transaction ID</label>
+                        <InputText id="sourceTransactionId" class="form-control" @bind-Value="testModel.SourceTransactionId" />
+                    </div>
+
+                    <div class="cb-native-dev-field">
+                        <label for="customerAccountNumber">Customer No</label>
+                        <InputText id="customerAccountNumber" class="form-control" @bind-Value="testModel.CustomerAccountNumber" />
+                    </div>
+
+                    <div class="cb-native-dev-field">
+                        <label for="customerAccountName">Customer Name</label>
+                        <InputText id="customerAccountName" class="form-control" @bind-Value="testModel.CustomerAccountName" />
+                    </div>
+
+                    <div class="cb-native-dev-field">
+                        <label for="externalReferenceId">External Ref</label>
+                        <InputText id="externalReferenceId" class="form-control" @bind-Value="testModel.ExternalReferenceId" />
+                    </div>
+                </div>
+
+                <div class="cb-native-dev-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-send"></i>
+                        Send
+                    </button>
+                </div>
+            </EditForm>
+
+            @if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                <div class="mt-3 alert alert-info">@statusMessage</div>
+            }
+        </div>
+    </div>
+
+    <KafkaTransactionViewer />
+</section>
 
 @code {
     private TransactionModel testModel = new()
@@ -39,16 +74,16 @@
     {
         try
         {
-            var client = HttpClientFactory.CreateClient("SageIntegrationAPI"); // Must match your HttpClient setup
+            var client = HttpClientFactory.CreateClient("SageIntegrationAPI");
             var response = await client.PostAsJsonAsync("api/kafka/publish", testModel);
 
             statusMessage = response.IsSuccessStatusCode
                 ? "Message sent to Kafka"
-                : $"❌ Failed: {response.StatusCode}";
+                : $"Failed: {response.StatusCode}";
         }
         catch (Exception ex)
         {
-            statusMessage = $"❌ Exception: {ex.Message}";
+            statusMessage = $"Exception: {ex.Message}";
         }
     }
 

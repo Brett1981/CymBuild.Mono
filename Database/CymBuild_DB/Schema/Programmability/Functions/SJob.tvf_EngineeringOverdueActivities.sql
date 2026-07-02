@@ -3,13 +3,12 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_EngineeringOverdueActivities]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_EngineeringOverdueActivities] 
 (
     @UserId INT
 )
 RETURNS TABLE
-            --WITH SCHEMABINDING
+             --WITH SCHEMABINDING
 AS
 RETURN 
 WITH StatusDefs AS
@@ -29,14 +28,17 @@ SELECT
 		actStatus.Name AS Status,
 		i.FullName,
 		org.Name AS OrgUnit,
-		jt.Name AS JobType
+		jt.Name AS JobType,
+		org.Name		AS Department,
+		org2.Name		AS BusinessUnit
 FROM    SJob.Activities					AS root_hobt
 JOIN	SJob.ActivityTypes				AS actt ON (actt.ID = root_hobt.ActivityTypeID)
 JOIN	SJob.ActivityStatus				AS actStatus ON (actStatus.ID = root_hobt.ActivityStatusID)
 JOIN	SJob.Jobs						AS j ON (j.ID = root_hobt.JobID)
 JOIN	SCore.Identities				AS i ON (i.ID = j.SurveyorID)
-JOIN    SCore.OrganisationalUnits		AS org ON (org.ID = j.OrganisationalUnitID)
 JOIN	SJob.JobTypes					AS jt ON (jt.ID = j.JobTypeID)
+JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
 CROSS JOIN StatusDefs   AS sd
 -- Latest workflow status for this job (rowstatus safe)
 OUTER APPLY

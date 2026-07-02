@@ -2,41 +2,48 @@
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.Components.Shared.Services
-@using Telerik.Blazor.Components
 @inject IToastService toastService
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 
-<TelerikCard Class="p-4">
-    <TelerikCardHeader>
-        <div class="d-flex justify-content-between align-items-center">
+<div class="card shadow-sm border-0 p-4">
+    <div class="card-header bg-white px-0 pt-0 pb-3 border-bottom">
+        <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
             <h4 class="mb-0">Sage 200 Test Integration</h4>
-            <TelerikDropDownList @bind-Value="SelectedExample"
-                                 Data="@Examples"
-                                 TextField="Text"
-                                 ValueField="Value"
-                                 Width="300px"
-                                 OnChange="@LoadExampleXml" />
+            <select class="form-select" style="max-width: 300px;" @bind="SelectedExample" @bind:after="LoadExampleXml">
+                @foreach (var example in Examples)
+                {
+                    <option value="@example.Value">@example.Text</option>
+                }
+            </select>
         </div>
-    </TelerikCardHeader>
+    </div>
 
-    <TelerikCardBody>
+    <div class="card-body px-0 pb-0">
         <div class="mb-3">
             <label for="xmlInput" class="form-label fw-bold">XML Request</label>
             <textarea id="xmlInput" class="form-control" rows="10" @bind="RequestXml" />
         </div>
         <div class="mb-3">
-            <button class="btn btn-primary" @onclick="ExecuteCall" disabled="@IsProcessing">
-                @(IsProcessing ? "Sending..." : "Send to Sage API")
+            <button type="button" class="btn btn-primary" @onclick="ExecuteCall" disabled="@IsProcessing">
+                @if (IsProcessing)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                    <span>Sending...</span>
+                }
+                else
+                {
+                    <span>Send to Sage API</span>
+                }
             </button>
         </div>
         <div>
             <label class="form-label fw-bold">XML Response</label>
-            <pre class="bg-light p-3 rounded">@ResponseXml</pre>
+            <pre class="bg-light p-3 rounded border">@ResponseXml</pre>
         </div>
-    </TelerikCardBody>
-</TelerikCard>
+    </div>
+</div>
 
 @code {
     private string RequestXml = string.Empty;
@@ -95,6 +102,8 @@
   </DataObject>
 </Request>";
         }
+
+        await Task.CompletedTask;
     }
 
     private async Task ExecuteCall()

@@ -15,8 +15,12 @@ SELECT  qt.ID,
         qt.RowVersion,
         qt.Guid,
 		qt.Number,
-		LEFT(qt.Overview, 200) AS Details
+		LEFT(qt.Overview, 200) AS Details,
+		ou.Name AS Department,
+		ou2.Name AS OrganisationalUnit
 FROM    SSop.QuoteTemplates qt
+JOIN SCore.OrganisationalUnits AS ou ON qt.OrganisationalUnitID = ou.ID
+JOIN SCore.OrganisationalUnits AS ou2 ON ou.ParentID = ou2.ID
 WHERE   (qt.RowStatus NOT IN (0, 254))
 	AND	(qt.ID > 0)
 AND	(EXISTS

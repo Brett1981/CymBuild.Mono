@@ -3,6 +3,9 @@ GO
 
 PRINT (N'Create function [SSop].[tvf_Quotes]')
 GO
+PRINT (N'Create function [SSop].[tvf_Quotes]')
+GO
+--exec score.PostDeploymentScript
 
 
 CREATE FUNCTION [SSop].[tvf_Quotes]
@@ -13,7 +16,7 @@ RETURNS TABLE
 --WITH SCHEMABINDING
 AS
 RETURN
-SELECT 
+SELECT
     q.ID,
     q.RowStatus,
     q.RowVersion,
@@ -24,12 +27,21 @@ SELECT
             THEN LEFT(q.DescriptionOfWorks, 200)
         ELSE LEFT(q.Overview, 200)
     END AS Details,
-	LatestTransitionComment.Comment,
-	CONCAT(COALESCE(NULLIF(LTRIM(RTRIM(acc.Name)), ''), 'Client Not set'), ' / ', COALESCE(NULLIF(LTRIM(RTRIM(agent.Name)), ''), 'Agent Not set')) AS Account,
+    LatestTransitionComment.Comment,
+    CONCAT
+    (
+        COALESCE(NULLIF(LTRIM(RTRIM(acc.Name)), N''), N'Client Not set'),
+        N' / ',
+        COALESCE(NULLIF(LTRIM(RTRIM(agent.Name)), N''), N'Agent Not set')
+    ) AS Account,
     uprn.FormattedAddressComma,
     qcf.QuoteStatus AS QuoteStatus,
     i.FullName AS QuotingConsultant,
     ou.Name AS OrganisationalUnitName,
+    COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnit,
+    COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS Department,
+        COALESCE(NULLIF(LTRIM(RTRIM(businessUnit.Name)), N''), N'') AS BusinessUnitName,
+    COALESCE(NULLIF(LTRIM(RTRIM(department.Name)), N''), N'') AS DepartmentName,
     jt.Name AS JobType,
     q.Date,
     q.ExternalReference,
@@ -59,40 +71,65 @@ SELECT
             ELSE ISNULL(qw.ChaseTwoDate, ISNULL(ew.ChaseTwoDate, ISNULL(q.ChaseDate2, e.ChaseDate2)))
         END
     ) AS QuoteChaseDateTwo,
-	LastStatusComment.Comment AS LastComment
+    LastStatusComment.Comment AS LastComment
 
-FROM SSop.Quotes q
-JOIN SSop.Quote_CalculatedFields qcf
+FROM SSop.Quotes AS q
+JOIN SSop.Quote_CalculatedFields AS qcf
     ON qcf.ID = q.ID
 JOIN SSop.EnquiryServices AS es
     ON es.ID = q.EnquiryServiceID
 JOIN SSop.Enquiries AS e
     ON e.ID = es.EnquiryId
-JOIN SCrm.Accounts acc
+JOIN SCrm.Accounts AS acc
     ON acc.ID = e.ClientAccountID
-JOIN SCrm.Accounts agent
+JOIN SCrm.Accounts AS agent
     ON agent.ID = e.AgentAccountId
-JOIN SJob.Assets uprn
+JOIN SJob.Assets AS uprn
     ON uprn.ID = e.PropertyId
-JOIN SCore.Identities i
+JOIN SCore.Identities AS i
     ON i.ID = q.QuotingConsultantId
-JOIN SCore.OrganisationalUnits ou
-    ON q.OrganisationalUnitID = ou.ID
+JOIN SCore.OrganisationalUnits AS ou ON ou.ID = q.OrganisationalUnitID
 JOIN SJob.JobTypes AS jt
     ON jt.ID = q.JobTypeId
-OUTER APPLY 
+OUTER APPLY
 (
-	SELECT TOP (1)
-		dob1.Comment
-	FROM SCore.DataObjectTransition AS dob1
-	WHERE dob1.RowStatus NOT IN (0,254)
-	  AND dob1.DataObjectGuid = q.Guid
-	ORDER BY dob1.ID DESC
+    SELECT TOP (1)
+        ancestor.Name
+    FROM SCore.OrganisationalUnits AS ancestor
+    WHERE ancestor.RowStatus NOT IN (0,254)
+      AND ISNULL(ancestor.IsBusinessUnit, 0) = 1
+      AND ou.OrgNode IS NOT NULL
+      AND ancestor.OrgNode IS NOT NULL
+      AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+    ORDER BY ancestor.OrgNode.GetLevel() DESC,
+             ancestor.ID DESC
+) AS businessUnit
+OUTER APPLY
+(
+    SELECT TOP (1)
+        ancestor.Name
+    FROM SCore.OrganisationalUnits AS ancestor
+    WHERE ancestor.RowStatus NOT IN (0,254)
+      AND ISNULL(ancestor.IsDepartment, 0) = 1
+      AND ou.OrgNode IS NOT NULL
+      AND ancestor.OrgNode IS NOT NULL
+      AND ou.OrgNode.IsDescendantOf(ancestor.OrgNode) = 1
+    ORDER BY ancestor.OrgNode.GetLevel() DESC,
+             ancestor.ID DESC
+) AS department
+OUTER APPLY
+(
+    SELECT TOP (1)
+        dob1.Comment
+    FROM SCore.DataObjectTransition AS dob1
+    WHERE dob1.RowStatus NOT IN (0,254)
+      AND dob1.DataObjectGuid = q.Guid
+    ORDER BY dob1.ID DESC
 ) AS LatestTransitionComment
 OUTER APPLY
 (
     SELECT SUM(qi.Net) AS TotalNet
-    FROM SSop.QuoteItems qi
+    FROM SSop.QuoteItems AS qi
     WHERE qi.QuoteId = q.ID
       AND qi.RowStatus NOT IN (0,254)
 ) AS qn
@@ -102,54 +139,52 @@ OUTER APPLY
         MAX(CASE WHEN ws.Guid = '25D5491C-42A8-4B04-B3AC-D648AF0F8032' THEN dot.DateTimeUTC END) AS SentStatusDate,
         MAX(CASE WHEN ws.Guid = '9FF22CEA-A2A6-4907-9B2D-E62DF8150913' THEN dot.DateTimeUTC END) AS ChaseOneDate,
         MAX(CASE WHEN ws.Guid = '1F01C16B-1A73-4844-A938-FE357405FD93' THEN dot.DateTimeUTC END) AS ChaseTwoDate
-    FROM SCore.DataObjectTransition dot
-    JOIN SCore.WorkflowStatus ws
+    FROM SCore.DataObjectTransition AS dot
+    JOIN SCore.WorkflowStatus AS ws
         ON ws.ID = dot.StatusID
     WHERE dot.DataObjectGuid = q.Guid
       AND dot.RowStatus NOT IN (0,254)
       AND ws.RowStatus NOT IN (0,254)
 ) AS qw
-
 OUTER APPLY
 (
     SELECT
         MAX(CASE WHEN ws.Guid = '9FF22CEA-A2A6-4907-9B2D-E62DF8150913' THEN dot.DateTimeUTC END) AS ChaseOneDate,
         MAX(CASE WHEN ws.Guid = '1F01C16B-1A73-4844-A938-FE357405FD93' THEN dot.DateTimeUTC END) AS ChaseTwoDate
-    FROM SCore.DataObjectTransition dot
-    JOIN SCore.WorkflowStatus ws
+    FROM SCore.DataObjectTransition AS dot
+    JOIN SCore.WorkflowStatus AS ws
         ON ws.ID = dot.StatusID
     WHERE dot.DataObjectGuid = e.Guid
       AND dot.RowStatus NOT IN (0,254)
       AND ws.RowStatus NOT IN (0,254)
 ) AS ew
-
 OUTER APPLY
 (
     SELECT
-		CONCAT(CONVERT(DATE, dot.DateTimeUTC), N' - ', dot.Comment) AS Comment
-    FROM SCore.DataObjectTransition dot
-    JOIN SCore.WorkflowStatus ws
+        CONCAT(CONVERT(date, dot.DateTimeUTC), N' - ', dot.Comment) AS Comment
+    FROM SCore.DataObjectTransition AS dot
+    JOIN SCore.WorkflowStatus AS ws
         ON ws.ID = dot.StatusID
     WHERE dot.DataObjectGuid = q.Guid
       AND dot.RowStatus NOT IN (0,254)
       AND ws.RowStatus NOT IN (0,254)
-	  AND NOT EXISTS
-			(
-				SELECT 1
-				FROM SCore.DataObjectTransition AS dot2
-				JOIN SCore.WorkflowStatus ws2
-					ON ws2.ID = dot2.StatusID
-				WHERE dot2.DataObjectGuid = q.Guid
-				  AND dot2.RowStatus NOT IN (0,254)
-				  AND ws2.RowStatus NOT IN (0,254)
-				  AND dot2.ID > dot.ID
-			)
+      AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SCore.DataObjectTransition AS dot2
+              JOIN SCore.WorkflowStatus AS ws2
+                  ON ws2.ID = dot2.StatusID
+              WHERE dot2.DataObjectGuid = q.Guid
+                AND dot2.RowStatus NOT IN (0,254)
+                AND ws2.RowStatus NOT IN (0,254)
+                AND dot2.ID > dot.ID
+          )
 ) AS LastStatusComment
-
 WHERE q.ID > 0
+  AND q.RowStatus NOT IN (0,254)
   AND EXISTS
   (
       SELECT 1
-      FROM SCore.ObjectSecurityForUser_CanRead(q.Guid, @UserId) oscr
+      FROM SCore.ObjectSecurityForUser_CanRead(q.Guid, @UserId) AS oscr
   );
 GO
