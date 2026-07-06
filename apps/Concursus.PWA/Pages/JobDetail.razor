@@ -140,6 +140,13 @@
                                      ParentRowStatus="@editPage.dataObject.RowStatus"
                                      ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
 
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBCRITICALNOTES"
+                                 OnActionCompleted="OnRecordStatusActionCompletedAsync"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+
                         <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
                                             entityProperties="@editPage.entityProperties"
                                             entityPropertyGroups="@editPage.entityPropertyGroups"

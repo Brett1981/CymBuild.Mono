@@ -109,8 +109,16 @@ service Core {
   rpc LogUsage (UsageRequest) returns (UsageResponse);
 
   rpc MetadataMigrationApply (MetadataMigrationApplyRequest) returns (MetadataMigrationApplyResponse);
+  rpc MetadataMigrationApplyPreview (MetadataMigrationApplyPreviewRequest) returns (MetadataMigrationApplyPreviewResponse);
   rpc MetadataMigrationBuildIdentityMap (MetadataMigrationRunRequest) returns (MetadataMigrationBuildIdentityMapResponse);
+  rpc MetadataMigrationIdentityMapReviewSet (MetadataMigrationRunRequest) returns (MetadataMigrationIdentityMapReviewResponse);
+  rpc MetadataMigrationIdentityMapDetails (MetadataMigrationIdentityMapDetailsRequest) returns (MetadataMigrationIdentityMapDetailsResponse);
+  rpc MetadataMigrationIdentityMapIssueUpsert (MetadataMigrationIdentityMapIssueUpsertRequest) returns (MetadataMigrationIdentityMapIssueResponse);
+  rpc MetadataMigrationIdentityMapCandidates (MetadataMigrationIdentityMapCandidatesRequest) returns (MetadataMigrationIdentityMapCandidatesResponse);
+  rpc MetadataMigrationIdentityMapOverrideUpsert (MetadataMigrationIdentityMapOverrideUpsertRequest) returns (MetadataMigrationIdentityMapIssueResponse);
   rpc MetadataMigrationDashboard (MetadataMigrationRunRequest) returns (MetadataMigrationDashboardResponse);
+  rpc MetadataMigrationEntityTypeScopeList (MetadataMigrationEntityTypeScopeRequest) returns (MetadataMigrationEntityTypeScopeResponse);
+  rpc MetadataMigrationEntityTypeScopeSave (MetadataMigrationEntityTypeScopeSaveRequest) returns (MetadataMigrationEntityTypeScopeSaveResponse);
   rpc MetadataMigrationDiff (MetadataMigrationRowsRequest) returns (MetadataMigrationDiffResponse);
   rpc MetadataMigrationIgnoredRecords (MetadataMigrationIgnoredRecordsRequest) returns (MetadataMigrationIgnoredRecordsResponse);
   rpc MetadataMigrationIgnoreUpsert (MetadataMigrationIgnoreUpsertRequest) returns (MetadataMigrationIgnoreResponse);
@@ -2174,8 +2182,135 @@ message MetadataMigrationApplyResponse {
   string message = 1;
 }
 
+
+message MetadataMigrationApplyPreviewRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  bool applySelectedOnly = 4;
+  bool includeIgnored = 5;
+}
+
+message MetadataMigrationApplyPreviewResponse {
+  bool applySelectedOnly = 1;
+  int32 applyCount = 2;
+  int32 skipCount = 3;
+  int32 blockedCount = 4;
+  int32 ignoredSkipCount = 5;
+  int32 runValidationFailureCount = 6;
+  repeated MetadataMigrationApplyPreviewRow rows = 7;
+}
+
+message MetadataMigrationApplyPreviewRow {
+  string schemaName = 1;
+  string tableName = 2;
+  string sourceRowGuid = 3;
+  int64 sourceRowId = 4;
+  string differenceType = 5;
+  bool isSelected = 6;
+  bool isIgnored = 7;
+  bool hasValidationFailure = 8;
+  string applyAction = 9;
+  string skipReason = 10;
+  string changedColumns = 11;
+  int32 runValidationFailureCount = 12;
+}
+
 message MetadataMigrationBuildIdentityMapResponse {
   repeated MetadataMigrationIdentityMapRow rows = 1;
+}
+
+message MetadataMigrationIdentityMapDetailRow {
+  string schemaName = 1;
+  string tableName = 2;
+  string sourceRowGuid = 3;
+  int64 sourceRowId = 4;
+  int64 targetRowId = 5;
+  string differenceType = 6;
+  string sourceDisplayName = 7;
+  string issueCode = 8;
+  string issueStatus = 9;
+  string reason = 10;
+  string suggestedAction = 11;
+  bool isResolved = 12;
+  bool isIgnoredIssue = 13;
+  string ignoreReason = 14;
+  string ignoredOnUtc = 15;
+  string sourcePayloadJson = 16;
+  bool hasOverride = 17;
+  string overrideTargetRowGuid = 18;
+  string overrideTargetDisplayName = 19;
+  string overrideReason = 20;
+}
+
+message MetadataMigrationIdentityMapCandidateRow {
+  string targetRowGuid = 1;
+  int64 targetRowId = 2;
+  string targetDisplayName = 3;
+  string matchReason = 4;
+  int32 matchScore = 5;
+  string targetPayloadJson = 6;
+}
+
+message MetadataMigrationIdentityMapCandidatesRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  string sourceRowGuid = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+  string searchText = 7;
+}
+
+message MetadataMigrationIdentityMapCandidatesResponse {
+  string sourceDisplayName = 1;
+  string sourcePayloadJson = 2;
+  repeated MetadataMigrationIdentityMapCandidateRow rows = 3;
+}
+
+message MetadataMigrationIdentityMapOverrideUpsertRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  string sourceRowGuid = 4;
+  string targetRowGuid = 5;
+  bool isActive = 6;
+  string reason = 7;
+  string targetServerName = 8;
+  string targetDatabaseName = 9;
+}
+
+message MetadataMigrationIdentityMapDetailsRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  bool includeIgnored = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+}
+
+message MetadataMigrationIdentityMapDetailsResponse {
+  repeated MetadataMigrationIdentityMapDetailRow rows = 1;
+  int32 unresolvedCount = 2;
+  int32 ignoredCount = 3;
+  int32 resolvedCount = 4;
+}
+
+message MetadataMigrationIdentityMapIssueUpsertRequest {
+  string runGuid = 1;
+  string schemaName = 2;
+  string tableName = 3;
+  string sourceRowGuid = 4;
+  bool isIgnored = 5;
+  string reason = 6;
+  string targetServerName = 7;
+  string targetDatabaseName = 8;
+}
+
+message MetadataMigrationIdentityMapIssueResponse {
+  int32 unresolvedCount = 1;
+  int32 ignoredCount = 2;
+  string message = 3;
 }
 
 message MetadataMigrationDashboardResponse {
@@ -2194,6 +2329,47 @@ message MetadataMigrationDashboardResponse {
   repeated MetadataMigrationExecutionLogItem executionLog = 13;
   int32 selectedCount = 14;
   int32 ignoredCount = 15;
+}
+
+
+message MetadataMigrationEntityTypeScopeRequest {
+  string serverName = 1;
+  string databaseName = 2;
+  bool showMetadataOnly = 3;
+  string searchText = 4;
+}
+
+message MetadataMigrationEntityTypeScopeResponse {
+  repeated MetadataMigrationEntityTypeScopeRow rows = 1;
+}
+
+message MetadataMigrationEntityTypeScopeRow {
+  string entityTypeGuid = 1;
+  string name = 2;
+  int32 rowStatus = 3;
+  bool isMetaData = 4;
+  bool hasDocuments = 5;
+  bool isRootEntity = 6;
+  bool isDeletable = 7;
+  bool hasMainHoBT = 8;
+  string mainHoBTSchemaName = 9;
+  string mainHoBTObjectName = 10;
+}
+
+message MetadataMigrationEntityTypeScopeUpdateItem {
+  string entityTypeGuid = 1;
+  bool isMetaData = 2;
+}
+
+message MetadataMigrationEntityTypeScopeSaveRequest {
+  string serverName = 1;
+  string databaseName = 2;
+  repeated MetadataMigrationEntityTypeScopeUpdateItem items = 3;
+}
+
+message MetadataMigrationEntityTypeScopeSaveResponse {
+  int32 updatedCount = 1;
+  string message = 2;
 }
 
 message MetadataMigrationDiffResponse {
@@ -2227,6 +2403,11 @@ message MetadataMigrationIdentityMapRow {
   string tableName = 2;
   int32 mapRows = 3;
   int32 missingTargetRows = 4;
+}
+
+message MetadataMigrationIdentityMapReviewResponse {
+  bool isReviewed = 1;
+  string message = 2;
 }
 
 message MetadataMigrationIgnoredRecord {

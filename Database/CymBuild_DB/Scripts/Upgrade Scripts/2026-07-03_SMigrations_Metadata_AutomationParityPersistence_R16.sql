@@ -1,3 +1,1003 @@
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+PRINT (N'Create or alter procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
+
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataRegistry_SyncFromEntityTypes]
+(
+    @SourceDatabaseName SYSNAME = NULL,
+    @TargetDatabaseName SYSNAME = NULL
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE
+        @SourceDb SYSNAME = NULLIF(@SourceDatabaseName, N''),
+        @TargetDb SYSNAME = ISNULL(NULLIF(@TargetDatabaseName, N''), DB_NAME()),
+        @Sql NVARCHAR(MAX);
+
+    IF OBJECT_ID(N'tempdb..#MetadataRegistryEntityTypeCandidates') IS NOT NULL
+        DROP TABLE #MetadataRegistryEntityTypeCandidates;
+
+    CREATE TABLE #MetadataRegistryEntityTypeCandidates
+    (
+        SchemaName SYSNAME NOT NULL,
+        TableName SYSNAME NOT NULL,
+        SourceName NVARCHAR(20) NOT NULL
+    );
+
+    IF @SourceDb IS NOT NULL AND DB_ID(@SourceDb) IS NOT NULL
+    BEGIN
+        SET @Sql = N'
+INSERT INTO #MetadataRegistryEntityTypeCandidates
+(
+    SchemaName,
+    TableName,
+    SourceName
+)
+SELECT DISTINCT
+    CONVERT(SYSNAME, eh.SchemaName) AS SchemaName,
+    CONVERT(SYSNAME, eh.ObjectName) AS TableName,
+    N''Source'' AS SourceName
+FROM ' + QUOTENAME(@SourceDb) + N'.SCore.EntityTypes AS et
+INNER JOIN ' + QUOTENAME(@SourceDb) + N'.SCore.EntityHobts AS eh
+    ON eh.EntityTypeID = et.ID
+   AND eh.RowStatus NOT IN (0,254)
+WHERE et.RowStatus NOT IN (0,254)
+  AND ISNULL(et.IsMetaData, 0) = 1
+  AND ISNULL(eh.IsMainHoBT, 0) = 1
+  AND NULLIF(eh.SchemaName, N'''') IS NOT NULL
+  AND NULLIF(eh.ObjectName, N'''') IS NOT NULL;';
+
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF @TargetDb IS NOT NULL AND DB_ID(@TargetDb) IS NOT NULL
+    BEGIN
+        SET @Sql = N'
+INSERT INTO #MetadataRegistryEntityTypeCandidates
+(
+    SchemaName,
+    TableName,
+    SourceName
+)
+SELECT DISTINCT
+    CONVERT(SYSNAME, eh.SchemaName) AS SchemaName,
+    CONVERT(SYSNAME, eh.ObjectName) AS TableName,
+    N''Target'' AS SourceName
+FROM ' + QUOTENAME(@TargetDb) + N'.SCore.EntityTypes AS et
+INNER JOIN ' + QUOTENAME(@TargetDb) + N'.SCore.EntityHobts AS eh
+    ON eh.EntityTypeID = et.ID
+   AND eh.RowStatus NOT IN (0,254)
+WHERE et.RowStatus NOT IN (0,254)
+  AND ISNULL(et.IsMetaData, 0) = 1
+  AND ISNULL(eh.IsMainHoBT, 0) = 1
+  AND NULLIF(eh.SchemaName, N'''') IS NOT NULL
+  AND NULLIF(eh.ObjectName, N'''') IS NOT NULL;';
+
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    ;WITH DistinctCandidates AS
+    (
+        SELECT
+            c.SchemaName,
+            c.TableName,
+            MIN(c.SourceName) AS FirstSeenIn,
+            ROW_NUMBER() OVER (ORDER BY c.SchemaName, c.TableName) AS CandidateOrder
+        FROM #MetadataRegistryEntityTypeCandidates AS c
+        WHERE NULLIF(c.SchemaName, N'') IS NOT NULL
+          AND NULLIF(c.TableName, N'') IS NOT NULL
+        GROUP BY
+            c.SchemaName,
+            c.TableName
+    ),
+    CandidateValues AS
+    (
+        SELECT
+            CONVERT(UNIQUEIDENTIFIER, SUBSTRING(HASHBYTES('SHA2_256', CONVERT(VARBINARY(MAX), UPPER(CONCAT(N'SMigration.Metadata_TableRegistry|', dc.SchemaName, N'.', dc.TableName)))), 1, 16)) AS RegistryGuid,
+            dc.SchemaName,
+            dc.TableName,
+            CONVERT(INT, 10000 + dc.CandidateOrder) AS ApplyOrder
+        FROM DistinctCandidates AS dc
+    )
+    UPDATE target
+    SET
+        target.RowStatus = 1,
+        target.IsEnabled = 1,
+        target.GuidColumnName = CASE WHEN NULLIF(target.GuidColumnName, N'') IS NULL THEN N'Guid' ELSE target.GuidColumnName END,
+        target.PrimaryKeyColumnName = CASE WHEN NULLIF(target.PrimaryKeyColumnName, N'') IS NULL THEN N'ID' ELSE target.PrimaryKeyColumnName END
+    FROM SMigration.Metadata_TableRegistry AS target
+    INNER JOIN CandidateValues AS source
+        ON source.SchemaName = target.SchemaName
+       AND source.TableName = target.TableName;
+
+    ;WITH DistinctCandidates AS
+    (
+        SELECT
+            c.SchemaName,
+            c.TableName,
+            ROW_NUMBER() OVER (ORDER BY c.SchemaName, c.TableName) AS CandidateOrder
+        FROM #MetadataRegistryEntityTypeCandidates AS c
+        WHERE NULLIF(c.SchemaName, N'') IS NOT NULL
+          AND NULLIF(c.TableName, N'') IS NOT NULL
+        GROUP BY
+            c.SchemaName,
+            c.TableName
+    ),
+    CandidateValues AS
+    (
+        SELECT
+            CONVERT(UNIQUEIDENTIFIER, SUBSTRING(HASHBYTES('SHA2_256', CONVERT(VARBINARY(MAX), UPPER(CONCAT(N'SMigration.Metadata_TableRegistry|', dc.SchemaName, N'.', dc.TableName)))), 1, 16)) AS RegistryGuid,
+            dc.SchemaName,
+            dc.TableName,
+            CONVERT(INT, 10000 + dc.CandidateOrder) AS ApplyOrder
+        FROM DistinctCandidates AS dc
+    )
+    INSERT INTO SMigration.Metadata_TableRegistry
+    (
+        Guid,
+        RowStatus,
+        SchemaName,
+        TableName,
+        GuidColumnName,
+        PrimaryKeyColumnName,
+        ApplyOrder,
+        IsEnabled,
+        IsDataObjectBacked,
+        IsRetirable,
+        IsEnvironmentSpecific,
+        NaturalKeyJson,
+        ParentDependencyJson,
+        CreatedOnUtc
+    )
+    SELECT
+        source.RegistryGuid,
+        1,
+        source.SchemaName,
+        source.TableName,
+        N'Guid',
+        N'ID',
+        source.ApplyOrder,
+        1,
+        1,
+        1,
+        0,
+        N'[]',
+        N'[]',
+        SYSUTCDATETIME()
+    FROM CandidateValues AS source
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_TableRegistry AS target
+        WHERE target.SchemaName = source.SchemaName
+          AND target.TableName = source.TableName
+    )
+      AND NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_TableRegistry AS targetGuid
+        WHERE targetGuid.Guid = source.RegistryGuid
+    );
+
+    DECLARE
+        @RegistryGuid UNIQUEIDENTIFIER,
+        @SchemaName SYSNAME,
+        @TableName SYSNAME;
+
+    DECLARE registry_do_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT
+            tr.Guid,
+            tr.SchemaName,
+            tr.TableName
+        FROM SMigration.Metadata_TableRegistry AS tr
+        INNER JOIN
+        (
+            SELECT
+                c.SchemaName,
+                c.TableName
+            FROM #MetadataRegistryEntityTypeCandidates AS c
+            GROUP BY
+                c.SchemaName,
+                c.TableName
+        ) AS c
+            ON c.SchemaName = tr.SchemaName
+           AND c.TableName = tr.TableName
+        WHERE tr.RowStatus NOT IN (0,254);
+
+    OPEN registry_do_cursor;
+
+    FETCH NEXT FROM registry_do_cursor INTO @RegistryGuid, @SchemaName, @TableName;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC SMigration.MetadataDataObject_Ensure
+            @Guid = @RegistryGuid,
+            @SchemeName = N'SMigration',
+            @ObjectName = N'Metadata_TableRegistry';
+
+        FETCH NEXT FROM registry_do_cursor INTO @RegistryGuid, @SchemaName, @TableName;
+    END;
+
+    CLOSE registry_do_cursor;
+    DEALLOCATE registry_do_cursor;
+
+    SELECT
+        COUNT_BIG(1) AS CandidateCount
+    FROM
+    (
+        SELECT
+            c.SchemaName,
+            c.TableName
+        FROM #MetadataRegistryEntityTypeCandidates AS c
+        GROUP BY
+            c.SchemaName,
+            c.TableName
+    ) AS groupedCandidates;
+END;
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
+
+
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataStage_Run]
+(
+    @RunGuid UNIQUEIDENTIFIER
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE
+        @SourceDatabaseName SYSNAME,
+        @TargetDatabaseName SYSNAME,
+        @SchemaName SYSNAME,
+        @TableName SYSNAME,
+        @GuidColumnName SYSNAME,
+        @PrimaryKeyColumnName SYSNAME,
+        @RegistryGuid UNIQUEIDENTIFIER,
+        @ColumnList NVARCHAR(MAX),
+        @HasRowStatus BIT,
+        @SourceWhereClause NVARCHAR(MAX),
+        @SourceAndClause NVARCHAR(MAX),
+        @DuplicateWhereClause NVARCHAR(MAX),
+        @SourceRowStatusExpression NVARCHAR(MAX),
+        @Sql NVARCHAR(MAX);
+
+    SELECT
+        @SourceDatabaseName = r.SourceDatabaseName,
+        @TargetDatabaseName = r.TargetDatabaseName
+    FROM SMigration.Metadata_Run AS r
+    WHERE r.Guid = @RunGuid
+      AND r.RowStatus NOT IN (0,254);
+
+    IF @SourceDatabaseName IS NULL
+    BEGIN
+        ;THROW 51000, 'Metadata run was not found or is inactive.', 1;
+    END;
+
+    EXEC SMigration.MetadataRegistry_SyncFromEntityTypes
+        @SourceDatabaseName = @SourceDatabaseName,
+        @TargetDatabaseName = @TargetDatabaseName;
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_TableRegistry AS tr
+        WHERE tr.RowStatus NOT IN (0,254)
+          AND tr.IsEnabled = 1
+    )
+    BEGIN
+        ;THROW 51001, 'No enabled metadata registry rows exist. Run SMigration.MetadataRegistry_Seed first.', 1;
+    END;
+
+    BEGIN TRANSACTION;
+
+    DELETE FROM SMigration.Metadata_StagedRows
+    WHERE RunGuid = @RunGuid;
+
+    DELETE FROM SMigration.Metadata_ValidationIssues
+    WHERE RunGuid = @RunGuid
+      AND IssueCode IN
+      (
+          N'DuplicateSourceGuid',
+          N'RegisteredGuidColumnMissing',
+          N'RegisteredTableMissing',
+          N'RegisteredSourceTableMissing'
+      );
+
+    DECLARE registry_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT
+            tr.Guid,
+            tr.SchemaName,
+            tr.TableName,
+            tr.GuidColumnName,
+            tr.PrimaryKeyColumnName
+        FROM SMigration.Metadata_TableRegistry AS tr
+        WHERE tr.RowStatus NOT IN (0,254)
+          AND tr.IsEnabled = 1
+        ORDER BY
+            tr.ApplyOrder,
+            tr.SchemaName,
+            tr.TableName;
+
+    OPEN registry_cursor;
+
+    FETCH NEXT FROM registry_cursor
+    INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @ColumnList = NULL;
+        SET @HasRowStatus = 0;
+        SET @Sql = NULL;
+
+        IF OBJECT_ID(QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName), N'U') IS NULL
+        BEGIN
+            INSERT INTO SMigration.Metadata_ValidationIssues
+            (
+                Guid,
+                RowStatus,
+                RunGuid,
+                RegistryGuid,
+                SourceRowGuid,
+                Severity,
+                IssueCode,
+                IssueMessage,
+                DetailsJson,
+                CreatedOnUtc
+            )
+            SELECT
+                NEWID(),
+                1,
+                @RunGuid,
+                @RegistryGuid,
+                NULL,
+                N'Fail',
+                N'RegisteredTableMissing',
+                CONCAT(N'Registered metadata table does not exist in target: ', @SchemaName, N'.', @TableName),
+                CONCAT(N'{"SchemaName":"', @SchemaName, N'","TableName":"', @TableName, N'"}'),
+                SYSUTCDATETIME();
+
+            FETCH NEXT FROM registry_cursor
+            INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+            CONTINUE;
+        END;
+
+        IF OBJECT_ID(QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName), N'U') IS NULL
+        BEGIN
+            INSERT INTO SMigration.Metadata_ValidationIssues
+            (
+                Guid,
+                RowStatus,
+                RunGuid,
+                RegistryGuid,
+                SourceRowGuid,
+                Severity,
+                IssueCode,
+                IssueMessage,
+                DetailsJson,
+                CreatedOnUtc
+            )
+            SELECT
+                NEWID(),
+                1,
+                @RunGuid,
+                @RegistryGuid,
+                NULL,
+                N'Fail',
+                N'RegisteredSourceTableMissing',
+                CONCAT(N'Registered metadata table does not exist in source: ', @SchemaName, N'.', @TableName),
+                CONCAT(N'{"SchemaName":"', @SchemaName, N'","TableName":"', @TableName, N'"}'),
+                SYSUTCDATETIME();
+
+            FETCH NEXT FROM registry_cursor
+            INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+            CONTINUE;
+        END;
+
+        IF NOT EXISTS
+        (
+            SELECT 1
+            FROM sys.schemas AS s
+            INNER JOIN sys.tables AS t
+                ON t.schema_id = s.schema_id
+            INNER JOIN sys.columns AS c
+                ON c.object_id = t.object_id
+            WHERE s.name = @SchemaName
+              AND t.name = @TableName
+              AND c.name = @GuidColumnName
+        )
+        BEGIN
+            INSERT INTO SMigration.Metadata_ValidationIssues
+            (
+                Guid,
+                RowStatus,
+                RunGuid,
+                RegistryGuid,
+                SourceRowGuid,
+                Severity,
+                IssueCode,
+                IssueMessage,
+                DetailsJson,
+                CreatedOnUtc
+            )
+            SELECT
+                NEWID(),
+                1,
+                @RunGuid,
+                @RegistryGuid,
+                NULL,
+                N'Fail',
+                N'RegisteredGuidColumnMissing',
+                CONCAT(N'Registered metadata table does not have Guid column: ', @SchemaName, N'.', @TableName, N'.', @GuidColumnName),
+                CONCAT(N'{"SchemaName":"', @SchemaName, N'","TableName":"', @TableName, N'","GuidColumnName":"', @GuidColumnName, N'"}'),
+                SYSUTCDATETIME();
+
+            FETCH NEXT FROM registry_cursor
+            INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+            CONTINUE;
+        END;
+
+        SELECT
+            @HasRowStatus =
+                CASE WHEN EXISTS
+                (
+                    SELECT 1
+                    FROM sys.schemas AS s
+                    INNER JOIN sys.tables AS t
+                        ON t.schema_id = s.schema_id
+                    INNER JOIN sys.columns AS c
+                        ON c.object_id = t.object_id
+                    WHERE s.name = @SchemaName
+                      AND t.name = @TableName
+                      AND c.name = N'RowStatus'
+                )
+                THEN 1 ELSE 0 END;
+
+        SELECT
+            @ColumnList =
+                STRING_AGG(CONVERT(NVARCHAR(MAX), QUOTENAME(c.name)), N',')
+                WITHIN GROUP (ORDER BY c.column_id)
+        FROM sys.schemas AS s
+        INNER JOIN sys.tables AS t
+            ON t.schema_id = s.schema_id
+        INNER JOIN sys.columns AS c
+            ON c.object_id = t.object_id
+        WHERE s.name = @SchemaName
+          AND t.name = @TableName
+          AND c.is_computed = 0
+          AND c.system_type_id <> 189;
+
+        IF @ColumnList IS NULL
+        BEGIN
+            FETCH NEXT FROM registry_cursor
+            INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+            CONTINUE;
+        END;
+
+        SET @SourceRowStatusExpression =
+            CASE WHEN @HasRowStatus = 1
+                THEN N'TRY_CONVERT(TINYINT, s.RowStatus)'
+                ELSE N'NULL'
+            END;
+
+        SET @SourceWhereClause =
+            CASE WHEN @HasRowStatus = 1
+                THEN N'WHERE s.RowStatus NOT IN (0,254)'
+                ELSE N''
+            END;
+
+        SET @SourceAndClause =
+            CASE WHEN @HasRowStatus = 1
+                THEN N'AND'
+                ELSE N'WHERE'
+            END;
+
+        SET @DuplicateWhereClause =
+            CASE WHEN @HasRowStatus = 1
+                THEN N'WHERE sd.RowStatus NOT IN (0,254)'
+                ELSE N''
+            END;
+
+        SET @Sql = N'
+INSERT INTO SMigration.Metadata_ValidationIssues
+(
+    Guid,
+    RowStatus,
+    RunGuid,
+    RegistryGuid,
+    SourceRowGuid,
+    Severity,
+    IssueCode,
+    IssueMessage,
+    DetailsJson,
+    CreatedOnUtc
+)
+SELECT
+    NEWID(),
+    1,
+    @RunGuid,
+    @RegistryGuid,
+    d.SourceRowGuid,
+    N''Fail'',
+    N''DuplicateSourceGuid'',
+    CONCAT(N''Source metadata table contains duplicate active Guid values: ' + REPLACE(@SchemaName, '''', '''''') + N'.' + REPLACE(@TableName, '''', '''''') + N' / '', CONVERT(NVARCHAR(36), d.SourceRowGuid)),
+    CONCAT
+    (
+        N''{"SchemaName":"' + REPLACE(@SchemaName, '''', '''''') + N'","TableName":"' + REPLACE(@TableName, '''', '''''') + N'","DuplicateCount":'',
+        CONVERT(NVARCHAR(30), d.DuplicateCount),
+        N''}''
+    ),
+    SYSUTCDATETIME()
+FROM
+(
+    SELECT
+        CONVERT(UNIQUEIDENTIFIER, s.' + QUOTENAME(@GuidColumnName) + N') AS SourceRowGuid,
+        COUNT_BIG(1) AS DuplicateCount
+    FROM ' + QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS s
+    ' + @SourceWhereClause + N'
+    GROUP BY CONVERT(UNIQUEIDENTIFIER, s.' + QUOTENAME(@GuidColumnName) + N')
+    HAVING COUNT_BIG(1) > 1
+) AS d;
+
+INSERT INTO SMigration.Metadata_StagedRows
+(
+    Guid,
+    RowStatus,
+    RunGuid,
+    RegistryGuid,
+    SourceRowGuid,
+    SourceRowId,
+    SourceRowStatus,
+    SourcePayloadJson,
+    SourcePayloadHash,
+    TargetPayloadJson,
+    TargetPayloadHash,
+    DifferenceType,
+    CreatedOnUtc
+)
+SELECT
+    NEWID(),
+    1,
+    @RunGuid,
+    @RegistryGuid,
+    src.SourceRowGuid,
+    src.SourceRowId,
+    src.SourceRowStatus,
+    src.SourcePayloadJson,
+    HASHBYTES(''SHA2_256'', CONVERT(VARBINARY(MAX), src.SourcePayloadJson)),
+    tgt.TargetPayloadJson,
+    CASE
+        WHEN tgt.TargetPayloadJson IS NULL THEN NULL
+        ELSE HASHBYTES(''SHA2_256'', CONVERT(VARBINARY(MAX), tgt.TargetPayloadJson))
+    END,
+    CASE
+        WHEN tgt.TargetPayloadJson IS NULL THEN N''Insert''
+        WHEN HASHBYTES(''SHA2_256'', CONVERT(VARBINARY(MAX), src.SourcePayloadJson))
+           <> HASHBYTES(''SHA2_256'', CONVERT(VARBINARY(MAX), tgt.TargetPayloadJson)) THEN N''Update''
+        ELSE N''NoChange''
+    END,
+    SYSUTCDATETIME()
+FROM
+(
+    SELECT
+        CONVERT(UNIQUEIDENTIFIER, s.' + QUOTENAME(@GuidColumnName) + N') AS SourceRowGuid,
+        TRY_CONVERT(BIGINT, s.' + QUOTENAME(@PrimaryKeyColumnName) + N') AS SourceRowId,
+        ' + @SourceRowStatusExpression + N' AS SourceRowStatus,
+        (
+            SELECT ' + @ColumnList + N'
+            FROM ' + QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS sj
+            WHERE sj.' + QUOTENAME(@GuidColumnName) + N' = s.' + QUOTENAME(@GuidColumnName) + N'
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        ) AS SourcePayloadJson
+    FROM ' + QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS s
+    ' + @SourceWhereClause + N'
+    ' + @SourceAndClause + N' NOT EXISTS
+    (
+        SELECT 1
+        FROM
+        (
+            SELECT
+                CONVERT(UNIQUEIDENTIFIER, sd.' + QUOTENAME(@GuidColumnName) + N') AS DuplicateGuid
+            FROM ' + QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS sd
+            ' + @DuplicateWhereClause + N'
+            GROUP BY CONVERT(UNIQUEIDENTIFIER, sd.' + QUOTENAME(@GuidColumnName) + N')
+            HAVING COUNT_BIG(1) > 1
+        ) AS dup
+        WHERE dup.DuplicateGuid = CONVERT(UNIQUEIDENTIFIER, s.' + QUOTENAME(@GuidColumnName) + N')
+    )
+) AS src
+OUTER APPLY
+(
+    SELECT
+        (
+            SELECT ' + @ColumnList + N'
+            FROM ' + QUOTENAME(@TargetDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS tj
+            WHERE tj.' + QUOTENAME(@GuidColumnName) + N' = src.SourceRowGuid
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        ) AS TargetPayloadJson
+) AS tgt;';
+
+        EXEC sys.sp_executesql
+            @Sql,
+            N'@RunGuid UNIQUEIDENTIFIER, @RegistryGuid UNIQUEIDENTIFIER',
+            @RunGuid = @RunGuid,
+            @RegistryGuid = @RegistryGuid;
+
+        FETCH NEXT FROM registry_cursor
+        INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+    END;
+
+    CLOSE registry_cursor;
+    DEALLOCATE registry_cursor;
+
+    EXEC SMigration.MetadataStage_NormaliseDifferences
+        @RunGuid = @RunGuid;
+
+    EXEC SMigration.MetadataStage_NormaliseEnvironmentOnlyUpdates
+    @RunGuid = @RunGuid;
+
+    UPDATE SMigration.Metadata_Run
+    SET
+        RunStatus = N'Staged',
+        SummaryJson =
+        (
+            SELECT
+                CONCAT
+                (
+                    N'{"insertCount":',
+                    CONVERT(NVARCHAR(30), ISNULL(SUM(CASE WHEN sr.DifferenceType = N'Insert' THEN 1 ELSE 0 END), 0)),
+                    N',"updateCount":',
+                    CONVERT(NVARCHAR(30), ISNULL(SUM(CASE WHEN sr.DifferenceType = N'Update' THEN 1 ELSE 0 END), 0)),
+                    N',"noChangeCount":',
+                    CONVERT(NVARCHAR(30), ISNULL(SUM(CASE WHEN sr.DifferenceType = N'NoChange' THEN 1 ELSE 0 END), 0)),
+                    N',"totalCount":',
+                    CONVERT(NVARCHAR(30), COUNT_BIG(1)),
+                    N'}'
+                )
+            FROM SMigration.Metadata_StagedRows AS sr
+            WHERE sr.RunGuid = @RunGuid
+              AND sr.RowStatus NOT IN (0,254)
+        )
+    WHERE Guid = @RunGuid
+      AND RowStatus NOT IN (0,254);
+
+    EXEC SMigration.MetadataExecutionLog_Add
+        @RunGuid = @RunGuid,
+        @StepName = N'StageRun',
+        @StepStatus = N'Succeeded',
+        @Message = N'Metadata staging completed.',
+        @DetailsJson = N'{}';
+
+    COMMIT TRANSACTION;
+END;
+
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+PRINT (N'Create or alter procedure [SMigration].[MetadataApplyPreview_Get]')
+GO
+
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyPreview_Get]
+(
+    @RunGuid UNIQUEIDENTIFIER,
+    @ApplySelectedOnly BIT = 0,
+    @IncludeIgnored BIT = 1
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE
+        @TargetDatabaseName SYSNAME,
+        @RunFailureCount INT = 0,
+        @ZeroGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+    SELECT
+        @TargetDatabaseName = r.TargetDatabaseName
+    FROM SMigration.Metadata_Run AS r
+    WHERE r.Guid = @RunGuid
+      AND r.RowStatus NOT IN (0,254);
+
+    IF @TargetDatabaseName IS NULL
+        THROW 52300, 'Metadata apply preview could not find the selected run.', 1;
+
+    SELECT
+        @RunFailureCount = COUNT(1)
+    FROM SMigration.Metadata_ValidationIssues AS vi
+    WHERE vi.RunGuid = @RunGuid
+      AND vi.RowStatus NOT IN (0,254)
+      AND vi.Severity = N'Fail';
+
+    SELECT
+        tr.SchemaName,
+        tr.TableName,
+        sr.SourceRowGuid,
+        ISNULL(sr.SourceRowId, -1) AS SourceRowId,
+        sr.DifferenceType,
+        CONVERT(BIT, CASE WHEN sel.Guid IS NULL THEN 0 ELSE 1 END) AS IsSelected,
+        CONVERT(BIT, CASE WHEN ign.Guid IS NULL THEN 0 ELSE 1 END) AS IsIgnored,
+        CONVERT(BIT, CASE WHEN @RunFailureCount > 0 THEN 1 ELSE 0 END) AS HasValidationFailure,
+        CASE
+            WHEN @RunFailureCount > 0 THEN N'Blocked'
+            WHEN ign.Guid IS NOT NULL THEN N'Skip'
+            WHEN ov.Guid IS NOT NULL THEN N'Skip'
+            WHEN ISNULL(@ApplySelectedOnly, 0) = 1 AND sel.Guid IS NULL THEN N'Skip'
+            ELSE N'Apply'
+        END AS ApplyAction,
+        CASE
+            WHEN @RunFailureCount > 0 THEN N'Run has validation failure(s).'
+            WHEN ign.Guid IS NOT NULL THEN N'Record is ignored for this target database.'
+            WHEN ov.Guid IS NOT NULL THEN N'Record has a manual identity-map target match and will not be blindly inserted by automated apply.'
+            WHEN ISNULL(@ApplySelectedOnly, 0) = 1 AND sel.Guid IS NULL THEN N'Not selected in this run.'
+            ELSE N''
+        END AS SkipReason,
+        ISNULL(changed.ChangedColumns, N'') AS ChangedColumns,
+        @RunFailureCount AS RunValidationFailureCount
+    FROM SMigration.Metadata_StagedRows AS sr
+    INNER JOIN SMigration.Metadata_TableRegistry AS tr
+        ON tr.Guid = sr.RegistryGuid
+       AND tr.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_RunSelections AS sel
+        ON sel.RunGuid = sr.RunGuid
+       AND sel.RegistryGuid = sr.RegistryGuid
+       AND sel.SourceRowGuid = sr.SourceRowGuid
+       AND sel.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IgnoredRecords AS ign
+        ON ign.DatabaseName = @TargetDatabaseName
+       AND ign.RegistryGuid = sr.RegistryGuid
+       AND ign.SourceRowGuid = sr.SourceRowGuid
+       AND ign.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+        ON ov.DatabaseName = @TargetDatabaseName
+       AND ov.RegistryGuid = sr.RegistryGuid
+       AND ov.SourceRowGuid = sr.SourceRowGuid
+       AND ov.RowStatus NOT IN (0,254)
+    OUTER APPLY
+    (
+        SELECT
+            STRING_AGG(CONVERT(NVARCHAR(MAX), diff.ColumnName), N', ') AS ChangedColumns
+        FROM
+        (
+            SELECT
+                COALESCE(src.[key], tgt.[key]) AS ColumnName
+            FROM OPENJSON(ISNULL(sr.SourcePayloadJson, N'{}')) AS src
+            FULL OUTER JOIN OPENJSON(ISNULL(sr.TargetPayloadJson, N'{}')) AS tgt
+                ON tgt.[key] = src.[key]
+            WHERE ISNULL(CONVERT(NVARCHAR(MAX), src.[value]), N'') <> ISNULL(CONVERT(NVARCHAR(MAX), tgt.[value]), N'')
+        ) AS diff
+    ) AS changed
+    WHERE sr.RunGuid = @RunGuid
+      AND sr.RowStatus NOT IN (0,254)
+      AND sr.DifferenceType IN (N'Insert', N'Update')
+      AND (ISNULL(@ApplySelectedOnly, 0) = 0 OR sel.Guid IS NOT NULL)
+      AND (ISNULL(@IncludeIgnored, 0) = 1 OR ign.Guid IS NULL)
+    ORDER BY
+        CASE
+            WHEN @RunFailureCount > 0 THEN 0
+            WHEN ign.Guid IS NOT NULL THEN 3
+            WHEN ov.Guid IS NOT NULL THEN 2
+            ELSE 1
+        END,
+        tr.SchemaName,
+        tr.TableName,
+        sr.SourceRowId;
+END;
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
+
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
+(
+    @RunGuid UNIQUEIDENTIFIER
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE
+        @TargetDatabaseName SYSNAME,
+        @SchemaName SYSNAME,
+        @TableName SYSNAME,
+        @GuidColumnName SYSNAME,
+        @PrimaryKeyColumnName SYSNAME,
+        @RegistryGuid UNIQUEIDENTIFIER,
+        @Sql NVARCHAR(MAX);
+
+    SELECT
+        @TargetDatabaseName = r.TargetDatabaseName
+    FROM SMigration.Metadata_Run AS r
+    WHERE r.Guid = @RunGuid
+      AND r.RowStatus NOT IN (0,254);
+
+    IF @TargetDatabaseName IS NULL
+    BEGIN
+        ;THROW 51000, 'Metadata run was not found or is inactive.', 1;
+    END;
+
+    EXEC SMigration.MetadataRegistry_SyncFromEntityTypes
+        @SourceDatabaseName = NULL,
+        @TargetDatabaseName = @TargetDatabaseName;
+
+    BEGIN TRANSACTION;
+
+    DELETE FROM SMigration.Metadata_ApplyIdentityMap
+    WHERE RunGuid = @RunGuid;
+
+    INSERT INTO SMigration.Metadata_ApplyIdentityMap
+    (
+        Guid,
+        RowStatus,
+        RunGuid,
+        RegistryGuid,
+        SchemaName,
+        TableName,
+        SourceRowGuid,
+        SourceRowId,
+        TargetRowId,
+        CreatedOnUtc
+    )
+    SELECT
+        NEWID(),
+        1,
+        sr.RunGuid,
+        sr.RegistryGuid,
+        tr.SchemaName,
+        tr.TableName,
+        sr.SourceRowGuid,
+        sr.SourceRowId,
+        NULL,
+        SYSUTCDATETIME()
+    FROM SMigration.Metadata_StagedRows AS sr
+    INNER JOIN SMigration.Metadata_TableRegistry AS tr
+        ON tr.Guid = sr.RegistryGuid
+       AND tr.RowStatus NOT IN (0,254)
+    WHERE sr.RunGuid = @RunGuid
+      AND sr.RowStatus NOT IN (0,254)
+      AND sr.DifferenceType IN (N'Insert', N'Update');
+
+    DECLARE registry_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT
+            tr.Guid,
+            tr.SchemaName,
+            tr.TableName,
+            tr.GuidColumnName,
+            tr.PrimaryKeyColumnName
+        FROM SMigration.Metadata_TableRegistry AS tr
+        WHERE tr.RowStatus NOT IN (0,254)
+          AND tr.IsEnabled = 1
+        ORDER BY
+            tr.ApplyOrder,
+            tr.SchemaName,
+            tr.TableName;
+
+    OPEN registry_cursor;
+
+    FETCH NEXT FROM registry_cursor
+    INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @Sql = N'
+UPDATE maprow
+SET
+    maprow.TargetRowId = TRY_CONVERT(BIGINT, targetrow.' + QUOTENAME(@PrimaryKeyColumnName) + N')
+FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+INNER JOIN ' + QUOTENAME(@TargetDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS targetrow
+    ON targetrow.' + QUOTENAME(@GuidColumnName) + N' = maprow.SourceRowGuid
+WHERE maprow.RunGuid = @RunGuid
+  AND maprow.RegistryGuid = @RegistryGuid
+  AND maprow.RowStatus NOT IN (0,254);';
+
+        EXEC sys.sp_executesql
+            @Sql,
+            N'@RunGuid UNIQUEIDENTIFIER, @RegistryGuid UNIQUEIDENTIFIER',
+            @RunGuid = @RunGuid,
+            @RegistryGuid = @RegistryGuid;
+
+        SET @Sql = N'
+UPDATE maprow
+SET
+    maprow.TargetRowId = TRY_CONVERT(BIGINT, targetrow.' + QUOTENAME(@PrimaryKeyColumnName) + N')
+FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+INNER JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+    ON ov.DatabaseName = @TargetDatabaseName
+   AND ov.RegistryGuid = maprow.RegistryGuid
+   AND ov.SourceRowGuid = maprow.SourceRowGuid
+   AND ov.RowStatus NOT IN (0,254)
+INNER JOIN ' + QUOTENAME(@TargetDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS targetrow
+    ON targetrow.' + QUOTENAME(@GuidColumnName) + N' = ov.TargetRowGuid
+WHERE maprow.RunGuid = @RunGuid
+  AND maprow.RegistryGuid = @RegistryGuid
+  AND maprow.RowStatus NOT IN (0,254);';
+
+        EXEC sys.sp_executesql
+            @Sql,
+            N'@RunGuid UNIQUEIDENTIFIER, @RegistryGuid UNIQUEIDENTIFIER, @TargetDatabaseName SYSNAME',
+            @RunGuid = @RunGuid,
+            @RegistryGuid = @RegistryGuid,
+            @TargetDatabaseName = @TargetDatabaseName;
+
+        FETCH NEXT FROM registry_cursor
+        INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+    END;
+
+    CLOSE registry_cursor;
+    DEALLOCATE registry_cursor;
+
+    EXEC SMigration.MetadataExecutionLog_Add
+        @RunGuid = @RunGuid,
+        @StepName = N'BuildIdentityMap',
+        @StepStatus = N'Succeeded',
+        @Message = N'Metadata apply identity map built.',
+        @DetailsJson = N'{}';
+
+    COMMIT TRANSACTION;
+
+    SELECT
+        maprow.SchemaName,
+        maprow.TableName,
+        COUNT_BIG(1) AS MapRows,
+        SUM(CASE
+            WHEN maprow.TargetRowId IS NULL
+             AND ISNULL(sr.DifferenceType, N'') <> N'Insert'
+             AND ign.ID IS NULL
+             AND ov.ID IS NULL THEN 1
+            ELSE 0
+        END) AS MissingTargetRows
+    FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+    LEFT JOIN SMigration.Metadata_StagedRows AS sr
+        ON sr.RunGuid = maprow.RunGuid
+       AND sr.RegistryGuid = maprow.RegistryGuid
+       AND sr.SourceRowGuid = maprow.SourceRowGuid
+       AND sr.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapIgnoredIssues AS ign
+        ON ign.DatabaseName = @TargetDatabaseName
+       AND ign.RegistryGuid = maprow.RegistryGuid
+       AND ign.SourceRowGuid = maprow.SourceRowGuid
+       AND ign.IssueCode = N'TargetMissing'
+       AND ign.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+        ON ov.DatabaseName = @TargetDatabaseName
+       AND ov.RegistryGuid = maprow.RegistryGuid
+       AND ov.SourceRowGuid = maprow.SourceRowGuid
+       AND ov.RowStatus NOT IN (0,254)
+    WHERE maprow.RunGuid = @RunGuid
+      AND maprow.RowStatus NOT IN (0,254)
+    GROUP BY
+        maprow.SchemaName,
+        maprow.TableName
+    ORDER BY
+        maprow.SchemaName,
+        maprow.TableName;
+END;
+GO
+
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
@@ -2485,4 +3485,3 @@ COMMIT TRANSACTION;
 END;
 
 GO
-

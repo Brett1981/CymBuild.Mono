@@ -61,6 +61,8 @@
 
             <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(QuoteDetailTab.QuoteDetails))">
                 <DynamicGrid FormHelper="@_formHelper" GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+                <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTECRITICALNOTES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+
                 <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
                                     entityProperties="@editPage.entityProperties"
                                     entityPropertyGroups="@editPage.entityPropertyGroups"

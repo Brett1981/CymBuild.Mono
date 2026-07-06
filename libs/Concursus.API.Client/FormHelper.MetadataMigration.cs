@@ -122,6 +122,199 @@ public partial class FormHelper
         return reply.Rows.Select(MapIdentityMap).ToList();
     }
 
+    public async Task<string> MetadataMigrationIdentityMapReviewSetAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIdentityMapReviewSetAsync(
+            new MetadataMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Message ?? string.Empty;
+    }
+
+
+    public async Task<MetadataMigrationIdentityMapDetailsResultModel> MetadataMigrationIdentityMapDetailsAsync(
+        Guid runGuid,
+        string schemaName = "",
+        string tableName = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        bool includeIgnored = true,
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIdentityMapDetailsAsync(
+            new MetadataMigrationIdentityMapDetailsRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeIgnored = includeIgnored
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationIdentityMapDetailsResultModel
+        {
+            UnresolvedCount = reply.UnresolvedCount,
+            IgnoredCount = reply.IgnoredCount,
+            ResolvedCount = reply.ResolvedCount,
+            Rows = reply.Rows.Select(MapIdentityMapDetail).ToList()
+        };
+    }
+
+    public async Task<MetadataMigrationIdentityMapIssueResultModel> MetadataMigrationIdentityMapIssueUpsertAsync(
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        Guid sourceRowGuid,
+        bool isIgnored,
+        string reason = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIdentityMapIssueUpsertAsync(
+            new MetadataMigrationIdentityMapIssueUpsertRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                SourceRowGuid = sourceRowGuid.ToString(),
+                IsIgnored = isIgnored,
+                Reason = reason ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationIdentityMapIssueResultModel
+        {
+            UnresolvedCount = reply.UnresolvedCount,
+            IgnoredCount = reply.IgnoredCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+    public async Task<MetadataMigrationIdentityMapCandidatesResultModel> MetadataMigrationIdentityMapCandidatesAsync(
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        Guid sourceRowGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        string searchText = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIdentityMapCandidatesAsync(
+            new MetadataMigrationIdentityMapCandidatesRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                SourceRowGuid = sourceRowGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                SearchText = searchText ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationIdentityMapCandidatesResultModel
+        {
+            SourceDisplayName = reply.SourceDisplayName ?? string.Empty,
+            SourcePayloadJson = reply.SourcePayloadJson ?? string.Empty,
+            Rows = reply.Rows.Select(MapIdentityMapCandidate).ToList()
+        };
+    }
+
+    public async Task<MetadataMigrationIdentityMapIssueResultModel> MetadataMigrationIdentityMapOverrideUpsertAsync(
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        Guid sourceRowGuid,
+        Guid targetRowGuid,
+        bool isActive,
+        string reason = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationIdentityMapOverrideUpsertAsync(
+            new MetadataMigrationIdentityMapOverrideUpsertRequest
+            {
+                RunGuid = runGuid.ToString(),
+                SchemaName = schemaName ?? string.Empty,
+                TableName = tableName ?? string.Empty,
+                SourceRowGuid = sourceRowGuid.ToString(),
+                TargetRowGuid = targetRowGuid == Guid.Empty ? string.Empty : targetRowGuid.ToString(),
+                IsActive = isActive,
+                Reason = reason ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationIdentityMapIssueResultModel
+        {
+            UnresolvedCount = reply.UnresolvedCount,
+            IgnoredCount = reply.IgnoredCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
+    public async Task<MetadataMigrationApplyPreviewModel> MetadataMigrationApplyPreviewAsync(
+        Guid runGuid,
+        bool applySelectedOnly,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        bool includeIgnored = true,
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationApplyPreviewAsync(
+            new MetadataMigrationApplyPreviewRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                ApplySelectedOnly = applySelectedOnly,
+                IncludeIgnored = includeIgnored
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationApplyPreviewModel
+        {
+            ApplySelectedOnly = reply.ApplySelectedOnly,
+            ApplyCount = reply.ApplyCount,
+            SkipCount = reply.SkipCount,
+            BlockedCount = reply.BlockedCount,
+            IgnoredSkipCount = reply.IgnoredSkipCount,
+            RunValidationFailureCount = reply.RunValidationFailureCount,
+            Rows = reply.Rows.Select(row => new MetadataMigrationApplyPreviewRowModel
+            {
+                SchemaName = row.SchemaName ?? string.Empty,
+                TableName = row.TableName ?? string.Empty,
+                SourceRowGuid = Guid.TryParse(row.SourceRowGuid, out var sourceRowGuid) ? sourceRowGuid : Guid.Empty,
+                SourceRowId = row.SourceRowId,
+                DifferenceType = row.DifferenceType ?? string.Empty,
+                IsSelected = row.IsSelected,
+                IsIgnored = row.IsIgnored,
+                HasValidationFailure = row.HasValidationFailure,
+                ApplyAction = row.ApplyAction ?? string.Empty,
+                SkipReason = row.SkipReason ?? string.Empty,
+                ChangedColumns = row.ChangedColumns ?? string.Empty,
+                RunValidationFailureCount = row.RunValidationFailureCount
+            }).ToList()
+        };
+    }
+
     public async Task<string> MetadataMigrationApplyAsync(
         Guid runGuid,
         bool forceApply,
@@ -278,6 +471,68 @@ public partial class FormHelper
             cancellationToken: cancellationToken);
 
         return reply.Records.Select(MapIgnoredRecord).ToList();
+    }
+
+    public async Task<List<MetadataMigrationEntityTypeScopeRowModel>> MetadataMigrationEntityTypeScopeListAsync(
+        string serverName,
+        string databaseName,
+        bool showMetadataOnly = true,
+        string searchText = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationEntityTypeScopeListAsync(
+            new MetadataMigrationEntityTypeScopeRequest
+            {
+                ServerName = serverName ?? string.Empty,
+                DatabaseName = databaseName ?? string.Empty,
+                ShowMetadataOnly = showMetadataOnly,
+                SearchText = searchText ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Rows.Select(row => new MetadataMigrationEntityTypeScopeRowModel
+        {
+            EntityTypeGuid = Guid.TryParse(row.EntityTypeGuid, out var entityTypeGuid) ? entityTypeGuid : Guid.Empty,
+            Name = row.Name ?? string.Empty,
+            RowStatus = row.RowStatus,
+            IsMetaData = row.IsMetaData,
+            HasDocuments = row.HasDocuments,
+            IsRootEntity = row.IsRootEntity,
+            IsDeletable = row.IsDeletable,
+            HasMainHoBT = row.HasMainHoBT,
+            MainHoBTSchemaName = row.MainHoBTSchemaName ?? string.Empty,
+            MainHoBTObjectName = row.MainHoBTObjectName ?? string.Empty
+        }).ToList();
+    }
+
+    public async Task<MetadataMigrationEntityTypeScopeSaveResultModel> MetadataMigrationEntityTypeScopeSaveAsync(
+        string serverName,
+        string databaseName,
+        IReadOnlyCollection<MetadataMigrationEntityTypeScopeUpdateItemModel> items,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new MetadataMigrationEntityTypeScopeSaveRequest
+        {
+            ServerName = serverName ?? string.Empty,
+            DatabaseName = databaseName ?? string.Empty
+        };
+
+        foreach (var item in items ?? Array.Empty<MetadataMigrationEntityTypeScopeUpdateItemModel>())
+        {
+            request.Items.Add(new MetadataMigrationEntityTypeScopeUpdateItem
+            {
+                EntityTypeGuid = item.EntityTypeGuid.ToString(),
+                IsMetaData = item.IsMetaData
+            });
+        }
+
+        var reply = await _coreClient.MetadataMigrationEntityTypeScopeSaveAsync(request, cancellationToken: cancellationToken);
+
+        return new MetadataMigrationEntityTypeScopeSaveResultModel
+        {
+            UpdatedCount = reply.UpdatedCount,
+            Message = reply.Message ?? string.Empty
+        };
     }
 
     public async Task<MetadataMigrationDashboardModel> MetadataMigrationDashboardAsync(
@@ -455,6 +710,40 @@ public partial class FormHelper
         TableName = row.TableName,
         MapRows = row.MapRows,
         MissingTargetRows = row.MissingTargetRows
+    };
+
+    private static MetadataMigrationIdentityMapDetailModel MapIdentityMapDetail(MetadataMigrationIdentityMapDetailRow row) => new()
+    {
+        SchemaName = row.SchemaName ?? string.Empty,
+        TableName = row.TableName ?? string.Empty,
+        SourceRowGuid = Guid.TryParse(row.SourceRowGuid, out var sourceRowGuid) ? sourceRowGuid : Guid.Empty,
+        SourceRowId = row.SourceRowId,
+        TargetRowId = row.TargetRowId,
+        DifferenceType = row.DifferenceType ?? string.Empty,
+        SourceDisplayName = row.SourceDisplayName ?? string.Empty,
+        IssueCode = row.IssueCode ?? string.Empty,
+        IssueStatus = row.IssueStatus ?? string.Empty,
+        Reason = row.Reason ?? string.Empty,
+        SuggestedAction = row.SuggestedAction ?? string.Empty,
+        IsResolved = row.IsResolved,
+        IsIgnoredIssue = row.IsIgnoredIssue,
+        IgnoreReason = row.IgnoreReason ?? string.Empty,
+        IgnoredOnUtcText = row.IgnoredOnUtc ?? string.Empty,
+        SourcePayloadJson = row.SourcePayloadJson ?? string.Empty,
+        HasOverride = row.HasOverride,
+        OverrideTargetRowGuid = Guid.TryParse(row.OverrideTargetRowGuid, out var overrideGuid) ? overrideGuid : Guid.Empty,
+        OverrideTargetDisplayName = row.OverrideTargetDisplayName ?? string.Empty,
+        OverrideReason = row.OverrideReason ?? string.Empty
+    };
+
+    private static MetadataMigrationIdentityMapCandidateModel MapIdentityMapCandidate(MetadataMigrationIdentityMapCandidateRow row) => new()
+    {
+        TargetRowGuid = Guid.TryParse(row.TargetRowGuid, out var targetGuid) ? targetGuid : Guid.Empty,
+        TargetRowId = row.TargetRowId,
+        TargetDisplayName = row.TargetDisplayName ?? string.Empty,
+        MatchReason = row.MatchReason ?? string.Empty,
+        MatchScore = row.MatchScore,
+        TargetPayloadJson = row.TargetPayloadJson ?? string.Empty
     };
 
     private static MetadataMigrationExecutionLogItemModel MapExecutionLog(MetadataMigrationExecutionLogItem row) => new()

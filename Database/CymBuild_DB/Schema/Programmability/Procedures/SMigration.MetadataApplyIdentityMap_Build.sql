@@ -1,10 +1,10 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
 PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
 (
     @RunGuid UNIQUEIDENTIFIER
 )
@@ -32,6 +32,10 @@ BEGIN
     BEGIN
         ;THROW 51000, 'Metadata run was not found or is inactive.', 1;
     END;
+
+    EXEC SMigration.MetadataRegistry_SyncFromEntityTypes
+        @SourceDatabaseName = NULL,
+        @TargetDatabaseName = @TargetDatabaseName;
 
     BEGIN TRANSACTION;
 
@@ -109,6 +113,29 @@ WHERE maprow.RunGuid = @RunGuid
             @RunGuid = @RunGuid,
             @RegistryGuid = @RegistryGuid;
 
+        SET @Sql = N'
+UPDATE maprow
+SET
+    maprow.TargetRowId = TRY_CONVERT(BIGINT, targetrow.' + QUOTENAME(@PrimaryKeyColumnName) + N')
+FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+INNER JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+    ON ov.DatabaseName = @TargetDatabaseName
+   AND ov.RegistryGuid = maprow.RegistryGuid
+   AND ov.SourceRowGuid = maprow.SourceRowGuid
+   AND ov.RowStatus NOT IN (0,254)
+INNER JOIN ' + QUOTENAME(@TargetDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName) + N' AS targetrow
+    ON targetrow.' + QUOTENAME(@GuidColumnName) + N' = ov.TargetRowGuid
+WHERE maprow.RunGuid = @RunGuid
+  AND maprow.RegistryGuid = @RegistryGuid
+  AND maprow.RowStatus NOT IN (0,254);';
+
+        EXEC sys.sp_executesql
+            @Sql,
+            N'@RunGuid UNIQUEIDENTIFIER, @RegistryGuid UNIQUEIDENTIFIER, @TargetDatabaseName SYSNAME',
+            @RunGuid = @RunGuid,
+            @RegistryGuid = @RegistryGuid,
+            @TargetDatabaseName = @TargetDatabaseName;
+
         FETCH NEXT FROM registry_cursor
         INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
     END;
@@ -126,18 +153,40 @@ WHERE maprow.RunGuid = @RunGuid
     COMMIT TRANSACTION;
 
     SELECT
-        SchemaName,
-        TableName,
+        maprow.SchemaName,
+        maprow.TableName,
         COUNT_BIG(1) AS MapRows,
-        SUM(CASE WHEN TargetRowId IS NULL THEN 1 ELSE 0 END) AS MissingTargetRows
-    FROM SMigration.Metadata_ApplyIdentityMap
-    WHERE RunGuid = @RunGuid
-      AND RowStatus NOT IN (0,254)
+        SUM(CASE
+            WHEN maprow.TargetRowId IS NULL
+             AND ISNULL(sr.DifferenceType, N'') <> N'Insert'
+             AND ign.ID IS NULL
+             AND ov.ID IS NULL THEN 1
+            ELSE 0
+        END) AS MissingTargetRows
+    FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+    LEFT JOIN SMigration.Metadata_StagedRows AS sr
+        ON sr.RunGuid = maprow.RunGuid
+       AND sr.RegistryGuid = maprow.RegistryGuid
+       AND sr.SourceRowGuid = maprow.SourceRowGuid
+       AND sr.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapIgnoredIssues AS ign
+        ON ign.DatabaseName = @TargetDatabaseName
+       AND ign.RegistryGuid = maprow.RegistryGuid
+       AND ign.SourceRowGuid = maprow.SourceRowGuid
+       AND ign.IssueCode = N'TargetMissing'
+       AND ign.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+        ON ov.DatabaseName = @TargetDatabaseName
+       AND ov.RegistryGuid = maprow.RegistryGuid
+       AND ov.SourceRowGuid = maprow.SourceRowGuid
+       AND ov.RowStatus NOT IN (0,254)
+    WHERE maprow.RunGuid = @RunGuid
+      AND maprow.RowStatus NOT IN (0,254)
     GROUP BY
-        SchemaName,
-        TableName
+        maprow.SchemaName,
+        maprow.TableName
     ORDER BY
-        SchemaName,
-        TableName;
+        maprow.SchemaName,
+        maprow.TableName;
 END;
 GO

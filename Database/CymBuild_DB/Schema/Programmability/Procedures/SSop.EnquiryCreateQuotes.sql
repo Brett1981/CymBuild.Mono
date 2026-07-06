@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SSop].[EnquiryCreateQuotes]')
 GO
+PRINT (N'Create procedure [SSop].[EnquiryCreateQuotes]')
+GO
 
 
 CREATE PROCEDURE [SSop].[EnquiryCreateQuotes]
@@ -307,6 +309,7 @@ BEGIN
 								 @MainAccountContactGuid = '00000000-0000-0000-0000-000000000000',
 								 @MainAccountAddressGuid = '00000000-0000-0000-0000-000000000000',
 								 @Guid = @ClientAccountGuid,									-- uniqueidentifier
+								 @DefaultCreditTermsGuid = '00000000-0000-0000-0000-000000000000',
 								 @BillingInstruction = NULL; --Since it is a new Account record, we can set it to null
 	END;
 
@@ -436,6 +439,7 @@ BEGIN
 								 @MainAccountAddressGuid = '00000000-0000-0000-0000-000000000000',
 								 @MainAccountContactGuid = '00000000-0000-0000-0000-000000000000',
 								 @Guid = @AgentAccountGuid,										-- uniqueidentifier
+								 @DefaultCreditTermsGuid = '00000000-0000-0000-0000-000000000000',
 								 @BillingInstruction = NULL; --Same as above --> Since it is new, it can be set to null.
 
 	END;
@@ -552,6 +556,7 @@ BEGIN
 								 @MainAccountAddressGuid = '00000000-0000-0000-0000-000000000000',
 								 @MainAccountContactGuid = '00000000-0000-0000-0000-000000000000',
 								 @Guid = @FinanceAccountGuid,									-- uniqueidentifier
+								 @DefaultCreditTermsGuid = '00000000-0000-0000-0000-000000000000',
 								 @BillingInstruction = NULL; --Same as above -> New record can be set to null
 	END;
 

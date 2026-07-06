@@ -1,6 +1,4 @@
-﻿PRINT (N'Create table [SSop].[CriticalProjectNotes]')
-GO
-CREATE TABLE [SSop].[CriticalProjectNotes] (
+﻿CREATE TABLE [SSop].[CriticalProjectNotes] (
   [ID] [int] IDENTITY,
   [RowVersion] [timestamp],
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_CriticalProjectNotes_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -15,20 +13,14 @@ ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
-PRINT (N'Create foreign key [FK_CriticalProjectNotes_CreatedBy] on table [SSop].[CriticalProjectNotes]')
-GO
-ALTER TABLE [SSop].[CriticalProjectNotes] WITH NOCHECK
+ALTER TABLE [SSop].[CriticalProjectNotes]
   ADD CONSTRAINT [FK_CriticalProjectNotes_CreatedBy] FOREIGN KEY ([CreatedBy]) REFERENCES [SCore].[Identities] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_CriticalProjectNotes_Guid] on table [SSop].[CriticalProjectNotes]')
-GO
-ALTER TABLE [SSop].[CriticalProjectNotes] WITH NOCHECK
+ALTER TABLE [SSop].[CriticalProjectNotes]
   ADD CONSTRAINT [FK_CriticalProjectNotes_Guid] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
-PRINT (N'Create foreign key [FK_CriticalProjectNotes_Projects] on table [SSop].[CriticalProjectNotes]')
-GO
-ALTER TABLE [SSop].[CriticalProjectNotes] WITH NOCHECK
+ALTER TABLE [SSop].[CriticalProjectNotes]
   ADD CONSTRAINT [FK_CriticalProjectNotes_Projects] FOREIGN KEY ([ProjectId]) REFERENCES [SSop].[Projects] ([ID])
 GO

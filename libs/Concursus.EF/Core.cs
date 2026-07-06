@@ -544,6 +544,22 @@ namespace Concursus.EF
             cmd.Parameters.Add(new SqlParameter("@IsImported", SqlDbType.Bit) { Value = isImported });
 
             await cmd.ExecuteNonQueryAsync(ct);
+
+
+            //Once approved, create the associated quote.
+            var approvedForQuoteStatusGuid = "3070A373-0E0A-4261-B942-66CB512EE1B6";
+
+            if (newStatusGuid.ToString() == approvedForQuoteStatusGuid.ToLower())
+            {
+                await using var _cmd = new SqlCommand("SSop.EnquiryCreateQuotes", connection, tx)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+               _cmd.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = dataObjectGuid });
+
+                await _cmd.ExecuteNonQueryAsync(ct);
+            }
         }
 
         // =========================================================================================

@@ -62,6 +62,7 @@
 
             <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(EnquiryDetailTab.EnquiryDetails))">
                 <DynamicGrid FormHelper="@_formHelper" GridCode="RECORDSTATUS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
+                <DynamicGrid FormHelper="@_formHelper" GridCode="ENQCRITICALNOTES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
 
                 <FlexPropertyGroups
                     @ref="@editPage.flexPropertyGroups"

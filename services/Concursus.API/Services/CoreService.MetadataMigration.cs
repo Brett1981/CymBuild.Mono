@@ -1,4 +1,4 @@
-using Concursus.API.Core;
+﻿using Concursus.API.Core;
 using Google.Protobuf.Collections;
 using Grpc.Core;
 using Microsoft.Data.SqlClient;
@@ -225,6 +225,281 @@ ORDER BY r.ID DESC;", cn)
         }
     }
 
+    public override async Task<MetadataMigrationIdentityMapReviewResponse> MetadataMigrationIdentityMapReviewSet(
+        MetadataMigrationRunRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromRequestAsync(request, context.CancellationToken);
+            await using var cmd = new SqlCommand("SMigration.MetadataExecutionLog_Add", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@StepName", SqlDbType.NVarChar, 100) { Value = "IdentityMapReview" });
+            cmd.Parameters.Add(new SqlParameter("@StepStatus", SqlDbType.NVarChar, 30) { Value = "Reviewed" });
+            cmd.Parameters.Add(new SqlParameter("@Message", SqlDbType.NVarChar, 2000) { Value = "Identity map missing target rows reviewed and acknowledged." });
+            cmd.Parameters.Add(new SqlParameter("@DetailsJson", SqlDbType.NVarChar, -1) { Value = "{}" });
+
+            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+
+            return new MetadataMigrationIdentityMapReviewResponse
+            {
+                IsReviewed = true,
+                Message = "Identity map review acknowledged."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata identity map review SQL failed: {ex.Message}"));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException is null
+                ? ex.Message
+                : $"{ex.Message} Inner: {ex.InnerException.Message}";
+
+            throw new RpcException(new Status(StatusCode.Internal, $"Metadata identity map review failed: {message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIdentityMapDetailsResponse> MetadataMigrationIdentityMapDetails(
+        MetadataMigrationIdentityMapDetailsRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var templateConnection = await OpenSqlAsync(context.CancellationToken);
+            await using var cn = await OpenSqlForServerDatabaseAsync(
+                templateConnection.ConnectionString,
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken);
+
+            return await ReadIdentityMapDetailsAsync(
+                cn,
+                runGuid,
+                request.SchemaName ?? string.Empty,
+                request.TableName ?? string.Empty,
+                request.IncludeIgnored,
+                context.CancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata identity map detail SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIdentityMapIssueResponse> MetadataMigrationIdentityMapIssueUpsert(
+        MetadataMigrationIdentityMapIssueUpsertRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var sourceRowGuid = ParseGuid(request.SourceRowGuid, "sourceRowGuid");
+
+        try
+        {
+            await using var templateConnection = await OpenSqlAsync(context.CancellationToken);
+            await using var cn = await OpenSqlForServerDatabaseAsync(
+                templateConnection.ConnectionString,
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken);
+
+            await using var cmd = new SqlCommand("SMigration.MetadataIdentityMapIssue_Upsert", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = request.SchemaName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = request.TableName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@SourceRowGuid", SqlDbType.UniqueIdentifier) { Value = sourceRowGuid });
+            cmd.Parameters.Add(new SqlParameter("@Reason", SqlDbType.NVarChar, 500) { Value = request.Reason ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@IsIgnored", SqlDbType.Bit) { Value = request.IsIgnored });
+
+            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+
+            var details = await ReadIdentityMapDetailsAsync(
+                cn,
+                runGuid,
+                request.SchemaName ?? string.Empty,
+                request.TableName ?? string.Empty,
+                includeIgnored: true,
+                cancellationToken: context.CancellationToken);
+
+            return new MetadataMigrationIdentityMapIssueResponse
+            {
+                UnresolvedCount = details.UnresolvedCount,
+                IgnoredCount = details.IgnoredCount,
+                Message = request.IsIgnored
+                    ? $"Identity map issue ignored. {details.UnresolvedCount} unresolved issue(s), {details.IgnoredCount} ignored issue(s)."
+                    : $"Identity map issue unignored. {details.UnresolvedCount} unresolved issue(s), {details.IgnoredCount} ignored issue(s)."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata identity map issue SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIdentityMapCandidatesResponse> MetadataMigrationIdentityMapCandidates(
+        MetadataMigrationIdentityMapCandidatesRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var sourceRowGuid = ParseGuid(request.SourceRowGuid, "sourceRowGuid");
+        var response = new MetadataMigrationIdentityMapCandidatesResponse();
+
+        try
+        {
+            await using var templateConnection = await OpenSqlAsync(context.CancellationToken);
+            await using var cn = await OpenSqlForServerDatabaseAsync(
+                templateConnection.ConnectionString,
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken);
+
+            var contextRow = await ReadIdentityMapSourceContextAsync(
+                cn,
+                runGuid,
+                request.SchemaName ?? string.Empty,
+                request.TableName ?? string.Empty,
+                sourceRowGuid,
+                context.CancellationToken);
+
+            response.SourcePayloadJson = contextRow.SourcePayloadJson;
+            var sourceValues = ParseJsonDictionary(contextRow.SourcePayloadJson);
+            response.SourceDisplayName = GetMetadataDisplayValue(sourceValues, sourceRowGuid.ToString());
+
+            var columns = await ReadStageColumnNamesAsync(
+                cn,
+                null,
+                contextRow.Registry.SchemaName,
+                contextRow.Registry.TableName,
+                context.CancellationToken);
+
+            var targetRows = await ReadMetadataPayloadRowsAsync(
+                cn,
+                null,
+                contextRow.Registry,
+                columns,
+                activeOnly: true,
+                context.CancellationToken);
+
+            var searchText = (request.SearchText ?? string.Empty).Trim();
+            var candidates = targetRows
+                .Where(row => row.RowGuid != sourceRowGuid)
+                .Select(row =>
+                {
+                    var targetValues = ParseJsonDictionary(row.PayloadJson);
+                    var score = ScoreIdentityMapCandidate(sourceValues, targetValues, searchText, out var reason);
+                    return new
+                    {
+                        Row = row,
+                        Values = targetValues,
+                        Score = score,
+                        Reason = reason,
+                        DisplayName = GetMetadataDisplayValue(targetValues, row.RowGuid.ToString())
+                    };
+                })
+                .Where(candidate => candidate.Score > 0)
+                .OrderByDescending(candidate => candidate.Score)
+                .ThenBy(candidate => candidate.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .Take(25)
+                .ToList();
+
+            foreach (var candidate in candidates)
+            {
+                response.Rows.Add(new MetadataMigrationIdentityMapCandidateRow
+                {
+                    TargetRowGuid = candidate.Row.RowGuid.ToString(),
+                    TargetRowId = candidate.Row.RowId ?? 0,
+                    TargetDisplayName = candidate.DisplayName,
+                    MatchReason = candidate.Reason,
+                    MatchScore = candidate.Score,
+                    TargetPayloadJson = candidate.Row.PayloadJson
+                });
+            }
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata identity map candidate SQL failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationIdentityMapIssueResponse> MetadataMigrationIdentityMapOverrideUpsert(
+        MetadataMigrationIdentityMapOverrideUpsertRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var sourceRowGuid = ParseGuid(request.SourceRowGuid, "sourceRowGuid");
+        var targetRowGuid = request.IsActive
+            ? ParseGuid(request.TargetRowGuid, "targetRowGuid")
+            : Guid.Empty;
+
+        try
+        {
+            await using var templateConnection = await OpenSqlAsync(context.CancellationToken);
+            await using var cn = await OpenSqlForServerDatabaseAsync(
+                templateConnection.ConnectionString,
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken);
+
+            await using var cmd = new SqlCommand("SMigration.MetadataIdentityMapOverride_Upsert", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = request.SchemaName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = request.TableName ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@SourceRowGuid", SqlDbType.UniqueIdentifier) { Value = sourceRowGuid });
+            cmd.Parameters.Add(new SqlParameter("@TargetRowGuid", SqlDbType.UniqueIdentifier) { Value = request.IsActive ? (object)targetRowGuid : DBNull.Value });
+            cmd.Parameters.Add(new SqlParameter("@Reason", SqlDbType.NVarChar, 500) { Value = request.Reason ?? string.Empty });
+            cmd.Parameters.Add(new SqlParameter("@IsActive", SqlDbType.Bit) { Value = request.IsActive });
+
+            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+
+            var details = await ReadIdentityMapDetailsAsync(
+                cn,
+                runGuid,
+                request.SchemaName ?? string.Empty,
+                request.TableName ?? string.Empty,
+                includeIgnored: true,
+                cancellationToken: context.CancellationToken);
+
+            return new MetadataMigrationIdentityMapIssueResponse
+            {
+                UnresolvedCount = details.UnresolvedCount,
+                IgnoredCount = details.IgnoredCount,
+                Message = request.IsActive
+                    ? $"Manual identity map override saved. {details.UnresolvedCount} unresolved issue(s), {details.IgnoredCount} ignored issue(s)."
+                    : $"Manual identity map override cleared. {details.UnresolvedCount} unresolved issue(s), {details.IgnoredCount} ignored issue(s)."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata identity map override SQL failed: {ex.Message}"));
+        }
+    }
+
     public override async Task<MetadataMigrationApplyResponse> MetadataMigrationApply(
         MetadataMigrationApplyRequest request,
         ServerCallContext context)
@@ -256,6 +531,66 @@ ORDER BY r.ID DESC;", cn)
         catch (SqlException ex)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata apply SQL failed: {ex.Message}"));
+        }
+    }
+
+
+    public override async Task<MetadataMigrationApplyPreviewResponse> MetadataMigrationApplyPreview(
+        MetadataMigrationApplyPreviewRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        var response = new MetadataMigrationApplyPreviewResponse
+        {
+            ApplySelectedOnly = request.ApplySelectedOnly
+        };
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromApplyPreviewRequestAsync(request, context.CancellationToken);
+            await using var cmd = new SqlCommand("SMigration.MetadataApplyPreview_Get", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            cmd.Parameters.Add(new SqlParameter("@ApplySelectedOnly", SqlDbType.Bit) { Value = request.ApplySelectedOnly });
+            cmd.Parameters.Add(new SqlParameter("@IncludeIgnored", SqlDbType.Bit) { Value = request.IncludeIgnored });
+
+            await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
+            while (await reader.ReadAsync(context.CancellationToken))
+            {
+                var row = new MetadataMigrationApplyPreviewRow
+                {
+                    SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                    TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
+                    SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
+                    SourceRowId = Convert.ToInt64(reader["SourceRowId"]),
+                    DifferenceType = Convert.ToString(reader["DifferenceType"]) ?? string.Empty,
+                    IsSelected = Convert.ToBoolean(reader["IsSelected"]),
+                    IsIgnored = Convert.ToBoolean(reader["IsIgnored"]),
+                    HasValidationFailure = Convert.ToBoolean(reader["HasValidationFailure"]),
+                    ApplyAction = Convert.ToString(reader["ApplyAction"]) ?? string.Empty,
+                    SkipReason = Convert.ToString(reader["SkipReason"]) ?? string.Empty,
+                    ChangedColumns = Convert.ToString(reader["ChangedColumns"]) ?? string.Empty,
+                    RunValidationFailureCount = Convert.ToInt32(reader["RunValidationFailureCount"])
+                };
+
+                response.Rows.Add(row);
+            }
+
+            response.ApplyCount = response.Rows.Count(row => row.ApplyAction.Equals("Apply", StringComparison.OrdinalIgnoreCase));
+            response.BlockedCount = response.Rows.Count(row => row.ApplyAction.Equals("Blocked", StringComparison.OrdinalIgnoreCase));
+            response.SkipCount = response.Rows.Count(row => row.ApplyAction.Equals("Skip", StringComparison.OrdinalIgnoreCase));
+            response.IgnoredSkipCount = response.Rows.Count(row => row.IsIgnored && !row.ApplyAction.Equals("Apply", StringComparison.OrdinalIgnoreCase));
+            response.RunValidationFailureCount = response.Rows.Count == 0 ? 0 : response.Rows.Max(row => row.RunValidationFailureCount);
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata apply preview SQL failed: {ex.Message}"));
         }
     }
 
@@ -443,6 +778,126 @@ ORDER BY r.ID DESC;", cn)
         catch (SqlException ex)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata ignored records SQL failed: {ex.Message}"));
+        }
+    }
+
+
+    public override async Task<MetadataMigrationEntityTypeScopeResponse> MetadataMigrationEntityTypeScopeList(
+        MetadataMigrationEntityTypeScopeRequest request,
+        ServerCallContext context)
+    {
+        var response = new MetadataMigrationEntityTypeScopeResponse();
+
+        try
+        {
+            await using var cn = await OpenTargetSqlFromEntityTypeScopeRequestAsync(request, context.CancellationToken);
+            await using var cmd = new SqlCommand("SMigration.MetadataEntityTypeScope_List", cn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@ShowMetadataOnly", SqlDbType.Bit) { Value = request.ShowMetadataOnly });
+            cmd.Parameters.Add(new SqlParameter("@SearchText", SqlDbType.NVarChar, 250) { Value = request.SearchText ?? string.Empty });
+
+            await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
+            while (await reader.ReadAsync(context.CancellationToken))
+            {
+                response.Rows.Add(new MetadataMigrationEntityTypeScopeRow
+                {
+                    EntityTypeGuid = Convert.ToString(reader["EntityTypeGuid"]) ?? string.Empty,
+                    Name = Convert.ToString(reader["Name"]) ?? string.Empty,
+                    RowStatus = reader["RowStatus"] == DBNull.Value ? 0 : Convert.ToInt32(reader["RowStatus"]),
+                    IsMetaData = reader["IsMetaData"] != DBNull.Value && Convert.ToBoolean(reader["IsMetaData"]),
+                    HasDocuments = reader["HasDocuments"] != DBNull.Value && Convert.ToBoolean(reader["HasDocuments"]),
+                    IsRootEntity = reader["IsRootEntity"] != DBNull.Value && Convert.ToBoolean(reader["IsRootEntity"]),
+                    IsDeletable = reader["IsDeletable"] != DBNull.Value && Convert.ToBoolean(reader["IsDeletable"]),
+                    HasMainHoBT = reader["HasMainHoBT"] != DBNull.Value && Convert.ToBoolean(reader["HasMainHoBT"]),
+                    MainHoBTSchemaName = Convert.ToString(reader["MainHoBTSchemaName"]) ?? string.Empty,
+                    MainHoBTObjectName = Convert.ToString(reader["MainHoBTObjectName"]) ?? string.Empty
+                });
+            }
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata EntityType scope list SQL failed: {ex.Message}"));
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException is null
+                ? ex.Message
+                : $"{ex.Message} Inner: {ex.InnerException.Message}";
+
+            throw new RpcException(new Status(StatusCode.Internal, $"Metadata EntityType scope list failed: {message}"));
+        }
+    }
+
+    public override async Task<MetadataMigrationEntityTypeScopeSaveResponse> MetadataMigrationEntityTypeScopeSave(
+        MetadataMigrationEntityTypeScopeSaveRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            await using var cn = await OpenTargetSqlFromEntityTypeScopeSaveRequestAsync(request, context.CancellationToken);
+            await using var txBase = await cn.BeginTransactionAsync(context.CancellationToken);
+            var tx = (SqlTransaction)txBase;
+            var updatedCount = 0;
+
+            try
+            {
+                foreach (var item in request.Items)
+                {
+                    var entityTypeGuid = ParseGuid(item.EntityTypeGuid, "entityTypeGuid");
+
+                    await using var cmd = new SqlCommand("SMigration.MetadataEntityTypeScope_Set", cn, tx)
+                    {
+                        CommandType = CommandType.StoredProcedure,
+                        CommandTimeout = 300
+                    };
+
+                    cmd.Parameters.Add(new SqlParameter("@EntityTypeGuid", SqlDbType.UniqueIdentifier) { Value = entityTypeGuid });
+                    cmd.Parameters.Add(new SqlParameter("@IsMetaData", SqlDbType.Bit) { Value = item.IsMetaData });
+
+                    var value = await cmd.ExecuteScalarAsync(context.CancellationToken);
+                    if (value != null && value != DBNull.Value)
+                    {
+                        updatedCount += Convert.ToInt32(value);
+                    }
+                }
+
+                await tx.CommitAsync(context.CancellationToken);
+            }
+            catch
+            {
+                await tx.RollbackAsync(context.CancellationToken);
+                throw;
+            }
+
+            return new MetadataMigrationEntityTypeScopeSaveResponse
+            {
+                UpdatedCount = updatedCount,
+                Message = updatedCount == 1
+                    ? "1 EntityType metadata scope change saved."
+                    : $"{updatedCount} EntityType metadata scope changes saved."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata EntityType scope save SQL failed: {ex.Message}"));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException is null
+                ? ex.Message
+                : $"{ex.Message} Inner: {ex.InnerException.Message}";
+
+            throw new RpcException(new Status(StatusCode.Internal, $"Metadata EntityType scope save failed: {message}"));
         }
     }
 
@@ -733,6 +1188,19 @@ ORDER BY r.ID DESC;", cn)
             cancellationToken);
     }
 
+
+    private async Task<SqlConnection> OpenTargetSqlFromApplyPreviewRequestAsync(
+        MetadataMigrationApplyPreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            cancellationToken);
+    }
+
     private async Task<SqlConnection> OpenTargetSqlFromApplyRequestAsync(
         MetadataMigrationApplyRequest request,
         CancellationToken cancellationToken)
@@ -793,12 +1261,43 @@ ORDER BY r.ID DESC;", cn)
             cancellationToken);
     }
 
+
+    private async Task<SqlConnection> OpenTargetSqlFromEntityTypeScopeRequestAsync(
+        MetadataMigrationEntityTypeScopeRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.ServerName,
+            request.DatabaseName,
+            cancellationToken);
+    }
+
+    private async Task<SqlConnection> OpenTargetSqlFromEntityTypeScopeSaveRequestAsync(
+        MetadataMigrationEntityTypeScopeSaveRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var templateConnection = await OpenSqlAsync(cancellationToken);
+        return await OpenSqlForServerDatabaseAsync(
+            templateConnection.ConnectionString,
+            request.ServerName,
+            request.DatabaseName,
+            cancellationToken);
+    }
+
     private static async Task StageMetadataWithTwoConnectionsAsync(
     SqlConnection sourceConnection,
     SqlConnection targetConnection,
     Guid runGuid,
     CancellationToken cancellationToken)
     {
+        await SyncMetadataRegistryFromEntityTypesAsync(
+            sourceConnection,
+            targetConnection,
+            runGuid,
+            cancellationToken);
+
         var registryRows = await ReadMetadataRegistryAsync(
             targetConnection,
             null,
@@ -1042,6 +1541,229 @@ ORDER BY r.ID DESC;", cn)
         }
     }
 
+    private sealed class MetadataRegistryCandidate
+    {
+        public string SchemaName { get; init; } = string.Empty;
+        public string TableName { get; init; } = string.Empty;
+    }
+
+    private static async Task SyncMetadataRegistryFromEntityTypesAsync(
+        SqlConnection sourceConnection,
+        SqlConnection targetConnection,
+        Guid runGuid,
+        CancellationToken cancellationToken)
+    {
+        var sourceCandidates = await ReadMetadataRegistryCandidatesAsync(sourceConnection, cancellationToken);
+        var targetCandidates = await ReadMetadataRegistryCandidatesAsync(targetConnection, cancellationToken);
+
+        var candidates = sourceCandidates
+            .Concat(targetCandidates)
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.SchemaName) && !string.IsNullOrWhiteSpace(candidate.TableName))
+            .GroupBy(candidate => $"{candidate.SchemaName}.{candidate.TableName}", StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(candidate => candidate.SchemaName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(candidate => candidate.TableName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        await using var txBase = await targetConnection.BeginTransactionAsync(cancellationToken);
+        var tx = (SqlTransaction)txBase;
+
+        var syncedCount = 0;
+        var skippedCount = 0;
+
+        try
+        {
+            foreach (var candidate in candidates)
+            {
+                if (!IsSafeSqlIdentifier(candidate.SchemaName) || !IsSafeSqlIdentifier(candidate.TableName))
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                await UpsertMetadataRegistryCandidateAsync(targetConnection, tx, candidate, cancellationToken);
+                syncedCount++;
+            }
+
+            await AddExecutionLogAsync(
+                targetConnection,
+                tx,
+                runGuid,
+                "RegistrySync",
+                "Succeeded",
+                $"Metadata registry synced from IsMetaData EntityTypes. Synced: {syncedCount}; skipped unsafe: {skippedCount}.",
+                JsonSerializer.Serialize(new { syncedCount, skippedCount }),
+                cancellationToken);
+
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    private static async Task<List<MetadataRegistryCandidate>> ReadMetadataRegistryCandidatesAsync(
+        SqlConnection cn,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<MetadataRegistryCandidate>();
+
+        await using var cmd = new SqlCommand(@"
+SELECT DISTINCT
+    CONVERT(NVARCHAR(128), eh.SchemaName) AS SchemaName,
+    CONVERT(NVARCHAR(128), eh.ObjectName) AS TableName
+FROM SCore.EntityTypes AS et
+INNER JOIN SCore.EntityHobts AS eh
+    ON eh.EntityTypeID = et.ID
+   AND eh.RowStatus NOT IN (0,254)
+WHERE et.RowStatus NOT IN (0,254)
+  AND ISNULL(et.IsMetaData, 0) = 1
+  AND ISNULL(eh.IsMainHoBT, 0) = 1
+  AND NULLIF(eh.SchemaName, N'') IS NOT NULL
+  AND NULLIF(eh.ObjectName, N'') IS NOT NULL
+ORDER BY
+    SchemaName,
+    TableName;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new MetadataRegistryCandidate
+            {
+                SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                TableName = Convert.ToString(reader["TableName"]) ?? string.Empty
+            });
+        }
+
+        return rows;
+    }
+
+    private static async Task UpsertMetadataRegistryCandidateAsync(
+        SqlConnection cn,
+        SqlTransaction tx,
+        MetadataRegistryCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        var registryGuid = CreateStableMetadataRegistryGuid(candidate.SchemaName, candidate.TableName);
+        var applyOrder = GetStableMetadataRegistryApplyOrder(candidate.SchemaName, candidate.TableName);
+
+        await using var cmd = new SqlCommand(@"
+DECLARE @EffectiveGuid UNIQUEIDENTIFIER = NULL;
+
+SELECT TOP (1)
+    @EffectiveGuid = tr.Guid
+FROM SMigration.Metadata_TableRegistry AS tr
+WHERE tr.SchemaName = @SchemaName
+  AND tr.TableName = @TableName
+ORDER BY
+    CASE WHEN tr.RowStatus NOT IN (0,254) THEN 0 ELSE 1 END,
+    tr.ID DESC;
+
+IF @EffectiveGuid IS NULL
+BEGIN
+    SET @EffectiveGuid = @RegistryGuid;
+
+    EXEC SMigration.MetadataDataObject_Ensure
+        @Guid = @EffectiveGuid,
+        @SchemeName = N'SMigration',
+        @ObjectName = N'Metadata_TableRegistry';
+
+    INSERT INTO SMigration.Metadata_TableRegistry
+    (
+        Guid,
+        RowStatus,
+        SchemaName,
+        TableName,
+        GuidColumnName,
+        PrimaryKeyColumnName,
+        ApplyOrder,
+        IsEnabled,
+        IsDataObjectBacked,
+        IsRetirable,
+        IsEnvironmentSpecific,
+        NaturalKeyJson,
+        ParentDependencyJson,
+        CreatedOnUtc
+    )
+    SELECT
+        @EffectiveGuid,
+        1,
+        @SchemaName,
+        @TableName,
+        N'Guid',
+        N'ID',
+        @ApplyOrder,
+        1,
+        1,
+        1,
+        0,
+        N'[]',
+        N'[]',
+        SYSUTCDATETIME()
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_TableRegistry AS tr
+        WHERE tr.SchemaName = @SchemaName
+          AND tr.TableName = @TableName
+    );
+END
+ELSE
+BEGIN
+    EXEC SMigration.MetadataDataObject_Ensure
+        @Guid = @EffectiveGuid,
+        @SchemeName = N'SMigration',
+        @ObjectName = N'Metadata_TableRegistry';
+
+    UPDATE SMigration.Metadata_TableRegistry
+    SET
+        RowStatus = 1,
+        IsEnabled = 1,
+        GuidColumnName = CASE WHEN NULLIF(GuidColumnName, N'') IS NULL THEN N'Guid' ELSE GuidColumnName END,
+        PrimaryKeyColumnName = CASE WHEN NULLIF(PrimaryKeyColumnName, N'') IS NULL THEN N'ID' ELSE PrimaryKeyColumnName END
+    WHERE Guid = @EffectiveGuid;
+END;", cn, tx)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RegistryGuid", SqlDbType.UniqueIdentifier) { Value = registryGuid });
+        cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = candidate.SchemaName });
+        cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = candidate.TableName });
+        cmd.Parameters.Add(new SqlParameter("@ApplyOrder", SqlDbType.Int) { Value = applyOrder });
+
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static Guid CreateStableMetadataRegistryGuid(string schemaName, string tableName)
+    {
+        using var sha256 = SHA256.Create();
+        var input = Encoding.UTF8.GetBytes($"SMigration.Metadata_TableRegistry|{schemaName}.{tableName}".ToUpperInvariant());
+        var hash = sha256.ComputeHash(input);
+        var guidBytes = hash.Take(16).ToArray();
+        return new Guid(guidBytes);
+    }
+
+    private static int GetStableMetadataRegistryApplyOrder(string schemaName, string tableName)
+    {
+        using var sha256 = SHA256.Create();
+        var input = Encoding.UTF8.GetBytes($"SMigration.Metadata_TableRegistry.ApplyOrder|{schemaName}.{tableName}".ToUpperInvariant());
+        var hash = sha256.ComputeHash(input);
+        var positiveValue = BitConverter.ToInt32(hash, 0) & int.MaxValue;
+        return 10000 + (positiveValue % 500000);
+    }
     private static async Task<List<MetadataRegistryRow>> ReadMetadataRegistryAsync(
         SqlConnection cn,
         SqlTransaction? tx,
@@ -1789,16 +2511,248 @@ ORDER BY vi.Severity DESC, tr.SchemaName, tr.TableName, vi.IssueCode;";
         return response;
     }
 
+    private sealed class IdentityMapSourceContext
+    {
+        public MetadataRegistryRow Registry { get; init; } = new();
+        public string SourcePayloadJson { get; init; } = "{}";
+    }
+
+    private static async Task<IdentityMapSourceContext> ReadIdentityMapSourceContextAsync(
+        SqlConnection cn,
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        Guid sourceRowGuid,
+        CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand(@"
+SELECT TOP (1)
+    tr.Guid AS RegistryGuid,
+    tr.SchemaName,
+    tr.TableName,
+    tr.GuidColumnName,
+    tr.PrimaryKeyColumnName,
+    ISNULL(sr.SourcePayloadJson, N'{}') AS SourcePayloadJson
+FROM SMigration.Metadata_StagedRows AS sr
+INNER JOIN SMigration.Metadata_TableRegistry AS tr
+    ON tr.Guid = sr.RegistryGuid
+   AND tr.RowStatus NOT IN (0,254)
+WHERE sr.RunGuid = @RunGuid
+  AND sr.RowStatus NOT IN (0,254)
+  AND tr.SchemaName = @SchemaName
+  AND tr.TableName = @TableName
+  AND sr.SourceRowGuid = @SourceRowGuid;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = schemaName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = tableName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@SourceRowGuid", SqlDbType.UniqueIdentifier) { Value = sourceRowGuid });
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            throw new RpcException(new Status(StatusCode.NotFound, "Metadata identity map source row was not found for candidate search."));
+        }
+
+        return new IdentityMapSourceContext
+        {
+            Registry = new MetadataRegistryRow
+            {
+                RegistryGuid = (Guid)reader["RegistryGuid"],
+                SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
+                GuidColumnName = Convert.ToString(reader["GuidColumnName"]) ?? string.Empty,
+                PrimaryKeyColumnName = Convert.ToString(reader["PrimaryKeyColumnName"]) ?? string.Empty
+            },
+            SourcePayloadJson = Convert.ToString(reader["SourcePayloadJson"]) ?? "{}"
+        };
+    }
+
+    private static string GetMetadataDisplayValue(Dictionary<string, string> values, string fallback)
+    {
+        foreach (var key in new[] { "Name", "FullName", "Code", "Description", "Title", "SystemName" })
+        {
+            if (values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return fallback;
+    }
+
+    private static int ScoreIdentityMapCandidate(
+        Dictionary<string, string> sourceValues,
+        Dictionary<string, string> targetValues,
+        string searchText,
+        out string reason)
+    {
+        reason = string.Empty;
+        var keys = new[] { "Name", "FullName", "Code", "Description", "Title", "SystemName" };
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            foreach (var key in keys)
+            {
+                if (targetValues.TryGetValue(key, out var targetValue) &&
+                    targetValue.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    reason = $"Search match on {key}";
+                    return 90;
+                }
+            }
+
+            if (targetValues.Values.Any(value => value.Contains(searchText, StringComparison.OrdinalIgnoreCase)))
+            {
+                reason = "Search match in target payload";
+                return 50;
+            }
+
+            return 0;
+        }
+
+        foreach (var key in keys)
+        {
+            if (sourceValues.TryGetValue(key, out var sourceValue) &&
+                targetValues.TryGetValue(key, out var targetValue) &&
+                !string.IsNullOrWhiteSpace(sourceValue) &&
+                sourceValue.Equals(targetValue, StringComparison.OrdinalIgnoreCase))
+            {
+                reason = $"Exact {key} match";
+                return key.Equals("Code", StringComparison.OrdinalIgnoreCase) ? 100 : 95;
+            }
+        }
+
+        var sourceDisplay = GetMetadataDisplayValue(sourceValues, string.Empty);
+        if (!string.IsNullOrWhiteSpace(sourceDisplay))
+        {
+            foreach (var key in keys)
+            {
+                if (targetValues.TryGetValue(key, out var targetValue) &&
+                    !string.IsNullOrWhiteSpace(targetValue) &&
+                    (targetValue.Contains(sourceDisplay, StringComparison.OrdinalIgnoreCase) ||
+                     sourceDisplay.Contains(targetValue, StringComparison.OrdinalIgnoreCase)))
+                {
+                    reason = $"Similar {key} value";
+                    return 40;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    private static async Task<MetadataMigrationIdentityMapDetailsResponse> ReadIdentityMapDetailsAsync(
+        SqlConnection cn,
+        Guid runGuid,
+        string schemaName,
+        string tableName,
+        bool includeIgnored,
+        CancellationToken cancellationToken)
+    {
+        var response = new MetadataMigrationIdentityMapDetailsResponse();
+
+        await using var cmd = new SqlCommand("SMigration.MetadataIdentityMapDetails_List", cn)
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = schemaName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@TableName", SqlDbType.NVarChar, 128) { Value = tableName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@IncludeIgnored", SqlDbType.Bit) { Value = includeIgnored });
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var row = new MetadataMigrationIdentityMapDetailRow
+            {
+                SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
+                TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
+                SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
+                SourceRowId = reader["SourceRowId"] == DBNull.Value ? 0 : Convert.ToInt64(reader["SourceRowId"]),
+                TargetRowId = reader["TargetRowId"] == DBNull.Value ? 0 : Convert.ToInt64(reader["TargetRowId"]),
+                DifferenceType = Convert.ToString(reader["DifferenceType"]) ?? string.Empty,
+                SourceDisplayName = Convert.ToString(reader["SourceDisplayName"]) ?? string.Empty,
+                IssueCode = Convert.ToString(reader["IssueCode"]) ?? string.Empty,
+                IssueStatus = Convert.ToString(reader["IssueStatus"]) ?? string.Empty,
+                Reason = Convert.ToString(reader["Reason"]) ?? string.Empty,
+                SuggestedAction = Convert.ToString(reader["SuggestedAction"]) ?? string.Empty,
+                IsResolved = reader["IsResolved"] != DBNull.Value && Convert.ToBoolean(reader["IsResolved"]),
+                IsIgnoredIssue = reader["IsIgnoredIssue"] != DBNull.Value && Convert.ToBoolean(reader["IsIgnoredIssue"]),
+                IgnoreReason = Convert.ToString(reader["IgnoreReason"]) ?? string.Empty,
+                IgnoredOnUtc = Convert.ToString(reader["IgnoredOnUtc"]) ?? string.Empty,
+                SourcePayloadJson = Convert.ToString(reader["SourcePayloadJson"]) ?? string.Empty,
+                HasOverride = reader["HasOverride"] != DBNull.Value && Convert.ToBoolean(reader["HasOverride"]),
+                OverrideTargetRowGuid = Convert.ToString(reader["OverrideTargetRowGuid"]) ?? string.Empty,
+                OverrideTargetDisplayName = Convert.ToString(reader["OverrideTargetDisplayName"]) ?? string.Empty,
+                OverrideReason = Convert.ToString(reader["OverrideReason"]) ?? string.Empty
+            };
+
+            if (row.IsResolved)
+            {
+                response.ResolvedCount++;
+            }
+            else if (row.IsIgnoredIssue)
+            {
+                response.IgnoredCount++;
+            }
+            else
+            {
+                response.UnresolvedCount++;
+            }
+
+            response.Rows.Add(row);
+        }
+
+        return response;
+    }
+
     private static async Task<RepeatedField<MetadataMigrationIdentityMapRow>> ReadIdentityMapAsync(SqlConnection cn, Guid runGuid, CancellationToken cancellationToken)
     {
         var rows = new RepeatedField<MetadataMigrationIdentityMapRow>();
         await using var cmd = new SqlCommand(@"
+DECLARE @TargetDatabaseName SYSNAME;
+
+SELECT
+    @TargetDatabaseName = r.TargetDatabaseName
+FROM SMigration.Metadata_Run AS r
+WHERE r.Guid = @RunGuid
+  AND r.RowStatus NOT IN (0,254);
+
 SELECT
     maprow.SchemaName,
     maprow.TableName,
     COUNT_BIG(1) AS MapRows,
-    SUM(CASE WHEN maprow.TargetRowId IS NULL THEN 1 ELSE 0 END) AS MissingTargetRows
+    SUM(CASE
+        WHEN maprow.TargetRowId IS NULL
+         AND ISNULL(sr.DifferenceType, N'') <> N'Insert'
+         AND ign.ID IS NULL
+         AND ov.ID IS NULL THEN 1
+        ELSE 0
+    END) AS MissingTargetRows
 FROM SMigration.Metadata_ApplyIdentityMap AS maprow
+LEFT JOIN SMigration.Metadata_StagedRows AS sr
+    ON sr.RunGuid = maprow.RunGuid
+   AND sr.RegistryGuid = maprow.RegistryGuid
+   AND sr.SourceRowGuid = maprow.SourceRowGuid
+   AND sr.RowStatus NOT IN (0,254)
+LEFT JOIN SMigration.Metadata_IdentityMapIgnoredIssues AS ign
+    ON ign.DatabaseName = @TargetDatabaseName
+   AND ign.RegistryGuid = maprow.RegistryGuid
+   AND ign.SourceRowGuid = maprow.SourceRowGuid
+   AND ign.IssueCode = N'TargetMissing'
+   AND ign.RowStatus NOT IN (0,254)
+LEFT JOIN SMigration.Metadata_IdentityMapOverrides AS ov
+    ON ov.DatabaseName = @TargetDatabaseName
+   AND ov.RegistryGuid = maprow.RegistryGuid
+   AND ov.SourceRowGuid = maprow.SourceRowGuid
+   AND ov.RowStatus NOT IN (0,254)
 WHERE maprow.RunGuid = @RunGuid
   AND maprow.RowStatus NOT IN (0,254)
 GROUP BY maprow.SchemaName, maprow.TableName
@@ -1899,3 +2853,4 @@ ORDER BY el.ID;", cn)
         }
     }
 }
+

@@ -1,15 +1,12 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SSop].[CriticalProjectNotesUpsert]')
-GO
-
 CREATE PROCEDURE [SSop].[CriticalProjectNotesUpsert]
 	(
 		@Guid						UNIQUEIDENTIFIER,
 		@Note						NVARCHAR(MAX),
 		@CreatedByGuid				UNIQUEIDENTIFIER,
-		@ParentGuid					INT
+		@ParentGuid					UNIQUEIDENTIFIER
 	)
 AS
 	BEGIN
@@ -32,37 +29,37 @@ AS
 		WHERE Guid = @CreatedByGuid
 
 		
-		----Get the entity type.
-		--SELECT @ParentEntityTypeId = EntityTypeId
-		--FROM SCore.DataObjects
-		--WHERE Guid = @ParentGuid
+		--Get the entity type.
+		SELECT @ParentEntityTypeId = EntityTypeId
+		FROM SCore.DataObjects
+		WHERE Guid = @ParentGuid
 
-		----Enquiry
-		--IF(@ParentEntityTypeId = @EnquiryEntityType)
-		--	BEGIN
+		--Enquiry
+		IF(@ParentEntityTypeId = @EnquiryEntityType)
+			BEGIN
 
-		--		SELECT @ProjectId = root_hobt.ProjectId
-		--		FROM SSop.Enquiries root_hobt
-		--		WHERE root_hobt.Guid = @ParentGuid;
+				SELECT @ProjectId = root_hobt.ProjectId
+				FROM SSop.Enquiries root_hobt
+				WHERE root_hobt.Guid = @ParentGuid;
 
-		--	END;
-		----Quote
-		--ELSE IF(@ParentEntityTypeId = @QuoteEntityType)
-		--	BEGIN
+			END;
+		--Quote
+		ELSE IF(@ParentEntityTypeId = @QuoteEntityType)
+			BEGIN
 
-		--		SELECT @ProjectId = root_hobt.ProjectId
-		--		FROM SSop.Quotes root_hobt
-		--		WHERE root_hobt.Guid = @ParentGuid;
+				SELECT @ProjectId = root_hobt.ProjectId
+				FROM SSop.Quotes root_hobt
+				WHERE root_hobt.Guid = @ParentGuid;
 
-		--	END;
-		----Job
-		--ELSE IF(@ParentEntityTypeId = @JobEntityType)
-		--	BEGIN
+			END;
+		--Job
+		ELSE IF(@ParentEntityTypeId = @JobEntityType)
+			BEGIN
 
-		--		SELECT @ProjectId = root_hobt.ProjectId
-		--		FROM SJob.Jobs root_hobt
-		--		WHERE root_hobt.Guid = @ParentGuid;
-		--	END;
+				SELECT @ProjectId = root_hobt.ProjectId
+				FROM SJob.Jobs root_hobt
+				WHERE root_hobt.Guid = @ParentGuid;
+			END;
 
 
 
@@ -83,14 +80,18 @@ AS
 							RowStatus,
 							Guid,
 							Note,
-							CreatedBy
+							CreatedBy,
+							ParentGuid,
+							ProjectId
 						)
 				VALUES
 						(
 							1,	-- RowStatus - tinyint
 							@Guid,	-- Guid - uniqueidentifier
 							@Note,
-							@CreatedById
+							@CreatedById,
+							@ParentGuid,
+							@ProjectId
 						)
 			END
 		ELSE

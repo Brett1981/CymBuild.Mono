@@ -58,6 +58,64 @@ public sealed class MetadataMigrationIdentityMapModel
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
 }
 
+public sealed class MetadataMigrationIdentityMapDetailModel
+{
+    public string SchemaName { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public Guid SourceRowGuid { get; set; }
+    public long SourceRowId { get; set; }
+    public long TargetRowId { get; set; }
+    public string DifferenceType { get; set; } = string.Empty;
+    public string SourceDisplayName { get; set; } = string.Empty;
+    public string IssueCode { get; set; } = string.Empty;
+    public string IssueStatus { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string SuggestedAction { get; set; } = string.Empty;
+    public bool IsResolved { get; set; }
+    public bool IsIgnoredIssue { get; set; }
+    public string IgnoreReason { get; set; } = string.Empty;
+    public string IgnoredOnUtcText { get; set; } = string.Empty;
+    public string SourcePayloadJson { get; set; } = string.Empty;
+    public bool HasOverride { get; set; }
+    public Guid OverrideTargetRowGuid { get; set; }
+    public string OverrideTargetDisplayName { get; set; } = string.Empty;
+    public string OverrideReason { get; set; } = string.Empty;
+    public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
+    public bool NeedsReview => !IsResolved && !IsIgnoredIssue && !HasOverride;
+}
+
+public sealed class MetadataMigrationIdentityMapCandidateModel
+{
+    public Guid TargetRowGuid { get; set; }
+    public long TargetRowId { get; set; }
+    public string TargetDisplayName { get; set; } = string.Empty;
+    public string MatchReason { get; set; } = string.Empty;
+    public int MatchScore { get; set; }
+    public string TargetPayloadJson { get; set; } = string.Empty;
+}
+
+public sealed class MetadataMigrationIdentityMapCandidatesResultModel
+{
+    public string SourceDisplayName { get; set; } = string.Empty;
+    public string SourcePayloadJson { get; set; } = string.Empty;
+    public List<MetadataMigrationIdentityMapCandidateModel> Rows { get; set; } = new();
+}
+
+public sealed class MetadataMigrationIdentityMapDetailsResultModel
+{
+    public List<MetadataMigrationIdentityMapDetailModel> Rows { get; set; } = new();
+    public int UnresolvedCount { get; set; }
+    public int IgnoredCount { get; set; }
+    public int ResolvedCount { get; set; }
+}
+
+public sealed class MetadataMigrationIdentityMapIssueResultModel
+{
+    public int UnresolvedCount { get; set; }
+    public int IgnoredCount { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
 public sealed class MetadataMigrationExecutionLogItemModel
 {
     public string StepName { get; set; } = string.Empty;
@@ -137,6 +195,69 @@ public sealed class MetadataMigrationIgnoredRecordModel
     public int RowStatus { get; set; }
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
     public bool IsActive => RowStatus != 0 && RowStatus != 254;
+}
+
+
+public sealed class MetadataMigrationEntityTypeScopeRowModel
+{
+    public Guid EntityTypeGuid { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int RowStatus { get; set; }
+    public bool IsMetaData { get; set; }
+    public bool HasDocuments { get; set; }
+    public bool IsRootEntity { get; set; }
+    public bool IsDeletable { get; set; }
+    public bool HasMainHoBT { get; set; }
+    public string MainHoBTSchemaName { get; set; } = string.Empty;
+    public string MainHoBTObjectName { get; set; } = string.Empty;
+
+    public string MainHoBTDisplayName => HasMainHoBT
+        ? $"{MainHoBTSchemaName}.{MainHoBTObjectName}"
+        : "-";
+}
+
+public sealed class MetadataMigrationEntityTypeScopeUpdateItemModel
+{
+    public Guid EntityTypeGuid { get; set; }
+    public bool IsMetaData { get; set; }
+}
+
+public sealed class MetadataMigrationEntityTypeScopeSaveResultModel
+{
+    public int UpdatedCount { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+
+public sealed class MetadataMigrationApplyPreviewRowModel
+{
+    public string SchemaName { get; set; } = string.Empty;
+    public string TableName { get; set; } = string.Empty;
+    public Guid SourceRowGuid { get; set; }
+    public long SourceRowId { get; set; }
+    public string DifferenceType { get; set; } = string.Empty;
+    public bool IsSelected { get; set; }
+    public bool IsIgnored { get; set; }
+    public bool HasValidationFailure { get; set; }
+    public string ApplyAction { get; set; } = string.Empty;
+    public string SkipReason { get; set; } = string.Empty;
+    public string ChangedColumns { get; set; } = string.Empty;
+    public int RunValidationFailureCount { get; set; }
+
+    public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
+    public bool WillApply => ApplyAction.Equals("Apply", StringComparison.OrdinalIgnoreCase);
+    public bool IsBlocked => ApplyAction.Equals("Blocked", StringComparison.OrdinalIgnoreCase);
+}
+
+public sealed class MetadataMigrationApplyPreviewModel
+{
+    public bool ApplySelectedOnly { get; set; }
+    public int ApplyCount { get; set; }
+    public int SkipCount { get; set; }
+    public int BlockedCount { get; set; }
+    public int IgnoredSkipCount { get; set; }
+    public int RunValidationFailureCount { get; set; }
+    public List<MetadataMigrationApplyPreviewRowModel> Rows { get; set; } = new();
 }
 
 public sealed class MetadataMigrationDashboardModel

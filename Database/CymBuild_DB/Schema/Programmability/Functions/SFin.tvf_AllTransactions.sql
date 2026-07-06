@@ -39,7 +39,10 @@ SELECT  t.ID,
 			ELSE 0
 		END AS HasSageReference,
 		OrgUnit.Name AS Department,
-		OrgUnit2.Name AS OrgUnit
+		OrgUnit2.Name AS OrgUnit,
+		j.Number AS JobNumber,
+		j.JobDescription,
+		Prods.Products
 FROM    SFin.Transactions t
 JOIN	SFin.TransactionCalculations tc ON (tc.ID = t.ID)
 JOIN    SFin.TransactionTypes tt ON (tt.ID = t.TransactionTypeID)
@@ -52,6 +55,21 @@ JOIN SCore.OrganisationalUnits AS OrgUnit2
 	ON OrgUnit.ParentID = OrgUnit2.ID
 LEFT JOIN SFin.TransactionSageSubmissionStatus s ON (s.TransactionGuid = t.Guid)
 CROSS APPLY SFin.tvf_OverdueInvoicesForJob(j.Guid) o
+OUTER APPLY
+	(
+		SELECT STRING_AGG(d.Code, ',') AS Products
+		FROM
+		(
+			SELECT DISTINCT p.Code
+			FROM SSop.QuoteItems qi
+			JOIN SJob.Jobs jobs
+				ON jobs.ID = qi.CreatedJobId
+			LEFT JOIN SProd.Products p
+				ON p.ID = qi.ProductId
+			WHERE qi.RowStatus NOT IN (0,254)
+			  AND jobs.Guid = j.Guid
+		) AS d
+	) AS Prods
 OUTER APPLY (
     SELECT
         -- DueDate rule: ExpectedDate else InvoiceDate + CreditTerms.DueDays + 30 days (USE DATEADD/
@@ -97,4 +115,62 @@ WHERE   (t.RowStatus  NOT IN (0, 254))
 			SCore.ObjectSecurityForUser_CanRead(a.Guid, @UserId) oscr
 			)
 		)
+
+UNION ALL
+
+
+SELECT 
+		root_hobt.ID,
+        root_hobt.RowStatus,
+        root_hobt.RowVersion,
+        root_hobt.Guid,
+        root_hobt.InvoiceNumber,
+		root_hobt.InvoiceDate,
+		a.Name AS Account,
+		N'Subcontractor Invoice' AS TransactionType,
+		root_hobt.ValueWithoutVAT AS Net,
+		root_hobt.ValueWithVAT AS Vat,
+		root_hobt.ValueWithVAT AS Gross,
+		0 AS Outstanding,
+		N'' AS SageTransactionReference,
+		N'' AS PurchaseOrderNumber,
+		Surveyor.FullName AS Surveyor,
+		0 AS Batched,
+		N'' AS IsOverdue,
+		N'' AS SageStatusCode,
+		N'' AS HasSageReference,
+		OrgUnit.Name AS Department,
+		OrgUnit2.Name AS OrgUnit,
+		j.Number,
+		j.JobDescription,
+		Prods.Products
+FROM SJob.SubContractorInvoices root_hobt
+JOIN SJob.Jobs j ON (root_hobt.JobId = j.ID)
+JOIN SCore.Identities Surveyor ON (j.SurveyorID = Surveyor.ID)
+JOIN SCore.OrganisationalUnits AS OrgUnit
+    ON OrgUnit.ID = j.OrganisationalUnitID
+JOIN SCore.OrganisationalUnits AS OrgUnit2
+	ON OrgUnit.ParentID = OrgUnit2.ID
+JOIN SCrm.Accounts AS a  ON (a.ID = root_hobt.SubContractorId)
+OUTER APPLY
+	(
+		SELECT STRING_AGG(d.Code, ',') AS Products
+		FROM
+		(
+			SELECT DISTINCT p.Code
+			FROM SSop.QuoteItems qi
+			JOIN SJob.Jobs jobs
+				ON jobs.ID = qi.CreatedJobId
+			LEFT JOIN SProd.Products p
+				ON p.ID = qi.ProductId
+			WHERE qi.RowStatus NOT IN (0,254)
+			  AND jobs.Guid = j.Guid
+		) AS d
+	) AS Prods
+WHERE 
+		(root_hobt.RowStatus NOT IN (0,254))
+	AND (root_hobt.ID > 0)
+	AND (root_hobt.InvoiceDate IS NOT NULL)
+
+
 GO

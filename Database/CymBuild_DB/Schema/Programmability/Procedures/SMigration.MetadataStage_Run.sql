@@ -1,11 +1,11 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
 PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
 GO
 
 
-CREATE PROCEDURE [SMigration].[MetadataStage_Run]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataStage_Run]
 (
     @RunGuid UNIQUEIDENTIFIER
 )
@@ -42,6 +42,10 @@ BEGIN
         ;THROW 51000, 'Metadata run was not found or is inactive.', 1;
     END;
 
+    EXEC SMigration.MetadataRegistry_SyncFromEntityTypes
+        @SourceDatabaseName = @SourceDatabaseName,
+        @TargetDatabaseName = @TargetDatabaseName;
+
     IF NOT EXISTS
     (
         SELECT 1
@@ -64,7 +68,8 @@ BEGIN
       (
           N'DuplicateSourceGuid',
           N'RegisteredGuidColumnMissing',
-          N'RegisteredTableMissing'
+          N'RegisteredTableMissing',
+          N'RegisteredSourceTableMissing'
       );
 
     DECLARE registry_cursor CURSOR LOCAL FAST_FORWARD FOR
@@ -117,6 +122,39 @@ BEGIN
                 N'Fail',
                 N'RegisteredTableMissing',
                 CONCAT(N'Registered metadata table does not exist in target: ', @SchemaName, N'.', @TableName),
+                CONCAT(N'{"SchemaName":"', @SchemaName, N'","TableName":"', @TableName, N'"}'),
+                SYSUTCDATETIME();
+
+            FETCH NEXT FROM registry_cursor
+            INTO @RegistryGuid, @SchemaName, @TableName, @GuidColumnName, @PrimaryKeyColumnName;
+
+            CONTINUE;
+        END;
+
+        IF OBJECT_ID(QUOTENAME(@SourceDatabaseName) + N'.' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TableName), N'U') IS NULL
+        BEGIN
+            INSERT INTO SMigration.Metadata_ValidationIssues
+            (
+                Guid,
+                RowStatus,
+                RunGuid,
+                RegistryGuid,
+                SourceRowGuid,
+                Severity,
+                IssueCode,
+                IssueMessage,
+                DetailsJson,
+                CreatedOnUtc
+            )
+            SELECT
+                NEWID(),
+                1,
+                @RunGuid,
+                @RegistryGuid,
+                NULL,
+                N'Fail',
+                N'RegisteredSourceTableMissing',
+                CONCAT(N'Registered metadata table does not exist in source: ', @SchemaName, N'.', @TableName),
                 CONCAT(N'{"SchemaName":"', @SchemaName, N'","TableName":"', @TableName, N'"}'),
                 SYSUTCDATETIME();
 
