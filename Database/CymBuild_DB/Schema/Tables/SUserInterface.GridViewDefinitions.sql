@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[GridViewDefinitions]')
 GO
+PRINT (N'Create table [SUserInterface].[GridViewDefinitions]')
+GO
 CREATE TABLE [SUserInterface].[GridViewDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_GridViewDefinition_RowStatus] DEFAULT (0),

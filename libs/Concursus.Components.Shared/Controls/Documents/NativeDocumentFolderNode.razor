@@ -1,0 +1,37 @@
+﻿<div class="native-doc-tree-node" role="treeitem" aria-expanded="@(Node.HasChildren ? Node.IsExpanded : null)">
+    <div class="native-doc-tree-row">
+        @if (Node.HasChildren)
+        {
+            <button type="button" class="native-doc-tree-toggle" aria-label="@(Node.IsExpanded ? $"Collapse {Node.Name}" : $"Expand {Node.Name}")" @onclick="@(() => OnToggle.InvokeAsync(Node))">
+                @(Node.IsExpanded ? "▾" : "▸")
+            </button>
+        }
+        else
+        {
+            <span class="native-doc-tree-toggle-placeholder"></span>
+        }
+
+        <button type="button" class="@GetNodeCss()" style="border: 0 !important; box-shadow: none !important;" @onclick="@(() => OnSelect.InvokeAsync(Node))">
+            <span aria-hidden="true">📁</span> @Node.Name
+        </button>
+    </div>
+
+    @if (Node.IsExpanded && Node.Children.Count > 0)
+    {
+        <div class="native-doc-tree-children" role="group">
+            @foreach (var child in Node.Children)
+            {
+                <NativeDocumentFolderNode Node="child" CurrentFolderId="@CurrentFolderId" OnToggle="OnToggle" OnSelect="OnSelect" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RecordDocumentBrowser.FolderTreeNode Node { get; set; } = default!;
+    [Parameter] public string? CurrentFolderId { get; set; }
+    [Parameter] public EventCallback<RecordDocumentBrowser.FolderTreeNode> OnToggle { get; set; }
+    [Parameter] public EventCallback<RecordDocumentBrowser.FolderTreeNode> OnSelect { get; set; }
+
+    private string GetNodeCss() => $"native-doc-tree-select {(Node.Id == CurrentFolderId ? "active" : string.Empty)}";
+}

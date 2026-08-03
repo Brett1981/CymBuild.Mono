@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SFin].[InvoiceRequestCreateInvoice]')
 GO
+PRINT (N'Create procedure [SFin].[InvoiceRequestCreateInvoice]')
+GO
 
 
 

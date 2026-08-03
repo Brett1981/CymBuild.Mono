@@ -1,7 +1,6 @@
 using Concursus.API.Client;
 using Concursus.API.Core;
 using Concursus.PWA.Classes;
-using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using System.Dynamic;
 
@@ -403,6 +402,9 @@ namespace Concursus.PWA.Shared
 
                     if (!resp.Success)
                     {
+                        //Format the
+                        resp.Message = FormatErrorMessage(resp.Message);
+
                         Toast.ShowError(resp.Message);
                         return;
                     }
@@ -431,6 +433,31 @@ namespace Concursus.PWA.Shared
                 _closureBusy = false;
                 await InvokeAsync(StateHasChanged);
             }
+        }
+
+
+        /// <summary>
+        /// Formats exception messages before they are displayed to the user.
+        /// Replaces known database or system error messages with
+        /// user-friendly text where appropriate.
+        /// </summary>
+        /// <param name="msg">The original error message.</param>
+        /// <returns>A user-friendly error message.</returns>
+        private string FormatErrorMessage(string msg)
+        {
+            
+            string MsgToReturn = msg;
+
+            if (MsgToReturn.Contains("There were no quotes to create"))
+            {
+                MsgToReturn = "There were no quotes to create.";
+            }
+            else if(MsgToReturn.Contains("Cannot create jobs because the supplied Quote Guid was not found or is inactive."))
+            {
+                MsgToReturn = "Unable to create jobs: Quote GUID not found or inactive.";
+            }
+
+                return MsgToReturn;
         }
 
         private async Task RebindGridSafeAsync()

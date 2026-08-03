@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[FinanceMemo]')
 GO
+PRINT (N'Create table [SFin].[FinanceMemo]')
+GO
 CREATE TABLE [SFin].[FinanceMemo] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_FinanceMemo_RowStatus] DEFAULT (0),

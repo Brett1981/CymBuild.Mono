@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[MergeDocumentItemTypes]')
 GO
+PRINT (N'Create table [SCore].[MergeDocumentItemTypes]')
+GO
 CREATE TABLE [SCore].[MergeDocumentItemTypes] (
   [ID] [smallint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_MergeDocumentItemTypes_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -168,4 +170,26 @@ BEGIN
 		END
 		
 		
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_UQ_MergeDocumentItemsTypes_Name] on table [SCore].[MergeDocumentItemTypes]')
+GO
+
+
+PRINT (N'Create index [IX_UQ_MergeDocumentItemTypes_Guid] on table [SCore].[MergeDocumentItemTypes]')
+GO
+
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_MergeDocumentItemTypes_RecordHistory] on table [SCore].[MergeDocumentItemTypes]')
 GO

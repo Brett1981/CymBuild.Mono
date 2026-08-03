@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[MergeDocumentItemIncludes]')
 GO
+PRINT (N'Create table [SCore].[MergeDocumentItemIncludes]')
+GO
 CREATE TABLE [SCore].[MergeDocumentItemIncludes] (
   [ID] [int] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_MergeDocumentItemIncludes_Guid] DEFAULT (newid()) ROWGUIDCOL,

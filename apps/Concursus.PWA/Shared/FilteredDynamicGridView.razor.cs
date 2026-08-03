@@ -1,4 +1,4 @@
-using Concursus.API.Client;
+﻿using Concursus.API.Client;
 using Concursus.API.Client.Models;
 using Concursus.API.Core;
 using Concursus.Components.Shared.Classes;
@@ -646,6 +646,150 @@ public partial class FilteredDynamicGridView : ComponentBase
     {
         var dictionary = (IDictionary<string, object>)row;
         return dictionary.TryGetValue(columnName, out var value) ? value ?? string.Empty : string.Empty;
+    }
+
+    private sealed class SageStatusPresentation
+    {
+        public string DisplayText { get; init; } = "Unknown";
+        public string CssClass { get; init; } =
+            "cb-sage-status-badge badge rounded-pill m-0 bg-secondary";
+    }
+
+    private bool IsAllTransactionsView =>
+        string.Equals(
+            ViewDefinition?.Code,
+            "ALLTRANSACTIONS",
+            StringComparison.OrdinalIgnoreCase);
+
+    private bool HasVisibleSageStatusColumn =>
+        VisibleGridColumns.Any(
+            column => IsSageStatusColumn(column.Name));
+
+    private static bool IsSageStatusColumn(string columnName)
+    {
+        return string.Equals(
+            columnName,
+            "SageStatusCode",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ShouldRenderSageStatusWithDate(
+        string columnName,
+        ExpandoObject row)
+    {
+        if (!IsAllTransactionsView ||
+            HasVisibleSageStatusColumn ||
+            !string.Equals(
+                columnName,
+                "Date",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var dictionary = (IDictionary<string, object>)row;
+        return dictionary.ContainsKey("SageStatusCode") ||
+               dictionary.ContainsKey("SageTransactionReference");
+    }
+
+    private static SageStatusPresentation GetSageStatusPresentation(
+        ExpandoObject row)
+    {
+        var dictionary = (IDictionary<string, object>)row;
+        var statusCode = GetDictionaryString(
+            dictionary,
+            "SageStatusCode");
+        var sageReference = GetDictionaryString(
+            dictionary,
+            "SageTransactionReference");
+        var hasSageReference =
+            !string.IsNullOrWhiteSpace(sageReference);
+
+        switch (statusCode.ToUpperInvariant())
+        {
+            case "SUCCEEDED":
+                return new SageStatusPresentation
+                {
+                    DisplayText = "Succeeded",
+                    CssClass =
+                        "cb-sage-status-badge badge rounded-pill m-0 bg-success"
+                };
+
+            case "PENDING":
+                return new SageStatusPresentation
+                {
+                    DisplayText = "Pending",
+                    CssClass =
+                        "cb-sage-status-badge badge rounded-pill m-0 bg-primary"
+                };
+
+            case "INPROGRESS":
+                return new SageStatusPresentation
+                {
+                    DisplayText = "In Progress",
+                    CssClass =
+                        "cb-sage-status-badge badge rounded-pill m-0 bg-secondary"
+                };
+
+            case "FAILEDRETRYABLE":
+                // Preserve the existing user-facing wording.
+                return new SageStatusPresentation
+                {
+                    DisplayText = "In Progress",
+                    CssClass =
+                        "cb-sage-status-badge badge rounded-pill m-0 bg-warning"
+                };
+
+            case "LEGACY":
+            case "SENT (LEGACY)":
+                return CreateLegacySageStatus();
+
+            case "NOT SENT":
+                return hasSageReference
+                    ? CreateLegacySageStatus()
+                    : new SageStatusPresentation
+                    {
+                        DisplayText = "Not Sent",
+                        CssClass =
+                            "cb-sage-status-badge badge rounded-pill m-0 bg-info"
+                    };
+
+            case "":
+                // A Sage reference is authoritative legacy evidence even when
+                // an older query does not return SageStatusCode.
+                return hasSageReference
+                    ? CreateLegacySageStatus()
+                    : new SageStatusPresentation();
+
+            default:
+                // Preserve future server values rather than falsely
+                // presenting them as Not Sent.
+                return new SageStatusPresentation
+                {
+                    DisplayText = statusCode,
+                    CssClass =
+                        "cb-sage-status-badge badge rounded-pill m-0 bg-secondary"
+                };
+        }
+    }
+
+    private static SageStatusPresentation CreateLegacySageStatus()
+    {
+        return new SageStatusPresentation
+        {
+            DisplayText = "Sent (Legacy)",
+            CssClass =
+                "cb-sage-status-badge badge rounded-pill m-0 bg-sageLegacyCustom"
+        };
+    }
+
+    private static string GetDictionaryString(
+        IDictionary<string, object> dictionary,
+        string key)
+    {
+        return dictionary.TryGetValue(key, out var value)
+            ? value?.ToString()?.Trim() ?? string.Empty
+            : string.Empty;
     }
 
     private string GetNativeRowCssClass(ExpandoObject rowObject)

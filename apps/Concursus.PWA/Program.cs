@@ -122,7 +122,7 @@ builder.Services.AddMsalAuthentication(options =>
 {
     builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
     options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["ShoreAPI:BaseUrl"] + '/' + builder.Configuration["ShoreAPI:Scopes"]);
-    options.ProviderOptions.LoginMode = "popup"; // or "redirect"
+    options.ProviderOptions.LoginMode = "redirect"; // Reliable full-page re-authentication for the installed PWA.
 });
 
 //// JSInterop for sending tokens to iframe

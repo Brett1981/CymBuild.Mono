@@ -1,4 +1,23 @@
 ﻿@page "/authentication/{action}"
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 
-<RemoteAuthenticatorView Action="@Action" OnLogInSucceeded="OnLogInSucceeded" />
+<RemoteAuthenticatorView Action="@Action"
+                         OnLogInSucceeded="OnLogInSucceeded">
+    <LoggingIn>
+        <div class="container py-4" role="status" aria-live="polite">
+            <h2>Signing in to CymBuild</h2>
+            <p>Please wait while your sign-in is completed.</p>
+        </div>
+    </LoggingIn>
+
+    <CompletingLoggingIn>
+        <div class="container py-4" role="status" aria-live="polite">
+            <h2>Completing sign-in</h2>
+            <p>Please wait while CymBuild restores your session.</p>
+        </div>
+    </CompletingLoggingIn>
+
+    <LogInFailed Context="errorMessage">
+        <AuthenticationFailureRecovery ErrorMessage="@errorMessage" />
+    </LogInFailed>
+</RemoteAuthenticatorView>

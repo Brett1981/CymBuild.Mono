@@ -5,8 +5,13 @@ GO
 
 PRINT (N'Create or alter procedure [SMigration].[MetadataApplyPreview_Get]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyPreview_Get]
+PRINT (N'Create procedure [SMigration].[MetadataApplyPreview_Get]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataApplyPreview_Get]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @ApplySelectedOnly BIT = 0,

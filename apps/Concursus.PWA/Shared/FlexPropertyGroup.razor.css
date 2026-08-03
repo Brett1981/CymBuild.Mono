@@ -618,3 +618,127 @@
 }
 /* END 14S-R23 row single-line no-wrap sizing fix */
 
+/* BEGIN 14T-R2 row group full-width responsive grid */
+/* A Row property group describes field flow, not content-width controls. Keep every row filled by
+   distributing visible fields over equal responsive columns. This restores the balanced Telerik
+   layout while retaining native controls and metadata ownership. These final rules intentionally
+   supersede the earlier 14S content-aware Row sizing experiments. */
+.flexpropertygroup-fields.is-row {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)) !important;
+    align-items: start !important;
+    justify-items: stretch !important;
+    align-content: start !important;
+    gap: 0.85rem 0.75rem !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-compact,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-lookup,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-numeric,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-boolean,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-bulk-edit {
+    display: block !important;
+    grid-column: auto !important;
+    justify-self: stretch !important;
+    align-self: start !important;
+    flex: none !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-multiline {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .developer-inspectable,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .developer-inspectable > :first-child,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .shore-input-field,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) {
+    display: flex !important;
+    /* The controls remain on their primary line; wrapping is required only so a visible
+       invalid-feedback child can occupy its own full-width line underneath. */
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) > .input-group-text {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: clamp(7rem, 28%, 11rem) !important;
+    max-width: 45% !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) > .form-control,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) > .form-select,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) > .combo-wrapper,
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field ::deep .input-group:not(.shore-input-multiline-group) > label.form-control {
+    flex: 1 1 0 !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+@media (max-width: 767.98px) {
+    .flexpropertygroup-fields.is-row {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 0.75rem !important;
+    }
+}
+/* END 14T-R2 row group full-width responsive grid */
+
+/* BEGIN 15C-R1 validation and lookup stacking repair */
+/* A required field needs the full row while its feedback is visible. This prevents the feedback
+   text becoming an accidental third inline control and gives the user a stable correction area. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.invalid-feedback:not(:empty)),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.field-validation-error:not(:empty)),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.validation-message:not(:empty)) {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-validation-visible {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+/* Raise the complete active field and group stacking contexts, not only the menu itself. */
+.flexpropertygroup:has(.shore-lookup.is-open),
+.flexpropertygroup > .card-body:has(.shore-lookup.is-open),
+.flexpropertygroup-field:has(.shore-lookup.is-open),
+.flexpropertygroup-field ::deep .developer-inspectable:has(.shore-lookup.is-open) {
+    position: relative;
+    z-index: 2147481000 !important;
+    overflow: visible !important;
+}
+
+.flexpropertygroup-field ::deep .shore-lookup-menu {
+    z-index: 2147481200 !important;
+}
+/* END 15C-R1 validation and lookup stacking repair */

@@ -5,12 +5,28 @@ PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
 GO
 PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
 GO
+PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
+GO
+PRINT (N'Create function [SFin].[tvf_TransactionSageSubmissionMonitor]')
+GO
+
+/*
+    CYB-445 - Exclude legacy-posted transactions from the automated
+              Sage Posting Status monitor.
+
+    A transaction is treated as legacy-posted when:
+      - it has active manual Sage Export membership; or
+      - it has a non-empty SageTransactionReference.
+
+    Automated Succeeded records remain visible for diagnostics.
+    Non-succeeded legacy-posted records are excluded and cannot be requeued.
+*/
+
 CREATE FUNCTION [SFin].[tvf_TransactionSageSubmissionMonitor]
 (
     @UserID INT
 )
 RETURNS TABLE
-     --WITH SCHEMABINDING
 AS
 RETURN
 (
@@ -25,16 +41,58 @@ RETURN
             io.PublishAttempts,
             io.LastError,
             io.PayloadJson,
-            TransactionGuid = TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transactionGuid')),
-            TransitionGuid  = TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transitionGuid')),
-            rn = ROW_NUMBER() OVER
-                 (
-                     PARTITION BY TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transactionGuid'))
-                     ORDER BY io.ID DESC
-                 )
-        FROM SCore.IntegrationOutbox io
-        WHERE io.RowStatus NOT IN (0, 254)
+            TransactionGuid =
+                TRY_CONVERT
+                (
+                    UNIQUEIDENTIFIER,
+                    JSON_VALUE
+                    (
+                        CASE
+                            WHEN ISJSON(io.PayloadJson) = 1
+                                THEN io.PayloadJson
+                            ELSE N'{}'
+                        END,
+                        '$.transactionGuid'
+                    )
+                ),
+            TransitionGuid =
+                TRY_CONVERT
+                (
+                    UNIQUEIDENTIFIER,
+                    JSON_VALUE
+                    (
+                        CASE
+                            WHEN ISJSON(io.PayloadJson) = 1
+                                THEN io.PayloadJson
+                            ELSE N'{}'
+                        END,
+                        '$.transitionGuid'
+                    )
+                ),
+            rn =
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY
+                        TRY_CONVERT
+                        (
+                            UNIQUEIDENTIFIER,
+                            JSON_VALUE
+                            (
+                                CASE
+                                    WHEN ISJSON(io.PayloadJson) = 1
+                                        THEN io.PayloadJson
+                                    ELSE N'{}'
+                                END,
+                                '$.transactionGuid'
+                            )
+                        )
+                    ORDER BY io.ID DESC
+                )
+        FROM SCore.IntegrationOutbox AS io
+        WHERE io.RowStatus <> 0
+          AND io.RowStatus <> 254
           AND io.EventType = N'TransactionApprovedForSageSubmission'
+          AND ISJSON(io.PayloadJson) = 1
     ),
     LatestAttempt AS
     (
@@ -53,13 +111,51 @@ RETURN
             a.ResponseStatus,
             a.ResponseDetail,
             a.ErrorMessage,
-            rn = ROW_NUMBER() OVER
-                 (
-                     PARTITION BY a.TransactionGuid
-                     ORDER BY a.AttemptedOnUtc DESC, a.ID DESC
-                 )
-        FROM SFin.TransactionSageSubmissionAttempts a
-        WHERE a.RowStatus NOT IN (0, 254)
+            rn =
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY a.TransactionGuid
+                    ORDER BY
+                        a.AttemptedOnUtc DESC,
+                        a.ID DESC
+                )
+        FROM SFin.TransactionSageSubmissionAttempts AS a
+        WHERE a.RowStatus <> 0
+          AND a.RowStatus <> 254
+    ),
+    LegacyPostedTransactions AS
+    (
+        SELECT
+            t.ID AS TransactionID
+        FROM SFin.Transactions AS t
+        WHERE t.RowStatus <> 0
+          AND t.RowStatus <> 254
+          AND
+          (
+              NULLIF
+              (
+                  LTRIM
+                  (
+                      RTRIM
+                      (
+                          ISNULL(t.SageTransactionReference, N'')
+                      )
+                  ),
+                  N''
+              ) IS NOT NULL
+              OR EXISTS
+              (
+                  SELECT 1
+                  FROM SFin.SageExportTransactions AS setr
+                  INNER JOIN SFin.SageExports AS se
+                      ON se.ID = setr.SageExportID
+                     AND se.RowStatus <> 0
+                     AND se.RowStatus <> 254
+                  WHERE setr.TransactionID = t.ID
+                    AND setr.RowStatus <> 0
+                    AND setr.RowStatus <> 254
+              )
+          )
     )
     SELECT
         ID = ISNULL(s.ID, -1),
@@ -85,7 +181,8 @@ RETURN
         LatestAttemptedOnUtc = la.AttemptedOnUtc,
         LatestAttemptCompletedOnUtc = la.CompletedOnUtc,
         LatestAttemptIsSuccess = ISNULL(la.IsSuccess, 0),
-        LatestAttemptIsRetryableFailure = ISNULL(la.IsRetryableFailure, 0),
+        LatestAttemptIsRetryableFailure =
+            ISNULL(la.IsRetryableFailure, 0),
         LatestResponseStatus = ISNULL(la.ResponseStatus, N''),
         LatestResponseDetail = ISNULL(la.ResponseDetail, N''),
         LatestAttemptErrorMessage = ISNULL(la.ErrorMessage, N''),
@@ -96,42 +193,72 @@ RETURN
         OutboxPublishedOnUtc = lo.PublishedOnUtc,
         OutboxPublishAttempts = ISNULL(lo.PublishAttempts, 0),
         LatestOutboxError = ISNULL(lo.LastError, N''),
-		org.Name AS Department,
-		org2.Name AS BusinessUnit,
+
+        Department = ISNULL(org.Name, N''),
+        BusinessUnit = ISNULL(org2.Name, N''),
 
         CanRequeue =
-            CAST(
+            CAST
+            (
                 CASE
-                    WHEN ISNULL(s.StatusCode, N'Pending') = N'Succeeded' THEN 0
-                    WHEN ISNULL(s.LastErrorIsRetryable, 0) = 1 THEN 1
-                    WHEN ISNULL(s.StatusCode, N'Pending') IN (N'Pending', N'InProgress', N'FailedRetryable') THEN 1
+                    WHEN ISNULL(s.StatusCode, N'Pending') = N'Succeeded'
+                        THEN 0
+                    WHEN ISNULL(s.LastErrorIsRetryable, 0) = 1
+                        THEN 1
+                    WHEN ISNULL(s.StatusCode, N'Pending') IN
+                         (
+                             N'Pending',
+                             N'InProgress',
+                             N'FailedRetryable'
+                         )
+                        THEN 1
                     ELSE 0
                 END
-            AS bit),
+                AS bit
+            ),
 
         DataObjectGuid = t.Guid
-    FROM SFin.Transactions t
-    LEFT JOIN SFin.TransactionSageSubmissionStatus s
+    FROM SFin.Transactions AS t
+    LEFT JOIN SFin.TransactionSageSubmissionStatus AS s
         ON s.TransactionGuid = t.Guid
-       AND s.RowStatus NOT IN (0, 254)
-    LEFT JOIN LatestOutbox lo
+       AND s.RowStatus <> 0
+       AND s.RowStatus <> 254
+    LEFT JOIN LatestOutbox AS lo
         ON lo.TransactionGuid = t.Guid
        AND lo.rn = 1
-    LEFT JOIN LatestAttempt la
+    LEFT JOIN LatestAttempt AS la
         ON la.TransactionGuid = t.Guid
        AND la.rn = 1
-	LEFT JOIN SCore.OrganisationalUnits AS org ON (t.OrganisationalUnitId = org.ID)
-	LEFT JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
-    WHERE t.RowStatus NOT IN (0, 254)
+    LEFT JOIN LegacyPostedTransactions AS legacy
+        ON legacy.TransactionID = t.ID
+    LEFT JOIN SCore.OrganisationalUnits AS org
+        ON org.ID = t.OrganisationalUnitId
+       AND org.RowStatus <> 0
+       AND org.RowStatus <> 254
+    LEFT JOIN SCore.OrganisationalUnits AS org2
+        ON org2.ID = org.ParentID
+       AND org2.RowStatus <> 0
+       AND org2.RowStatus <> 254
+    WHERE t.RowStatus <> 0
+      AND t.RowStatus <> 254
       AND
       (
             s.ID IS NOT NULL
          OR lo.ID IS NOT NULL
       )
+      AND
+      (
+            ISNULL(s.StatusCode, N'Pending') = N'Succeeded'
+         OR legacy.TransactionID IS NULL
+      )
       AND EXISTS
       (
           SELECT 1
-          FROM SCore.ObjectSecurityForUser_CanRead(t.Guid, @UserID) oscr
+          FROM SCore.ObjectSecurityForUser_CanRead
+          (
+              t.Guid,
+              @UserID
+          ) AS oscr
       )
 );
 GO

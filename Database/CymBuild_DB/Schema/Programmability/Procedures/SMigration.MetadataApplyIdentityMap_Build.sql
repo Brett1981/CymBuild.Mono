@@ -4,7 +4,16 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
 (
     @RunGuid UNIQUEIDENTIFIER
 )

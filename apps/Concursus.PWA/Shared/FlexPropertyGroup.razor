@@ -159,7 +159,7 @@
                                     {
                                         @if (!IsBulkEdit)
                                         {
-                                            <div class="@GetPropertyHostCss(ep)" style="@GetPropertyHostStyle(ep, dataProperty)">
+                                            <div class="@GetPropertyHostCss(ep, dataProperty)" style="@GetPropertyHostStyle(ep, dataProperty)">
                                                 <DeveloperInspectable EntityProperty="@ep"
                                                                       DataProperty="@dataProperty"
                                                                       FormHelper="@FormHelper"
@@ -176,7 +176,7 @@
                                         }
                                         else
                                         {
-                                            <div class="@GetPropertyHostCss(ep, true)" style="@GetPropertyHostStyle(ep, dataProperty)">
+                                            <div class="@GetPropertyHostCss(ep, dataProperty, true)" style="@GetPropertyHostStyle(ep, dataProperty)">
                                                 <div class="property-row d-flex align-items-center">
                                                     <input type="checkbox"
                                                            class="form-check-input me-2"

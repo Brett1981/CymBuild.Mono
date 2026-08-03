@@ -1,6 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SSop].[CriticalProjectNotesDelete]')
+GO
+
 CREATE PROCEDURE [SSop].[CriticalProjectNotesDelete] 
 								@Guid UNIQUEIDENTIFIER 
 AS

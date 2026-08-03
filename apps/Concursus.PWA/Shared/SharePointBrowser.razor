@@ -1,12 +1,9 @@
 ﻿@using Concursus.API.Client.Models
-@using Concursus.API.Core;
-@using Concursus.API.Client;
-@using Concursus.PWA.Helpers;
-@using Microsoft.AspNetCore.Components;
-@using System.Dynamic;
+@using Concursus.API.Core
+@using Concursus.API.Client
+@using Concursus.PWA.Helpers
 @using Concursus.PWA.Classes
-@using Telerik.DataSource
-@using Telerik.DataSource.Extensions
+@using Google.Protobuf.WellKnownTypes
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
@@ -14,123 +11,157 @@
 
 @if (IsWindowOpen)
 {
-    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup">
-        <div class="card-body">
-            <div>
-                <h5>Documents:</h5>
-                @if (driveListItems.Count > 0)
-                {
-                    <!-- TelerikGrid to display SharePoint drive list items -->
-                    <TelerikGrid TItem="DriveListItem"
-                                 Data="@driveListItems"
-                                 Pageable="true"
-                                 Sortable="true"
-                                 Resizable="true"
-                                 Height="400px"
-                                 SelectionMode="GridSelectionMode.Single"
-                                 OnRowDoubleClick="OnRowDoubleClickHandler">
-                        <GridColumns>
+    <section class="sharepoint-browser cb-v2-card m-1 flex-grow-1" aria-labelledby="sharepoint-browser-title">
+        <div class="card-body cb-v2-card-body">
+            <header class="sharepoint-browser-header cb-v2-header-row">
+                <div>
+                    <h5 id="sharepoint-browser-title" class="mb-1">Documents</h5>
+                    <p class="text-muted mb-0">Double-click a document to select it.</p>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LoadDriveListItems" disabled="@isLoading">
+                    <span aria-hidden="true">↻</span> Refresh
+                </button>
+            </header>
 
-                            @* <GridColumn Field="Id" Title="Document ID" /> *@
-                            <GridColumn Field="Name" Title="Document Name"/>
-                            <GridColumn Field="CreatedDateTime" Title="Created Date">
-                                <Template>
-                                    @{
-                                        var item = (DriveListItem)context;
+            @if (isLoading)
+            {
+                <div class="sharepoint-browser-state cb-v2-loading-state cb-v2-state-surface" role="status">
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    Loading documents...
+                </div>
+            }
+            else if (driveListItems.Count == 0)
+            {
+                <div class="sharepoint-browser-empty cb-v2-empty-state cb-v2-state-surface compact" role="status">No documents found.</div>
+            }
+            else
+            {
+                <div class="sharepoint-browser-table-wrap cb-v2-table-wrap">
+                    <table class="cb-v2-table cb-v2-table-compact sharepoint-browser-table" aria-label="SharePoint documents">
+                        <thead class="cb-v2-table-sticky-head">
+                            <tr>
+                                <th scope="col" class="sharepoint-browser-name-column">
+                                    <button type="button" class="sharepoint-browser-sort cb-v2-sort-button" @onclick="@(() => SetSort(SortColumn.Name))">
+                                        Document Name <span aria-hidden="true">@GetSortIndicator(SortColumn.Name)</span>
+                                    </button>
+                                </th>
+                                <th scope="col">
+                                    <button type="button" class="sharepoint-browser-sort cb-v2-sort-button" @onclick="@(() => SetSort(SortColumn.Created))">
+                                        Created Date <span aria-hidden="true">@GetSortIndicator(SortColumn.Created)</span>
+                                    </button>
+                                </th>
+                                <th scope="col">
+                                    <button type="button" class="sharepoint-browser-sort cb-v2-sort-button" @onclick="@(() => SetSort(SortColumn.Modified))">
+                                        Last Modified Date <span aria-hidden="true">@GetSortIndicator(SortColumn.Modified)</span>
+                                    </button>
+                                </th>
+                                <th scope="col">
+                                    <button type="button" class="sharepoint-browser-sort cb-v2-sort-button" @onclick="@(() => SetSort(SortColumn.Size))">
+                                        File Size <span aria-hidden="true">@GetSortIndicator(SortColumn.Size)</span>
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in PagedItems)
+                            {
+                                <tr class="cb-v2-clickable-row cb-v2-focusable-row"
+                                    tabindex="0"
+                                    title="Double-click to select @item.Name"
+                                    @ondblclick="@(() => OnRowDoubleClickHandler(item))"
+                                    @onkeydown="@(args => OnRowKeyDownAsync(args, item))">
+                                    <td>@item.Name</td>
+                                    <td class="text-nowrap">@FormatDate(item.CreatedDateTime)</td>
+                                    <td class="text-nowrap">@FormatDate(item.LastModifiedDateTime)</td>
+                                    <td class="text-nowrap">@FormatSize(item.Size)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
 
-                                        var formattedCreatedDateTime = UiFormattingHelper.FormatDateForUI(
-                                        UiFormattingHelper.NormalizeToLocal(item.CreatedDateTime),
-                                        false
-                                        );
-
-                                    }
-                                    @formattedCreatedDateTime
-                                </Template>
-                            </GridColumn>
-                            <GridColumn Field="LastModifiedDateTime" Title="Last Modified Date">
-                                <Template>
-                                    @{
-                                        var item = (DriveListItem)context;
-
-                                        var formattedLastModifiedDateTime = UiFormattingHelper.FormatDateForUI(
-                                        UiFormattingHelper.NormalizeToLocal(item.LastModifiedDateTime),
-                                        false
-                                        );
-                                    }
-                                    @formattedLastModifiedDateTime
-                                </Template>
-                            </GridColumn>
-                            <GridColumn Field="Size" Title="File Size">
-                                <Template>
-                                    @{
-                                        var item = (DriveListItem)context;
-
-                                        // Access the Size property from the current row item
-                                        var size = item.Size;
-
-                                        // Convert bytes to megabytes
-                                        var sizeInMB = size / (1024.0 * 1024.0);
-
-                                        // Format the size with two decimal places
-                                        var formattedSize = $"{sizeInMB:F2} MB";
-                                    }
-                                    @formattedSize
-                                </Template>
-                            </GridColumn>
-                            <!-- Add more columns as needed -->
-                        </GridColumns>
-                    </TelerikGrid>
-                }
-
-                else
-                {
-                    <p>No documents found.</p>
-                }
-
-            </div>
+                <nav class="sharepoint-browser-pager cb-v2-table-footer" aria-label="Document pages">
+                    <span>Showing @FirstVisibleItem to @LastVisibleItem of @driveListItems.Count</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(CurrentPage <= 1)">Previous</button>
+                    <span>Page @CurrentPage of @TotalPages</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(CurrentPage >= TotalPages)">Next</button>
+                </nav>
+            }
         </div>
-    </div>
+    </section>
 }
 
 @code {
+    private const int PageSize = 10;
 
-    [Parameter]
-    public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
-
-    [Parameter]
-    public string SharePointSiteId { get; set; }
-
-    [Parameter]
-    public EventCallback<DriveListItem> OnItemDoubleClick { get; set; }
-
-    [Parameter]
-    public bool IsWindowOpen { get; set; } = true;
-
-    [Parameter]
-    public EventCallback CloseWindow { get; set; }
-
+    [Parameter] public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
+    [Parameter] public string SharePointSiteId { get; set; } = string.Empty;
+    [Parameter] public EventCallback<DriveListItem> OnItemDoubleClick { get; set; }
+    [Parameter] public bool IsWindowOpen { get; set; } = true;
+    [Parameter] public EventCallback CloseWindow { get; set; }
     [Parameter] public string TemplateFolderName { get; set; } = "Job Folders";
     [Parameter] public EventCallback<Exception> OnError { get; set; }
 
-    private string _siteId = string.Empty;
-    protected FormHelper? formHelper;
-    private List<DriveListItem> driveListItems = new();
+    private readonly List<DriveListItem> driveListItems = new();
+    private FormHelper? formHelper;
+    private string siteId = string.Empty;
+    private bool isLoading;
+    private int CurrentPage { get; set; } = 1;
+    private SortColumn CurrentSort { get; set; } = SortColumn.Name;
+    private bool SortDescending { get; set; }
 
-    // Method to retrieve SharePoint drive list items from Microsoft Graph API
-    private async Task LoadDriveListItems()
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(driveListItems.Count / (double)PageSize));
+    private int FirstVisibleItem => driveListItems.Count == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
+    private int LastVisibleItem => Math.Min(CurrentPage * PageSize, driveListItems.Count);
+    private IEnumerable<DriveListItem> PagedItems => SortedItems.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+
+    private IEnumerable<DriveListItem> SortedItems
+    {
+        get
+        {
+            Func<DriveListItem, object?> selector = CurrentSort switch
+            {
+                SortColumn.Created => item => item.CreatedDateTime?.ToDateTime(),
+                SortColumn.Modified => item => item.LastModifiedDateTime?.ToDateTime(),
+                SortColumn.Size => item => item.Size,
+                _ => item => item.Name
+            };
+
+            return SortDescending
+                ? driveListItems.OrderByDescending(selector).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                : driveListItems.OrderBy(selector).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Call Microsoft Graph API to get SharePoint sites (you need to implement this)
-            var _driveListItem = await formHelper.GetSharePointSitesAsync(_siteId, TemplateFolderName);
+            formHelper = new FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+            siteId = SharePointSiteId;
+            await LoadDriveListItems();
+        }
+        catch (Exception ex)
+        {
+            await ReportErrorAsync(ex, "An error occurred while initializing the SharePointBrowser component.", "SharePointBrowser/OnInitializedAsync()");
+        }
+    }
 
-            foreach (var item in _driveListItem)
+    private async Task LoadDriveListItems()
+    {
+        if (formHelper is null || isLoading) return;
+
+        try
+        {
+            isLoading = true;
+            var items = await formHelper.GetSharePointSitesAsync(siteId, TemplateFolderName);
+            var loadedItems = new List<DriveListItem>();
+
+            foreach (var item in items)
             {
-                if(!string.IsNullOrEmpty(item.ErrorReturned))
-                {
-                    throw new Exception(item.ErrorReturned);
-                };
-                driveListItems.Add(new DriveListItem
+                if (!string.IsNullOrEmpty(item.ErrorReturned)) throw new InvalidOperationException(item.ErrorReturned);
+
+                loadedItems.Add(new DriveListItem
                 {
                     Id = item.Id,
                     Name = item.Name,
@@ -143,71 +174,64 @@
                     SharePointFile = item.SharePointFile
                 });
             }
-            StateHasChanged();
+
+            driveListItems.Clear();
+            driveListItems.AddRange(loadedItems);
+            CurrentPage = Math.Min(CurrentPage, TotalPages);
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while loading SharePoint drive list items.");
-            ex.Data.Add("PageMethod", "SharePointBrowser/LoadDriveListItems()");
-            _= OnError.InvokeAsync(ex);
+            await ReportErrorAsync(ex, "An error occurred while loading SharePoint drive list items.", "SharePointBrowser/LoadDriveListItems()");
         }
-
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    // Method to handle double-click on a row
-    private void OnRowDoubleClickHandler(GridRowClickEventArgs args)
+    private void SetSort(SortColumn column)
+    {
+        if (CurrentSort == column) SortDescending = !SortDescending;
+        else { CurrentSort = column; SortDescending = false; }
+        CurrentPage = 1;
+    }
+
+    private string GetSortIndicator(SortColumn column) => CurrentSort != column ? string.Empty : SortDescending ? "▼" : "▲";
+    private void PreviousPage() => CurrentPage = Math.Max(1, CurrentPage - 1);
+    private void NextPage() => CurrentPage = Math.Min(TotalPages, CurrentPage + 1);
+
+    private async Task OnRowKeyDownAsync(KeyboardEventArgs args, DriveListItem item)
+    {
+        if (args.Key is "Enter" or " ") await OnRowDoubleClickHandler(item);
+    }
+
+    private async Task OnRowDoubleClickHandler(DriveListItem item)
     {
         try
         {
-            // Get the clicked drive list item
-            var clickedItem = args.Item as DriveListItem;
-
-            // Check if the item is not null
-            if (clickedItem != null)
-            {
-                // For information, let's just print the details to the console
-                Console.WriteLine($"Item ID: {clickedItem.Id}, Name: {clickedItem.Name}, WebUrl: {clickedItem.WebUrl}, Size: {clickedItem.Size}");
-
-                // Invoke the event to notify the parent component
-                OnItemDoubleClick.InvokeAsync(clickedItem);
-
-                // Set the parameter to false to hide the window
-                IsWindowOpen = false;
-
-                // Callback to notify the parent about the window status
-                CloseWindow.InvokeAsync(IsWindowOpen);
-                StateHasChanged();
-            }
+            Console.WriteLine($"Item ID: {item.Id}, Name: {item.Name}, WebUrl: {item.WebUrl}, Size: {item.Size}");
+            await OnItemDoubleClick.InvokeAsync(item);
+            IsWindowOpen = false;
+            await CloseWindow.InvokeAsync(IsWindowOpen);
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while handling double-click on a row.");
-            ex.Data.Add("PageMethod", "SharePointBrowser/OnRowDoubleClickHandler()");
-            _= OnError.InvokeAsync(ex);
+            await ReportErrorAsync(ex, "An error occurred while handling double-click on a row.", "SharePointBrowser/OnRowDoubleClickHandler()");
         }
-
     }
 
-    // OnInitializedAsync is called when the component is initialized
-    protected override async Task OnInitializedAsync()
+    private async Task ReportErrorAsync(Exception ex, string additionalInfo, string pageMethod)
     {
-        try
-        {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
-            _siteId = SharePointSiteId;
-            // Load SharePoint drive list items when the component is initialized
-            await LoadDriveListItems();
-        }
-        catch (Exception ex)
-        {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while initializing the SharePointBrowser component.");
-            ex.Data.Add("PageMethod", "SharePointBrowser/OnInitializedAsync()");
-            _= OnError.InvokeAsync(ex);
-        }
-
+        ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+        ex.Data["AdditionalInfo"] = additionalInfo;
+        ex.Data["PageMethod"] = pageMethod;
+        await OnError.InvokeAsync(ex);
     }
 
+    private static string FormatDate(Timestamp? value) => value is null
+        ? string.Empty
+        : UiFormattingHelper.FormatDateForUI(UiFormattingHelper.NormalizeToLocal(value), false);
+    private static string FormatSize(long size) => $"{size / (1024.0 * 1024.0):F2} MB";
+
+    private enum SortColumn { Name, Created, Modified, Size }
 }

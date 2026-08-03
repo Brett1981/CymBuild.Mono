@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create view [SSop].[Quote_CalculatedFields]')
 GO
+PRINT (N'Create view [SSop].[Quote_CalculatedFields]')
+GO
 
 
 

@@ -1,0 +1,29 @@
+.signature-control {
+    gap: .8rem;
+    width: min(100%, 520px);
+}
+
+.signature-surface img,
+.signature-canvas {
+    display: block;
+    width: 100%;
+    max-width: 500px;
+    aspect-ratio: 2 / 1;
+    border: 1px solid var(--cb-v2-border-mid);
+    border-radius: var(--cb-v2-radius-sm);
+    background: var(--cb-v2-bg);
+    box-shadow: inset 0 1px 3px rgb(30 50 75 / 8%);
+}
+
+.signature-surface img {
+    object-fit: contain;
+}
+
+.signature-canvas {
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.signature-hint {
+    font-size: .76rem;
+}

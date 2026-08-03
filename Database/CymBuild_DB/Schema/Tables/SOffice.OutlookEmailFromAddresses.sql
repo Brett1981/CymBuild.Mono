@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SOffice].[OutlookEmailFromAddresses]')
 GO
+PRINT (N'Create table [SOffice].[OutlookEmailFromAddresses]')
+GO
 CREATE TABLE [SOffice].[OutlookEmailFromAddresses] (
   [ID] [int] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_OutlookEmailFromAddresses_Guid] DEFAULT (newid()) ROWGUIDCOL,

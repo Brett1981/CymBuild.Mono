@@ -87,10 +87,11 @@ namespace Concursus.Common.Shared.Models.Finance
         public DateTime? ExpectedDateUtc { get; set; }
 
         /// <summary>
-        /// Optional CymBuild invoice/reference number used for Sage submission.
+        /// Optional CymBuild invoice/reference number retained for internal audit,
+        /// idempotency diagnostics and Sage transaction-reference reconciliation.
         ///
-        /// In the corrected Phase 5 mapping this is the preferred source for
-        /// customerOrderNo on the wrapper contract.
+        /// This value must not be mapped to Sage customerOrderNo; that field is reserved
+        /// for PurchaseOrderNumber.
         /// </summary>
         public string InvoiceNumber { get; set; } = string.Empty;
 
@@ -221,9 +222,10 @@ namespace Concursus.Common.Shared.Models.Finance
         public string JobDescription { get; set; } = string.Empty;
 
         /// <summary>
-        /// Optional purchase order number from the CymBuild transaction/header.
-        /// Retained even though the current wrapper contract does not require it directly,
-        /// because it may be useful for future wrapper expansion or audit persistence.
+        /// Optional customer purchase order number from the CymBuild transaction/header.
+        ///
+        /// The active Phase 5 wrapper exposes Sage's purchase-order field as customerOrderNo,
+        /// so this is the only valid source for that outbound value.
         /// </summary>
         public string PurchaseOrderNumber { get; set; } = string.Empty;
 

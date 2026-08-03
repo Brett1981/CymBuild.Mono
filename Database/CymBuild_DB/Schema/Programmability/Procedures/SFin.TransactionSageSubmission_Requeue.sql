@@ -3,6 +3,10 @@ GO
 
 PRINT (N'Create procedure [SFin].[TransactionSageSubmission_Requeue]')
 GO
+PRINT (N'Create procedure [SFin].[TransactionSageSubmission_Requeue]')
+GO
+PRINT (N'Create procedure [SFin].[TransactionSageSubmission_Requeue]')
+GO
 CREATE PROCEDURE [SFin].[TransactionSageSubmission_Requeue]
 (
     @TransactionGuid              UNIQUEIDENTIFIER = NULL,
@@ -162,7 +166,7 @@ BEGIN
     OUTPUT inserted.ID INTO @ResetOutbox(ID)
     FROM SCore.IntegrationOutbox AS io
     INNER JOIN @ResetCandidates AS rc
-        ON TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transactionGuid')) = rc.TransactionGuid
+        ON TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(CASE WHEN ISJSON(io.PayloadJson) = 1 THEN io.PayloadJson ELSE N'{}' END, '$.transactionGuid')) = rc.TransactionGuid
     WHERE io.RowStatus NOT IN (0, 254)
       AND io.EventType = N'TransactionApprovedForSageSubmission';
 
@@ -185,6 +189,47 @@ BEGIN
 
     COMMIT TRAN;
 
+    DECLARE
+        @EnsureTransactionID BIGINT,
+        @EnsureTransactionGuid UNIQUEIDENTIFIER;
+
+    DECLARE ensure_cur CURSOR LOCAL FAST_FORWARD FOR
+        SELECT
+            rc.TransactionID,
+            rc.TransactionGuid
+        FROM @ResetCandidates AS rc
+        WHERE NOT EXISTS
+        (
+            SELECT 1
+            FROM SCore.IntegrationOutbox AS io
+            WHERE io.RowStatus <> 0
+              AND io.RowStatus <> 254
+              AND io.EventType = N'TransactionApprovedForSageSubmission'
+              AND io.PublishedOnUtc IS NULL
+              AND ISJSON(io.PayloadJson) = 1
+              AND TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(CASE WHEN ISJSON(io.PayloadJson) = 1 THEN io.PayloadJson ELSE N'{}' END, '$.transactionGuid')) = rc.TransactionGuid
+        );
+
+    OPEN ensure_cur;
+
+    FETCH NEXT FROM ensure_cur INTO @EnsureTransactionID, @EnsureTransactionGuid;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC SFin.TransactionSageSubmission_EnsureQueued
+             @TransactionID = @EnsureTransactionID,
+             @TransactionGuid = @EnsureTransactionGuid,
+             @CreatedByUserId = @UserID,
+             @SurveyorUserId = -1,
+             @Comment = N'Sage submission requeue ensured missing outbox event.',
+             @SuppressResult = 1;
+
+        FETCH NEXT FROM ensure_cur INTO @EnsureTransactionID, @EnsureTransactionGuid;
+    END;
+
+    CLOSE ensure_cur;
+    DEALLOCATE ensure_cur;
+
     SELECT
         COUNT(*) AS RequeuedTransactionCount,
         (SELECT COUNT(*) FROM @ResetOutbox) AS ResetOutboxRowCount,
@@ -206,7 +251,7 @@ BEGIN
             FROM SCore.IntegrationOutbox AS io
             WHERE io.RowStatus NOT IN (0, 254)
               AND io.EventType = N'TransactionApprovedForSageSubmission'
-              AND TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(io.PayloadJson, '$.transactionGuid')) = rc.TransactionGuid
+              AND TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(CASE WHEN ISJSON(io.PayloadJson) = 1 THEN io.PayloadJson ELSE N'{}' END, '$.transactionGuid')) = rc.TransactionGuid
               AND io.PublishAttempts = 0
               AND io.PublishingStartedOnUtc IS NULL
               AND io.PublishingToken IS NULL

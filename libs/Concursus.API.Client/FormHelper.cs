@@ -765,6 +765,7 @@ public partial class FormHelper
         Guid invoiceScheduleGuid,
         string gridCode,
         IEnumerable<InvoiceScheduleDrawdownBulkEditRowModel> rows,
+        bool bypassReadOnlyForAutomationReenable = false,
         CancellationToken ct = default)
     {
         if (invoiceScheduleGuid == Guid.Empty)
@@ -780,7 +781,9 @@ public partial class FormHelper
         var request = new InvoiceScheduleDrawdownsBulkUpdateRequest
         {
             InvoiceScheduleGuid = invoiceScheduleGuid.ToString(),
-            GridCode = gridCode
+            GridCode = gridCode,
+            UserId = UserService.UserId,
+            BypassReadOnlyForAutomationReenable = bypassReadOnlyForAutomationReenable
         };
 
         foreach (var row in rows.Where(x => x.Guid != Guid.Empty))
@@ -1184,6 +1187,7 @@ public partial class FormHelper
         Guid jobGuid,
         InvoiceProcessingModeUi newMode,
         string reason,
+        int userId,
         CancellationToken ct = default)
     {
         var userGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(UserService.Guid).ToString();
@@ -1195,7 +1199,8 @@ public partial class FormHelper
                 NewMode = (InvoiceProcessingMode)newMode,
                 ChangedByUserGuid = userGuid,
                 Reason = reason ?? "",
-                Source = "JobDetail"
+                Source = "JobDetail",
+                UserId = userId
             },
             cancellationToken: ct);
 

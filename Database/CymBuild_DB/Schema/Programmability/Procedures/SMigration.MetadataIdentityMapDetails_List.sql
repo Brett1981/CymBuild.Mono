@@ -3,8 +3,13 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataIdentityMapDetails_List]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataIdentityMapDetails_List]
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapDetails_List]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataIdentityMapDetails_List]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128) = N'',

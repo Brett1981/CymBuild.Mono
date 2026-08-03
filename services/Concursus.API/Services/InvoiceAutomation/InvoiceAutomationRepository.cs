@@ -167,10 +167,12 @@ public sealed class InvoiceAutomationRepository
         EnsureOpen(conn);
 
         const string sql = @"
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
 ;WITH cte AS
 (
     SELECT TOP (@Take) *
-    FROM SFin.InvoiceAutomationNudgeQueue WITH (READPAST, UPDLOCK, ROWLOCK)
+    FROM SFin.InvoiceAutomationNudgeQueue WITH (READCOMMITTEDLOCK, UPDLOCK, READPAST, ROWLOCK)
     WHERE ProcessedDateTimeUTC IS NULL
     ORDER BY CreatedDateTimeUTC
 )

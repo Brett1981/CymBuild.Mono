@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SMigration].[Metadata_RunSelections]')
 GO
+PRINT (N'Create table [SMigration].[Metadata_RunSelections]')
+GO
 CREATE TABLE [SMigration].[Metadata_RunSelections] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL,
@@ -43,4 +45,11 @@ CREATE INDEX [IX_Metadata_RunSelections_RunGuid]
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_Metadata_RunSelections_RunGuid] on table [SMigration].[Metadata_RunSelections]')
 GO

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[SageInboundDocumentStatus]')
 GO
+PRINT (N'Create table [SFin].[SageInboundDocumentStatus]')
+GO
 CREATE TABLE [SFin].[SageInboundDocumentStatus] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL,
@@ -74,4 +76,12 @@ CREATE INDEX [IX_SageInboundDocumentStatus_Worklist]
   INCLUDE ([CymBuildDocumentGuid], [InvoiceRequestID], [TransactionID], [JobID], [SageDataset], [SageAccountReference], [SageDocumentNo], [LastOutstandingAmount], [LastAllocatedValue], [LastIsPaid], [LastIsFullyPaid], [LastPaymentStateCode])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+
+PRINT (N'Create index [IX_SageInboundDocumentStatus_CymBuildDocumentGuid] on table [SFin].[SageInboundDocumentStatus]')
+GO
+
+
+PRINT (N'Create index [IX_SageInboundDocumentStatus_Worklist] on table [SFin].[SageInboundDocumentStatus]')
 GO

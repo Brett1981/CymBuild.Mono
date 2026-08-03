@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SAlert].[Notifications]')
 GO
+PRINT (N'Create table [SAlert].[Notifications]')
+GO
 CREATE TABLE [SAlert].[Notifications] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Notifications_RowStatus] DEFAULT (0),
@@ -28,4 +30,8 @@ CREATE UNIQUE INDEX [IX_UQ_Notifications_Guid]
   ON [SAlert].[Notifications] ([Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+
+PRINT (N'Create index [IX_UQ_Notifications_Guid] on table [SAlert].[Notifications]')
 GO

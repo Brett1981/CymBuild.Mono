@@ -3,8 +3,13 @@ GO
 
 PRINT (N'Create or alter function [SCore].[tvf_UniversalSearch]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
 
-CREATE OR ALTER FUNCTION [SCore].[tvf_UniversalSearch]
+PRINT (N'Create function [SCore].[tvf_UniversalSearch]')
+GO
+
+CREATE FUNCTION [SCore].[tvf_UniversalSearch]
 (
     @UserId       INT,
     @SearchText   NVARCHAR(200),

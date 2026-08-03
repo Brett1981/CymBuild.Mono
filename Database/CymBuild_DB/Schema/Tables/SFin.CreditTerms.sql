@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[CreditTerms]')
 GO
+PRINT (N'Create table [SFin].[CreditTerms]')
+GO
 CREATE TABLE [SFin].[CreditTerms] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_CreditTerms_RowStatus] DEFAULT (0),

@@ -77,6 +77,7 @@
                     sessionStorage.removeItem("bootWatchdogTriggered");
                     sessionStorage.removeItem("reloadAttempted");
                     sessionStorage.removeItem("authLoginWatchdogTriggered");
+                    sessionStorage.removeItem("cymbuild.authRecoveryAttemptedUtc");
                     sessionStorage.removeItem("startupScriptRepairAttempted");
                 } catch (e) {
                     console.warn("[EmergencyRepair] sessionStorage cleanup failed.", e);

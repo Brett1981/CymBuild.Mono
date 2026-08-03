@@ -21,9 +21,12 @@
     display: none;
 }
 
+/* Successful validation has no user-facing message. Do not render the empty feedback placeholder:
+   reserving a flex/grid row here constrains the visible native input inside otherwise full-width
+   metadata fields. Invalid feedback remains governed by Bootstrap and the rules below. */
 .is-data-valid ~ .valid-feedback {
-    display: block;
-    min-height: 1.31rem;
+    display: none;
+    min-height: 0;
 }
 
 .valid-null {
@@ -43,15 +46,15 @@
 .shore-input-modal-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1080;
-    background: rgba(15, 23, 42, 0.52);
-    backdrop-filter: blur(2px);
+    z-index: 2147483200;
+    background: rgba(15, 23, 42, 0.58);
+    backdrop-filter: blur(3px);
 }
 
 .shore-input-modal-shell {
     position: fixed;
     inset: 3vh 3vw;
-    z-index: 1090;
+    z-index: 2147483201;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -65,7 +68,7 @@
     flex-direction: column;
     overflow: hidden;
     border: 1px solid var(--cb-v2-border, #dbe3ef);
-    border-radius: var(--cb-v2-radius-lg, 1.1rem);
+    border-radius: var(--cb-v2-radius-lg, 18px);
     background: var(--cb-v2-bg, #ffffff);
     box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
     pointer-events: auto;
@@ -78,13 +81,13 @@
 
 .shore-input-modal-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
     padding: 0.95rem 1.15rem;
     border-bottom: 1px solid var(--cb-v2-border, #dbe3ef);
-    background: linear-gradient(90deg, var(--cb-v2-primary-dark, #0f4c81), var(--cb-v2-primary, #1677c8));
-    color: #ffffff;
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.10), rgba(255, 255, 255, 0.96) 48%, #ffffff 100%);
+    color: var(--cb-v2-text-strong, #0f172a);
 }
 
 .shore-input-modal-title-wrap {
@@ -109,7 +112,7 @@
 .shore-input-modal-subtitle {
     margin-top: 0.2rem;
     font-size: 0.82rem;
-    opacity: 0.82;
+    color: var(--cb-v2-text-muted, #64748b);
 }
 
 .shore-input-modal-actions {
@@ -125,15 +128,16 @@
     justify-content: center;
     min-width: 2rem;
     min-height: 2rem;
-    border-color: rgba(255, 255, 255, 0.45);
-    color: #ffffff;
+    border-color: var(--cb-v2-border-strong, #94a3b8);
+    background: #ffffff;
+    color: var(--cb-v2-text-strong, #0f172a);
 }
 
 .shore-input-modal-actions .btn:hover,
 .shore-input-modal-actions .btn:focus-visible {
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.75);
-    color: #ffffff;
+    background: var(--cb-v2-bg-soft, #f8fafc);
+    border-color: var(--cb-v2-primary, #2563eb);
+    color: var(--cb-v2-primary-dark, #1d4ed8);
 }
 
 .shore-input-modal-body {
@@ -1507,4 +1511,41 @@ input[type="date"].shore-input-native-date {
     min-width: calc(10rem - 2.25rem) !important;
 }
 /* END 14S-R21 native date empty width fix */
+
+/* BEGIN 14T-R4 invalid feedback row repair */
+/* R2 expands each Row field across its grid cell. Permit the validation child to wrap below that
+   control without allowing the label, value, lookup buttons or date parts to split unnecessarily. */
+.shore-input-field > .input-group:not(.shore-input-multiline-group),
+.shore-input-field .input-group:not(.shore-input-multiline-group) {
+    flex-wrap: wrap !important;
+}
+
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .invalid-feedback,
+.shore-input-multiline-field .shore-input-multiline-group > .invalid-feedback {
+    flex: 0 0 100% !important;
+    order: 100 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0.25rem 0 0 !important;
+    padding: 0 !important;
+    line-height: 1.25 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+}
+
+/* Bootstrap normally controls visibility through the invalid sibling selector. Repeat it in the
+   component scope so lookup wrappers and native inputs behave consistently after CSS isolation. */
+.shore-input-field > .input-group:not(.shore-input-multiline-group) > .is-invalid ~ .invalid-feedback,
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .is-invalid ~ .invalid-feedback,
+.shore-input-multiline-field .shore-input-multiline-group > .is-invalid ~ .invalid-feedback {
+    display: block !important;
+}
+/* END 14T-R4 invalid feedback row repair */
 

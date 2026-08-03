@@ -1,5 +1,9 @@
 ﻿PRINT (N'Create table [SMigration].[Onboarding_OrganisationalUnits]')
 GO
+PRINT (N'Create table [SMigration].[Onboarding_OrganisationalUnits]')
+GO
+PRINT (N'Create table [SMigration].[Onboarding_OrganisationalUnits]')
+GO
 CREATE TABLE [SMigration].[Onboarding_OrganisationalUnits] (
   [RunGuid] [uniqueidentifier] NOT NULL,
   [OrganisationalUnitGuid] [uniqueidentifier] NOT NULL,
@@ -14,7 +18,8 @@ CREATE TABLE [SMigration].[Onboarding_OrganisationalUnits] (
   [CostCentreCode] [nvarchar](50) NOT NULL,
   [DefaultSecurityGroupGuid] [uniqueidentifier] NOT NULL,
   [QuoteThreshold] [decimal](19, 2) NULL,
-  [OrgLevel] [int] NULL
+  [OrgLevel] [int] NULL,
+  [ParentOrganisationalUnitName] [nvarchar](250) NULL
 )
 ON [PRIMARY]
 GO

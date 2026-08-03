@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[ActionPriorities]')
 GO
+PRINT (N'Create table [SJob].[ActionPriorities]')
+GO
 CREATE TABLE [SJob].[ActionPriorities] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DC_ActionPriorities_RowStatus] DEFAULT (1),

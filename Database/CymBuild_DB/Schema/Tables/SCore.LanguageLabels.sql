@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[LanguageLabels]')
 GO
+PRINT (N'Create table [SCore].[LanguageLabels]')
+GO
 CREATE TABLE [SCore].[LanguageLabels] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_LanguageLabels_RowStatus] DEFAULT (0),

@@ -1,0 +1,43 @@
+.sharepoint-browser {
+    min-width: 0;
+}
+
+.sharepoint-browser-table-wrap {
+    max-height: 400px;
+    margin-top: 1rem;
+    overflow-y: auto;
+}
+
+.sharepoint-browser-table {
+    min-width: 820px;
+    margin-bottom: 0;
+}
+
+.sharepoint-browser-name-column {
+    min-width: 20rem;
+}
+
+.sharepoint-browser-sort {
+    width: 100%;
+}
+
+.sharepoint-browser-state,
+.sharepoint-browser-empty {
+    margin-top: 1rem;
+}
+
+.sharepoint-browser-pager {
+    margin-top: 1rem;
+}
+
+@media (max-width: 767.98px) {
+    .sharepoint-browser-header,
+    .sharepoint-browser-pager {
+        align-items: stretch;
+    }
+
+    .sharepoint-browser-header > *,
+    .sharepoint-browser-pager > * {
+        width: 100%;
+    }
+}

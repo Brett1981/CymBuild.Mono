@@ -2153,121 +2153,217 @@ WHERE i.RowStatus NOT IN (0,254)
             return listResult;
         }
 
-        public async Task<DataObjectUpsertResponse> DataObjectUpsert(DataObjectUpsertRequest request)
+        public async Task<DataObjectUpsertResponse> DataObjectUpsert(
+    DataObjectUpsertRequest request)
         {
             var response = new DataObjectUpsertResponse();
+
             try
             {
                 using var connection = CreateConnection();
-                await OpenConnectionAsync(connection);
 
-                // Fetch entity type
-                var entityType = await GetEntityType(
-                    request.DataObject.EntityTypeGuid,
-                    connection,
-                    _userId,
-                    forRead: true,
-                    forWrite: true,
-                    forProcessingOnly: true,
-                    forInformationView: false,
-                    includeEntityQueries: true);
+                await OpenConnectionAsync(connection)
+                    .ConfigureAwait(false);
 
-                // Begin transaction
-                using var transaction = QueryBuilder.BeginTransaction(connection, IsolationLevel.Serializable);
-
-                var dataObject = request.DataObject;
-                dataObject.ValidationResults = new List<ValidationResult>();
-                dataObject.HasValidationMessages = false;
-                dataObject.SaveButtonDisabled = false;
-                // Row Version Validation
-                if (!request.ValidateOnly)
+                try
                 {
+                    // Metadata retrieval remains outside the write transaction,
+                    // matching the original behaviour.
+                    var entityType = await GetEntityType(
+                            request.DataObject.EntityTypeGuid,
+                            connection,
+                            _userId,
+                            forRead: true,
+                            forWrite: true,
+                            forProcessingOnly: true,
+                            forInformationView: false,
+                            includeEntityQueries: true)
+                        .ConfigureAwait(false);
 
-                    var rowVersionValid = await ValidateRowVersion(
-                        dataObject,
-                        entityType,
-                        connection,
-                        transaction);
+                    var dataObject = request.DataObject;
 
-                    if (!rowVersionValid)
+                    dataObject.ValidationResults = new List<ValidationResult>();
+                    dataObject.HasValidationMessages = false;
+                    dataObject.SaveButtonDisabled = false;
+
+                    using var transaction =
+                        QueryBuilder.BeginTransaction(
+                            connection,
+                            IsolationLevel.Serializable);
+
+                    try
                     {
-                        AddRowVersionValidationMessage(dataObject, connection, transaction);
-
-                        dataObject.HasValidationMessages = true;
-                        dataObject.SaveButtonDisabled = true;
-
-                        response.DataObject = dataObject;
-
-                        await QueryBuilder.RollbackTransactionAsync(transaction);
-                        return response;
-                    }
-                }
-
-                // Perform Validation and Upsert
-                foreach (var entityHoBT in entityType.EntityHoBTs)
-                {
-                    // Skip EntityHoBT if no default create or update query exists
-                    var hasDefaultQuery = entityType.EntityQueries.Any(eq =>
-                        eq.EntityHoBTGuid == entityHoBT.Guid &&
-                        (eq.IsDefaultCreate || eq.IsDefaultUpdate || eq.Guid == request.EntityQueryGuid));
-
-                    if (!hasDefaultQuery)
-                    {
-                        continue; // Skip this EntityHoBT
-                    }
-
-                    if (!request.SkipValidation)
-                    {
-                        var validationResults = await Validation.RunObjectValidation(
-                            entityType, dataObject, connection, entityHoBT, transaction);
-
-                        // Apply validation results but continue processing
-                        Validation.ApplyValidationResults(ref dataObject, false, entityType, validationResults, entityHoBT.Guid, false);
-
-                        if (!request.ValidateOnly && dataObject.ValidationResults.Any(v => v.IsInvalid))
+                        if (!request.ValidateOnly)
                         {
-                            dataObject.HasValidationMessages = true;
-                            dataObject.SaveButtonDisabled = true;
+                            var rowVersionValid = await ValidateRowVersion(
+                                    dataObject,
+                                    entityType,
+                                    connection,
+                                    transaction)
+                                .ConfigureAwait(false);
+
+                            if (!rowVersionValid)
+                            {
+                                AddRowVersionValidationMessage(
+                                    dataObject,
+                                    connection,
+                                    transaction);
+
+                                dataObject.HasValidationMessages = true;
+                                dataObject.SaveButtonDisabled = true;
+
+                                response.DataObject = dataObject;
+
+                                await QueryBuilder
+                                    .RollbackTransactionAsync(transaction)
+                                    .ConfigureAwait(false);
+
+                                return response;
+                            }
+                        }
+
+                        foreach (var entityHoBT in entityType.EntityHoBTs)
+                        {
+                            var hasDefaultQuery =
+                                entityType.EntityQueries.Any(eq =>
+                                    eq.EntityHoBTGuid == entityHoBT.Guid &&
+                                    (
+                                        eq.IsDefaultCreate ||
+                                        eq.IsDefaultUpdate ||
+                                        eq.Guid == request.EntityQueryGuid
+                                    ));
+
+                            if (!hasDefaultQuery)
+                            {
+                                continue;
+                            }
+
+                            if (!request.SkipValidation)
+                            {
+                                var validationResults =
+                                    await Validation.RunObjectValidation(
+                                            entityType,
+                                            dataObject,
+                                            connection,
+                                            entityHoBT,
+                                            transaction)
+                                        .ConfigureAwait(false);
+
+                                Validation.ApplyValidationResults(
+                                    ref dataObject,
+                                    false,
+                                    entityType,
+                                    validationResults,
+                                    entityHoBT.Guid,
+                                    false);
+
+                                if (!request.ValidateOnly &&
+                                    dataObject.ValidationResults.Any(v => v.IsInvalid))
+                                {
+                                    dataObject.HasValidationMessages = true;
+                                    dataObject.SaveButtonDisabled = true;
+
+                                    response.DataObject = dataObject;
+
+                                    await QueryBuilder
+                                        .RollbackTransactionAsync(transaction)
+                                        .ConfigureAwait(false);
+
+                                    return response;
+                                }
+                            }
+
+                            if (!request.ValidateOnly)
+                            {
+                                await PerformUpsert(
+                                        request,
+                                        dataObject,
+                                        entityType,
+                                        entityHoBT,
+                                        connection,
+                                        transaction)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+
+                        if (request.ValidateOnly)
+                        {
+                            /*
+                             * ReadDataPills must execute before commit because it
+                             * receives the current transaction.
+                             */
+                            dataObject.DataPills.Clear();
+
+                            var dataPills = await ReadDataPills(
+                                    entityType,
+                                    dataObject,
+                                    connection,
+                                    transaction)
+                                .ConfigureAwait(false);
+
+                            if (dataPills is not null)
+                            {
+                                dataObject.DataPills.AddRange(dataPills);
+                            }
 
                             response.DataObject = dataObject;
-
-                            await QueryBuilder.RollbackTransactionAsync(transaction);
-                            return response;
                         }
+
+                        await QueryBuilder
+                            .CommitTransactionAsync(transaction)
+                            .ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        /*
+                         * After commit or rollback, SqlTransaction.Connection
+                         * becomes null. Only roll back an active transaction.
+                         */
+                        if (transaction.Connection is not null)
+                        {
+                            await QueryBuilder
+                                .RollbackTransactionAsync(transaction)
+                                .ConfigureAwait(false);
+                        }
+
+                        throw;
                     }
 
-                    // Perform Upsert Logic (Validation-Only or Actual Upsert)
+                    /*
+                     * Re-query only after the successful write transaction has
+                     * committed, preserving the original save behaviour.
+                     */
                     if (!request.ValidateOnly)
                     {
-                        await PerformUpsert(request, dataObject, entityType, entityHoBT, connection, transaction);
+                        response.DataObject = await ReQueryObject(
+                                dataObject,
+                                request)
+                            .ConfigureAwait(false);
+
+                        Console.WriteLine(
+                            $"SAVE SUCCESS REQUERY Guid={response.DataObject.Guid} " +
+                            $"Returned RowVersion={response.DataObject.RowVersion}");
                     }
+
+                    _ = ProtoDataPropertyConverter.ToProtoModels(
+                        dataObject.DataProperties);
+
+                    // DataObjectDebugHelper.DumpDataProperties(models);
                 }
-
-                // Commit transaction
-                await QueryBuilder.CommitTransactionAsync(transaction);
-
-                // Re-query object if not validate-only
-                if (!request.ValidateOnly)
+                finally
                 {
-                    response.DataObject = await ReQueryObject(dataObject, request);
-                    Console.WriteLine(
-                        $"SAVE SUCCESS REQUERY Guid={response.DataObject.Guid} " +
-                        $"Returned RowVersion={response.DataObject.RowVersion}");
-                }
-                else
-                {
-                    dataObject.DataPills.Clear();
-                    List<DataPill> dataPills = await ReadDataPills(entityType, dataObject, connection, transaction);
-
-                    if (dataPills != null)
+                    /*
+                     * Critical: restore the physical SQL connection before it
+                     * returns to the pool, including validation-return and
+                     * exception paths.
+                     */
+                    if (connection.State == ConnectionState.Open)
                     {
-                        dataObject.DataPills.AddRange(dataPills);
+                        await QueryBuilder
+                            .SetReadCommittedAsync(connection)
+                            .ConfigureAwait(false);
                     }
-                    response.DataObject = dataObject;
                 }
-
-                var models = ProtoDataPropertyConverter.ToProtoModels(dataObject.DataProperties);
-                //DataObjectDebugHelper.DumpDataProperties(models);
             }
             catch (Exception ex)
             {
@@ -2275,7 +2371,8 @@ WHERE i.RowStatus NOT IN (0,254)
                 {
                     DataObject = new DataObject
                     {
-                        ErrorReturned = "DataObjectUpsert() failed: " + ex.Message
+                        ErrorReturned =
+                            "DataObjectUpsert() failed: " + ex.Message
                     }
                 };
             }
@@ -5359,10 +5456,12 @@ ORDER BY us.SearchRank,
         }
 
         public async Task<int> InvoiceScheduleDrawdownsBulkUpdateAsync(
-    Guid invoiceScheduleGuid,
-    string gridCode,
-    IEnumerable<InvoiceScheduleDrawdownBulkUpdateRow> rows,
-    CancellationToken ct = default)
+            int userId,
+            Guid invoiceScheduleGuid,
+            string gridCode,
+            IEnumerable<InvoiceScheduleDrawdownBulkUpdateRow> rows,
+            bool bypassReadOnlyForAutomationReenable = false,
+            CancellationToken ct = default)
         {
             if (invoiceScheduleGuid == Guid.Empty)
             {
@@ -5393,6 +5492,38 @@ ORDER BY us.SearchRank,
 
             try
             {
+                if (isMonthly)
+                {
+                    await using var amendmentAssertCommand = new SqlCommand(
+                        "SFin.InvoiceScheduleMonthlyDrawdownAmendmentAssert",
+                        connection,
+                        (SqlTransaction)transaction)
+                    {
+                        CommandType = CommandType.StoredProcedure,
+                        CommandTimeout = 30
+                    };
+
+                    amendmentAssertCommand.Parameters.Add(
+                        new SqlParameter("@UserId", SqlDbType.Int)
+                        {
+                            Value = userId
+                        });
+
+                    amendmentAssertCommand.Parameters.Add(
+                        new SqlParameter("@InvoiceScheduleGuid", SqlDbType.UniqueIdentifier)
+                        {
+                            Value = invoiceScheduleGuid
+                        });
+
+                    amendmentAssertCommand.Parameters.Add(
+                        new SqlParameter("@BypassReadOnlyForAutomationReenable", SqlDbType.Bit)
+                        {
+                            Value = bypassReadOnlyForAutomationReenable
+                        });
+
+                    await amendmentAssertCommand.ExecuteNonQueryAsync(ct);
+                }
+
                 var updatedCount = 0;
 
                 foreach (var row in cleanRows)

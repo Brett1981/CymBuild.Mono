@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[Icons]')
 GO
+PRINT (N'Create table [SUserInterface].[Icons]')
+GO
 CREATE TABLE [SUserInterface].[Icons] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DC_Icons_RowStatus] DEFAULT (0),

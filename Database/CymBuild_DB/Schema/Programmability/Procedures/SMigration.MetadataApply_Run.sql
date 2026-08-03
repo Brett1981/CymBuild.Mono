@@ -3,8 +3,10 @@ GO
 
 PRINT (N'Create or alter procedure [SMigration].[MetadataApply_Run]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataApply_Run]')
+GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataApply_Run]
+CREATE PROCEDURE [SMigration].[MetadataApply_Run]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @ForceApply BIT = 0,
@@ -2485,4 +2487,3 @@ COMMIT TRANSACTION;
 END;
 
 GO
-

@@ -235,96 +235,106 @@ WHERE  s.TransactionGuid = @TransactionGuid
                 .ExecuteNonQueryAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            var sageDocumentNo = !string.IsNullOrWhiteSpace(sageOrderNumber)
-                ? sageOrderNumber.Trim()
-                : !string.IsNullOrWhiteSpace(sageTransactionReference)
-                    ? sageTransactionReference.Trim()
-                    : string.Empty;
+            try
+            {
+                var sageDocumentNo = !string.IsNullOrWhiteSpace(sageOrderNumber)
+                    ? sageOrderNumber.Trim()
+                    : !string.IsNullOrWhiteSpace(sageTransactionReference)
+                        ? sageTransactionReference.Trim()
+                        : string.Empty;
 
-            var normalisedSageDataSet = string.IsNullOrWhiteSpace(sageDataSet)
-                ? string.Empty
-                : sageDataSet.Trim();
+                var normalisedSageDataSet = string.IsNullOrWhiteSpace(sageDataSet)
+                    ? string.Empty
+                    : sageDataSet.Trim();
 
-            var enqueueTarget = await ResolveInboundEnqueueTargetAsync(
+                var enqueueTarget = await ResolveInboundEnqueueTargetAsync(
+                        connection,
+                        transactionGuid,
+                        sageDocumentNo,
+                        normalisedSageDataSet,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (enqueueTarget is null)
+                {
+                    return;
+                }
+
+                await using var enqueueCommand = QueryBuilder.CreateCommand(
+                    "[SFin].[SageInboundPaymentSync_Enqueue]",
                     connection,
-                    transactionGuid,
-                    sageDocumentNo,
-                    normalisedSageDataSet,
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    transaction: null);
 
-            if (enqueueTarget is null)
-            {
-                throw new InvalidOperationException(
-                    $"Sage submission succeeded for transaction {transactionGuid}, but no inbound enqueue target could be resolved.");
+                enqueueCommand.CommandType = CommandType.StoredProcedure;
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildEntityTypeID", SqlDbType.Int)
+                {
+                    Value = enqueueTarget.CymBuildEntityTypeId
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentGuid", SqlDbType.UniqueIdentifier)
+                {
+                    Value = enqueueTarget.CymBuildDocumentGuid
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentID", SqlDbType.BigInt)
+                {
+                    Value = enqueueTarget.CymBuildDocumentId
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@InvoiceRequestID", SqlDbType.Int)
+                {
+                    Value = enqueueTarget.InvoiceRequestId
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@TransactionID", SqlDbType.BigInt)
+                {
+                    Value = enqueueTarget.TransactionId
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@JobID", SqlDbType.Int)
+                {
+                    Value = enqueueTarget.JobId
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30)
+                {
+                    Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDataset)
+                        ? string.Empty
+                        : enqueueTarget.SageDataset.Trim()
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@SageAccountReference", SqlDbType.NVarChar, 100)
+                {
+                    Value = string.IsNullOrWhiteSpace(enqueueTarget.SageAccountReference)
+                        ? string.Empty
+                        : enqueueTarget.SageAccountReference.Trim()
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@SageDocumentNo", SqlDbType.NVarChar, 100)
+                {
+                    Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDocumentNo)
+                        ? sageDocumentNo
+                        : enqueueTarget.SageDocumentNo.Trim()
+                });
+
+                enqueueCommand.Parameters.Add(new SqlParameter("@ForceRequeue", SqlDbType.Bit)
+                {
+                    Value = false
+                });
+
+                _ = await enqueueCommand
+                    .ExecuteNonQueryAsync(cancellationToken)
+                    .ConfigureAwait(false);
             }
-
-            await using var enqueueCommand = QueryBuilder.CreateCommand(
-                "[SFin].[SageInboundPaymentSync_Enqueue]",
-                connection,
-                transaction: null);
-
-            enqueueCommand.CommandType = CommandType.StoredProcedure;
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildEntityTypeID", SqlDbType.Int)
+            catch
             {
-                Value = enqueueTarget.CymBuildEntityTypeId
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentGuid", SqlDbType.UniqueIdentifier)
-            {
-                Value = enqueueTarget.CymBuildDocumentGuid
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@CymBuildDocumentID", SqlDbType.BigInt)
-            {
-                Value = enqueueTarget.CymBuildDocumentId
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@InvoiceRequestID", SqlDbType.Int)
-            {
-                Value = enqueueTarget.InvoiceRequestId
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@TransactionID", SqlDbType.BigInt)
-            {
-                Value = enqueueTarget.TransactionId
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@JobID", SqlDbType.Int)
-            {
-                Value = enqueueTarget.JobId
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageDataset", SqlDbType.NVarChar, 30)
-            {
-                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDataset)
-                    ? string.Empty
-                    : enqueueTarget.SageDataset.Trim()
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageAccountReference", SqlDbType.NVarChar, 100)
-            {
-                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageAccountReference)
-                    ? string.Empty
-                    : enqueueTarget.SageAccountReference.Trim()
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@SageDocumentNo", SqlDbType.NVarChar, 100)
-            {
-                Value = string.IsNullOrWhiteSpace(enqueueTarget.SageDocumentNo)
-                    ? sageDocumentNo
-                    : enqueueTarget.SageDocumentNo.Trim()
-            });
-
-            enqueueCommand.Parameters.Add(new SqlParameter("@ForceRequeue", SqlDbType.Bit)
-            {
-                Value = false
-            });
-
-            _ = await enqueueCommand
-                .ExecuteNonQueryAsync(cancellationToken)
-                .ConfigureAwait(false);
+                // The outbound Sage submission has already been committed by
+                // SFin.TransactionSageSubmissionStatus_MarkSuccess. A follow-up
+                // inbound diagnostics enqueue issue must not throw back to the
+                // worker, because it can make a successfully-created Sage order
+                // look like a failed outbound submission.
+            }
         }
 
         private sealed class SageInboundEnqueueTarget

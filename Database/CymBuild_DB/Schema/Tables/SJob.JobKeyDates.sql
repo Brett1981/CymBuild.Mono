@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[JobKeyDates]')
 GO
+PRINT (N'Create table [SJob].[JobKeyDates]')
+GO
 CREATE TABLE [SJob].[JobKeyDates] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DC_JobKeyDates_RowStatus] DEFAULT (0),

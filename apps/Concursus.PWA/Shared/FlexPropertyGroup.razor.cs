@@ -169,6 +169,11 @@ public partial class FlexPropertyGroup
 
     private string GetPropertyHostStyle(API.Core.EntityProperty entityProperty, DataProperty dataProperty)
     {
+        if (dataProperty.IsInvalid || !string.IsNullOrWhiteSpace(dataProperty.ValidationMessage))
+        {
+            return "grid-column: 1 / -1 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important;";
+        }
+
         // Only Row property groups use content-aware single-line text sizing.
         // Column property groups intentionally keep the stable full-width stacked behaviour.
         if (IsColumnPropertyGroupLayoutName(entityPropertyGroup?.Layout)
@@ -190,9 +195,14 @@ public partial class FlexPropertyGroup
 
     private static int SingleLineTextMaxCharacters => 72;
 
-    private static string GetPropertyHostCss(API.Core.EntityProperty entityProperty, bool isBulkEdit = false)
+    private static string GetPropertyHostCss(API.Core.EntityProperty entityProperty, DataProperty dataProperty, bool isBulkEdit = false)
     {
         var css = "flexpropertygroup-field";
+
+        if (dataProperty.IsInvalid || !string.IsNullOrWhiteSpace(dataProperty.ValidationMessage))
+        {
+            css += " is-validation-visible";
+        }
 
         if (isBulkEdit)
         {

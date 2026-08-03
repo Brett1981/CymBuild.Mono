@@ -5,50 +5,121 @@
 @inject IJSRuntime JS
 @inject IToastService Toast
 
-<TelerikTabStrip>
-    <TabStripTab Title="Offline Sync Queue">
-    <div class="p-4">
-        <TelerikButton OnClick="ReloadQueue">🔄 Refresh</TelerikButton>
-        <TelerikButton OnClick="TriggerBackgroundSync" Class="ml-2">📤 Force Sync</TelerikButton>
-            <TelerikButton OnClick="EnqueueTest">🧪 Add Test Sync Item</TelerikButton>
-
-    </div>
-
-        <TelerikGrid Data="syncItems" Pageable="true" Height="400px">
-            <GridColumns>
-                <GridColumn Field="Id" Title="ID" Width="240px" />
-                <GridColumn Field="Endpoint" Title="Endpoint" Width="240px" />
-                <GridColumn Field="Method" Title="Method" Width="100px" />
-                <GridColumn Field="Timestamp" Title="Timestamp" Width="180px" />
-                <GridCommandColumn Width="200px">
-                    <GridCommandButton OnClick="@(e => RetryItem((SyncQueueItem)e.Item))">Retry</GridCommandButton>
-                    <GridCommandButton OnClick="@(e => DeleteItem((SyncQueueItem)e.Item))">Delete</GridCommandButton>
-                </GridCommandColumn>
-            </GridColumns>
-        </TelerikGrid>
-    </TabStripTab>
-    <TabStripTab Title="Error Queue">
-        <div class="p-4">
-            <TelerikButton OnClick="ReloadErrors">🧹 Refresh Errors</TelerikButton>
+<section class="cb-native-dev-page" aria-label="Offline synchronisation diagnostics">
+    <div class="cb-native-tabstrip">
+        <div class="cb-native-tab-list" role="tablist" aria-label="Synchronisation queues">
+            <button type="button" class="@GetTabCss(SyncTab.Queue)" role="tab" aria-selected="@(ActiveTab == SyncTab.Queue)" @onclick="@(() => SelectTab(SyncTab.Queue))">
+                Offline Sync Queue <span class="badge text-bg-secondary">@syncItems.Count</span>
+            </button>
+            <button type="button" class="@GetTabCss(SyncTab.Errors)" role="tab" aria-selected="@(ActiveTab == SyncTab.Errors)" @onclick="@(() => SelectTab(SyncTab.Errors))">
+                Error Queue <span class="badge text-bg-danger">@errorItems.Count</span>
+            </button>
         </div>
-            <TelerikGrid Data="errorItems" Pageable="true" Height="400px">
-                <GridColumns>
-                    <GridColumn Field="Id" Title="ID" Width="200px" />
-                    <GridColumn Field="StoreName" Title="Store" Width="150px" />
-                    <GridColumn Field="Error" Title="Error Message" Width="300px" />
-                    <GridColumn Field="Timestamp" Title="Timestamp" Width="180px" />
-                    <GridCommandColumn Width="160px">
-                        <GridCommandButton OnClick="@(e => ViewJson((SyncQueueErrorItem)e.Item))">View JSON</GridCommandButton>
-                        <GridCommandButton OnClick="@(e => DeleteError((SyncQueueErrorItem)e.Item))">Delete</GridCommandButton>
-                    </GridCommandColumn>
-                </GridColumns>
-            </TelerikGrid>
-        </TabStripTab>
-</TelerikTabStrip>
+
+        <section class="cb-native-tab-panel" role="tabpanel" hidden="@(ActiveTab != SyncTab.Queue)">
+            <div class="cb-native-dev-toolbar mb-3">
+                <button type="button" class="btn btn-outline-secondary" @onclick="ReloadQueue" disabled="@isBusy">🔄 Refresh</button>
+                <button type="button" class="btn btn-outline-primary" @onclick="TriggerBackgroundSync" disabled="@isBusy">📤 Force Sync</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="EnqueueTest" disabled="@isBusy">🧪 Add Test Sync Item</button>
+            </div>
+
+            @if (syncItems.Count > 0)
+            {
+                <div class="cb-native-dev-table-wrap">
+                    <table class="table table-sm table-hover cb-native-dev-table" aria-label="Offline sync queue">
+                        <thead><tr><th>ID</th><th>Endpoint</th><th>Method</th><th>Timestamp</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in PagedSyncItems)
+                            {
+                                <tr>
+                                    <td><code>@item.Id</code></td>
+                                    <td>@item.Endpoint</td>
+                                    <td>@item.Method</td>
+                                    <td class="text-nowrap">@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td class="text-nowrap">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="@(() => RetryItem(item))" disabled="@isBusy">Retry</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="@(() => DeleteItem(item))" disabled="@isBusy">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <QueuePager CurrentPage="@QueuePage" TotalPages="@QueueTotalPages" ItemCount="@syncItems.Count" PageSize="@PageSize" OnPrevious="PreviousQueuePage" OnNext="NextQueuePage" />
+            }
+            else
+            {
+                <div class="cb-native-dev-empty" role="status">The offline sync queue is empty.</div>
+            }
+        </section>
+
+        <section class="cb-native-tab-panel" role="tabpanel" hidden="@(ActiveTab != SyncTab.Errors)">
+            <div class="cb-native-dev-toolbar mb-3">
+                <button type="button" class="btn btn-outline-secondary" @onclick="ReloadErrors" disabled="@isBusy">🧹 Refresh Errors</button>
+            </div>
+
+            @if (errorItems.Count > 0)
+            {
+                <div class="cb-native-dev-table-wrap">
+                    <table class="table table-sm table-hover cb-native-dev-table" aria-label="Offline sync errors">
+                        <thead><tr><th>ID</th><th>Store</th><th>Error Message</th><th>Timestamp</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            @foreach (var item in PagedErrorItems)
+                            {
+                                <tr>
+                                    <td><code>@item.Id</code></td>
+                                    <td>@item.StoreName</td>
+                                    <td>@item.Error</td>
+                                    <td class="text-nowrap">@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td class="text-nowrap">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => ViewJson(item))">View JSON</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="@(() => DeleteError(item))" disabled="@isBusy">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <QueuePager CurrentPage="@ErrorPage" TotalPages="@ErrorTotalPages" ItemCount="@errorItems.Count" PageSize="@PageSize" OnPrevious="PreviousErrorPage" OnNext="NextErrorPage" />
+            }
+            else
+            {
+                <div class="cb-native-dev-empty" role="status">The error queue is empty.</div>
+            }
+        </section>
+    </div>
+</section>
+
+@if (selectedError is not null)
+{
+    <div class="cb-native-dev-modal-backdrop" role="presentation" @onclick="CloseJson">
+        <section class="cb-native-dev-modal cb-modal-window-lg" role="dialog" aria-modal="true" aria-labelledby="sync-json-title" @onclick:stopPropagation="true">
+            <header class="cb-native-dev-modal-header">
+                <h3 id="sync-json-title" class="mb-0">Error Queue JSON</h3>
+                <button type="button" class="btn-close" aria-label="Close" @onclick="CloseJson"></button>
+            </header>
+            <div class="cb-native-dev-modal-body">
+                <dl class="cb-native-dev-details"><dt>ID</dt><dd>@selectedError.Id</dd><dt>Store</dt><dd>@selectedError.StoreName</dd></dl>
+                <pre class="cb-native-dev-pre">@selectedError.RawJson</pre>
+            </div>
+        </section>
+    </div>
+}
 
 @code {
-    private List<SyncQueueItem> syncItems = new();
-    private List<SyncQueueErrorItem> errorItems = new();
+    private const int PageSize = 10;
+    private readonly List<SyncQueueItem> syncItems = new();
+    private readonly List<SyncQueueErrorItem> errorItems = new();
+    private SyncTab ActiveTab { get; set; } = SyncTab.Queue;
+    private SyncQueueErrorItem? selectedError;
+    private int QueuePage { get; set; } = 1;
+    private int ErrorPage { get; set; } = 1;
+    private bool isBusy;
+
+    private int QueueTotalPages => Math.Max(1, (int)Math.Ceiling(syncItems.Count / (double)PageSize));
+    private int ErrorTotalPages => Math.Max(1, (int)Math.Ceiling(errorItems.Count / (double)PageSize));
+    private IEnumerable<SyncQueueItem> PagedSyncItems => syncItems.Skip((QueuePage - 1) * PageSize).Take(PageSize);
+    private IEnumerable<SyncQueueErrorItem> PagedErrorItems => errorItems.Skip((ErrorPage - 1) * PageSize).Take(PageSize);
 
     protected override async Task OnInitializedAsync()
     {
@@ -56,19 +127,32 @@
         await ReloadErrors();
     }
 
+    private string GetTabCss(SyncTab tab) => $"cb-native-tab-button {(ActiveTab == tab ? "active" : string.Empty)}";
+    private void SelectTab(SyncTab tab) => ActiveTab = tab;
+    private void PreviousQueuePage() => QueuePage = Math.Max(1, QueuePage - 1);
+    private void NextQueuePage() => QueuePage = Math.Min(QueueTotalPages, QueuePage + 1);
+    private void PreviousErrorPage() => ErrorPage = Math.Max(1, ErrorPage - 1);
+    private void NextErrorPage() => ErrorPage = Math.Min(ErrorTotalPages, ErrorPage + 1);
+    private void ViewJson(SyncQueueErrorItem item) => selectedError = item;
+    private void CloseJson() => selectedError = null;
+
     private async Task ReloadQueue()
     {
-        syncItems = await SyncService.GetSyncQueueAsync();
-        StateHasChanged();
+        var items = await SyncService.GetSyncQueueAsync();
+        syncItems.Clear();
+        syncItems.AddRange(items.OrderByDescending(item => item.Timestamp));
+        QueuePage = Math.Min(QueuePage, QueueTotalPages);
     }
 
     private async Task ReloadErrors()
     {
-        errorItems = await SyncService.GetAllAsync<SyncQueueErrorItem>("ErrorQueue");
-        StateHasChanged();
+        var items = await SyncService.GetAllAsync<SyncQueueErrorItem>("ErrorQueue");
+        errorItems.Clear();
+        errorItems.AddRange(items.OrderByDescending(item => item.Timestamp));
+        ErrorPage = Math.Min(ErrorPage, ErrorTotalPages);
     }
 
-    private async Task RetryItem(SyncQueueItem item)
+    private async Task RetryItem(SyncQueueItem item) => await RunBusyAsync(async () =>
     {
         try
         {
@@ -81,34 +165,32 @@
         {
             Toast.ShowError($"❌ Retry failed: {ex.Message}");
         }
-    }
+    });
 
-    private async Task DeleteItem(SyncQueueItem item)
+    private async Task DeleteItem(SyncQueueItem item) => await RunBusyAsync(async () =>
     {
         await SyncService.DeleteItemAsync("SyncQueue", item.Id);
         await ReloadQueue();
         Toast.ShowInfo("Sync entry deleted");
-    }
+    });
 
-    private async Task DeleteError(SyncQueueErrorItem item)
+    private async Task DeleteError(SyncQueueErrorItem item) => await RunBusyAsync(async () =>
     {
         await SyncService.DeleteItemAsync("ErrorQueue", item.Id);
-        Toast.ShowInfo("Deleted error item");
+        if (selectedError?.Id == item.Id) selectedError = null;
         await ReloadErrors();
-    }
+        Toast.ShowInfo("Deleted error item");
+    });
 
-    private async Task ViewJson(SyncQueueErrorItem item)
-    {
-        await JS.InvokeVoidAsync("alert", item.RawJson);
-    }
-
-    private async Task EnqueueTest()
+    private async Task EnqueueTest() => await RunBusyAsync(async () =>
     {
         var testPayload = JsonSerializer.Serialize(new { message = "Hello from offline" });
         await SyncService.EnqueueSyncCommandAsync("/api/test", testPayload, "POST");
+        await ReloadQueue();
         Toast.ShowInfo("Test sync item added.");
-    }
-    private async Task TriggerBackgroundSync()
+    });
+
+    private async Task TriggerBackgroundSync() => await RunBusyAsync(async () =>
     {
         try
         {
@@ -120,5 +202,15 @@
             Toast.ShowWarning("Background sync not supported.");
             Console.Error.WriteLine($"Sync registration failed: {jsEx.Message}");
         }
+    });
+
+    private async Task RunBusyAsync(Func<Task> action)
+    {
+        if (isBusy) return;
+        isBusy = true;
+        try { await action(); }
+        finally { isBusy = false; }
     }
+
+    private enum SyncTab { Queue, Errors }
 }

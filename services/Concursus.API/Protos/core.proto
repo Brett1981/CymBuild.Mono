@@ -134,15 +134,36 @@ service Core {
   rpc NotificationsForUserGet (NotificationsForUserGetRequest) returns (NotificationsForUserGetResponse);
   rpc ObjectSecurityList (ObjectSecurityListRequest) returns (ObjectSecurityListResponse);
   rpc ObjectSharePointPathCollectionGet (ObjectSharePointPathCollectionGetRequest) returns (ObjectSharePointPathCollectionGetResponse);
+
+  rpc SchemaMigrationCompare (SchemaMigrationRunRequest) returns (SchemaMigrationDashboardResponse);
+  rpc SchemaMigrationDashboard (SchemaMigrationRunRequest) returns (SchemaMigrationDashboardResponse);
+  rpc SchemaMigrationDeploymentOutcome (SchemaMigrationDeploymentOutcomeRequest) returns (SchemaMigrationOperationResponse);
+  rpc SchemaMigrationObjects (SchemaMigrationObjectsRequest) returns (SchemaMigrationObjectsResponse);
+  rpc SchemaMigrationSelectionClear (SchemaMigrationSelectionClearRequest) returns (SchemaMigrationSelectionResponse);
+  rpc SchemaMigrationSelectionSave (SchemaMigrationSelectionSaveRequest) returns (SchemaMigrationSelectionResponse);
+  rpc SchemaMigrationDeploymentPlan (SchemaMigrationRunRequest) returns (SchemaMigrationDeploymentPlanResponse);
+  rpc SchemaMigrationReviewSet (SchemaMigrationReviewRequest) returns (SchemaMigrationOperationResponse);
+  rpc SchemaMigrationRunCreate (SchemaMigrationRunCreateRequest) returns (SchemaMigrationRunResponse);
+  rpc SchemaMigrationRunGet (SchemaMigrationRunRequest) returns (SchemaMigrationRunResponse);
+  rpc SchemaMigrationRuns (SchemaMigrationRunsRequest) returns (SchemaMigrationRunsResponse);
+  rpc SchemaMigrationValidate (SchemaMigrationRunRequest) returns (SchemaMigrationValidateResponse);
+
   rpc OnboardingMigrationApply (OnboardingMigrationApplyRequest) returns (OnboardingMigrationApplyResponse);
   rpc OnboardingMigrationAuditDashboard (OnboardingMigrationAuditDashboardRequest) returns (OnboardingMigrationAuditDashboardResponse);
   rpc OnboardingMigrationBusinessUnitGroups (OnboardingMigrationLookupRequest) returns (OnboardingMigrationLookupResponse);
   rpc OnboardingMigrationDiff (OnboardingMigrationDiffRequest) returns (OnboardingMigrationDiffResponse);
   rpc OnboardingMigrationReport (OnboardingMigrationRunRequest) returns (OnboardingMigrationReportResponse);
+  rpc OnboardingMigrationRunReserve (OnboardingMigrationRunReserveRequest) returns (OnboardingMigrationRunReserveResponse);
   rpc OnboardingMigrationRuns (OnboardingMigrationLookupRequest) returns (OnboardingMigrationLookupResponse);
+  rpc OnboardingMigrationEntityScopeList (OnboardingMigrationEntityScopeRequest) returns (OnboardingMigrationEntityScopeResponse);
+  rpc OnboardingMigrationRunEntitySelectionDefault (OnboardingMigrationRunRequest) returns (OnboardingMigrationEntitySelectionResponse);
+  rpc OnboardingMigrationRunEntitySelectionList (OnboardingMigrationRunRequest) returns (OnboardingMigrationEntitySelectionResponse);
+  rpc OnboardingMigrationRunEntitySelectionSave (OnboardingMigrationEntitySelectionSaveRequest) returns (OnboardingMigrationEntitySelectionSaveResponse);
 
   rpc OnboardingMigrationStage (OnboardingMigrationStageRequest) returns (OnboardingMigrationStageResponse);
   rpc OnboardingMigrationStagedData (OnboardingMigrationStagedDataRequest) returns (OnboardingMigrationStagedDataResponse);
+  rpc OnboardingMigrationStageSelectionList (OnboardingMigrationRunRequest) returns (OnboardingMigrationStageSelectionResponse);
+  rpc OnboardingMigrationStageSelectionSave (OnboardingMigrationStageSelectionSaveRequest) returns (OnboardingMigrationStageSelectionResponse);
   rpc OnboardingMigrationValidate (OnboardingMigrationRunRequest) returns (OnboardingMigrationValidateResponse);
   rpc OrganisationalUnitsGet (OrganisationalUnitsGetRequest) returns (OrganisationalUnitsGetResponse);
   rpc RecentItemsCreate (RecentItem) returns (RecentItem);
@@ -1936,6 +1957,8 @@ message InvoiceScheduleDrawdownsBulkUpdateRequest {
   string invoiceScheduleGuid = 1;
   string gridCode = 2;
   repeated InvoiceScheduleDrawdownBulkUpdateRow rows = 3;
+  int32 userId = 4;
+  bool bypassReadOnlyForAutomationReenable = 5;
 }
 
 message InvoiceScheduleDrawdownBulkUpdateRow {
@@ -2017,6 +2040,7 @@ message JobInvoiceProcessingModeSetRequest {
   string changedByUserGuid = 3;
   string reason = 4;
   string source = 5; // e.g. "JobDetail"
+  int32 userId = 6;
 }
 
 message JobInvoiceProcessingModeSetResponse {
@@ -2588,6 +2612,204 @@ message MetadataMigrationValidationIssue {
 }
 
 
+
+message SchemaMigrationDashboardMessage {
+  SchemaMigrationRunSummary run = 1;
+  int32 equalCount = 2;
+  int32 missingInTargetCount = 3;
+  int32 missingInSourceCount = 4;
+  int32 differentCount = 5;
+  int32 failCount = 6;
+  int32 warnCount = 7;
+  int32 infoCount = 8;
+  repeated SchemaMigrationObjectTypeCount objectTypeCounts = 9;
+  repeated SchemaMigrationValidationIssue validationIssues = 10;
+  repeated SchemaMigrationExecutionLogItem executionLog = 11;
+}
+
+message SchemaMigrationDashboardResponse {
+  SchemaMigrationDashboardMessage dashboard = 1;
+}
+
+message SchemaMigrationDeploymentOutcomeRequest {
+  string runGuid = 1;
+  string deploymentOutcome = 2;
+  string deploymentReference = 3;
+  string notes = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+}
+
+message SchemaMigrationExecutionLogItem {
+  string stepName = 1;
+  string stepStatus = 2;
+  string message = 3;
+  string detailsJson = 4;
+  string createdOnUtc = 5;
+}
+
+message SchemaMigrationObjectComparisonRow {
+  string comparisonGuid = 1;
+  string objectType = 2;
+  string schemaName = 3;
+  string objectName = 4;
+  string parentObjectName = 5;
+  string differenceType = 6;
+  bool isDeployable = 7;
+  bool isDestructiveRisk = 8;
+  string sourceHash = 9;
+  string targetHash = 10;
+  string sourceDefinition = 11;
+  string targetDefinition = 12;
+  string notes = 13;
+  bool isSelected = 14;
+  bool hasExplicitSelection = 15;
+}
+
+message SchemaMigrationSelectionItem {
+  string comparisonGuid = 1;
+  string objectType = 2;
+  string schemaName = 3;
+  string objectName = 4;
+  string parentObjectName = 5;
+  bool isSelected = 6;
+}
+
+message SchemaMigrationSelectionSaveRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  string notes = 4;
+  repeated SchemaMigrationSelectionItem selections = 5;
+}
+
+message SchemaMigrationSelectionClearRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  string notes = 4;
+}
+
+message SchemaMigrationSelectionResponse {
+  bool success = 1;
+  string message = 2;
+  int32 selectedCount = 3;
+  int32 deployableCount = 4;
+  int32 explicitSelectionCount = 5;
+}
+
+message SchemaMigrationDeploymentPlanResponse {
+  repeated SchemaMigrationObjectComparisonRow rows = 1;
+  int32 selectedCount = 2;
+  int32 deployableCount = 3;
+  bool hasExplicitSelection = 4;
+}
+
+message SchemaMigrationObjectsRequest {
+  string runGuid = 1;
+  string objectType = 2;
+  string differenceType = 3;
+  string searchText = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+  bool includeDefinitions = 7;
+  string comparisonGuid = 8;
+}
+
+message SchemaMigrationObjectsResponse {
+  repeated SchemaMigrationObjectComparisonRow rows = 1;
+}
+
+message SchemaMigrationObjectTypeCount {
+  string objectType = 1;
+  string differenceType = 2;
+  int32 count = 3;
+}
+
+message SchemaMigrationOperationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message SchemaMigrationReviewRequest {
+  string runGuid = 1;
+  string reviewedByNote = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
+}
+
+message SchemaMigrationRunCreateRequest {
+  string sourceEnvironment = 1;
+  string targetEnvironment = 2;
+  string sourceServerName = 3;
+  string sourceDatabaseName = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+  string jiraReference = 7;
+  string releaseReference = 8;
+  string notes = 9;
+}
+
+message SchemaMigrationRunRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+}
+
+message SchemaMigrationRunResponse {
+  SchemaMigrationRunSummary run = 1;
+}
+
+message SchemaMigrationRunsRequest {
+  int32 top = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+}
+
+message SchemaMigrationRunsResponse {
+  repeated SchemaMigrationRunSummary runs = 1;
+}
+
+message SchemaMigrationRunSummary {
+  string runGuid = 1;
+  string sourceEnvironment = 2;
+  string targetEnvironment = 3;
+  string sourceServerName = 4;
+  string sourceDatabaseName = 5;
+  string targetServerName = 6;
+  string targetDatabaseName = 7;
+  string jiraReference = 8;
+  string releaseReference = 9;
+  string runStatus = 10;
+  bool isReviewed = 11;
+  string createdOnUtc = 12;
+  string comparedOnUtc = 13;
+  string validatedOnUtc = 14;
+  string reviewedOnUtc = 15;
+  string appliedOnUtc = 16;
+  string notes = 17;
+  string summaryJson = 18;
+}
+
+message SchemaMigrationValidateResponse {
+  int32 failCount = 1;
+  int32 warnCount = 2;
+  int32 infoCount = 3;
+  repeated SchemaMigrationValidationIssue validationIssues = 4;
+}
+
+message SchemaMigrationValidationIssue {
+  string issueGuid = 1;
+  string comparisonGuid = 2;
+  string severity = 3;
+  string issueCode = 4;
+  string issueMessage = 5;
+  string objectType = 6;
+  string schemaName = 7;
+  string objectName = 8;
+  string detailsJson = 9;
+}
+
 message MenuItem {
     string document_guid = 1;
     string document_id = 2;
@@ -2742,10 +2964,91 @@ message ObjectSharePointPathCollectionGetResponse {
     repeated ObjectSharePointPath objectSharePointPaths = 1;
 }
 
+message OnboardingMigrationEntityScopeRequest {
+  string searchText = 1;
+  bool includeInactive = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
+}
+
+message OnboardingMigrationEntityScopeItem {
+  string entityScopeGuid = 1;
+  string code = 2;
+  string name = 3;
+  string description = 4;
+  string stageTableName = 5;
+  int32 displayOrder = 6;
+  bool defaultSelected = 7;
+  bool canDeselect = 8;
+  bool isRequired = 9;
+  string requiredDependencyCodes = 10;
+  int32 rowStatus = 11;
+  string scopeCategory = 12;
+  string scopeType = 13;
+  bool isImplemented = 14;
+  bool isSupportData = 15;
+  string handlerKey = 16;
+  string primaryEntityTypeGuid = 17;
+  string sourceSchemaName = 18;
+  string sourceTableName = 19;
+}
+
+message OnboardingMigrationEntityScopeResponse {
+  repeated OnboardingMigrationEntityScopeItem items = 1;
+}
+
+message OnboardingMigrationEntitySelectionItem {
+  string entityScopeGuid = 1;
+  string entityCode = 2;
+  string entityName = 3;
+  string description = 4;
+  string stageTableName = 5;
+  int32 displayOrder = 6;
+  bool isSelected = 7;
+  bool defaultSelected = 8;
+  bool canDeselect = 9;
+  bool isRequired = 10;
+  string requiredDependencyCodes = 11;
+  string selectionGuid = 12;
+  string selectionSource = 13;
+  string selectedOnUtc = 14;
+  string scopeCategory = 15;
+  string scopeType = 16;
+  bool isImplemented = 17;
+  bool isSupportData = 18;
+  string handlerKey = 19;
+  string primaryEntityTypeGuid = 20;
+  string sourceSchemaName = 21;
+  string sourceTableName = 22;
+}
+
+message OnboardingMigrationEntitySelectionResponse {
+  repeated OnboardingMigrationEntitySelectionItem items = 1;
+}
+
+message OnboardingMigrationEntitySelectionSaveItem {
+  string entityCode = 1;
+  bool isSelected = 2;
+}
+
+message OnboardingMigrationEntitySelectionSaveRequest {
+  string runGuid = 1;
+  repeated OnboardingMigrationEntitySelectionSaveItem selections = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
+}
+
+message OnboardingMigrationEntitySelectionSaveResponse {
+  string message = 1;
+  repeated OnboardingMigrationEntitySelectionItem items = 2;
+}
+
 message OnboardingMigrationApplyRequest {
   string runGuid = 1;
   bool allowWarnings = 2;
   bool previewOnly = 3;
+  string targetServerName = 4;
+  string targetDatabaseName = 5;
 }
 
 message OnboardingMigrationApplyResponse {
@@ -2754,6 +3057,8 @@ message OnboardingMigrationApplyResponse {
 
 message OnboardingMigrationAuditDashboardRequest {
   string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
 }
 
 message OnboardingMigrationAuditDashboardResponse {
@@ -2776,6 +3081,8 @@ message OnboardingMigrationAuditDashboardSummary {
 message OnboardingMigrationDiffRequest {
   string runGuid = 1;
   string entityName = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
 }
 
 message OnboardingMigrationDiffResponse {
@@ -2814,10 +3121,30 @@ message OnboardingMigrationReportResponse {
 
 message OnboardingMigrationRunRequest {
   string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+}
+
+message OnboardingMigrationRunReserveRequest {
+  string runGuid = 1;
+  string sourceDatabase = 2;
+  string sourceServerName = 3;
+  string targetServerName = 4;
+  string targetDatabaseName = 5;
+  string businessUnitGroupGuid = 6;
+  string notes = 7;
+}
+
+message OnboardingMigrationRunReserveResponse {
+  OnboardingMigrationRunSummary runSummary = 1;
+  string message = 2;
 }
 
 message OnboardingMigrationLookupRequest {
   string sourceDatabase = 1;
+  string sourceServerName = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
 }
 
 message OnboardingMigrationLookupItem {
@@ -2838,11 +3165,16 @@ message OnboardingMigrationRunSummary {
   string notes = 4;
   string createdUtc = 5;
   string createdBy = 6;
+  string sourceServerName = 7;
+  string targetServerName = 8;
+  string targetDatabaseName = 9;
 }
 
 message OnboardingMigrationStagedDataRequest {
   string runGuid = 1;
   string entityName = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
 }
 
 message OnboardingMigrationStagedDataResponse {
@@ -2860,6 +3192,26 @@ message OnboardingMigrationStageRequest {
   string businessUnitGroupGuid = 2;
   string runGuid = 3;
   string notes = 4;
+  string sourceServerName = 5;
+  string targetServerName = 6;
+  string targetDatabaseName = 7;
+}
+
+message OnboardingMigrationStageSelectionItem {
+  string entityName = 1;
+  string rowGuid = 2;
+  string selectedOnUtc = 3;
+}
+
+message OnboardingMigrationStageSelectionSaveRequest {
+  string runGuid = 1;
+  repeated OnboardingMigrationStageSelectionItem selections = 2;
+  string targetServerName = 3;
+  string targetDatabaseName = 4;
+}
+
+message OnboardingMigrationStageSelectionResponse {
+  repeated OnboardingMigrationStageSelectionItem selections = 1;
 }
 
 message OnboardingMigrationStageResponse {

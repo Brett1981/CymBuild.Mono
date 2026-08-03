@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SSop].[QuoteKeyDates]')
 GO
+PRINT (N'Create table [SSop].[QuoteKeyDates]')
+GO
 CREATE TABLE [SSop].[QuoteKeyDates] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DC_QuoteKeyDates_RowStatus] DEFAULT (1),

@@ -5,15 +5,25 @@ PRINT (N'Create procedure [SSop].[EnquiryCreateQuotes]')
 GO
 PRINT (N'Create procedure [SSop].[EnquiryCreateQuotes]')
 GO
-
-
 CREATE PROCEDURE [SSop].[EnquiryCreateQuotes]
 	(@Guid UNIQUEIDENTIFIER)
 AS
 BEGIN
 
 
-	DECLARE @ReadyForQuoteStatus UNIQUEIDENTIFIER = 'EB867FA0-9608-4CC7-93BE-CC8E8140E8F0';
+	DECLARE @ReadyForQuoteStatus UNIQUEIDENTIFIER = 'EB867FA0-9608-4CC7-93BE-CC8E8140E8F0'
+			
+	
+	DECLARE 
+		@Sustainability UNIQUEIDENTIFIER = 'D37AB015-DA10-4DD5-8C64-CE256546A508',
+		@SustainabilityCompliance UNIQUEIDENTIFIER = '7ADC0989-A468-47E5-A206-DAEC008F9E9D',
+		@BuildingEnvelope UNIQUEIDENTIFIER = '4927F7DD-3A47-424B-B890-BAE9FFD052C6',
+		@BuildingEnvelopeUK UNIQUEIDENTIFIER = '1882472F-9976-4D25-8BF6-A91F7BE1AA3F',
+		@StructuralEngineering UNIQUEIDENTIFIER = '573CBCE7-7F60-49A1-A8D5-B4074C08E412',
+		@StructuralEngineeringUK UNIQUEIDENTIFIER = 'AEBD6E67-7883-405D-A234-8377722281C1';
+
+
+	
 
 	IF (NOT EXISTS
 	 (
@@ -34,6 +44,28 @@ BEGIN
 				AND (IsReadyForQuoteReview = 1)
 			)
 	   )
+	   /*
+			Enquiries belonging to the below org units should not be
+			checked if they have "Ready for Quote" status.
+	   */
+	   AND NOT EXISTS
+	   (
+			SELECT 1 
+			FROM SSop.Enquiries root_hobt
+			JOIN SCore.OrganisationalUnits org ON (root_hobt.OrganisationalUnitID = org.ID)
+			WHERE 
+					(root_hobt.Guid = @Guid)
+				AND (org.Guid NOT IN 
+							(
+								@Sustainability,
+								@SustainabilityCompliance,
+								@BuildingEnvelope,
+								@BuildingEnvelopeUK,
+								@StructuralEngineering,
+								@StructuralEngineeringUK
+							)
+					)
+		)
 	BEGIN
 		;
 		THROW 60000, N'The enquiry must be marked ready for review first.', 1;

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[TransactionBatchTransitions]')
 GO
+PRINT (N'Create table [SFin].[TransactionBatchTransitions]')
+GO
 CREATE TABLE [SFin].[TransactionBatchTransitions] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionBatchTransitions_RowStatus] DEFAULT (1),

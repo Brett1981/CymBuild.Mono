@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SSop].[QuotePaymentStages]')
 GO
+PRINT (N'Create table [SSop].[QuotePaymentStages]')
+GO
 CREATE TABLE [SSop].[QuotePaymentStages] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_QuotePaymentStages_RowStatus] DEFAULT (1),

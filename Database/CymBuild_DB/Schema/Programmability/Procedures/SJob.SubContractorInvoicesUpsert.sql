@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SJob].[SubContractorInvoicesUpsert]')
 GO
+PRINT (N'Create procedure [SJob].[SubContractorInvoicesUpsert]')
+GO
 CREATE PROCEDURE [SJob].[SubContractorInvoicesUpsert]
 	(	
 		@Guid UNIQUEIDENTIFIER,

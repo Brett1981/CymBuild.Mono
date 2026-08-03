@@ -63,6 +63,8 @@ namespace Concursus.EF.Finance
             await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken);
 
             const string sql = """
+SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
 DECLARE @Claimed TABLE
 (
     ID bigint NOT NULL,
@@ -76,7 +78,7 @@ DECLARE @Claimed TABLE
 (
     SELECT TOP (1)
            io.ID
-    FROM   SCore.IntegrationOutbox io WITH (READPAST, UPDLOCK, ROWLOCK)
+    FROM   SCore.IntegrationOutbox io WITH (READCOMMITTEDLOCK, UPDLOCK, READPAST, ROWLOCK)
     WHERE  io.RowStatus NOT IN (0, 254)
       AND  io.EventType = @EventType
       AND  io.PublishedOnUtc IS NULL

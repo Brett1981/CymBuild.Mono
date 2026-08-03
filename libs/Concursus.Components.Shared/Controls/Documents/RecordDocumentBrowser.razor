@@ -3,14 +3,13 @@
 @using Concursus.API.Core
 @using Microsoft.Extensions.Configuration
 @using Google.Protobuf.WellKnownTypes
-@using Telerik.SvgIcons
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject IConfiguration Config
 
-<div class="record-doc-browser">
-    <div class="doc-toolbar">
-        <div class="left">
+<div class="record-doc-browser native-record-doc-browser">
+    <div class="doc-toolbar native-doc-toolbar">
+        <div class="left native-doc-location">
             @if (_breadcrumbs.Count > 0)
             {
                 <div class="breadcrumb-bar">
@@ -18,10 +17,9 @@
                     {
                         var crumb = _breadcrumbs[i];
 
-                        <TelerikButton Class="crumb"
-                                       OnClick="@(async () => await OnCrumbClickAsync(i))">
+                        <button type="button" class="btn btn-sm btn-link crumb" @onclick="@(async () => await OnCrumbClickAsync(i))">
                             @crumb.Name
-                        </TelerikButton>
+                        </button>
 
                         @if (i < _breadcrumbs.Count - 1)
                         {
@@ -32,16 +30,19 @@
             }
         </div>
 
-        <div class="right">
-            <TelerikTextBox @bind-Value="_searchText"
-                            Placeholder="Search documents..."
-                            Width="280px" />
-
-            <TelerikButton OnClick="@RefreshAsync" Icon="@SvgIcon.Redo">Refresh</TelerikButton>
+        <div class="right native-doc-actions">
+            <input class="form-control form-control-sm native-doc-search"
+                   value="@_searchText"
+                   @oninput="OnSearchInput"
+                   @onkeydown="OnSearchKeyDownAsync"
+                   placeholder="Search documents..."
+                   aria-label="Search documents" />
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ApplySearchAsync" disabled="@_filesLoading">Search</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefreshAsync" disabled="@_filesLoading">↻ Refresh</button>
 
             @if (!string.IsNullOrWhiteSpace(_location?.SharePointWebUrl))
             {
-                <TelerikButton OnClick="@OpenInSharePointAsync" Icon="@SvgIcon.Link">Open</TelerikButton>
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenInSharePointAsync">↗ Open</button>
             }
         </div>
     </div>
@@ -50,7 +51,7 @@
     {
         <div class="alert alert-danger">
             <strong>Documents unavailable.</strong> @_fatalError
-            <TelerikButton OnClick="@InitializeAsync" Class="ml-2">Retry</TelerikButton>
+            <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="InitializeAsync">Retry</button>
         </div>
     }
     else
@@ -62,20 +63,20 @@
                 @if (_foldersLoading)
                 {
                     <div class="p-3">
-                        <TelerikLoader />
+                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Loading folders...
                     </div>
                 }
                 else
                 {
-                    <TelerikTreeView Data="@_folderNodes"
-                                     OnExpand="@OnFolderExpand"
-                                     OnItemClick="@OnFolderSelected">
-                        <TreeViewBindings>
-                            <TreeViewBinding TextField="Name"
-                                             ItemsField="Children"
-                                             HasChildrenField="HasChildren" />
-                        </TreeViewBindings>
-                    </TelerikTreeView>
+                    <div class="native-doc-tree" role="tree" aria-label="Document folders">
+                        @foreach (var node in _folderNodes)
+                        {
+                            <NativeDocumentFolderNode Node="node"
+                                                      CurrentFolderId="@_currentFolderId"
+                                                      OnToggle="ToggleFolderAsync"
+                                                      OnSelect="SelectFolderAsync" />
+                        }
+                    </div>
                 }
             </div>
 
@@ -85,76 +86,46 @@
                 @if (_filesLoading)
                 {
                     <div class="p-3">
-                        <TelerikLoader />
+                        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Loading documents...
                     </div>
                 }
                 else
                 {
-                    <TelerikGrid Data="@_fileRows"
-                                 Pageable="false"
-                                 Sortable="true"
-                                 Height="520px">
-                        <GridColumns>
-                            <GridColumn Field="@nameof(DocumentsListItem.Name)" Title="Name">
-                                <Template>
-                                    @{
-                                        var item = (DocumentsListItem)context;
-                                    }
-                                    <span class="doc-name">
-                                        <span class="doc-icon">@GetIcon(item)</span>
-
-                                        @if (item.IsFolder)
-                                        {
-                                            <a href="javascript:void(0)" @onclick="() => NavigateToFolder(item)">
-                                                @item.Name
-                                            </a>
-                                        }
-                                        else
-                                        {
-                                            <a href="javascript:void(0)" @onclick="() => DownloadAsync(item)">
-                                                @item.Name
-                                            </a>
-                                        }
-                                    </span>
-                                </Template>
-                            </GridColumn>
-
-                            <GridColumn Title="Date Modified" Width="160px">
-                                <Template>
-                                    @{
-                                        var item = (DocumentsListItem)context;
-                                    }
-                                    @FormatTimestamp(item.LastModifiedUtc)
-                                </Template>
-                            </GridColumn>
-
-                            <GridColumn Title="Size" Width="120px">
-                                <Template>
-                                    @{
-                                        var item = (DocumentsListItem)context;
-                                    }
-                                    @(item.IsFolder ? "" : FormatBytes(item.Size))
-                                </Template>
-                            </GridColumn>
-
-                            <GridColumn Title="Actions" Width="120px">
-                                <Template>
-                                    @{
-                                        var item = (DocumentsListItem)context;
-                                    }
-                                    @if (!item.IsFolder && item.CanDownload)
+                    @if (_fileRows.Count == 0)
+                    {
+                        <div class="native-doc-empty" role="status">No documents found in this folder.</div>
+                    }
+                    else
+                    {
+                        <div class="native-doc-table-wrap">
+                            <table class="table table-sm table-hover native-doc-table" aria-label="Documents">
+                                <thead><tr>
+                                    <th><button type="button" class="native-doc-sort" @onclick="@(() => SetSort(FileSort.Name))">Name @GetSortIndicator(FileSort.Name)</button></th>
+                                    <th><button type="button" class="native-doc-sort" @onclick="@(() => SetSort(FileSort.Modified))">Date Modified @GetSortIndicator(FileSort.Modified)</button></th>
+                                    <th><button type="button" class="native-doc-sort" @onclick="@(() => SetSort(FileSort.Size))">Size @GetSortIndicator(FileSort.Size)</button></th>
+                                    <th>Actions</th>
+                                </tr></thead>
+                                <tbody>
+                                    @foreach (var item in SortedFileRows)
                                     {
-                                        <TelerikButton OnClick="() => DownloadAsync(item)" Icon="@SvgIcon.Download" />
+                                        <tr>
+                                            <td><span class="doc-name"><span class="doc-icon">@GetIcon(item)</span>
+                                                <button type="button" class="native-doc-name-action" style="border: 0 !important; box-shadow: none !important;" @onclick="@(() => ActivateItemAsync(item))">@item.Name</button>
+                                            </span></td>
+                                            <td class="text-nowrap">@FormatTimestamp(item.LastModifiedUtc)</td>
+                                            <td class="text-nowrap">@(item.IsFolder ? "" : FormatBytes(item.Size))</td>
+                                            <td>@if (!item.IsFolder && item.CanDownload) { <button type="button" class="btn btn-sm btn-outline-primary" @onclick="@(() => DownloadAsync(item))">Download</button> }</td>
+                                        </tr>
                                     }
-                                </Template>
-                            </GridColumn>
-                        </GridColumns>
-                    </TelerikGrid>
+                                </tbody>
+                            </table>
+                        </div>
+                    }
 
                     @if (!string.IsNullOrWhiteSpace(_nextPageToken))
                     {
                         <div class="load-more">
-                            <TelerikButton OnClick="@LoadMoreAsync">Load more</TelerikButton>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LoadMoreAsync" disabled="@_filesLoading">Load more</button>
                         </div>
                     }
                 }
@@ -182,6 +153,27 @@
     private bool _filesLoading;
     private string? _fatalError;
     private string _searchText = "";
+    private FileSort _currentSort = FileSort.Name;
+    private bool _sortDescending;
+
+    private IEnumerable<DocumentsListItem> SortedFileRows
+    {
+        get
+        {
+            Func<DocumentsListItem, object?> selector = _currentSort switch
+            {
+                FileSort.Modified => item => item.LastModifiedUtc?.ToDateTime(),
+                FileSort.Size => item => item.Size,
+                _ => item => item.Name
+            };
+
+            var sorted = _sortDescending
+                ? _fileRows.OrderByDescending(selector)
+                : _fileRows.OrderBy(selector);
+
+            return sorted.ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase);
+        }
+    }
 
     protected override async Task OnParametersSetAsync()
         => await InitializeAsync();
@@ -280,11 +272,21 @@
         });
     }
 
-    private async Task OnFolderExpand(TreeViewExpandEventArgs args)
+    private async Task ToggleFolderAsync(FolderTreeNode node)
     {
-        if (args.Item is not FolderTreeNode node) return;
-        if (node.ChildrenLoaded) return;
-        if (_location is null || FormHelper is null) return;
+        if (node.IsExpanded)
+        {
+            node.IsExpanded = false;
+            return;
+        }
+
+        if (node.ChildrenLoaded)
+        {
+            node.IsExpanded = true;
+            return;
+        }
+
+        if (_location is null || FormHelper is null || !node.HasChildren) return;
 
         try
         {
@@ -309,6 +311,7 @@
                 .ToList();
 
             node.ChildrenLoaded = true;
+            node.IsExpanded = true;
         }
         catch (Exception ex)
         {
@@ -320,11 +323,7 @@
         }
     }
 
-    private async Task OnFolderSelected(TreeViewItemClickEventArgs args)
-    {
-        if (args.Item is not FolderTreeNode node) return;
-        await NavigateToFolderIdAsync(node.Id, node.Name);
-    }
+    private async Task SelectFolderAsync(FolderTreeNode node) => await NavigateToFolderIdAsync(node.Id, node.Name);
 
     private async Task NavigateToFolderIdAsync(string folderId, string folderName)
     {
@@ -333,8 +332,34 @@
         await LoadFolderAsync(folderId, reset: true);
     }
 
-    private void NavigateToFolder(DocumentsListItem folder)
-        => _ = NavigateToFolderIdAsync(folder.Id, folder.Name);
+    private async Task NavigateToFolderAsync(DocumentsListItem folder)
+        => await NavigateToFolderIdAsync(folder.Id, folder.Name);
+
+    private async Task ActivateItemAsync(DocumentsListItem item)
+    {
+        if (item.IsFolder) await NavigateToFolderAsync(item);
+        else await DownloadAsync(item);
+    }
+
+    private void OnSearchInput(ChangeEventArgs args) => _searchText = args.Value?.ToString() ?? string.Empty;
+
+    private async Task OnSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await ApplySearchAsync();
+    }
+
+    private async Task ApplySearchAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_currentFolderId)) await LoadFolderAsync(_currentFolderId, reset: true);
+    }
+
+    private void SetSort(FileSort sort)
+    {
+        if (_currentSort == sort) _sortDescending = !_sortDescending;
+        else { _currentSort = sort; _sortDescending = false; }
+    }
+
+    private string GetSortIndicator(FileSort sort) => _currentSort != sort ? string.Empty : _sortDescending ? "▼" : "▲";
 
     private async Task LoadFolderAsync(string folderId, bool reset)
     {
@@ -453,13 +478,16 @@
         public string FolderId { get; set; } = "";
     }
 
-    private sealed class FolderTreeNode
+    public sealed class FolderTreeNode
     {
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public bool HasChildren { get; set; }
 
         public bool ChildrenLoaded { get; set; }
+        public bool IsExpanded { get; set; }
         public List<FolderTreeNode> Children { get; set; } = new();
     }
+
+    private enum FileSort { Name, Modified, Size }
 }

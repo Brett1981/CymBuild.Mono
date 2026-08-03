@@ -1,5 +1,18 @@
 PRINT (N'Create table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
 GO
+
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create unique filtered index [UX_Metadata_IdentityMapIgnoredIssues_ActiveScope] on table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
+GO
+
+
+PRINT (N'Create index [IX_Metadata_IdentityMapIgnoredIssues_DatabaseTable] on table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
+GO
+PRINT (N'Create table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
+GO
 CREATE TABLE [SMigration].[Metadata_IdentityMapIgnoredIssues] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL,
@@ -36,22 +49,22 @@ ALTER TABLE [SMigration].[Metadata_IdentityMapIgnoredIssues] WITH NOCHECK
   ADD CONSTRAINT [UQ_Metadata_IdentityMapIgnoredIssues_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create unique filtered index [UX_Metadata_IdentityMapIgnoredIssues_ActiveScope] on table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
-GO
-CREATE UNIQUE INDEX [UX_Metadata_IdentityMapIgnoredIssues_ActiveScope]
-  ON [SMigration].[Metadata_IdentityMapIgnoredIssues] ([DatabaseName], [RegistryGuid], [SourceRowGuid], [IssueCode])
-  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
-  WITH (FILLFACTOR = 80)
-  ON [PRIMARY]
-GO
-
 PRINT (N'Create index [IX_Metadata_IdentityMapIgnoredIssues_DatabaseTable] on table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
 GO
 CREATE INDEX [IX_Metadata_IdentityMapIgnoredIssues_DatabaseTable]
   ON [SMigration].[Metadata_IdentityMapIgnoredIssues] ([DatabaseName], [SchemaName], [TableName], [RowStatus])
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [UX_Metadata_IdentityMapIgnoredIssues_ActiveScope] on table [SMigration].[Metadata_IdentityMapIgnoredIssues]')
+GO
+CREATE UNIQUE INDEX [UX_Metadata_IdentityMapIgnoredIssues_ActiveScope]
+  ON [SMigration].[Metadata_IdentityMapIgnoredIssues] ([DatabaseName], [RegistryGuid], [SourceRowGuid], [IssueCode])
+  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO

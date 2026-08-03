@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create full-text stoplist [Honorifics]')
 GO
+PRINT (N'Create full-text stoplist [Honorifics]')
+GO
 CREATE FULLTEXT STOPLIST [Honorifics] AUTHORIZATION [dbo];
 GO
 

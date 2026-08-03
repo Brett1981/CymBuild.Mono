@@ -2,6 +2,8 @@
 GO
 PRINT (N'Create table [SFin].[TransactionDetails]')
 GO
+PRINT (N'Create table [SFin].[TransactionDetails]')
+GO
 CREATE TABLE [SFin].[TransactionDetails] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_TransactionDetails_RowStatus] DEFAULT (0),

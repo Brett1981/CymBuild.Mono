@@ -40,7 +40,7 @@ BEGIN TRAN;
 ;WITH cte AS
 (
     SELECT TOP (@BatchSize) o.ID
-    FROM SCore.IntegrationOutbox o WITH (READPAST, UPDLOCK, ROWLOCK)
+    FROM SCore.IntegrationOutbox o WITH (READCOMMITTEDLOCK, UPDLOCK, READPAST, ROWLOCK)
     WHERE o.RowStatus NOT IN (0,254)
       AND o.EventType IN (N'WorkflowStatusNotification', N'JobCreatedFromProposal', N'JobClosureDecision')
       AND o.PublishedOnUtc IS NULL
@@ -434,7 +434,7 @@ BEGIN TRAN;
 ;WITH cte AS
 (
     SELECT TOP (@Take) q.ID, q.TransitionGuid
-    FROM SCore.WorkflowNotificationQueue q WITH (READPAST, UPDLOCK, ROWLOCK)
+    FROM SCore.WorkflowNotificationQueue q WITH (READCOMMITTEDLOCK, UPDLOCK, READPAST, ROWLOCK)
     WHERE q.ProcessedOnUtc IS NULL
       AND q.AttemptCount < @MaxAttempts
     ORDER BY q.CreatedOnUtc ASC

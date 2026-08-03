@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SOffice].[OutlookEmailConversations]')
 GO
+PRINT (N'Create table [SOffice].[OutlookEmailConversations]')
+GO
 CREATE TABLE [SOffice].[OutlookEmailConversations] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_OutlookEmailConversations_Guid] DEFAULT (newid()) ROWGUIDCOL,

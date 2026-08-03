@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SSop].[EnquiryKeyDates]')
 GO
+PRINT (N'Create table [SSop].[EnquiryKeyDates]')
+GO
 CREATE TABLE [SSop].[EnquiryKeyDates] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DC_EnquiryKeyDates_RowStatus] DEFAULT (1),

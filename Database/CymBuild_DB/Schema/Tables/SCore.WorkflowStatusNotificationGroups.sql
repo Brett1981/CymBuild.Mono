@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[WorkflowStatusNotificationGroups]')
 GO
+PRINT (N'Create table [SCore].[WorkflowStatusNotificationGroups]')
+GO
 CREATE TABLE [SCore].[WorkflowStatusNotificationGroups] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_WorkflowStatusNotificationGroups_RowStatus] DEFAULT (1),

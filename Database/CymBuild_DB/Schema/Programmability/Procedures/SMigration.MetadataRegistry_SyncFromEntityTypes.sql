@@ -6,7 +6,19 @@ GO
 PRINT (N'Create or alter procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataRegistry_SyncFromEntityTypes]
+PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataRegistry_SyncFromEntityTypes]
 (
     @SourceDatabaseName SYSNAME = NULL,
     @TargetDatabaseName SYSNAME = NULL

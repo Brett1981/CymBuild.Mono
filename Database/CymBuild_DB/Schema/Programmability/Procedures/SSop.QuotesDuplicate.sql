@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SSop].[QuotesDuplicate]')
 GO
+PRINT (N'Create procedure [SSop].[QuotesDuplicate]')
+GO
 
 
 
@@ -57,7 +59,8 @@ BEGIN
 		  ProjectId,
 		  DescriptionOfWorks,
 		  QuotingConsultantId,
-		  ExclusionsAndLimitations)
+		  ExclusionsAndLimitations,
+		  JobTypeId)
 	SELECT	0,
 			@TargetGuid,
 			q.OrganisationalUnitID,
@@ -85,7 +88,8 @@ BEGIN
 			q.ProjectId,
 			q.DescriptionOfWorks,
 			q.QuotingConsultantId,
-			q.ExclusionsAndLimitations
+			q.ExclusionsAndLimitations,
+			q.JobTypeId
 	FROM	SSop.Quotes AS q
 	WHERE	(q.ID = @SourceID);
 

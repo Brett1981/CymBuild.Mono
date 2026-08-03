@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[SequenceTable]')
 GO
+PRINT (N'Create table [SCore].[SequenceTable]')
+GO
 CREATE TABLE [SCore].[SequenceTable] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_SequenceTable_RowStatus] DEFAULT (1),

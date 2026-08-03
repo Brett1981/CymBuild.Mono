@@ -51,9 +51,10 @@ namespace Concursus.API.Services.Finance
         /// <summary>
         /// Default tax/VAT code.
         ///
-        /// Per current finance rules this is fixed as 22.
+        /// For the current Group Sage dataset, standard UK VAT (20%) uses tax-code identifier 10.
+        /// This is a target Sage record identifier, not a VAT percentage.
         /// </summary>
-        public int? DefaultTaxCode { get; set; } = 22;
+        public int? DefaultTaxCode { get; set; } = 10;
 
         /// <summary>
         /// Whether the wrapper should use the invoice address.

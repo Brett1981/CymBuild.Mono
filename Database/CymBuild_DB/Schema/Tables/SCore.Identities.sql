@@ -3,6 +3,14 @@ GO
 
 PRINT (N'Create table [SCore].[Identities]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SCore].[Identities]')
+GO
 CREATE TABLE [SCore].[Identities] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Identities_RowStatus] DEFAULT (1),

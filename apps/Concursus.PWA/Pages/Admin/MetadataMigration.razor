@@ -319,6 +319,18 @@
     private string IdentityMapReviewBannerClass => $"metadata-identity-review-banner {(IsIdentityMapReviewCurrent ? "reviewed" : "warning")}";
     private string IdentityMapReviewIconClass => $"bi {(IsIdentityMapReviewCurrent ? "bi-check-circle" : "bi-exclamation-circle")}";
     private string NextRunActionText => GetNextRunActionText();
+    private bool HasPrioritySelectedScope => SelectedPersistedCount > 0;
+    private string RecommendedApplyPreviewScopeText => HasPrioritySelectedScope ? "Preview Selected" : "Preview All Valid";
+    private string PriorityReviewScopeCss => HasPrioritySelectedScope ? "metadata-review-scope-selected" : "metadata-review-scope-all";
+    private string PriorityReviewScopeTitle => HasPrioritySelectedScope
+        ? $"Selected records are the priority confirmation scope ({SelectedPersistedCount})"
+        : "No selected records - all valid records are the confirmation scope";
+    private string PriorityReviewScopeDetail => HasPrioritySelectedScope
+        ? "Identity Map and Release Artefacts still show the full-run context, but selected records should be reviewed and previewed first before Apply Selected."
+        : "Because no records are selected, review and preview should be based on all valid staged records before Apply All Valid.";
+    private string CurrentApplyPreviewScopeText => ApplyPreview is null
+        ? $"Recommended next preview: {RecommendedApplyPreviewScopeText}"
+        : $"Current preview: {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}";
 
 
 
@@ -332,6 +344,7 @@
             || row.SkipReason.Contains(ApplyPreviewSearchText, StringComparison.OrdinalIgnoreCase)
             || row.ChangedColumns.Contains(ApplyPreviewSearchText, StringComparison.OrdinalIgnoreCase))
         .OrderBy(row => ApplyPreviewActionSort(row.ApplyAction))
+        .ThenBy(row => HasPrioritySelectedScope && !row.IsSelected ? 1 : 0)
         .ThenBy(row => row.SchemaName)
         .ThenBy(row => row.TableName)
         .ThenBy(row => row.SourceRowId);
@@ -589,7 +602,9 @@
             <div>
                 <h2>Run overview</h2>
                 <p>The workbench keeps the existing CymBuild migration route and presents the staged comparison in a single review surface.</p>
-                <dl class="metadata-definition-grid">
+                @ReviewScopePanel(SectionApply)
+
+        <dl class="metadata-definition-grid">
                     <dt>Current run</dt><dd>@(HasRunGuid ? RunGuidText : "No run selected")</dd>
                     <dt>Status</dt><dd>@(Dashboard?.Run?.RunStatus ?? "Not loaded")</dd>
                     <dt>Created UTC</dt><dd>@(Dashboard?.Run?.CreatedOnUtcText ?? "-")</dd>
@@ -983,6 +998,8 @@
                 <button type="button" class="cb-v2-btn-primary" @onclick="MarkIdentityMapReviewedAsync" disabled="@(IsBusy || !CanMarkIdentityMapReviewed)">Mark Reviewed</button>
             </div>
         </div>
+        @ReviewScopePanel(SectionIdentity)
+
         @if (HasIdentityMapBuilt && IdentityMapHasReviewNeededRows)
         {
             <div class="@IdentityMapReviewBannerClass">
@@ -1223,6 +1240,8 @@
                 <button type="button" class="cb-v2-btn-primary" @onclick="ApplyAsync" disabled="@(IsBusy || !CanApply)">Apply All Valid</button>
             </div>
         </div>
+        @ReviewScopePanel(SectionApply)
+
         <dl class="metadata-definition-grid">
             <dt>Run</dt><dd>@(HasRunGuid ? RunGuidText : "No run selected")</dd>
             <dt>Validation errors</dt><dd>@ValidationErrorCount</dd>
@@ -1757,7 +1776,7 @@
                 <li>Use the workbench in DEV/QA to stage, compare, preview and understand metadata changes.</li>
                 <li>For intended release changes, capture the outcome in source-controlled schema SQL and metadata manifests.</li>
                 <li>Keep environment-specific ignores or manual map overrides explicit and auditable; do not rely on silent manual LIVE database edits.</li>
-                <li>Automated deployment remains: schema deploy â†’ metadata validate â†’ metadata apply.</li>
+                <li>Automated deployment remains: schema deploy / metadata validate / metadata apply.</li>
                 <li>After changing EntityType metadata scope, restage and rebuild the identity map before creating the release artefacts.</li>
             </ol>
         </div>
@@ -1928,6 +1947,26 @@
         </div>
     </div>;
 
+
+    private RenderFragment ReviewScopePanel(string context) => @<div class="metadata-review-scope-panel @PriorityReviewScopeCss metadata-review-scope-@context">
+        <span class="metadata-review-scope-icon bi @(HasPrioritySelectedScope ? "bi-funnel-fill" : "bi-list-check")"></span>
+        <div class="metadata-review-scope-copy">
+            <h3>@PriorityReviewScopeTitle</h3>
+            <p>@PriorityReviewScopeDetail</p>
+            <div class="metadata-review-scope-chips">
+                <span>Selected: <strong>@SelectedPersistedCount</strong></span>
+                <span>Ignored: <strong>@IgnoredCount</strong></span>
+                <span>@CurrentApplyPreviewScopeText</span>
+            </div>
+        </div>
+        <div class="metadata-review-scope-actions">
+            @if (!context.Equals(SectionApply, StringComparison.OrdinalIgnoreCase))
+            {
+                <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => SelectSectionAsync(SectionApply))" disabled="@IsBusy">Go to Apply</button>
+            }
+            <span class="metadata-status-pill @(HasPrioritySelectedScope ? "warning" : "info")">@RecommendedApplyPreviewScopeText</span>
+        </div>
+    </div>;
     private RenderFragment ReleaseArtefactTabButton(string tab, string label) => @<button type="button"
         class="metadata-detail-tab @(ReleaseArtefactTab == tab ? "selected" : string.Empty)"
         @onclick="@(() => SetReleaseArtefactTab(tab))">
@@ -2227,6 +2266,7 @@
         builder.AppendLine();
         builder.AppendLine("## Apply preview");
         builder.AppendLine();
+        builder.AppendLine($"- [ ] Priority confirmation scope: **{(HasPrioritySelectedScope ? $"selected records ({SelectedPersistedCount})" : "all valid records")}**.");
         builder.AppendLine(ApplyPreview is null
             ? "- [ ] Generate and review an apply preview before release artefacts are committed."
             : $"- [ ] Preview generated for {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}: {ApplyPreviewApplyCount} apply, {ApplyPreviewSkipCount} skipped, {ApplyPreviewBlockedCount} blocked.");
@@ -3426,7 +3466,7 @@
         return parts.Length == 2 ? (parts[0], parts[1]) : (string.Empty, string.Empty);
     }
 
-    private static string FormatRunOption(MetadataMigrationRunModel run) => $"{run.CreatedOnUtcText} - {run.SourceEnvironment} â†’ {run.TargetEnvironment} - {run.RunStatus}";
+    private static string FormatRunOption(MetadataMigrationRunModel run) => $"{run.CreatedOnUtcText} - {run.SourceEnvironment} / {run.TargetEnvironment} - {run.RunStatus}";
 
     private static string DisplayDifference(string differenceType) => differenceType switch
     {
@@ -3943,6 +3983,7 @@
         public int TotalCount => InsertCount + UpdateCount + NoChangeCount;
     }
 }
+
 
 
 

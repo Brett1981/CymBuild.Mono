@@ -60,22 +60,55 @@ namespace Concursus.EF
         }
 
         /// <summary>
-        /// Sets the isolation level of the given SQL connection to ReadCommitted, so all following
-        /// commands use NOLOCK. Call immediately after opening your SqlConnection.
+        /// Restores the SQL session to the application's normal Read Committed
+        /// isolation level before the connection is returned to the pool.
         /// </summary>
-        public static async Task SetReadCommittedAsync(SqlConnection connection)
+        public static async Task SetReadCommittedAsync(
+            SqlConnection connection,
+            CancellationToken cancellationToken = default)
         {
-            if (connection == null)
-                throw new ArgumentNullException(nameof(connection));
-            using (var cmd = new SqlCommand("SET TRANSACTION ISOLATION LEVEL READ COMMITTED;", connection))
+            ArgumentNullException.ThrowIfNull(connection);
+
+            if (connection.State != ConnectionState.Open)
             {
-                await cmd.ExecuteNonQueryAsync();
+                throw new InvalidOperationException(
+                    "The SQL connection must be open before setting its isolation level.");
             }
+
+            const string sql =
+                "SET TRANSACTION ISOLATION LEVEL READ COMMITTED;";
+
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandType = CommandType.Text,
+                CommandTimeout = 30
+            };
+
+            await command
+                .ExecuteNonQueryAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
-        public static async Task CommitTransactionAsync(SqlTransaction transaction)
+        public static async Task CommitTransactionAsync(
+    SqlTransaction transaction,
+    CancellationToken cancellationToken = default)
         {
-            await transaction.CommitAsync();
+            ArgumentNullException.ThrowIfNull(transaction);
+
+            var connection = transaction.Connection;
+
+            await transaction
+                .CommitAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            if (connection is not null &&
+                connection.State == ConnectionState.Open)
+            {
+                await SetReadCommittedAsync(
+                        connection,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         public static SqlCommand CreateCommand(string statement, SqlConnection connection, SqlTransaction? transaction = null, int? timeoutSeconds = 120)
@@ -95,9 +128,34 @@ namespace Concursus.EF
             return cmd;
         }
 
-        public static async Task RollbackTransactionAsync(SqlTransaction transaction)
+        public static async Task RollbackTransactionAsync(
+            SqlTransaction transaction,
+            CancellationToken cancellationToken = default)
         {
-            await transaction.RollbackAsync();
+            ArgumentNullException.ThrowIfNull(transaction);
+
+            var connection = transaction.Connection;
+
+            try
+            {
+                if (connection is not null)
+                {
+                    await transaction
+                        .RollbackAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                if (connection is not null &&
+                    connection.State == ConnectionState.Open)
+                {
+                    await SetReadCommittedAsync(
+                            connection,
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+            }
         }
 
         #endregion Public Methods

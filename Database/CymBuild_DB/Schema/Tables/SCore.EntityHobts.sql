@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[EntityHobts]')
 GO
+PRINT (N'Create table [SCore].[EntityHobts]')
+GO
 CREATE TABLE [SCore].[EntityHobts] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_EntityHoBTs_RowStatus] DEFAULT (0),

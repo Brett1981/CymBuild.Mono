@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create function [SFin].[tvf_SageInboundDiagnostics]')
 GO
+PRINT (N'Create function [SFin].[tvf_SageInboundDiagnostics]')
+GO
 
 CREATE FUNCTION [SFin].[tvf_SageInboundDiagnostics]
 (

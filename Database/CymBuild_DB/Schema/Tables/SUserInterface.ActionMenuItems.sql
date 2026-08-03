@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[ActionMenuItems]')
 GO
+PRINT (N'Create table [SUserInterface].[ActionMenuItems]')
+GO
 CREATE TABLE [SUserInterface].[ActionMenuItems] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ActionMenuItems_RowStatus] DEFAULT (0),

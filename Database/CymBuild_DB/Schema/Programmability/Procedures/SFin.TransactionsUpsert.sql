@@ -35,7 +35,9 @@ BEGIN
             @CreditTermsId INT,
             @ExistingBatched BIT,
             @ExistingAccountID INT,
-            @ExistingJobID INT;
+            @ExistingJobID INT,
+            @TransactionID BIGINT,
+            @EnsureQueuedComment NVARCHAR(MAX);
 
     SELECT  @AccountID = ID
     FROM    SCrm.Accounts
@@ -113,7 +115,8 @@ BEGIN
     END
     ELSE
     BEGIN
-        SELECT  @ExistingBatched = t.Batched,
+        SELECT  @TransactionID = t.ID,
+                @ExistingBatched = t.Batched,
                 @ExistingAccountID = t.AccountID,
                 @ExistingJobID = t.JobID
         FROM    SFin.Transactions t
@@ -139,6 +142,24 @@ BEGIN
             UPDATE  SJob.Jobs
             SET     FinanceAccountID = @AccountID
             WHERE   ID = @ExistingJobID;
+        END
+
+        IF (ISNULL(@Batched, 1) = 0)
+        BEGIN
+            SET @EnsureQueuedComment =
+                CASE
+                    WHEN ISNULL(@ExistingBatched, 0) = 1
+                        THEN N'Finance approval detected from TransactionsUpsert Batched 1 to 0.'
+                    ELSE N'Finance approval repair detected from TransactionsUpsert for already unbatched transaction.'
+                END;
+
+            EXEC SFin.TransactionSageSubmission_EnsureQueued
+                 @TransactionID = @TransactionID,
+                 @TransactionGuid = @Guid,
+                 @CreatedByUserId = @CreatedByUserId,
+                 @SurveyorUserId = @SurveyorUserId,
+                 @Comment = @EnsureQueuedComment,
+                 @SuppressResult = 1;
         END
     END
 

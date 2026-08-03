@@ -48,6 +48,19 @@ BEGIN
 
     PRINT N'Passed pre checks';
 
+    DECLARE @QuoteID INT = -1;
+
+    SELECT
+        @QuoteID = q.ID
+    FROM SSop.Quotes AS q
+    WHERE q.Guid = @Guid
+      AND q.RowStatus NOT IN (0, 254);
+
+    IF (@QuoteID <= 0)
+    BEGIN
+        ;THROW 60000, N'Cannot create jobs because the supplied Quote Guid was not found or is inactive.', 1;
+    END;
+
     -------------------------------------------------------------------------
     -- Normalise empty Created Job values saved as 0. The Quote_JobsSummary
     -- source treats CreatedJobId < 0 as not yet created.
@@ -389,37 +402,6 @@ BEGIN
         FROM SJob.Jobs
         WHERE (Guid = @JobGuid);
 
-        IF EXISTS
-        (
-            SELECT 1
-            FROM SSop.QuoteItems AS qi
-            WHERE qi.RowStatus NOT IN (0,254)
-              AND ISNULL(qi.InvoicingSchedule, -1) <= 0
-              AND
-              (
-                  qi.ID = @QuoteItemID
-                  OR
-                  (
-                      @QuoteItemID <= 0
-                      AND qi.QuoteId =
-                      (
-                          SELECT q.ID
-                          FROM SSop.Quotes AS q
-                          WHERE q.Guid = @Guid
-                            AND q.RowStatus NOT IN (0,254)
-                      )
-                  )
-              )
-        )
-        BEGIN
-            EXEC SFin.JobInvoiceProcessingMode_Set
-                 @JobGuid = @JobGuid,
-                 @NewMode = 1,
-                 @ChangedByUserGuid = NULL,
-                 @Reason = N'Quote item converted without assigned invoice schedule; defaulted to Manual invoice mode.',
-                 @Source = N'QuoteCreateJobs';
-        END;
-
         UPDATE @JobsToCreate
         SET CreatedJobID = @CreatedJobID
         WHERE (ID = @CurrentId);
@@ -459,6 +441,134 @@ BEGIN
               AND (qi.RowStatus NOT IN (0, 254))
               AND (qi.CreatedJobId <= 0);
         END;
+
+        -------------------------------------------------------------------------
+        -- CYB-438: Quote-to-Job invoice schedule normalisation.
+        -- This must run after CreatedJobId has been written to the quote items,
+        -- because the Job invoice schedule grid resolves schedules via
+        -- SSop.QuoteItems.CreatedJobId + SSop.QuoteItems.InvoicingSchedule.
+        -------------------------------------------------------------------------
+        DECLARE @MissingQuoteItemScheduleCount INT = 0;
+        DECLARE @ManualInvoiceScheduleId INT = -1;
+        DECLARE @ManualInvoiceScheduleGuid UNIQUEIDENTIFIER = NULL;
+        DECLARE @ManualTriggerGuid UNIQUEIDENTIFIER = NULL;
+
+        SELECT
+            @MissingQuoteItemScheduleCount = COUNT_BIG(1)
+        FROM SSop.QuoteItems AS qi
+        WHERE qi.RowStatus NOT IN (0, 254)
+          AND qi.CreatedJobId = @CreatedJobID
+          AND ISNULL(qi.InvoicingSchedule, -1) IN (-1, 0);
+
+        IF (@MissingQuoteItemScheduleCount > 0)
+        BEGIN
+            -- Re-use a system-generated Manual schedule only when it is already
+            -- linked to one of this Job's quote items. SFin.InvoiceSchedules is
+            -- quote-scoped, so re-using an unrelated quote-level schedule would
+            -- incorrectly join separate created jobs together in the Job grid.
+            SELECT TOP (1)
+                @ManualInvoiceScheduleId = invs.ID
+            FROM SSop.QuoteItems AS qi
+            JOIN SFin.InvoiceSchedules AS invs
+                ON invs.ID = qi.InvoicingSchedule
+               AND invs.RowStatus NOT IN (0, 254)
+            JOIN SFin.InvoiceScheduleTrigger AS ist
+                ON ist.ID = invs.TriggerId
+               AND ist.RowStatus NOT IN (0, 254)
+            WHERE qi.RowStatus NOT IN (0, 254)
+              AND qi.CreatedJobId = @CreatedJobID
+              AND invs.QuoteId = @QuoteID
+              AND invs.Name = N'Manual'
+              AND invs.DescriptionOfWork = N'System generated manual invoice schedule created during job creation.'
+              AND ist.Name = N'Manual'
+            ORDER BY invs.ID;
+
+            IF (ISNULL(@ManualInvoiceScheduleId, -1) <= 0)
+            BEGIN
+                SELECT TOP (1)
+                    @ManualTriggerGuid = ist.Guid
+                FROM SFin.InvoiceScheduleTrigger AS ist
+                WHERE ist.RowStatus NOT IN (0, 254)
+                  AND ist.Name = N'Manual'
+                ORDER BY ist.ID;
+
+                IF (@ManualTriggerGuid IS NULL)
+                BEGIN
+                    ;THROW 60000, N'Could not resolve the Manual invoice schedule trigger.', 1;
+                END;
+
+                SET @ManualInvoiceScheduleGuid = NEWID();
+
+                EXEC SFin.InvoiceSchedulesUpsert
+                     @Guid                            = @ManualInvoiceScheduleGuid,
+                     @Name                            = N'Manual',
+                     @TriggerGuid                     = @ManualTriggerGuid,
+                     @ExpectedDate                    = NULL,
+                     @DescriptionOfWork               = N'System generated manual invoice schedule created during job creation.',
+                     @Amount                          = 0,
+                     @QuoteGuid                       = @Guid,
+                     @RibaOnCompletion                = 0,
+                     @RibaOnPartCompletion            = 0,
+                     @OnMilestoneCompletion           = 0,
+                     @OnActivityCompletion            = 0,
+                     @OnActivityAndMilestonCompletion = 0,
+                     @ScheduleReenabled               = 0;
+
+                SELECT
+                    @ManualInvoiceScheduleId = invs.ID
+                FROM SFin.InvoiceSchedules AS invs
+                WHERE invs.Guid = @ManualInvoiceScheduleGuid
+                  AND invs.RowStatus NOT IN (0, 254);
+
+                IF (ISNULL(@ManualInvoiceScheduleId, -1) <= 0)
+                BEGIN
+                    ;THROW 60000, N'Failed to create the system generated Manual invoice schedule for the created Job.', 1;
+                END;
+            END;
+
+            UPDATE qi
+            SET qi.InvoicingSchedule = @ManualInvoiceScheduleId
+            FROM SSop.QuoteItems AS qi
+            WHERE qi.RowStatus NOT IN (0, 254)
+              AND qi.CreatedJobId = @CreatedJobID
+              AND ISNULL(qi.InvoicingSchedule, -1) IN (-1, 0);
+        END;
+
+        -------------------------------------------------------------------------
+        -- CYB-438: Initial invoice processing mode.
+        -- 0 = Automated, 1 = Manual, 2 = Paused.
+        -- Any active non-Manual schedule linked to the created Job makes the Job
+        -- automated. A Job is Manual only when every linked schedule is Manual.
+        -------------------------------------------------------------------------
+        DECLARE @TargetInvoiceProcessingMode TINYINT = 1;
+        DECLARE @InvoiceModeReason NVARCHAR(500) = N'Quote item converted without assigned automated invoice schedule; defaulted to Manual invoice mode.';
+
+        IF EXISTS
+        (
+            SELECT 1
+            FROM SSop.QuoteItems AS qi
+            JOIN SFin.InvoiceSchedules AS invs
+                ON invs.ID = qi.InvoicingSchedule
+               AND invs.RowStatus NOT IN (0, 254)
+            JOIN SFin.InvoiceScheduleTrigger AS ist
+                ON ist.ID = invs.TriggerId
+               AND ist.RowStatus NOT IN (0, 254)
+            WHERE qi.RowStatus NOT IN (0, 254)
+              AND qi.CreatedJobId = @CreatedJobID
+              AND ISNULL(qi.InvoicingSchedule, -1) NOT IN (-1, 0)
+              AND ISNULL(ist.Name, N'') <> N'Manual'
+        )
+        BEGIN
+            SET @TargetInvoiceProcessingMode = 0;
+            SET @InvoiceModeReason = N'Quote item converted with an assigned automated invoice schedule; defaulted to Automated invoice mode.';
+        END;
+
+        EXEC SFin.JobInvoiceProcessingMode_Set
+             @JobGuid = @JobGuid,
+             @NewMode = @TargetInvoiceProcessingMode,
+             @ChangedByUserGuid = NULL,
+             @Reason = @InvoiceModeReason,
+             @Source = N'QuoteCreateJobs';
 
         EXEC SJob.JobActivitiesBuildFromTemplate @JobID = @CreatedJobID;
     END;

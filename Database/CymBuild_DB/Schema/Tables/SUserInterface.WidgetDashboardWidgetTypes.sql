@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[WidgetDashboardWidgetTypes]')
 GO
+PRINT (N'Create table [SUserInterface].[WidgetDashboardWidgetTypes]')
+GO
 CREATE TABLE [SUserInterface].[WidgetDashboardWidgetTypes] (
   [Id] [int] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_WidgetDashboardWidgetTypes_Guid] DEFAULT (newid()) ROWGUIDCOL,

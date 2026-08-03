@@ -74,7 +74,7 @@
                             class="form-select cb-team-person-picker__select"
                             @bind:after="GetDepartmentsForUser"
                             @bind="_selectedBusinessUnit">
-                        <option value="">Select abusiness unit...</option>
+                        <option value="">Select a business unit...</option>
                         @foreach (var bu in _businessUnits)
                         {
                             <option value="@bu.Guid">@bu.Name</option>
@@ -139,7 +139,7 @@
                     }
                 </div>
 
-                <small>Leave empty to show all team members.</small>
+                <small>Leave empty to show all team members. (After populating the dropdowns above)</small>
             </div>
         </div>
 
@@ -278,6 +278,11 @@
     {
         var organisationalUnitsGetResponse = await CoreClient.BusinessUnitsGetAsync(new BusinessUnitsGetRequest() { UserId = UserID });
         _businessUnits = organisationalUnitsGetResponse.OrganisationalUnits.ToList();
+
+        var emptySelection = _businessUnits.Where(x => x.Guid == "00000000-0000-0000-0000-000000000000").FirstOrDefault();
+
+        if (emptySelection != null)
+            _businessUnits.Remove(emptySelection);
 
         StateHasChanged();
     }

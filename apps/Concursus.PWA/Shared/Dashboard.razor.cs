@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Components;
 using Newtonsoft.Json;
 using System.Collections;
 using System.Web;
-using Telerik.Blazor.Components;
 using static Concursus.PWA.Shared.MessageDisplay;
 
 namespace Concursus.PWA.Shared;
@@ -334,17 +333,19 @@ public partial class Dashboard : IAsyncDisposable
         }
     }
 
-    private void HandleRowDoubleClick(GridRowClickEventArgs args)
+    private void HandleRecentItemKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args, RecentItem item)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            OpenRecentItem(item);
+        }
+    }
+
+    private void OpenRecentItem(RecentItem model)
     {
         try
         {
-            dynamic model = args.Item;
-
-            var onRowDoubleClickHandler = !string.IsNullOrEmpty(model?.DetailPageUri)
-                ? "@HandleRowDoubleClick"
-                : null;
-
-            if (onRowDoubleClickHandler == null || model == null)
+            if (model == null || string.IsNullOrWhiteSpace(model.DetailPageUri))
             {
                 return;
             }
@@ -389,7 +390,7 @@ public partial class Dashboard : IAsyncDisposable
         {
             ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
             ex.Data["AdditionalInfo"] = "Error handling row double click.";
-            ex.Data["PageMethod"] = "Dashboard/HandleRowDoubleClick()";
+            ex.Data["PageMethod"] = "Dashboard/OpenRecentItem()";
             _ = OnError(ex);
         }
     }

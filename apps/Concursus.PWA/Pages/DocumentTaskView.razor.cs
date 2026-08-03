@@ -10,9 +10,6 @@ using Microsoft.JSInterop;
 using Newtonsoft.Json;
 using System.Collections;
 using System.Web;
-using Telerik.Blazor.Components;
-using Telerik.DataSource;
-using Telerik.DataSource.Extensions;
 using Telerik.Windows.Documents.Extensibility;
 using Telerik.Windows.Documents.Flow.FormatProviders.Docx;
 using Telerik.Windows.Documents.Flow.FormatProviders.Pdf;
@@ -33,7 +30,6 @@ public partial class DocumentTaskView
 
     private const int DefaultPage = 1;
     private MessageDisplay _messageDisplay = new();
-    private bool IsListVisible = false;
 
     #endregion Private Fields
 
@@ -63,10 +59,9 @@ public partial class DocumentTaskView
     private string FilterText { get; set; } = string.Empty;
     private bool LoaderVisible { get; set; }
     private bool ModalIsVisible { get; set; }
-    private TelerikWindow? ModalWindow { get; set; }
     private string OutputType { get; set; } = "docx";
     private int Page { get; set; } = DefaultPage;
-    private List<string>? SelectedItems { get; set; }
+    private List<string> SelectedItems { get; set; } = new();
     private bool ShowOutPutType { get; set; } = false;
     private bool WindowIsClosable { get; set; } = true;
     private bool WindowIsVisible { get; set; }
@@ -470,14 +465,11 @@ public partial class DocumentTaskView
     {
         try
         {
-            var request = new DataSourceRequest
-            {
-                Filters = new List<IFilterDescriptor>()
-            };
-            request.Filters.Add(new FilterDescriptor("Text", FilterOperator.Contains, FilterText));
-
             if (ListViewData == null) return;
-            Data = ListViewData.ToDataSourceResult(request).Data as List<API.Client.MenuItem>;
+            Data = ListViewData
+                .Where(item => string.IsNullOrWhiteSpace(FilterText)
+                    || (item.Text?.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
             Page = DefaultPage;
         }
         catch (Exception ex)
@@ -504,9 +496,18 @@ public partial class DocumentTaskView
         StateHasChanged();
     }
 
-    private void ToggleListVisibility()
+    private void ToggleDocumentSelection(string documentId, ChangeEventArgs args)
     {
-        IsListVisible = !IsListVisible;
+        if (string.IsNullOrWhiteSpace(documentId)) return;
+
+        if (args.Value is true)
+        {
+            if (!SelectedItems.Contains(documentId)) SelectedItems.Add(documentId);
+        }
+        else
+        {
+            SelectedItems.Remove(documentId);
+        }
     }
 
     #endregion Private Methods

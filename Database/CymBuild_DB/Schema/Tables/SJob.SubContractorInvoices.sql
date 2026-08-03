@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[SubContractorInvoices]')
 GO
+PRINT (N'Create table [SJob].[SubContractorInvoices]')
+GO
 CREATE TABLE [SJob].[SubContractorInvoices] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_SubContractorInvoices_RowStatus] DEFAULT (0),
@@ -15,14 +17,22 @@ CREATE TABLE [SJob].[SubContractorInvoices] (
   [MilestoneId] [bigint] NOT NULL CONSTRAINT [DF_SubContractorInvoices_MilestoneId] DEFAULT (-1),
   [SupportingComments] [nvarchar](max) NOT NULL CONSTRAINT [DF_SubContractorInvoices_SupportingComments] DEFAULT (''),
   [JobId] [int] NOT NULL CONSTRAINT [DF_SubContractorInvoices_JobId] DEFAULT (-1),
-  [SubContractorId] [int] NOT NULL CONSTRAINT [DF_SubContractorInvoices_SubContractorId] DEFAULT (-1),
-  CONSTRAINT [PK_SubContractorInvoices] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
+  [SubContractorId] [int] NOT NULL CONSTRAINT [DF_SubContractorInvoices_SubContractorId] DEFAULT (-1)
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
+PRINT (N'Create primary key [PK_SubContractorInvoices] on table [SJob].[SubContractorInvoices]')
+GO
+ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
+  ADD CONSTRAINT [PK_SubContractorInvoices] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
+GO
+
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_SubContractorInvoices_RecordHistory] on table [SJob].[SubContractorInvoices]')
 GO
 CREATE TRIGGER [SJob].[tg_SubContractorInvoices_RecordHistory]
    ON  [SJob].[SubContractorInvoices]	
@@ -296,30 +306,44 @@ BEGIN
 		
 GO
 
+PRINT (N'Create foreign key [FK_SubContractorInvoices_ActivityId] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_ActivityId] FOREIGN KEY ([ActivityId]) REFERENCES [SJob].[Activities] ([ID])
 GO
 
+PRINT (N'Create foreign key [FK_SubContractorInvoices_DataObjects] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
+PRINT (N'Disable foreign key [FK_SubContractorInvoices_DataObjects] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices]
   NOCHECK CONSTRAINT [FK_SubContractorInvoices_DataObjects]
 GO
 
+PRINT (N'Create foreign key [FK_SubContractorInvoices_JobId] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_JobId] FOREIGN KEY ([JobId]) REFERENCES [SJob].[Jobs] ([ID])
 GO
 
+PRINT (N'Create foreign key [FK_SubContractorInvoices_MilestoneId] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_MilestoneId] FOREIGN KEY ([MilestoneId]) REFERENCES [SJob].[Milestones] ([ID])
 GO
 
+PRINT (N'Create foreign key [FK_SubContractorInvoices_RowStatus] on table [SJob].[SubContractorInvoices]')
+GO
 ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO
 
-ALTER TABLE [SJob].[SubContractorInvoices]
+PRINT (N'Create foreign key [FK_SubContractorInvoices_SubContractorId] on table [SJob].[SubContractorInvoices]')
+GO
+ALTER TABLE [SJob].[SubContractorInvoices] WITH NOCHECK
   ADD CONSTRAINT [FK_SubContractorInvoices_SubContractorId] FOREIGN KEY ([SubContractorId]) REFERENCES [SCrm].[Accounts] ([ID])
 GO

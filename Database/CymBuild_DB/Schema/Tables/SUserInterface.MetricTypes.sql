@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[MetricTypes]')
 GO
+PRINT (N'Create table [SUserInterface].[MetricTypes]')
+GO
 CREATE TABLE [SUserInterface].[MetricTypes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_MetricTypes_RowStatus] DEFAULT (0),

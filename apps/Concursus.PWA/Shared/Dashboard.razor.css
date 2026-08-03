@@ -1,20 +1,19 @@
-﻿.custom-telerik-grid {
-    max-height: 28rem;
+.dashboard-recent-table-wrap {
     width: 100%;
-    height: 100%;
-    overflow: auto;
+    max-height: 28rem;
+    overflow-y: auto;
+}
+
+.dashboard-recent-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.dashboard-recent-table th:first-child,
+.dashboard-recent-table td:first-child {
+    width: 38%;
 }
 
 .card h5 {
     max-width: 200px;
-}
-/* custom-ellipsis class */
-.custom-ellipsis,
-/* OnCellRender class */
-.k-grid td.custom-ellipsis,
-/* OnRowRender class */
-.k-grid tr.custom-ellipsis .k-table-td {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }

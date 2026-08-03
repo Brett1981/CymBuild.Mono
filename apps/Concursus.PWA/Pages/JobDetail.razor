@@ -1,4 +1,4 @@
-﻿@page "/JobDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@page "/JobDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
 
 @using Google.Protobuf.WellKnownTypes
 @using Microsoft.Extensions.Options
@@ -190,7 +190,7 @@
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
                                  ParentRowStatus="@editPage.dataObject.RowStatus"
-                                 TransientVirtualProperties="@TransientVirtualProperties" />
+                                 TransientVirtualProperties="@BuildInvoiceScheduleTransientVirtualProperties()" />
 
                     <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFINANCEMEMO"
                                  OnActionCompleted="RefreshJobProgress"
@@ -225,7 +225,10 @@
                             </div>
 
                             <div class="mt-3 d-flex gap-2">
-                                <button class="btn btn-primary" onclick="@PromptModeChangeAsync" disabled="@(_selectedMode != _currentMode)">
+                                <button type="button"
+                                        class="btn btn-primary"
+                                        @onclick="PromptModeChangeAsync"
+                                        disabled="@(_selectedMode == _currentMode)">
                                     Apply mode change
                                 </button>
 
@@ -236,6 +239,15 @@
                             </div>
                         </div>
                     </div>
+
+                    <DynamicGrid @ref="@gridRef" FormHelper="@ActiveFormHelper" GridCode="JOBINVOICEPROCMODEHISTORY"
+                                OnActionCompleted = "RefreshJobProgress"
+                                ParentGuid = "@RecordGuid"
+                                ParentDataObjectReference = "@editPage.MyDataObjectReference"
+                                ParentRowStatus = "@editPage.dataObject.RowStatus"
+                                Disabled = "@(_currentMode == InvoiceProcessingModeUi.Paused || editPage.GetValueAsBool("CannotBeInvoiced"))"
+                                DisabledMessage = "@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties = "@TransientVirtualProperties" />
+
                     <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBINVOICES"
                                  OnActionCompleted="RefreshJobProgress"
                                  ParentGuid="@RecordGuid"
@@ -262,12 +274,6 @@
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                     }
-
-
-
-
-
-
                     }
                     else
                     {
@@ -519,7 +525,8 @@
                         else
                         {
                             <div class="border rounded p-2">
-                                <InvoicingScheduleDetail @ref="_scheduleDetailRef"
+                                <InvoicingScheduleDetail @key="_jobInvoiceScheduleGuid"
+                                                         @ref="_scheduleDetailRef"
                                                          RecordGuid="@_jobInvoiceScheduleGuid.ToString()"
                                                          ParentDataObjectReference="@editPage.MyDataObjectReference"
                                                          ReturnUrl=""
@@ -560,6 +567,8 @@
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    public DynamicGrid gridRef { get; set; }
 
     private enum JobDetailTab
     {
@@ -655,6 +664,30 @@
     private InvoicingScheduleDetail? _scheduleDetailRef;
 
     private Guid _jobInvoiceScheduleGuid = Guid.Empty;
+
+    private const string AllowAutomatedMonthlyDrawdownAmendmentKey =
+        "AllowAutomatedMonthlyDrawdownAmendment";
+
+    private Dictionary<string, Any> BuildInvoiceScheduleTransientVirtualProperties()
+    {
+        var result = new Dictionary<string, Any>(StringComparer.OrdinalIgnoreCase);
+
+        if (TransientVirtualProperties is not null)
+        {
+            foreach (var item in TransientVirtualProperties)
+            {
+                result[item.Key] = item.Value;
+            }
+        }
+
+        result[AllowAutomatedMonthlyDrawdownAmendmentKey] =
+            Any.Pack(new BoolValue
+            {
+                Value = _currentMode == InvoiceProcessingModeUi.Automated
+            });
+
+        return result;
+    }
 
     private bool ShowSubContractorGrid = true;
 
@@ -997,7 +1030,7 @@
                     // No schedule found: do not allow enabling automation
                     // (you can toast this if you want)
                     _loadingScheduleForAutomation = false;
-                    _selectedMode = InvoiceProcessingModeUi.Manual;
+                    _selectedMode = _currentMode;
                     StateHasChanged();
                     return;
                 }
@@ -1018,67 +1051,76 @@
     }
 
     private async Task AcceptAutomationReenableAsync()
-{
-    EnsureFormHelper();
-    if (_formHelper is null) return;
-    if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
-
-    // 1) Save + Exit the schedule detail (equivalent of Save and Exit)
-    if (_scheduleDetailRef is not null)
     {
-        await _scheduleDetailRef.SaveAndExitAsync();
-    }
+        EnsureFormHelper();
+        if (_formHelper is null) return;
+        if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
 
-    // 2) Now flip the Job mode to Automated
-    await _formHelper.JobInvoiceProcessingModeSetAsync(
-        jobGuid,
-        InvoiceProcessingModeUi.Automated,
-        string.IsNullOrWhiteSpace(_modeChangeReason)
-            ? "User re-enabled automation after schedule review (JobDetail modal)."
-            : _modeChangeReason);
+        // 1) Save + Exit the schedule detail (equivalent of Save and Exit)
+        if (_scheduleDetailRef is not null)
+        {
+            await _scheduleDetailRef.SaveAndExitForAutomationReenableAsync();
+        }
 
-    _currentMode = InvoiceProcessingModeUi.Automated;
-    _selectedMode = _currentMode;
+        var UserID = userService?.UserId ?? -1;
 
-    _showAutomationReenableModal = false;
+        // 2) Now flip the Job mode to Automated
+        await _formHelper.JobInvoiceProcessingModeSetAsync(
+            jobGuid,
+            InvoiceProcessingModeUi.Automated,
+            string.IsNullOrWhiteSpace(_modeChangeReason)
+                ? "User re-enabled automation after schedule review (JobDetail modal)."
+                : _modeChangeReason
+                    , UserID);
 
-    await RefreshJobShellAsync(updateReplacementScheduleButton: true);
-    StateHasChanged();
-}
+        _currentMode = InvoiceProcessingModeUi.Automated;
+        _selectedMode = _currentMode;
 
-private async Task CancelAutomationReenableAsync()
-{
-    EnsureFormHelper();
-    if (_formHelper is null)
-    {
         _showAutomationReenableModal = false;
-        _selectedMode = InvoiceProcessingModeUi.Manual;
+
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         StateHasChanged();
-        return;
+
+        gridRef.RefreshGrid();
     }
 
-    if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty)
+    private async Task CancelAutomationReenableAsync()
     {
+        EnsureFormHelper();
+        if (_formHelper is null)
+        {
+            _showAutomationReenableModal = false;
+            _selectedMode = InvoiceProcessingModeUi.Manual;
+            StateHasChanged();
+            return;
+        }
+
+        if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty)
+        {
+            _showAutomationReenableModal = false;
+            _selectedMode = InvoiceProcessingModeUi.Manual;
+            StateHasChanged();
+            return;
+        }
+        var UserID = userService?.UserId ?? -1;
+
+        //Requirement: Cancel forces Manual mode
+        await _formHelper.JobInvoiceProcessingModeSetAsync(
+            jobGuid,
+            InvoiceProcessingModeUi.Manual,
+            "User cancelled re-enable automation (JobDetail modal). Forced Manual mode.",
+            UserID);
+
+        _currentMode = InvoiceProcessingModeUi.Manual;
+        _selectedMode = _currentMode;
+
         _showAutomationReenableModal = false;
-        _selectedMode = InvoiceProcessingModeUi.Manual;
+
+        await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         StateHasChanged();
-        return;
+
+        gridRef.RefreshGrid();
     }
-
-    // Requirement: Cancel forces Manual mode
-    await _formHelper.JobInvoiceProcessingModeSetAsync(
-        jobGuid,
-        InvoiceProcessingModeUi.Manual,
-        "User cancelled re-enable automation (JobDetail modal). Forced Manual mode.");
-
-    _currentMode = InvoiceProcessingModeUi.Manual;
-    _selectedMode = _currentMode;
-
-    _showAutomationReenableModal = false;
-
-    await RefreshJobShellAsync(updateReplacementScheduleButton: true);
-    StateHasChanged();
-}
 
     private void CloseConfirmModeChangeModal()
     {
@@ -1095,6 +1137,7 @@ private async Task CancelAutomationReenableAsync()
     private void CloseAutomationReenableModal()
     {
         _showAutomationReenableModal = false;
+        _selectedMode = _currentMode;
         StateHasChanged();
     }
 
@@ -1105,13 +1148,17 @@ private async Task CancelAutomationReenableAsync()
         if (_formHelper is null) return;
         if (!Guid.TryParse(RecordGuid, out var jobGuid) || jobGuid == Guid.Empty) return;
 
-        await _formHelper.JobInvoiceProcessingModeSetAsync(jobGuid, _pendingNewMode, _modeChangeReason);
+        var UserID = userService?.UserId ?? -1;
+
+        await _formHelper.JobInvoiceProcessingModeSetAsync(jobGuid, _pendingNewMode, _modeChangeReason, UserID);
 
         _currentMode = _pendingNewMode;
         _selectedMode = _currentMode;
 
         await RefreshJobShellAsync(updateReplacementScheduleButton: true);
         StateHasChanged();
+
+        gridRef.RefreshGrid();
     }
 
     private void CancelModeChange()

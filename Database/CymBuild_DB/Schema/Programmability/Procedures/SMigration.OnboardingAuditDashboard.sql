@@ -1,6 +1,26 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SMigration].[OnboardingAuditDashboard]')
+GO
+
+
+/* ================================================================================================
+   SMigration.OnboardingAuditDashboard
+   Corrected against current SMigration staging schema.
+
+   Output contract consumed by CoreService.OnboardingMigration.cs:
+       Result set 1: summary
+       Result set 2: staged counts
+       Result set 3: validation issues
+       Result set 4: execution log
+
+   Notes:
+   - Includes dependency entities now present in the current migration schema:
+     OrganisationalUnits, Addresses, Contacts.
+   ================================================================================================ */
+PRINT (N'Create procedure [SMigration].[OnboardingAuditDashboard]')
+GO
 PRINT (N'Create procedure [SMigration].[OnboardingAuditDashboard]')
 GO
 
@@ -33,6 +53,9 @@ BEGIN
         UNION ALL SELECT N'Contacts', COUNT(*) FROM SMigration.Onboarding_Contacts WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'Identities', COUNT(*) FROM SMigration.Onboarding_Identities WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'UserGroups', COUNT(*) FROM SMigration.Onboarding_UserGroups WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'Workflows', COUNT(*) FROM SMigration.Onboarding_Workflows WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'WorkflowStatuses', COUNT(*) FROM SMigration.Onboarding_WorkflowStatuses WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'WorkflowTransitions', COUNT(*) FROM SMigration.Onboarding_WorkflowTransitions WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'WorkflowStatusNotificationGroups', COUNT(*) FROM SMigration.Onboarding_WorkflowStatusNotificationGroups WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'JobTypes', COUNT(*) FROM SMigration.Onboarding_JobTypes WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'ActivityTypes', COUNT(*) FROM SMigration.Onboarding_ActivityTypes WHERE RunGuid = @RunGuid
@@ -92,7 +115,10 @@ BEGIN
         UNION ALL SELECT N'Contacts', COUNT(*), 40 FROM SMigration.Onboarding_Contacts WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'Identities', COUNT(*), 50 FROM SMigration.Onboarding_Identities WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'UserGroups', COUNT(*), 60 FROM SMigration.Onboarding_UserGroups WHERE RunGuid = @RunGuid
-        UNION ALL SELECT N'WorkflowStatusNotificationGroups', COUNT(*), 70 FROM SMigration.Onboarding_WorkflowStatusNotificationGroups WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'Workflows', COUNT(*), 70 FROM SMigration.Onboarding_Workflows WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'WorkflowStatuses', COUNT(*), 72 FROM SMigration.Onboarding_WorkflowStatuses WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'WorkflowTransitions', COUNT(*), 74 FROM SMigration.Onboarding_WorkflowTransitions WHERE RunGuid = @RunGuid
+        UNION ALL SELECT N'WorkflowStatusNotificationGroups', COUNT(*), 76 FROM SMigration.Onboarding_WorkflowStatusNotificationGroups WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'JobTypes', COUNT(*), 80 FROM SMigration.Onboarding_JobTypes WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'ActivityTypes', COUNT(*), 90 FROM SMigration.Onboarding_ActivityTypes WHERE RunGuid = @RunGuid
         UNION ALL SELECT N'MilestoneTypes', COUNT(*), 100 FROM SMigration.Onboarding_MilestoneTypes WHERE RunGuid = @RunGuid

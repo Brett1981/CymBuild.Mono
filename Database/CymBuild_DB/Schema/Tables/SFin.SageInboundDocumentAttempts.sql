@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[SageInboundDocumentAttempts]')
 GO
+PRINT (N'Create table [SFin].[SageInboundDocumentAttempts]')
+GO
 CREATE TABLE [SFin].[SageInboundDocumentAttempts] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL,
@@ -44,4 +46,14 @@ CREATE INDEX [IX_SageInboundDocumentAttempts_InboundStatusID_AttemptedOnUtc]
   INCLUDE ([CompletedOnUtc], [IsSuccess], [IsRetryableFailure], [ErrorMessage], [ResponseStatus], [ResponseDetail])
   WITH (PAD_INDEX = ON, FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+
+
+
+
+
+
+
+PRINT (N'Create index [IX_SageInboundDocumentAttempts_InboundStatusID_AttemptedOnUtc] on table [SFin].[SageInboundDocumentAttempts]')
 GO

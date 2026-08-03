@@ -1,5 +1,9 @@
 ﻿PRINT (N'Create table [SCore].[WorkflowStatus]')
 GO
+PRINT (N'Create table [SCore].[WorkflowStatus]')
+GO
+PRINT (N'Create table [SCore].[WorkflowStatus]')
+GO
 CREATE TABLE [SCore].[WorkflowStatus] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF__WorkflowS__RowSt__36005452] DEFAULT (1),
@@ -37,6 +41,19 @@ PRINT (N'Create unique key on table [SCore].[WorkflowStatus]')
 GO
 ALTER TABLE [SCore].[WorkflowStatus] WITH NOCHECK
   ADD UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_WorkflowStatus_Active_ID_Guid] on table [SCore].[WorkflowStatus]')
+GO
+CREATE INDEX [IX_WorkflowStatus_Active_ID_Guid]
+  ON [SCore].[WorkflowStatus] ([ID])
+  INCLUDE ([Guid])
+  WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254))
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
 GO
 
 PRINT (N'Create index [IX_WorkflowStatus_Id_Guid] on table [SCore].[WorkflowStatus]')
@@ -449,4 +466,40 @@ BEGIN
 		END
 		
 		
+GO
+
+
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_WorkflowStatus_Active_ID_Guid] on table [SCore].[WorkflowStatus]')
+GO
+
+
+PRINT (N'Create index [IX_WorkflowStatus_Id_Guid] on table [SCore].[WorkflowStatus]')
+GO
+
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_WorkflowStatus_RecordHistory] on table [SCore].[WorkflowStatus]')
+GO
+
+
+
+PRINT (N'Create index [IX_WorkflowStatus_Id_Guid] on table [SCore].[WorkflowStatus]')
+GO
+
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tg_WorkflowStatus_RecordHistory] on table [SCore].[WorkflowStatus]')
 GO

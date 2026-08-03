@@ -1,6 +1,31 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SMigration].[OnboardingDiff_Report]')
+GO
+
+
+
+/* ================================================================================================
+   SMigration.OnboardingDiff_Report
+   Corrected against current SMigration staging schema and current import mapping.
+
+   Output contract consumed by CoreService.OnboardingMigration.cs:
+       EntityName             NVARCHAR
+       RowGuid                NVARCHAR(36)
+       DiffType               NVARCHAR -- MissingInTarget / Same / Different
+       SourceValuesJson       NVARCHAR(MAX) -- JSON object containing string values
+       TargetValuesJson       NVARCHAR(MAX) -- JSON object containing string values
+       DifferingColumnsJson   NVARCHAR(MAX) -- JSON array of strings
+
+   Notes:
+   - Explicit columns only.
+   - No SELECT *.
+   - Compares meaningful business/config columns only.
+   - Resolves target FK IDs back to target GUIDs.
+   ================================================================================================ */
+PRINT (N'Create procedure [SMigration].[OnboardingDiff_Report]')
+GO
 PRINT (N'Create procedure [SMigration].[OnboardingDiff_Report]')
 GO
 
@@ -514,6 +539,173 @@ BEGIN
             ON groupTarget.ID = t.GroupID
         WHERE s.RunGuid = @RunGuid
         ORDER BY s.IdentityGuid, s.GroupGuid;
+        RETURN;
+    END;
+
+    IF @EntityName = N'Workflows'
+    BEGIN
+        SELECT
+            EntityName = N'Workflows',
+            RowGuid = CONVERT(NVARCHAR(36), s.WorkflowGuid),
+            DiffType =
+                CASE
+                    WHEN t.ID IS NULL THEN N'MissingInTarget'
+                    WHEN ISNULL(t.RowStatus, 255) = s.RowStatus
+                     AND ISNULL(t.Name, N'') = ISNULL(s.Name, N'')
+                     AND ISNULL(t.Description, N'') = ISNULL(s.Description, N'')
+                     AND ISNULL(t.Enabled, 0) = ISNULL(s.Enabled, 0)
+                    THEN N'Same'
+                    ELSE N'Different'
+                END,
+            SourceValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), s.RowStatus) AS RowStatus,
+                    s.Name,
+                    ISNULL(CONVERT(NVARCHAR(36), s.OrganisationalUnitGuid), N'') AS OrganisationalUnitGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), s.EntityTypeGuid), N'') AS EntityTypeGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), s.EntityHoBTGuid), N'') AS EntityHoBTGuid,
+                    ISNULL(s.Description, N'') AS Description,
+                    CONVERT(NVARCHAR(5), ISNULL(s.Enabled, 0)) AS Enabled
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            ),
+            TargetValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), ISNULL(t.RowStatus, 255)) AS RowStatus,
+                    ISNULL(t.Name, N'') AS Name,
+                    ISNULL(CONVERT(NVARCHAR(36), ou.Guid), N'') AS OrganisationalUnitGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), et.Guid), N'') AS EntityTypeGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), eh.Guid), N'') AS EntityHoBTGuid,
+                    ISNULL(t.Description, N'') AS Description,
+                    CONVERT(NVARCHAR(5), ISNULL(t.Enabled, 0)) AS Enabled
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            ),
+            DifferingColumnsJson = COALESCE
+            (
+                (
+                    SELECT N'[' + STRING_AGG(N'"' + STRING_ESCAPE(d.ColumnName, 'json') + N'"', N',') + N']'
+                    FROM
+                    (
+                        VALUES
+                            (CASE WHEN ISNULL(t.RowStatus, 255) <> s.RowStatus THEN N'RowStatus' END),
+                            (CASE WHEN ISNULL(t.Name, N'') <> ISNULL(s.Name, N'') THEN N'Name' END),
+                            (CASE WHEN ISNULL(t.Description, N'') <> ISNULL(s.Description, N'') THEN N'Description' END),
+                            (CASE WHEN ISNULL(t.Enabled, 0) <> ISNULL(s.Enabled, 0) THEN N'Enabled' END)
+                    ) AS d(ColumnName)
+                    WHERE d.ColumnName IS NOT NULL
+                ),
+                N'[]'
+            )
+        FROM SMigration.Onboarding_Workflows AS s
+        LEFT JOIN SCore.Workflow AS t
+            ON t.Guid = s.WorkflowGuid
+        LEFT JOIN SCore.OrganisationalUnits AS ou
+            ON ou.ID = t.OrganisationalUnitId
+        LEFT JOIN SCore.EntityTypes AS et
+            ON et.ID = t.EntityTypeID
+        LEFT JOIN SCore.EntityHobts AS eh
+            ON eh.ID = t.EntityHoBTID
+        WHERE s.RunGuid = @RunGuid
+        ORDER BY s.Name;
+        RETURN;
+    END;
+
+    IF @EntityName = N'WorkflowStatuses'
+    BEGIN
+        SELECT
+            EntityName = N'WorkflowStatuses',
+            RowGuid = CONVERT(NVARCHAR(36), s.WorkflowStatusGuid),
+            DiffType =
+                CASE
+                    WHEN t.ID IS NULL THEN N'MissingInTarget'
+                    WHEN ISNULL(t.RowStatus, 255) = s.RowStatus
+                     AND ISNULL(targetOu.Guid, '00000000-0000-0000-0000-000000000000') = ISNULL(s.OrganisationalUnitGuid, '00000000-0000-0000-0000-000000000000')
+                     AND ISNULL(t.Name, N'') = ISNULL(s.Name, N'')
+                     AND ISNULL(t.Description, N'') = ISNULL(s.Description, N'')
+                     AND ISNULL(t.ShowInEnquiries, 0) = s.ShowInEnquiries
+                     AND ISNULL(t.ShowInQuotes, 0) = s.ShowInQuotes
+                     AND ISNULL(t.ShowInJobs, 0) = s.ShowInJobs
+                     AND ISNULL(t.Enabled, 0) = s.Enabled
+                     AND ISNULL(t.IsPredefined, 0) = s.IsPredefined
+                     AND ISNULL(t.SortOrder, 0) = s.SortOrder
+                     AND ISNULL(t.Colour, N'') = ISNULL(s.Colour, N'')
+                     AND ISNULL(t.Icon, N'') = ISNULL(s.Icon, N'')
+                     AND ISNULL(t.SendNotification, 0) = s.SendNotification
+                     AND ISNULL(t.IsCompleteStatus, 0) = s.IsCompleteStatus
+                     AND ISNULL(t.IsCustomerWaitingStatus, 0) = s.IsCustomerWaitingStatus
+                     AND ISNULL(t.RequiresUsersAction, 0) = s.RequiresUsersAction
+                     AND ISNULL(t.IsActiveStatus, 0) = s.IsActiveStatus
+                     AND ISNULL(t.AuthorisationNeeded, 0) = s.AuthorisationNeeded
+                     AND ISNULL(t.IsAuthStatus, 0) = s.IsAuthStatus
+                    THEN N'Same'
+                    ELSE N'Different'
+                END,
+            SourceValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), s.RowStatus) AS RowStatus,
+                    ISNULL(CONVERT(NVARCHAR(36), s.OrganisationalUnitGuid), N'') AS OrganisationalUnitGuid,
+                    s.Name,
+                    s.Description,
+                    CONVERT(NVARCHAR(5), s.Enabled) AS Enabled,
+                    CONVERT(NVARCHAR(20), s.SortOrder) AS SortOrder,
+                    s.Colour,
+                    ISNULL(s.Icon, N'') AS Icon,
+                    CONVERT(NVARCHAR(5), s.IsCompleteStatus) AS IsCompleteStatus,
+                    CONVERT(NVARCHAR(5), s.IsActiveStatus) AS IsActiveStatus,
+                    CONVERT(NVARCHAR(5), s.AuthorisationNeeded) AS AuthorisationNeeded,
+                    CONVERT(NVARCHAR(5), s.IsAuthStatus) AS IsAuthStatus
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            ),
+            TargetValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), ISNULL(t.RowStatus, 255)) AS RowStatus,
+                    ISNULL(CONVERT(NVARCHAR(36), targetOu.Guid), N'') AS OrganisationalUnitGuid,
+                    ISNULL(t.Name, N'') AS Name,
+                    ISNULL(t.Description, N'') AS Description,
+                    CONVERT(NVARCHAR(5), ISNULL(t.Enabled, 0)) AS Enabled,
+                    CONVERT(NVARCHAR(20), ISNULL(t.SortOrder, 0)) AS SortOrder,
+                    ISNULL(t.Colour, N'') AS Colour,
+                    ISNULL(t.Icon, N'') AS Icon,
+                    CONVERT(NVARCHAR(5), ISNULL(t.IsCompleteStatus, 0)) AS IsCompleteStatus,
+                    CONVERT(NVARCHAR(5), ISNULL(t.IsActiveStatus, 0)) AS IsActiveStatus,
+                    CONVERT(NVARCHAR(5), ISNULL(t.AuthorisationNeeded, 0)) AS AuthorisationNeeded,
+                    CONVERT(NVARCHAR(5), ISNULL(t.IsAuthStatus, 0)) AS IsAuthStatus
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            ),
+            DifferingColumnsJson = COALESCE
+            (
+                (
+                    SELECT N'[' + STRING_AGG(N'"' + STRING_ESCAPE(d.ColumnName, 'json') + N'"', N',') + N']'
+                    FROM
+                    (
+                        VALUES
+                            (CASE WHEN ISNULL(t.RowStatus, 255) <> s.RowStatus THEN N'RowStatus' END),
+                            (CASE WHEN ISNULL(targetOu.Guid, '00000000-0000-0000-0000-000000000000') <> ISNULL(s.OrganisationalUnitGuid, '00000000-0000-0000-0000-000000000000') THEN N'OrganisationalUnitGuid' END),
+                            (CASE WHEN ISNULL(t.Name, N'') <> ISNULL(s.Name, N'') THEN N'Name' END),
+                            (CASE WHEN ISNULL(t.Description, N'') <> ISNULL(s.Description, N'') THEN N'Description' END),
+                            (CASE WHEN ISNULL(t.Enabled, 0) <> s.Enabled THEN N'Enabled' END),
+                            (CASE WHEN ISNULL(t.SortOrder, 0) <> s.SortOrder THEN N'SortOrder' END),
+                            (CASE WHEN ISNULL(t.Colour, N'') <> ISNULL(s.Colour, N'') THEN N'Colour' END),
+                            (CASE WHEN ISNULL(t.Icon, N'') <> ISNULL(s.Icon, N'') THEN N'Icon' END),
+                            (CASE WHEN ISNULL(t.IsCompleteStatus, 0) <> s.IsCompleteStatus THEN N'IsCompleteStatus' END),
+                            (CASE WHEN ISNULL(t.IsActiveStatus, 0) <> s.IsActiveStatus THEN N'IsActiveStatus' END),
+                            (CASE WHEN ISNULL(t.AuthorisationNeeded, 0) <> s.AuthorisationNeeded THEN N'AuthorisationNeeded' END),
+                            (CASE WHEN ISNULL(t.IsAuthStatus, 0) <> s.IsAuthStatus THEN N'IsAuthStatus' END)
+                    ) AS d(ColumnName)
+                    WHERE d.ColumnName IS NOT NULL
+                ),
+                N'[]'
+            )
+        FROM SMigration.Onboarding_WorkflowStatuses AS s
+        LEFT JOIN SCore.WorkflowStatus AS t
+            ON t.Guid = s.WorkflowStatusGuid
+        LEFT JOIN SCore.OrganisationalUnits AS targetOu
+            ON targetOu.ID = t.OrganisationalUnitId
+        WHERE s.RunGuid = @RunGuid
+        ORDER BY s.SortOrder, s.Name;
         RETURN;
     END;
 

@@ -1,40 +1,71 @@
-﻿.no-data {
-    text-align: center;
-    font-size: 18px;
-    color: #888;
+.usage-dashboard-header {
+    align-items: flex-start;
 }
 
-.dashboard-title {
-    font-size: 24px;
-    font-weight: bold;
-    text-align: center;
-    margin-bottom: 20px;
-    color: #4CAF50;
+.usage-dashboard-header h3,
+.usage-panel h4 { margin: 0; font-weight: 700; }
+.usage-dashboard-header p,
+.usage-panel p { margin: .25rem 0 0; color: var(--cb-v2-text-muted); }
+.usage-dashboard-eyebrow { color: var(--cb-v2-primary) !important; }
+
+.usage-filter-panel {
+    display: grid;
+    grid-template-columns: minmax(150px, .8fr) minmax(150px, .8fr) minmax(220px, 1.5fr) auto;
+    gap: .85rem;
+    align-items: end;
 }
 
-.filter-container {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 20px;
+.usage-page-size { font-size: .82rem; font-weight: 650; color: var(--cb-v2-text-muted); }
+
+.usage-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+
+.usage-chart-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, .7fr); gap: 1rem; }
+.usage-panel { min-width: 0; }
+.usage-panel-heading { align-items: flex-start; margin-bottom: 1rem; }
+.usage-panel-heading h4 { font-size: 1rem; }
+.usage-panel-heading p { font-size: .82rem; }
+
+.usage-bars { display: grid; gap: .45rem; max-height: 390px; overflow: auto; padding-right: .25rem; }
+.usage-bar-row { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(100px, 2fr) 58px; align-items: center; gap: .65rem; width: 100%; padding: .38rem .45rem; border: 0; border-radius: 7px; background: transparent; color: inherit; text-align: left; }
+.usage-bar-row:hover,
+.usage-bar-row:focus-visible { background: #f1f5f9; outline: none; }
+.usage-bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-bar-track { display: block; height: 12px; overflow: hidden; border-radius: 999px; background: #e8eef7; }
+.usage-bar-fill { display: block; min-width: 2px; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2563eb, #60a5fa); }
+.usage-bar-row strong { text-align: right; }
+
+.usage-share-layout { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 1rem; align-items: center; }
+.usage-donut { width: 100%; max-width: 220px; overflow: visible; }
+.usage-donut-background,
+.usage-donut-segment { fill: none; stroke-width: 16; }
+.usage-donut-background { stroke: #e8eef7; }
+.usage-donut-segment { cursor: pointer; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-width .15s ease; }
+.usage-donut-segment:hover { stroke-width: 19; }
+.usage-donut text { fill: var(--cb-v2-text-muted); font-size: 7px; }
+.usage-donut .usage-donut-total { fill: var(--cb-v2-text); font-size: 10px; font-weight: 700; }
+.usage-legend { display: grid; gap: .3rem; max-height: 280px; overflow: auto; }
+.usage-legend button { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: .5rem; align-items: center; padding: .35rem; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; }
+.usage-legend button:hover,
+.usage-legend button:focus-visible { background: #f1f5f9; outline: none; }
+.usage-legend-colour { width: 10px; height: 10px; border-radius: 50%; }
+
+.usage-table-panel { padding-bottom: .75rem; }
+.usage-page-size { display: flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.usage-page-size select { width: 76px; }
+.usage-table { margin-bottom: 0; font-size: .86rem; }
+.usage-table thead th { background: #f7f9fc; border-bottom-color: #b8c7dc; white-space: nowrap; }
+.usage-pagination span { color: var(--cb-v2-text-muted); font-size: .84rem; font-weight: 650; }
+
+@media (max-width: 1050px) {
+    .usage-filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .usage-chart-grid { grid-template-columns: 1fr; }
 }
 
-.chart-container {
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    margin-top: 20px;
-    padding: 10px;
+@media (max-width: 680px) {
+    .usage-dashboard-header { flex-direction: column; }
+    .usage-filter-panel,
+    .usage-summary-grid { grid-template-columns: 1fr; }
+    .usage-share-layout { grid-template-columns: 1fr; justify-items: center; }
+    .usage-legend { width: 100%; }
+    .usage-panel-heading { flex-direction: column; }
 }
-
-.export-buttons {
-    text-align: center;
-    margin-top: 20px;
-}
-
-    .export-buttons button {
-        margin: 5px;
-        padding: 10px 15px;
-        font-size: 16px;
-        cursor: pointer;
-    }

@@ -5,6 +5,8 @@ PRINT (N'Create function [SFin].[TransactionsValidate]')
 GO
 PRINT (N'Create function [SFin].[TransactionsValidate]')
 GO
+PRINT (N'Create function [SFin].[TransactionsValidate]')
+GO
 
 CREATE FUNCTION [SFin].[TransactionsValidate]
 (

@@ -3,8 +3,13 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataIgnoredRecord_Upsert]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataIgnoredRecord_Upsert]
+PRINT (N'Create procedure [SMigration].[MetadataIgnoredRecord_Upsert]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataIgnoredRecord_Upsert]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128),

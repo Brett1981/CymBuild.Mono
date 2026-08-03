@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[SynchronisationErrors]')
 GO
+PRINT (N'Create table [SCore].[SynchronisationErrors]')
+GO
 CREATE TABLE [SCore].[SynchronisationErrors] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_SychronisationErrors_RowStatus] DEFAULT (0),

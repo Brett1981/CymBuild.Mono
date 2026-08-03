@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create procedure [SJob].[JobsUpsert]')
 GO
-
 CREATE PROCEDURE [SJob].[JobsUpsert]
   @OrganisationalUnitGuid  UNIQUEIDENTIFIER,
   @JobTypeGuid             UNIQUEIDENTIFIER,
@@ -311,6 +310,17 @@ BEGIN
     END;
     ELSE
     BEGIN
+
+		/*
+			Before we update, get the current surveyor. 
+		*/
+		DECLARE @CurrentSurveyorId INT;
+
+		SELECT @CurrentSurveyorId = SurveyorID
+		FROM SJob.Jobs
+		WHERE Guid = @Guid
+
+
         UPDATE SJob.Jobs
         SET OrganisationalUnitID = @OrganisationUnitID,
             JobTypeID = @JobTypeID,
@@ -372,6 +382,28 @@ BEGIN
         SELECT @JobID = j.ID
         FROM SJob.Jobs AS j
         WHERE j.Guid = @Guid;
+
+
+
+		/*
+			Check if the surveyor is being updated.
+			If it is, update all tentative activities with the new user.
+		*/
+
+		IF(@CurrentSurveyorId <> @SurveyorID)
+		BEGIN 
+				    UPDATE a
+					SET a.SurveyorID = @SurveyorID 
+					FROM SJob.Activities AS a
+					INNER JOIN SJob.Jobs AS j
+						ON j.ID = a.JobID
+					INNER JOIN SJob.ActivityStatus AS s
+						ON s.ID = a.ActivityStatusID
+					WHERE j.Guid = @Guid
+					  AND s.ID = 2;              -- Tentative
+
+		END;
+
     END;
 
     EXEC SJob.JobMilestonesBuildFromTemplate @JobID = @JobID;

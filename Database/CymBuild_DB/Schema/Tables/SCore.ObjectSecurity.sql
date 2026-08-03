@@ -2,6 +2,8 @@
 GO
 PRINT (N'Create table [SCore].[ObjectSecurity]')
 GO
+PRINT (N'Create table [SCore].[ObjectSecurity]')
+GO
 CREATE TABLE [SCore].[ObjectSecurity] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ObjectSecurity_RowStatus] DEFAULT (0),

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SProd].[Products]')
 GO
+PRINT (N'Create table [SProd].[Products]')
+GO
 CREATE TABLE [SProd].[Products] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Products_RowStatus] DEFAULT (1),

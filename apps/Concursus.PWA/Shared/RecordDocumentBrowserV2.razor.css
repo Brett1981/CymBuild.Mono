@@ -1,4 +1,4 @@
-﻿/* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowserV2.razor.css */
+/* FILE: Concursus.Components.Shared/Controls/Documents/RecordDocumentBrowserV2.razor.css */
 
 .empty-tr{
     min-width: 100%;
@@ -853,3 +853,22 @@
     }
 }
 
+/* 15C-R3: folder and document names are text actions, not outlined buttons. */
+.v2-docs .v2-tree-link,
+.v2-docs .doc-name-link {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+.v2-docs .v2-tree-link:focus-visible,
+.v2-docs .doc-name-link:focus-visible {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    color: var(--cb-v2-primary-dark, #1d4ed8) !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 2px !important;
+    text-underline-offset: 3px !important;
+}

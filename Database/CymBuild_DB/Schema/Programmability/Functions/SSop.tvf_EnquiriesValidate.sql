@@ -594,25 +594,25 @@ BEGIN
 
 	IF (@ReadyForQuoteReview = 1)
 		BEGIN
-			IF (@DescriptionOfWorks = N'')
-			BEGIN
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'DescriptionOfWorks'
-																		  );
+			--IF (@DescriptionOfWorks = N'')
+			--BEGIN
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'DescriptionOfWorks'
+			--															  );
 
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until there is a description of the works.'
-					 );
-			END;
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until there is a description of the works.'
+			--		 );
+			--END;
 
 			IF (@ValueOfWork = 0)
 			BEGIN
@@ -634,136 +634,136 @@ BEGIN
 					 );
 			END;
 
-			IF (@CurrentProjectRibaStageGuid = '00000000-0000-0000-0000-000000000000')
-			BEGIN
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'CurrentProjectRibaStageId'
-																		  );
+			--IF (@CurrentProjectRibaStageGuid = '00000000-0000-0000-0000-000000000000')
+			--BEGIN
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'CurrentProjectRibaStageId'
+			--															  );
 
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until there is a current RIBA stage.'
-					 );
-			END;
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until there is a current RIBA stage.'
+			--		 );
+			--END;
 
 
-			IF (@PropertyGuid = '00000000-0000-0000-0000-000000000000')
-		   AND	(@PropertyNumber = N'')
-		   AND	(@PropertyPostCode = N'')
-			BEGIN
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'PropertyId'
-																		  );
+			--IF (@PropertyGuid = '00000000-0000-0000-0000-000000000000')
+		 --  AND	(@PropertyNumber = N'')
+		 --  AND	(@PropertyPostCode = N'')
+			--BEGIN
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'PropertyId'
+			--															  );
 
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until property details have been entered.'
-					 );
-			END;
-
-			/*
-				Don't allow the enquiry to be submitted for quoting until their is a client or agent. 
-			*/
-			IF (@ClientAccountGuid = '00000000-0000-0000-0000-000000000000')
-		   AND	(@ClientName = N'')
-		   AND	(@AgentAccountGuid = '00000000-0000-0000-0000-000000000000')
-		   AND	(@AgentName = N'')
-			BEGIN
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'ClientAccountId'
-																		  );
-
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until client or agent account has been entered.'
-					 );
-
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'AgentAccountId'
-																		  );
-
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until client or agent account has been entered.'
-					 );
-			END;
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until property details have been entered.'
+			--		 );
+			--END;
 
 			/*
 				Don't allow the enquiry to be submitted for quoting until their is a client or agent. 
 			*/
-			IF (@ClientAddressGuid = '00000000-0000-0000-0000-000000000000')
-		   AND	(@ClientAddressNumber = N'')
-		   AND	(@ClientAddressPostCode = N'')
-		   AND	(@AgentAddressGuid = '00000000-0000-0000-0000-000000000000')
-		   AND	(@AgentAddressNumber = N'')
-		   AND	(@AgentAddressPostCode = N'')
-			BEGIN
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'ClientAddressId'
-																		  );
+			--IF (@ClientAccountGuid = '00000000-0000-0000-0000-000000000000')
+		 --  AND	(@ClientName = N'')
+		 --  AND	(@AgentAccountGuid = '00000000-0000-0000-0000-000000000000')
+		 --  AND	(@AgentName = N'')
+			--BEGIN
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'ClientAccountId'
+			--															  );
 
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until client or agent address details have been entered.'
-					 );
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until client or agent account has been entered.'
+			--		 );
 
-				SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
-																			  N'Enquiries',
-																			  N'AgentAddressId'
-																		  );
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'AgentAccountId'
+			--															  );
 
-				INSERT	@ValidationResult
-					 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
-				VALUES
-					 (
-						 @EntityPropertyGuid,
-						 N'P',
-						 0,
-						 0,
-						 1,
-						 N'An enquiry cannot be reviewed until client or agent address details have been entered.'
-					 );
-			END;
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until client or agent account has been entered.'
+			--		 );
+			--END;
+
+			/*
+				Don't allow the enquiry to be submitted for quoting until their is a client or agent. 
+			*/
+			--IF (@ClientAddressGuid = '00000000-0000-0000-0000-000000000000')
+		 --  AND	(@ClientAddressNumber = N'')
+		 --  AND	(@ClientAddressPostCode = N'')
+		 --  AND	(@AgentAddressGuid = '00000000-0000-0000-0000-000000000000')
+		 --  AND	(@AgentAddressNumber = N'')
+		 --  AND	(@AgentAddressPostCode = N'')
+			--BEGIN
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'ClientAddressId'
+			--															  );
+
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until client or agent address details have been entered.'
+			--		 );
+
+			--	SELECT	@EntityPropertyGuid = SCore.GetEntityPropertyGuid (	  N'SSop',
+			--																  N'Enquiries',
+			--																  N'AgentAddressId'
+			--															  );
+
+			--	INSERT	@ValidationResult
+			--		 (TargetGuid, TargetType, IsReadOnly, IsHidden, IsInvalid, Message)
+			--	VALUES
+			--		 (
+			--			 @EntityPropertyGuid,
+			--			 N'P',
+			--			 0,
+			--			 0,
+			--			 1,
+			--			 N'An enquiry cannot be reviewed until client or agent address details have been entered.'
+			--		 );
+			--END;
 		END;
 
 

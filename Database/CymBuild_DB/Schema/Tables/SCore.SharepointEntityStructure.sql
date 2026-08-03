@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[SharepointEntityStructure]')
 GO
+PRINT (N'Create table [SCore].[SharepointEntityStructure]')
+GO
 CREATE TABLE [SCore].[SharepointEntityStructure] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_SharepointEntityStructure_RowStatus] DEFAULT (1),

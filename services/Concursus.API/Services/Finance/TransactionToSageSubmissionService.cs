@@ -501,51 +501,136 @@ namespace Concursus.API.Services.Finance
             string sageOrderId,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(sageOrderId))
-            {
-                return string.Empty;
-            }
-
             if (string.IsNullOrWhiteSpace(requestDto.AccountReference))
             {
                 return string.Empty;
             }
 
             var dataset = ResolveSageDataset(requestDto.Dataset);
+            var lookupKeys = BuildSageTransactionReferenceLookupKeys(
+                requestDto.CustomerOrderNo,
+                transaction.TransactionNumber,
+                transaction.InvoiceNumber,
+                sageOrderId);
+
+            if (lookupKeys.Count == 0)
+            {
+                return string.Empty;
+            }
 
             _logger.LogInformation(
-                "SageTransactionReference missing from create response. Attempting read-back. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, Dataset={Dataset}, AccountReference={AccountReference}, SageOrderId={SageOrderId}",
+                "SageTransactionReference missing from create response. Attempting read-back. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, Dataset={Dataset}, AccountReference={AccountReference}, SageOrderId={SageOrderId}, LookupKeys={LookupKeys}",
                 transaction.TransactionId,
                 transaction.TransactionGuid,
                 dataset,
                 requestDto.AccountReference,
-                sageOrderId);
-
-            var transactionLookup = await _sageApiClient
-                .FetchCustomerTransactionsAsync(
-                    dataset,
-                    requestDto.AccountReference,
-                    sageOrderId,
-                    4,
-                    force: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
-
-            var matchedTransaction = transactionLookup?.Transactions?.FirstOrDefault();
-
-            var sageTransactionReference = matchedTransaction is null
-                ? string.Empty
-                : GetString(matchedTransaction, "transactionReference").Trim();
-
-            _logger.LogInformation(
-                "SageTransactionReference read-back completed. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, SageOrderId={SageOrderId}, Returned={Returned}, SageTransactionReference='{SageTransactionReference}'",
-                transaction.TransactionId,
-                transaction.TransactionGuid,
                 sageOrderId,
-                transactionLookup?.Transactions?.Count ?? 0,
-                sageTransactionReference);
+                string.Join(",", lookupKeys));
 
-            return sageTransactionReference;
+            foreach (var lookupKey in lookupKeys)
+            {
+                var transactionLookup = await _sageApiClient
+                    .FetchCustomerTransactionsAsync(
+                        dataset,
+                        requestDto.AccountReference,
+                        lookupKey,
+                        4,
+                        force: true,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                var matchedTransaction = SelectBestSageCustomerTransaction(
+                    transactionLookup?.Transactions,
+                    lookupKey,
+                    requestDto.CustomerOrderNo,
+                    transaction.TransactionNumber,
+                    transaction.InvoiceNumber,
+                    sageOrderId);
+
+                var sageTransactionReference = matchedTransaction is null
+                    ? string.Empty
+                    : GetString(matchedTransaction, "transactionReference").Trim();
+
+                _logger.LogInformation(
+                    "SageTransactionReference read-back completed. TransactionId={TransactionId}, TransactionGuid={TransactionGuid}, LookupKey={LookupKey}, Returned={Returned}, SageTransactionReference='{SageTransactionReference}'",
+                    transaction.TransactionId,
+                    transaction.TransactionGuid,
+                    lookupKey,
+                    transactionLookup?.Transactions?.Count ?? 0,
+                    sageTransactionReference);
+
+                if (!string.IsNullOrWhiteSpace(sageTransactionReference))
+                {
+                    return sageTransactionReference;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static IReadOnlyList<string> BuildSageTransactionReferenceLookupKeys(params string?[] values)
+        {
+            var keys = new List<string>();
+
+            foreach (var value in values)
+            {
+                var key = value?.Trim();
+
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                if (!keys.Any(x => string.Equals(x, key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    keys.Add(key);
+                }
+            }
+
+            return keys;
+        }
+
+        private static IDictionary<string, object?>? SelectBestSageCustomerTransaction(
+            IReadOnlyCollection<Dictionary<string, object?>>? transactions,
+            params string?[] expectedReferences)
+        {
+            if (transactions is null || transactions.Count == 0)
+            {
+                return null;
+            }
+
+            var withReference = transactions
+                .Where(x => !string.IsNullOrWhiteSpace(GetString(x, "transactionReference")))
+                .ToList();
+
+            if (withReference.Count == 0)
+            {
+                return transactions.FirstOrDefault();
+            }
+
+            return withReference.FirstOrDefault(x => MatchesAny(GetString(x, "secondReference"), expectedReferences))
+                   ?? withReference.FirstOrDefault(x => MatchesAny(GetString(x, "documentNo"), expectedReferences))
+                   ?? withReference.FirstOrDefault(x => MatchesAny(GetString(x, "documentNumber"), expectedReferences))
+                   ?? withReference.FirstOrDefault();
+        }
+
+        private static bool MatchesAny(string? candidate, params string?[] expectedValues)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            foreach (var expectedValue in expectedValues)
+            {
+                if (!string.IsNullOrWhiteSpace(expectedValue) &&
+                    string.Equals(candidate.Trim(), expectedValue.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private async Task SafeMarkFailureAsync(

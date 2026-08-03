@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[TransactionSageSubmissionStatus]')
 GO
+PRINT (N'Create table [SFin].[TransactionSageSubmissionStatus]')
+GO
 CREATE TABLE [SFin].[TransactionSageSubmissionStatus] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_TransactionSageSubmissionStatus_RowStatus] DEFAULT (1),

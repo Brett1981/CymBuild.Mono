@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[RecentItems]')
 GO
+PRINT (N'Create table [SCore].[RecentItems]')
+GO
 CREATE TABLE [SCore].[RecentItems] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_RecentItems_RowStatus] DEFAULT (0),

@@ -4,6 +4,9 @@ public sealed class OnboardingMigrationReportModel
 {
     public Guid RunGuid { get; set; }
     public string SourceDatabase { get; set; } = string.Empty;
+    public string SourceServerName { get; set; } = string.Empty;
+    public string TargetServerName { get; set; } = string.Empty;
+    public string TargetDatabaseName { get; set; } = string.Empty;
     public Guid SourceBusinessUnitGroupGuid { get; set; }
     public string Notes { get; set; } = string.Empty;
     public string CreatedUtcText { get; set; } = string.Empty;

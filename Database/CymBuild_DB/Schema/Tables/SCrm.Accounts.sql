@@ -8,6 +8,14 @@ GO
 
 PRINT (N'Create table [SCrm].[Accounts]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SCrm].[Accounts]')
+GO
 CREATE TABLE [SCrm].[Accounts] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Accounts_RowStatus] DEFAULT (1),
@@ -632,6 +640,14 @@ CREATE FULLTEXT INDEX
   ON [AccountName]
   WITH CHANGE_TRACKING AUTO, STOPLIST Honorifics
 GO
+
+
+
+
+PRINT (N'Create full-text index on table [SCrm].[Accounts]')
+GO
+
+
 
 PRINT (N'Create full-text index on table [SCrm].[Accounts]')
 GO

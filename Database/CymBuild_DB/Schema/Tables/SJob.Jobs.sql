@@ -8,6 +8,14 @@ GO
 
 PRINT (N'Create table [SJob].[Jobs]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SJob].[Jobs]')
+GO
 CREATE TABLE [SJob].[Jobs] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Jobs_RowStatus] DEFAULT (1),

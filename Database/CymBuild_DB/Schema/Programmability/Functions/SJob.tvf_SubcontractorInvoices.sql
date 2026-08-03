@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_SubcontractorInvoices]')
 GO
+PRINT (N'Create function [SJob].[tvf_SubcontractorInvoices]')
+GO
 CREATE FUNCTION [SJob].[tvf_SubcontractorInvoices]
 (
 	@UserId INT,

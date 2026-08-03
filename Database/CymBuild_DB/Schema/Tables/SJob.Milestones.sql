@@ -3,6 +3,14 @@ GO
 
 PRINT (N'Create table [SJob].[Milestones]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SJob].[Milestones]')
+GO
 CREATE TABLE [SJob].[Milestones] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Milestones_RowStatus] DEFAULT (0),
@@ -166,6 +174,96 @@ CREATE UNIQUE INDEX [IX_UQ_Milestones_Guid]
   ON [SJob].[Milestones] ([Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create trigger [tr_Milestones_InvoiceAutomation_Completion] on table [SJob].[Milestones]')
+GO
+/* =============================================================================
+   SJob.tr_Milestones_InvoiceAutomation_Completion
+
+   Recommended approach:
+   - DO NOT execute materialisation / automation procs inside the trigger.
+   - Enqueue a lightweight “nudge” into SFin.InvoiceAutomationNudgeQueue.
+   - Background worker processes nudges and runs:
+       SFin.InvoiceScheduleTriggerInstances_Materialise
+     (and optionally Phase4–6 / consistency sweep).
+
+   This trigger enqueues only when the milestone transitions into a “complete-ish”
+   state:
+     - INSERT where CompletedDateTimeUTC is set OR IsNotApplicable=1
+     - UPDATE where CompletedDateTimeUTC changes from NULL -> NOT NULL
+     - UPDATE where IsNotApplicable changes 0 -> 1
+
+   Non-blocking: errors are swallowed.
+============================================================================= */
+
+CREATE TRIGGER [SJob].[tr_Milestones_InvoiceAutomation_Completion]
+ON [SJob].[Milestones]
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Guard: allow disabling during bulk loads / scripts
+    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+        RETURN;
+
+    -- Only proceed if at least one row just became "complete" / "N/A"
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM inserted i
+        LEFT JOIN deleted d ON d.ID = i.ID
+        WHERE
+            i.RowStatus NOT IN (0, 254)
+            AND
+            (
+                -- Insert: already complete or N/A
+                (d.ID IS NULL AND (i.CompletedDateTimeUTC IS NOT NULL OR i.IsNotApplicable = 1))
+
+                -- Update: CompletedDateTimeUTC changed from NULL -> NOT NULL
+                OR (d.ID IS NOT NULL AND d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
+
+                -- Update: IsNotApplicable changed from 0 -> 1
+                OR (d.ID IS NOT NULL AND ISNULL(d.IsNotApplicable, 0) = 0 AND i.IsNotApplicable = 1)
+            )
+    )
+        RETURN;
+
+    BEGIN TRY
+        INSERT INTO SFin.InvoiceAutomationNudgeQueue
+        (
+              [Source]
+            , [EntityId]
+            , [EntityGuid]
+        )
+        SELECT DISTINCT
+              [Source]   = N'Milestone'
+            , [EntityId] = i.ID
+            , [EntityGuid] =
+                CASE
+                    WHEN COL_LENGTH(N'SJob.Milestones', N'Guid') IS NOT NULL THEN i.Guid
+                    ELSE NULL
+                END
+        FROM inserted i
+        LEFT JOIN deleted d ON d.ID = i.ID
+        WHERE
+            i.RowStatus NOT IN (0, 254)
+            AND
+            (
+                (d.ID IS NULL AND (i.CompletedDateTimeUTC IS NOT NULL OR i.IsNotApplicable = 1))
+                OR (d.ID IS NOT NULL AND d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
+                OR (d.ID IS NOT NULL AND ISNULL(d.IsNotApplicable, 0) = 0 AND i.IsNotApplicable = 1)
+            );
+    END TRY
+    BEGIN CATCH
+        -- Never block milestone completion
+        RETURN;
+    END CATCH
+END;
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
@@ -641,96 +739,6 @@ BEGIN
 		END
 		
 		
-GO
-
-SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tr_Milestones_InvoiceAutomation_Completion] on table [SJob].[Milestones]')
-GO
-/* =============================================================================
-   SJob.tr_Milestones_InvoiceAutomation_Completion
-
-   Recommended approach:
-   - DO NOT execute materialisation / automation procs inside the trigger.
-   - Enqueue a lightweight “nudge” into SFin.InvoiceAutomationNudgeQueue.
-   - Background worker processes nudges and runs:
-       SFin.InvoiceScheduleTriggerInstances_Materialise
-     (and optionally Phase4–6 / consistency sweep).
-
-   This trigger enqueues only when the milestone transitions into a “complete-ish”
-   state:
-     - INSERT where CompletedDateTimeUTC is set OR IsNotApplicable=1
-     - UPDATE where CompletedDateTimeUTC changes from NULL -> NOT NULL
-     - UPDATE where IsNotApplicable changes 0 -> 1
-
-   Non-blocking: errors are swallowed.
-============================================================================= */
-
-CREATE TRIGGER [SJob].[tr_Milestones_InvoiceAutomation_Completion]
-ON [SJob].[Milestones]
-AFTER INSERT, UPDATE
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    -- Guard: allow disabling during bulk loads / scripts
-    IF (ISNULL(CONVERT(INT, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
-        RETURN;
-
-    -- Only proceed if at least one row just became "complete" / "N/A"
-    IF NOT EXISTS
-    (
-        SELECT 1
-        FROM inserted i
-        LEFT JOIN deleted d ON d.ID = i.ID
-        WHERE
-            i.RowStatus NOT IN (0, 254)
-            AND
-            (
-                -- Insert: already complete or N/A
-                (d.ID IS NULL AND (i.CompletedDateTimeUTC IS NOT NULL OR i.IsNotApplicable = 1))
-
-                -- Update: CompletedDateTimeUTC changed from NULL -> NOT NULL
-                OR (d.ID IS NOT NULL AND d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
-
-                -- Update: IsNotApplicable changed from 0 -> 1
-                OR (d.ID IS NOT NULL AND ISNULL(d.IsNotApplicable, 0) = 0 AND i.IsNotApplicable = 1)
-            )
-    )
-        RETURN;
-
-    BEGIN TRY
-        INSERT INTO SFin.InvoiceAutomationNudgeQueue
-        (
-              [Source]
-            , [EntityId]
-            , [EntityGuid]
-        )
-        SELECT DISTINCT
-              [Source]   = N'Milestone'
-            , [EntityId] = i.ID
-            , [EntityGuid] =
-                CASE
-                    WHEN COL_LENGTH(N'SJob.Milestones', N'Guid') IS NOT NULL THEN i.Guid
-                    ELSE NULL
-                END
-        FROM inserted i
-        LEFT JOIN deleted d ON d.ID = i.ID
-        WHERE
-            i.RowStatus NOT IN (0, 254)
-            AND
-            (
-                (d.ID IS NULL AND (i.CompletedDateTimeUTC IS NOT NULL OR i.IsNotApplicable = 1))
-                OR (d.ID IS NOT NULL AND d.CompletedDateTimeUTC IS NULL AND i.CompletedDateTimeUTC IS NOT NULL)
-                OR (d.ID IS NOT NULL AND ISNULL(d.IsNotApplicable, 0) = 0 AND i.IsNotApplicable = 1)
-            );
-    END TRY
-    BEGIN CATCH
-        -- Never block milestone completion
-        RETURN;
-    END CATCH
-END;
 GO
 
 PRINT (N'Create foreign key [FK_Milestones_DataObjects] on table [SJob].[Milestones]')

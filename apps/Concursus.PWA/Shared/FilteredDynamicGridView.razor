@@ -1,4 +1,4 @@
-@using System.Dynamic
+﻿@using System.Dynamic
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Concursus.PWA.Services
@@ -266,7 +266,33 @@
                                             @foreach (var column in VisibleGridColumns)
                                             {
                                                 <td style="@GetColumnWidthStyle(column.Width)">
-                                                    <div class="custom-ellipsis">@GetNativeCellValue(row, column.Name)</div>
+                                                    @if (IsSageStatusColumn(column.Name))
+                                                    {
+                                                        var sageStatus = GetSageStatusPresentation(row);
+                                                        <span class="@sageStatus.CssClass"
+                                                              title="Sage posting status: @sageStatus.DisplayText">
+                                                            @sageStatus.DisplayText
+                                                        </span>
+                                                    }
+                                                    else if (ShouldRenderSageStatusWithDate(column.Name, row))
+                                                    {
+                                                        var sageStatus = GetSageStatusPresentation(row);
+                                                        <div class="cb-transaction-date-status-cell">
+                                                            <span class="custom-ellipsis">
+                                                                @GetNativeCellValue(row, column.Name)
+                                                            </span>
+                                                            <span class="@sageStatus.CssClass"
+                                                                  title="Sage posting status: @sageStatus.DisplayText">
+                                                                @sageStatus.DisplayText
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="custom-ellipsis">
+                                                            @GetNativeCellValue(row, column.Name)
+                                                        </div>
+                                                    }
                                                 </td>
                                             }
                                         </tr>

@@ -255,8 +255,8 @@ a, .btn-link {
 }
 
 .is-data-valid ~ .valid-feedback {
-    display: block;
-    min-height: 1.31rem;
+    display: none;
+    min-height: 0;
 }
 
 .valid-null {

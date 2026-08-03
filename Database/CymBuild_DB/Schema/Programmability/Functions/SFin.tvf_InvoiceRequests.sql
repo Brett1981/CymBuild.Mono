@@ -5,6 +5,8 @@ PRINT (N'Create function [SFin].[tvf_InvoiceRequests]')
 GO
 PRINT (N'Create function [SFin].[tvf_InvoiceRequests]')
 GO
+PRINT (N'Create function [SFin].[tvf_InvoiceRequests]')
+GO
 CREATE FUNCTION [SFin].[tvf_InvoiceRequests]
 (
     @UserId INT

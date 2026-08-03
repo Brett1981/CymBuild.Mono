@@ -112,153 +112,153 @@
                         <i class="@EntityTypeIcon"></i> @EntityTypeLabel :- <small class="text-muted">@EnhancedObjectLabel</small>
                     </h4>
                 </div>
-                <div class="p-2 form-buttons d-flex align-items-center">
+            </div>
+            <div class="p-2 form-buttons d-flex align-items-center justify-content-end">
 
-                    @* Centralised flags so we don't miss any button *@
-                    @{
-                        var hideActions = HideDefaultActions;
-                        var disableActions = DisableDefaultActions;
-                    }
+                @* Centralised flags so we don't miss any button *@
+                @{
+                    var hideActions = HideDefaultActions;
+                    var disableActions = DisableDefaultActions;
+                }
 
-                    @if (!hideActions)
+                @if (!hideActions)
+                {
+                    @if (dataObject.DataProperties.Count > 0)
                     {
-                        @if (dataObject.DataProperties.Count > 0)
+                        @if (!IsInformationPage && !string.IsNullOrEmpty(@ReturnUrl))
                         {
-                            @if (!IsInformationPage && !string.IsNullOrEmpty(@ReturnUrl))
-                            {
-                                @FormButtons
+                            @FormButtons
 
-                                @if (!IsBulkUpdate)
-                                {
-                                    @* --------------------------
+                            @if (!IsBulkUpdate)
+                            {
+                                @* --------------------------
                                        Gallery / Camera (existing)
                                        -------------------------- *@
-                                    @if (EntityTypeGuid == "571a9397-7e28-4bef-8ddc-fd4c56787bde")
+                                @if (EntityTypeGuid == "571a9397-7e28-4bef-8ddc-fd4c56787bde")
+                                {
+                                    @if (!string.IsNullOrEmpty(dataObject?.SharePointUrl))
                                     {
-                                        @if (!string.IsNullOrEmpty(dataObject?.SharePointUrl))
+                                        @if (NumberOfPhotos > 0)
                                         {
-                                            @if (NumberOfPhotos > 0)
-                                            {
-                                                <span class="badge bg-success me-2">
-                                                    @NumberOfPhotos Photos
-                                                </span>
-                                            }
+                                            <span class="badge bg-success me-2">
+                                                @NumberOfPhotos Photos
+                                            </span>
+                                        }
 
-                                            <div class="d-inline-flex align-items-center">
-                                                <button type="button"
-                                                        class="btn btn-secondary me-2 custom-button"
-                                                        title="Open Gallery"
-                                                        @onclick="OpenGallery"
-                                                        disabled="@(disableActions || SaveButtonDisabled || dataObject.HasValidationMessages)">
-                                                    <i class="bi bi-images"></i>
-                                                    <span class="sr-only"></span>
-                                                </button>
-                                            </div>
-
+                                        <div class="d-inline-flex align-items-center">
                                             <button type="button"
                                                     class="btn btn-secondary me-2 custom-button"
-                                                    title="Open Camera"
-                                                    @onclick="OpenCamera"
+                                                    title="Open Gallery"
+                                                    @onclick="OpenGallery"
                                                     disabled="@(disableActions || SaveButtonDisabled || dataObject.HasValidationMessages)">
-                                                <i class="bi bi-camera"></i>
+                                                <i class="bi bi-images"></i>
                                                 <span class="sr-only"></span>
                                             </button>
-                                        }
-                                    }
+                                        </div>
 
-                                    @* --------------------------
+                                        <button type="button"
+                                                class="btn btn-secondary me-2 custom-button"
+                                                title="Open Camera"
+                                                @onclick="OpenCamera"
+                                                disabled="@(disableActions || SaveButtonDisabled || dataObject.HasValidationMessages)">
+                                            <i class="bi bi-camera"></i>
+                                            <span class="sr-only"></span>
+                                        </button>
+                                    }
+                                }
+
+                                @* --------------------------
                                        Tasks menu (ButtonMenu)
                                        NOTE: ButtonMenu has no Disabled parameter, so we gate it here.
                                        -------------------------- *@
-                                    @if (!disableActions)
-                                    {
-                                        <div class="btn btn-primary form-action-menu" id="taskMenubtn">
-                                            <ButtonMenu @ref="_buttonMenuRef"
-                                                        dataObject="@dataObject"
-                                                        GridUpdated="@GridUpdated"
-                                                        ParentDataObjectReference="MyDataObjectReference"
-                                                        ReturnUrl="@ReturnUrl"
-                                                        EntityProperties="@entityProperties"
-                                                        ParentGuid="@MyDataObjectReference.DataObjectGuid.ToString()"
-                                                        EntityTypeGuid="@EntityTypeGuid"
-                                                        OnError="@OnError"
-                                                        OnClose="@CloseWindow"
-                                                        RecieveItemDoubleClick="@ReceiveItemDoubleClick"
-                                                        ReSyncDataObject="@ReSyncDataObject"
-                                                        SaveDataObject="@SaveDataObject"
-                                                        DeleteOperationPerformed="@DeleteOperationPerformed"
-                                                        DeleteOperationPerformedChanged="@((value) => DeleteOperationPerformed = value)"
-                                                        @bind-HasChanges="@HasChanges"/>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        @* Disabled placeholder so the header layout stays consistent *@
-                                        <button type="button"
-                                                class="btn btn-primary me-2"
-                                                title="Tasks are disabled in this context"
-                                                disabled="disabled">
-                                            Tasks
-                                        </button>
-                                    }
+                                @if (!disableActions)
+                                {
+                                    <div class="form-action-menu" id="taskMenubtn">
+                                        <ButtonMenu @ref="_buttonMenuRef"
+                                                    dataObject="@dataObject"
+                                                    GridUpdated="@GridUpdated"
+                                                    ParentDataObjectReference="MyDataObjectReference"
+                                                    ReturnUrl="@ReturnUrl"
+                                                    EntityProperties="@entityProperties"
+                                                    ParentGuid="@MyDataObjectReference.DataObjectGuid.ToString()"
+                                                    EntityTypeGuid="@EntityTypeGuid"
+                                                    OnError="@OnError"
+                                                    OnClose="@CloseWindow"
+                                                    RecieveItemDoubleClick="@ReceiveItemDoubleClick"
+                                                    ReSyncDataObject="@ReSyncDataObject"
+                                                    SaveDataObject="@SaveDataObject"
+                                                    DeleteOperationPerformed="@DeleteOperationPerformed"
+                                                    DeleteOperationPerformedChanged="@((value) => DeleteOperationPerformed = value)"
+                                                    @bind-HasChanges="@HasChanges" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    @* Disabled placeholder so the header layout stays consistent *@
+                                    <button type="button"
+                                            class="btn btn-primary btn-sm cb-v2-btn-primary me-2"
+                                            title="Tasks are disabled in this context"
+                                            disabled="disabled">
+                                        Tasks
+                                    </button>
+                                }
 
-                                    @* --------------------------
+                                @* --------------------------
                                        Save buttons (existing logic preserved)
                                        + we add disableActions into each case
                                        -------------------------- *@
-                                    @if (@SaveButtonDisabled || DeleteOperationPerformed || disableActions)
-                                    {
-                                        <button class="btn btn-warning" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, false))"
-                                                disabled="true">
-                                            <i class="bi bi-save-fill"></i> Save
-                                        </button>
-                                        <button class="btn btn-warning" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, true))"
-                                                disabled="true">
-                                            <i class="bi bi-save-fill"></i> Save and Exit
-                                        </button>
-                                    }
-                                    else if (HasValidationMessages)
-                                    {
-                                        <button class="btn btn-warning mb-1 disabled" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, false))" value="Save">
-                                            <i class="bi bi-save-fill"></i> Save
-                                        </button>
-                                        <button class="btn btn-warning mb-1 disabled" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, true))" value="SaveExit">
-                                            <i class="bi bi-save-fill"></i> Save and Exit
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <button class="btn btn-success" id="Savebtn" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, false))"
-                                                disabled="@(disableActions)">
-                                            <i class="bi bi-save-fill"></i> Save
-                                        </button>
-                                        <button class="btn btn-success" id="SaveAndExitbtn" type="button"
-                                                @onclick="@(() => FormSubmitted(_editContext, true, true))"
-                                                disabled="@(disableActions)">
-                                            <i class="bi bi-save-fill"></i> Save and Exit
-                                        </button>
-                                    }
+                                @if (@SaveButtonDisabled || DeleteOperationPerformed || disableActions)
+                                {
+                                    <button class="btn btn-warning btn-sm" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, false))"
+                                            disabled="true">
+                                        <i class="bi bi-save-fill"></i> Save
+                                    </button>
+                                    <button class="btn btn-warning btn-sm" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, true))"
+                                            disabled="true">
+                                        <i class="bi bi-save-fill"></i> Save and Exit
+                                    </button>
+                                }
+                                else if (HasValidationMessages)
+                                {
+                                    <button class="btn btn-warning btn-sm mb-1 disabled" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, false))" value="Save">
+                                        <i class="bi bi-save-fill"></i> Save
+                                    </button>
+                                    <button class="btn btn-warning btn-sm mb-1 disabled" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, true))" value="SaveExit">
+                                        <i class="bi bi-save-fill"></i> Save and Exit
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-success btn-sm" id="Savebtn" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, false))"
+                                            disabled="@(disableActions)">
+                                        <i class="bi bi-save-fill"></i> Save
+                                    </button>
+                                    <button class="btn btn-success btn-sm" id="SaveAndExitbtn" type="button"
+                                            @onclick="@(() => FormSubmitted(_editContext, true, true))"
+                                            disabled="@(disableActions)">
+                                        <i class="bi bi-save-fill"></i> Save and Exit
+                                    </button>
                                 }
                             }
                         }
                     }
+                }
 
-                    @* Keep overlay exactly as-is *@
-                    @if (isPreparingStorageUrl)
-                    {
-                        <div class="loading-overlay">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="sr-only">Loading...</span>
-                            </div>
-                            <p>Preparing storage location...</p>
+                @* Keep overlay exactly as-is *@
+                @if (isPreparingStorageUrl)
+                {
+                    <div class="loading-overlay">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading...</span>
                         </div>
-                    }
-                </div>
+                        <p>Preparing storage location...</p>
+                    </div>
+                }
             </div>
             @{
                 // Job EntityTypeGuid: 63542427-46ab-4078-abd1-1d583c24315c

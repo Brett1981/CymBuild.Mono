@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[DropDownListDefinitions]')
 GO
+PRINT (N'Create table [SUserInterface].[DropDownListDefinitions]')
+GO
 CREATE TABLE [SUserInterface].[DropDownListDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_DropDownListDefinition_RowStatus] DEFAULT (0),

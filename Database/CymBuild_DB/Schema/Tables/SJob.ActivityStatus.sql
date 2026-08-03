@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[ActivityStatus]')
 GO
+PRINT (N'Create table [SJob].[ActivityStatus]')
+GO
 CREATE TABLE [SJob].[ActivityStatus] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ActivityStatus_RowStatus] DEFAULT (1),

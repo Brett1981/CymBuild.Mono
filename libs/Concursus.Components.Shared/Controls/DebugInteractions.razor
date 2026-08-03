@@ -1,65 +1,111 @@
 ﻿@page "/debug-interactions"
-@using Telerik.Blazor.Components
 @using Concursus.Components.Shared.Services
 @inject NavigationManager NavManager
 @inject UserInteractionTrackerService InteractionTracker
 
-<h3 class="mb-3">🔍 User Interaction Debug Viewer</h3>
-
-<TelerikCard Class="mb-3">
-    <CardHeader>
-        <div class="d-flex justify-content-between align-items-center">
-            <span><strong>📄 Page Filter:</strong></span>
-            <TelerikDropDownList @bind-Value="SelectedPageKey"
-                                 Data="@AllPageKeys"
-                                 ValueField="Value"
-                                 TextField="Text"
-                                 FilterPlaceholder="Select page or view all"
-                                 Width="300px" />
-            <TelerikButton OnClick="@ClearLogs" Class="btn-sm btn-danger" Icon="@FontIcon.Trash">Clear All Logs</TelerikButton>
+<section class="cb-native-dev-page" aria-labelledby="interaction-debug-title">
+    <header class="cb-native-dev-header">
+        <div class="cb-native-dev-title-wrap">
+            <span aria-hidden="true">🔍</span>
+            <div>
+                <h3 id="interaction-debug-title" class="mb-1">User Interaction Debug Viewer</h3>
+                <p class="text-muted mb-0">Review interaction steps captured during this browser session.</p>
+            </div>
         </div>
-    </CardHeader>
-</TelerikCard>
+    </header>
 
-@if (FilteredLogs.Any())
-{
-    <TelerikGrid Data="@FilteredLogs"
-                 Pageable="true"
-                 PageSize="10"
-                 Height="400px"
-                 Class="border">
-        <GridColumns>
-            <GridColumn Title="Timestamp" Field="@nameof(LogEntry.Timestamp)" Width="180px" />
-            <GridColumn Title="Message" Field="@nameof(LogEntry.Message)" />
-        </GridColumns>
-    </TelerikGrid>
-}
-else
-{
-    <p class="text-muted">No interaction logs recorded for the selected page.</p>
-}
+    <div class="cb-native-dev-card cb-v2-card">
+        <div class="cb-v2-card-body cb-native-dev-toolbar">
+            <label for="interaction-page-filter"><strong>Page filter</strong></label>
+            <select id="interaction-page-filter"
+                    class="form-select cb-native-dev-search"
+                    value="@SelectedPageKey"
+                    @onchange="OnPageFilterChanged">
+                @foreach (var item in AllPageKeys)
+                {
+                    <option value="@item.Value">@item.Text</option>
+                }
+            </select>
+            <span class="cb-native-dev-toolbar-spacer"></span>
+            <button type="button" class="btn btn-outline-danger" @onclick="ClearLogs" disabled="@(!InteractionTracker.GetAllLogs().Any())">
+                <span aria-hidden="true">🗑</span> Clear all logs
+            </button>
+        </div>
+    </div>
+
+    @if (FilteredLogs.Count > 0)
+    {
+        <div class="cb-native-dev-table-wrap">
+            <table class="table table-sm table-hover cb-native-dev-table cb-native-dev-table-compact" aria-label="User interaction logs">
+                <thead>
+                    <tr>
+                        <th scope="col">Timestamp</th>
+                        <th scope="col">Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in PagedLogs)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@entry.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td>@entry.Message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <nav class="cb-native-dev-pager" aria-label="Interaction log pages">
+            <span>Showing @FirstVisibleLog to @LastVisibleLog of @FilteredLogs.Count</span>
+            <button type="button" class="btn btn-outline-secondary" @onclick="PreviousPage" disabled="@(CurrentPage == 1)">Previous</button>
+            <span>Page @CurrentPage of @TotalPages</span>
+            <button type="button" class="btn btn-outline-secondary" @onclick="NextPage" disabled="@(CurrentPage == TotalPages)">Next</button>
+        </nav>
+    }
+    else
+    {
+        <div class="cb-native-dev-empty" role="status">No interaction logs recorded for the selected page.</div>
+    }
+</section>
 
 @code {
-    private string CurrentPageKey => NavManager.Uri.Replace(NavManager.BaseUri, "").TrimEnd('/');
-    private string? SelectedPageKey { get; set; } = null;
+    private const int PageSize = 10;
+    private int CurrentPage { get; set; } = 1;
+    private string CurrentPageKey => NavManager.Uri.Replace(NavManager.BaseUri, string.Empty).TrimEnd('/');
+    private string SelectedPageKey { get; set; } = "ALL";
 
-    private List<string> PageKeys => InteractionTracker.GetAllPageKeys().ToList();
+    private List<string> PageKeys => InteractionTracker.GetAllPageKeys().OrderBy(key => key, StringComparer.OrdinalIgnoreCase).ToList();
 
     private List<LogEntry> FilteredLogs =>
-        (SelectedPageKey == null || SelectedPageKey == "ALL")
+        SelectedPageKey == "ALL"
             ? InteractionTracker.GetAllLogs()
-            : InteractionTracker.GetLogsForPage(SelectedPageKey).ToList();
+            : InteractionTracker.GetLogsForPage(SelectedPageKey).OrderByDescending(entry => entry.Timestamp).ToList();
 
     private List<DropdownItem> AllPageKeys =>
-        new List<DropdownItem> { new("ALL", "🌐 All Pages") }
-        .Concat(PageKeys.Select(k => new DropdownItem(k, k == CurrentPageKey ? $"{k} (current)" : k)))
-        .ToList();
+        new[] { new DropdownItem("ALL", "All pages") }
+            .Concat(PageKeys.Select(key => new DropdownItem(key, key == CurrentPageKey ? $"{key} (current)" : key)))
+            .ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredLogs.Count / (double)PageSize));
+    private IEnumerable<LogEntry> PagedLogs => FilteredLogs.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+    private int FirstVisibleLog => FilteredLogs.Count == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
+    private int LastVisibleLog => Math.Min(CurrentPage * PageSize, FilteredLogs.Count);
+
+    private void OnPageFilterChanged(ChangeEventArgs args)
+    {
+        SelectedPageKey = args.Value?.ToString() ?? "ALL";
+        CurrentPage = 1;
+    }
+
+    private void PreviousPage() => CurrentPage = Math.Max(1, CurrentPage - 1);
+    private void NextPage() => CurrentPage = Math.Min(TotalPages, CurrentPage + 1);
 
     private void ClearLogs()
     {
         InteractionTracker.ClearAll();
-        StateHasChanged();
+        SelectedPageKey = "ALL";
+        CurrentPage = 1;
     }
 
-    public record DropdownItem(string Value, string Text);
+    private sealed record DropdownItem(string Value, string Text);
 }

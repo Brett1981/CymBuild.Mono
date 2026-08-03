@@ -1,105 +1,256 @@
-﻿@using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Helpers
-@using System.Linq
-@using System.Collections.Generic
-@using Google.Protobuf.WellKnownTypes
+@using System.Globalization
+@using System.Text
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime JSRuntime
 
-<h3 class="dashboard-title">📊 System Usage Analytics</h3>
+<section class="usage-dashboard cb-v2-stack" aria-labelledby="usage-dashboard-title">
+    <header class="usage-dashboard-header cb-v2-card cb-v2-panel-body cb-v2-header-row">
+        <div>
+            <p class="usage-dashboard-eyebrow cb-v2-eyebrow">Developer diagnostics</p>
+            <h3 id="usage-dashboard-title">System Usage Analytics</h3>
+            <p>Review feature adoption and activity for the selected reporting period.</p>
+        </div>
+        <div class="usage-dashboard-actions cb-v2-actions">
+            <button type="button" class="btn btn-outline-primary" @onclick="ExportToCSV" disabled="@(!UsageReport.Any())">
+                <i class="bi bi-filetype-csv" aria-hidden="true"></i> Export CSV
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ExportToPDF" disabled="@(!UsageReport.Any())">
+                <i class="bi bi-file-earmark-text" aria-hidden="true"></i> Export PDF
+            </button>
+        </div>
+    </header>
 
-<!-- Filtering Controls -->
-<div class="filter-container">
-    <TelerikDateRangePicker @bind-StartValue="StartDate" @bind-EndValue="EndDate" Format="dd MMM yyyy"
-    OnChange="FetchUsageReport" />
+    <div class="usage-filter-panel cb-v2-card cb-v2-panel-body">
+        <div class="usage-filter-field cb-v2-field">
+            <label for="usage-start-date">Start date</label>
+            <input id="usage-start-date" class="form-control" type="date" value="@StartDate.ToString("yyyy-MM-dd")" @onchange="OnStartDateChanged" />
+        </div>
+        <div class="usage-filter-field cb-v2-field">
+            <label for="usage-end-date">End date</label>
+            <input id="usage-end-date" class="form-control" type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
+        </div>
+        <div class="usage-filter-field usage-filter-user cb-v2-field">
+            <label for="usage-user">User</label>
+            <select id="usage-user" class="form-select" value="@SelectedUserGuid" @onchange="OnUserChanged">
+                <option value="">All users</option>
+                @foreach (var item in Users)
+                {
+                    <option value="@item.UserGuid">@item.Username</option>
+                }
+            </select>
+        </div>
+        <div class="usage-filter-buttons cb-v2-actions">
+            <button type="button" class="btn btn-primary" @onclick="FetchUsageReport" disabled="@IsLoading">Apply</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ResetFilters" disabled="@IsLoading">Reset</button>
+        </div>
+    </div>
 
-    @if (Users.Any())
+    @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
-        <TelerikDropDownList TItem="UserItem" TValue="string"
-                             Data="@Users"
-                             TextField="Username"
-                             ValueField="UserGuid"
-                             @bind-Value="SelectedUserGuid"
-                             FilterPlaceholder="Select a User"
-                             OnChange="@((object selectedValue) => OnUserChanged(selectedValue))">
-        </TelerikDropDownList>
+        <div class="alert alert-warning py-2" role="alert">@ValidationMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger py-2" role="alert">@ErrorMessage</div>
+    }
+
+    @if (IsLoading)
+    {
+        <div class="usage-loading cb-v2-loading-state" role="status">
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            Loading usage analytics...
+        </div>
     }
     else
     {
-        <p>Loading users...</p>
+        <div class="usage-summary-grid">
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Events</span><strong class="cb-v2-stat-value">@UsageReport.Sum(x => x.UsageCount).ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Features</span><strong class="cb-v2-stat-value">@FeatureSummaries.Count.ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Users</span><strong class="cb-v2-stat-value">@UsageReport.Select(x => x.Username).Distinct().Count().ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Rows</span><strong class="cb-v2-stat-value">@UsageReport.Count.ToString("N0")</strong></article>
+        </div>
+
+        @if (UsageReport.Any())
+        {
+            <div class="usage-chart-grid">
+                <section class="usage-panel cb-v2-card cb-v2-panel-body" aria-labelledby="feature-bar-title">
+                    <div class="usage-panel-heading cb-v2-panel-header">
+                        <div>
+                            <h4 id="feature-bar-title">Feature usage</h4>
+                            <p>Select a feature to drill into its records.</p>
+                        </div>
+                        @if (IsFeatureDrillDown)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ResetUsageReport">Reset view</button>
+                        }
+                    </div>
+                    <div class="usage-bars">
+                        @foreach (var feature in FeatureSummaries)
+                        {
+                            <button type="button" class="usage-bar-row" @onclick="() => FilterByFeature(feature.FeatureName)" title="View @feature.FeatureName records">
+                                <span class="usage-bar-label">@feature.FeatureName</span>
+                                <span class="usage-bar-track"><span class="usage-bar-fill" style="width: @FormatPercent(feature.BarPercent)"></span></span>
+                                <strong>@feature.UsageCount.ToString("N0")</strong>
+                            </button>
+                        }
+                    </div>
+                </section>
+
+                <section class="usage-panel cb-v2-card cb-v2-panel-body" aria-labelledby="feature-share-title">
+                    <div class="usage-panel-heading cb-v2-panel-header">
+                        <div>
+                            <h4 id="feature-share-title">Feature share</h4>
+                            <p>Usage distribution across the current result set.</p>
+                        </div>
+                    </div>
+                    <div class="usage-share-layout">
+                        <svg class="usage-donut" viewBox="0 0 100 100" role="img" aria-label="Feature usage distribution">
+                            <circle class="usage-donut-background" cx="50" cy="50" r="34" pathLength="100"></circle>
+                            @foreach (var feature in FeatureSummaries)
+                            {
+                                <circle class="usage-donut-segment"
+                                        cx="50" cy="50" r="34" pathLength="100"
+                                        stroke="@feature.Colour"
+                                        stroke-dasharray="@FormatDashArray(feature.SharePercent)"
+                                        stroke-dashoffset="@FormatNumber(-feature.OffsetPercent)"
+                                        @onclick="() => FilterByFeature(feature.FeatureName)">
+                                    <title>@feature.FeatureName: @feature.UsageCount.ToString("N0") (@FormatPercent(feature.SharePercent))</title>
+                                </circle>
+                            }
+                            <text x="50" y="48" text-anchor="middle">Total</text>
+                            <text class="usage-donut-total" x="50" y="59" text-anchor="middle">@UsageReport.Sum(x => x.UsageCount).ToString("N0")</text>
+                        </svg>
+                        <div class="usage-legend">
+                            @foreach (var feature in FeatureSummaries)
+                            {
+                                <button type="button" @onclick="() => FilterByFeature(feature.FeatureName)">
+                                    <span class="usage-legend-colour" style="background-color: @feature.Colour"></span>
+                                    <span>@feature.FeatureName</span>
+                                    <strong>@FormatPercent(feature.SharePercent)</strong>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <section class="usage-panel usage-table-panel cb-v2-card cb-v2-panel-body" aria-labelledby="usage-results-title">
+                <div class="usage-panel-heading cb-v2-panel-header">
+                    <div>
+                        <h4 id="usage-results-title">Usage records</h4>
+                        <p>Showing @FirstVisibleRow-@LastVisibleRow of @SortedUsageReport.Count records.</p>
+                    </div>
+                    <label class="usage-page-size">Rows per page
+                        <select class="form-select form-select-sm" value="@PageSize" @onchange="OnPageSizeChanged">
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="table-responsive cb-v2-table-wrap">
+                    <table class="table table-hover align-middle usage-table">
+                        <thead>
+                            <tr>
+                                <th><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.Username)">User @SortIndicator(UsageSort.Username)</button></th>
+                                <th><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.FeatureName)">Feature @SortIndicator(UsageSort.FeatureName)</button></th>
+                                <th class="text-end"><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.UsageCount)">Usage @SortIndicator(UsageSort.UsageCount)</button></th>
+                                <th class="text-end"><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.WeeklyAverage)">Weekly avg @SortIndicator(UsageSort.WeeklyAverage)</button></th>
+                                <th><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.FirstAccessed)">First accessed @SortIndicator(UsageSort.FirstAccessed)</button></th>
+                                <th><button type="button" class="cb-v2-sort-button" @onclick="() => SetSort(UsageSort.LastAccessed)">Last accessed @SortIndicator(UsageSort.LastAccessed)</button></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in PagedUsageReport)
+                            {
+                                <tr>
+                                    <td>@item.Username</td>
+                                    <td>@item.FeatureName</td>
+                                    <td class="text-end">@item.UsageCount.ToString("N0")</td>
+                                    <td class="text-end">@item.WeeklyAverage</td>
+                                    <td>@item.FirstAccessed</td>
+                                    <td>@item.LastAccessed</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <nav class="usage-pagination cb-v2-table-footer" aria-label="Usage records pagination">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="PreviousPage" disabled="@(CurrentPage <= 1)">Previous</button>
+                    <span>Page @CurrentPage of @TotalPages</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="NextPage" disabled="@(CurrentPage >= TotalPages)">Next</button>
+                </nav>
+            </section>
+        }
+        else
+        {
+            <div class="usage-empty-state cb-v2-empty-state cb-v2-card">No usage records match the selected filters.</div>
+        }
     }
-</div>
-
-<!-- Data Grid -->
-<TelerikGrid Data="@UsageReport" Pageable="true" Sortable="true" Height="400px">
-    <GridColumns>
-        <GridColumn Field="Username" Title="User Name" />
-        <GridColumn Field="FeatureName" Title="Feature Name" />
-        <GridColumn Field="UsageCount" Title="Usage Count" />
-        <GridColumn Field="WeeklyAverage" Title="Weekly Avg" />
-        <GridColumn Field="FirstAccessed" Title="First Accessed" />
-        <GridColumn Field="LastAccessed" Title="Last Accessed" />
-    </GridColumns>
-</TelerikGrid>
-
-<!-- Charts Section -->
-@if (UsageReport != null && UsageReport.Any())
-{
-    <div class="chart-container">
-        <!-- Feature Usage Breakdown -->
-        <!-- Bar Chart -->
-        <TelerikChart Width="600px" Height="400px" OnSeriesClick="OnBarClick">
-            <ChartSeriesItems>
-                <ChartSeries Type="ChartSeriesType.Bar" Data="@FeatureUsageCounts" Name="Feature Usage"
-                Color="blue">
-                    <ChartSeriesLabels Visible="true" Color="white" />
-                </ChartSeries>
-            </ChartSeriesItems>
-            <ChartCategoryAxes>
-                <ChartCategoryAxis Categories="@FeatureNames">
-                    <ChartCategoryAxisTitle Text="Features" />
-                </ChartCategoryAxis>
-            </ChartCategoryAxes>
-        </TelerikChart>
-
-        <button class="btn btn-secondary" @onclick="ResetUsageReport">🔄 Reset View</button>
-
-        <!-- Pie Chart -->
-        <TelerikChart Width="600px" Height="500px" OnSeriesClick="OnPieClick">
-            <ChartSeriesItems>
-                <ChartSeries Type="ChartSeriesType.Pie"
-                             Data="@FeatureUsageData"
-                             Field="@nameof(PieChartModel.UsageCount)"
-                             CategoryField="@nameof(PieChartModel.FeatureName)">
-                    <ChartSeriesLabels Visible="true" Position="ChartSeriesLabelsPosition.OutsideEnd" Rotation="0" Color="black" />
-                </ChartSeries>
-            </ChartSeriesItems>
-            <ChartLegend Position="ChartLegendPosition.Bottom"></ChartLegend>
-        </TelerikChart>
-    </div>
-}
-
-<!-- Export Buttons -->
-<div class="export-buttons">
-    <button class="btn btn-primary" @onclick="ExportToCSV">📥 Export to CSV</button>
-    <button class="btn btn-warning" @onclick="ExportToPDF">📄 Export to PDF</button>
-</div>
+</section>
 
 @code {
-    private List<UsageData> UsageReport = new();
-    private DateTime StartDate = DateTime.UtcNow.AddDays(-30);
-    private DateTime EndDate = DateTime.UtcNow;
-    private List<UserItem> Users = new();
+    private static readonly string[] ChartColours = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#ea580c"];
+    private List<UsageData> UsageReport = [];
+    private List<UsageData> OriginalUsageReport = [];
+    private List<UserItem> Users = [];
+    private DateTime StartDate = DateTime.UtcNow.AddDays(-30).Date;
+    private DateTime EndDate = DateTime.UtcNow.Date;
     private string? SelectedUserGuid;
+    private string? ValidationMessage;
+    private string? ErrorMessage;
+    private bool IsLoading;
+    private int CurrentPage = 1;
+    private int PageSize = 20;
+    private UsageSort ActiveSort = UsageSort.UsageCount;
+    private bool SortDescending = true;
 
-    private List<UsageData> OriginalUsageReport = new(); // Stores unfiltered data
+    private bool IsFeatureDrillDown => UsageReport.Count != OriginalUsageReport.Count;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(SortedUsageReport.Count / (double)PageSize));
+    private int FirstVisibleRow => SortedUsageReport.Count == 0 ? 0 : ((CurrentPage - 1) * PageSize) + 1;
+    private int LastVisibleRow => Math.Min(CurrentPage * PageSize, SortedUsageReport.Count);
+    private List<UsageData> PagedUsageReport => SortedUsageReport.Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToList();
 
-    private string[] FeatureNames => UsageReport.Select(u => u.FeatureName).Distinct().ToArray();
+    private List<UsageData> SortedUsageReport => (ActiveSort, SortDescending) switch
+    {
+        (UsageSort.Username, false) => UsageReport.OrderBy(x => x.Username).ThenBy(x => x.FeatureName).ToList(),
+        (UsageSort.Username, true) => UsageReport.OrderByDescending(x => x.Username).ThenBy(x => x.FeatureName).ToList(),
+        (UsageSort.FeatureName, false) => UsageReport.OrderBy(x => x.FeatureName).ThenBy(x => x.Username).ToList(),
+        (UsageSort.FeatureName, true) => UsageReport.OrderByDescending(x => x.FeatureName).ThenBy(x => x.Username).ToList(),
+        (UsageSort.UsageCount, false) => UsageReport.OrderBy(x => x.UsageCount).ToList(),
+        (UsageSort.UsageCount, true) => UsageReport.OrderByDescending(x => x.UsageCount).ToList(),
+        (UsageSort.WeeklyAverage, false) => UsageReport.OrderBy(x => x.WeeklyAverage).ToList(),
+        (UsageSort.WeeklyAverage, true) => UsageReport.OrderByDescending(x => x.WeeklyAverage).ToList(),
+        (UsageSort.FirstAccessed, false) => UsageReport.OrderBy(x => ParseUsageDate(x.FirstAccessed)).ToList(),
+        (UsageSort.FirstAccessed, true) => UsageReport.OrderByDescending(x => ParseUsageDate(x.FirstAccessed)).ToList(),
+        (UsageSort.LastAccessed, false) => UsageReport.OrderBy(x => ParseUsageDate(x.LastAccessed)).ToList(),
+        _ => UsageReport.OrderByDescending(x => ParseUsageDate(x.LastAccessed)).ToList()
+    };
 
-    private object[] FeatureUsageCounts =>
-        FeatureNames.Select(name => (object)UsageReport.Where(u => u.FeatureName == name).Sum(u => u.UsageCount)).ToArray();
+    private List<FeatureSummary> FeatureSummaries
+    {
+        get
+        {
+            var grouped = UsageReport.GroupBy(x => x.FeatureName)
+                .Select(x => new { FeatureName = x.Key, UsageCount = x.Sum(y => y.UsageCount) })
+                .OrderByDescending(x => x.UsageCount)
+                .ToList();
+            var total = grouped.Sum(x => x.UsageCount);
+            var maximum = grouped.Count == 0 ? 0 : grouped.Max(x => x.UsageCount);
+            var offset = 0d;
+            return grouped.Select((x, index) =>
+            {
+                var share = total == 0 ? 0 : x.UsageCount * 100d / total;
+                var result = new FeatureSummary(x.FeatureName, x.UsageCount, maximum == 0 ? 0 : x.UsageCount * 100d / maximum, share, offset, ChartColours[index % ChartColours.Length]);
+                offset += share;
+                return result;
+            }).ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,124 +260,132 @@
 
     private async Task LoadUsers()
     {
-        var ListOfUsers = await coreClient.UsersGetAsync(new UsersGetRequest()); // API Call to Fetch Users
-
-        if (ListOfUsers != null && ListOfUsers.Users.Any())
+        try
         {
-            Users = ListOfUsers.Users
-                .Select(user => new UserItem { UserGuid = user.Guid, Username = user.FullName })
-                .ToList();
-
-            StateHasChanged(); // Force UI to update after fetching users
+            var response = await coreClient.UsersGetAsync(new UsersGetRequest());
+            Users = response?.Users.Select(x => new UserItem { UserGuid = x.Guid, Username = x.FullName }).OrderBy(x => x.Username).ToList() ?? [];
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Users could not be loaded: {ex.Message}";
         }
     }
 
     private async Task FetchUsageReport()
     {
-        Console.WriteLine($"Fetching Usage Report for Days: {(EndDate - StartDate).Days}, User: {SelectedUserGuid ?? "All"}");
-
-        var request = new UsageReportRequest
-            {
-                Days = (EndDate - StartDate).Days,
-                UserGuid = SelectedUserGuid ?? string.Empty,
-                StartDateUtc = UiFormattingHelper.ToTimestamp(StartDate),
-                EndDateUtc = UiFormattingHelper.ToTimestamp(EndDate.AddDays(1).AddSeconds(-1))
-
-
-            };
-
+        if (!ValidateDates()) return;
+        IsLoading = true;
+        ErrorMessage = null;
         try
         {
+            var request = new UsageReportRequest
+            {
+                Days = Math.Max(1, (EndDate - StartDate).Days),
+                UserGuid = SelectedUserGuid ?? string.Empty,
+                StartDateUtc = UiFormattingHelper.ToTimestamp(StartDate),
+                EndDateUtc = UiFormattingHelper.ToTimestamp(EndDate.AddDays(1).AddTicks(-1))
+            };
             var response = await coreClient.GetUsageReportAsync(request);
-
-            // Save the full dataset before any drill-down filtering
             OriginalUsageReport = response.UsageData.ToList();
-            UsageReport = OriginalUsageReport;
-
-            StateHasChanged();
+            UsageReport = OriginalUsageReport.ToList();
+            CurrentPage = 1;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error calling GetUsageReport: {ex.Message}");
+            ErrorMessage = $"Usage analytics could not be loaded: {ex.Message}";
+            OriginalUsageReport = [];
+            UsageReport = [];
         }
-    }
-
-    private async Task OnDateChanged()
-    {
-        if (StartDate != null && EndDate != null && EndDate > StartDate)
+        finally
         {
-            if ((EndDate - StartDate).Days == 0)
-                return; // skip 0-day requests if that's undesired
-
-            await FetchUsageReport();
+            IsLoading = false;
         }
     }
 
-    private async Task OnUserChanged(object selectedValue)
+    private bool ValidateDates()
     {
-        SelectedUserGuid = selectedValue as string; // Assign selected value
-        Console.WriteLine($"User changed to: {SelectedUserGuid}"); // Debugging
-        await FetchUsageReport(); // Fetch updated data
-
-
+        ValidationMessage = EndDate < StartDate ? "End date cannot be before start date." : null;
+        return ValidationMessage is null;
     }
+
+    private async Task OnStartDateChanged(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)) StartDate = value.Date;
+        if (ValidateDates()) await FetchUsageReport();
+    }
+
+    private async Task OnEndDateChanged(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var value)) EndDate = value.Date;
+        if (ValidateDates()) await FetchUsageReport();
+    }
+
+    private async Task OnUserChanged(ChangeEventArgs args)
+    {
+        SelectedUserGuid = args.Value?.ToString();
+        await FetchUsageReport();
+    }
+
+    private async Task ResetFilters()
+    {
+        StartDate = DateTime.UtcNow.AddDays(-30).Date;
+        EndDate = DateTime.UtcNow.Date;
+        SelectedUserGuid = null;
+        await FetchUsageReport();
+    }
+
+    private void FilterByFeature(string featureName)
+    {
+        UsageReport = OriginalUsageReport.Where(x => x.FeatureName == featureName).ToList();
+        CurrentPage = 1;
+    }
+
     private void ResetUsageReport()
     {
-        UsageReport = OriginalUsageReport; // Restore original data
-        StateHasChanged();
+        UsageReport = OriginalUsageReport.ToList();
+        CurrentPage = 1;
     }
 
-    private List<PieChartModel> FeatureUsageData =>
-    FeatureNames.Select(name => new PieChartModel
-        {
-            FeatureName = name,
-            UsageCount = UsageReport.Where(u => u.FeatureName == name).Sum(u => u.UsageCount)
-        }).ToList();
-
-    private void OnBarClick(ChartSeriesClickEventArgs args)
+    private void SetSort(UsageSort sort)
     {
-        if (args.Category != null)
-        {
-            string clickedFeature = args.Category.ToString();
-            UsageReport = OriginalUsageReport.Where(u => u.FeatureName == clickedFeature).ToList();
-            StateHasChanged();
-        }
+        if (ActiveSort == sort) SortDescending = !SortDescending;
+        else { ActiveSort = sort; SortDescending = false; }
+        CurrentPage = 1;
     }
 
-    private void OnPieClick(ChartSeriesClickEventArgs args)
+    private string SortIndicator(UsageSort sort) => ActiveSort != sort ? string.Empty : SortDescending ? "↓" : "↑";
+    private void PreviousPage() => CurrentPage = Math.Max(1, CurrentPage - 1);
+    private void NextPage() => CurrentPage = Math.Min(TotalPages, CurrentPage + 1);
+
+    private void OnPageSizeChanged(ChangeEventArgs args)
     {
-        if (args.Category != null)
-        {
-            string clickedFeature = args.Category.ToString();
-            UsageReport = OriginalUsageReport.Where(u => u.FeatureName == clickedFeature).ToList();
-            StateHasChanged();
-        }
+        if (int.TryParse(args.Value?.ToString(), out var value)) PageSize = value;
+        CurrentPage = 1;
     }
 
     private async Task ExportToCSV()
     {
-        var csvContent = "Username,FeatureName,UsageCount,WeeklyAverage,FirstAccessed,LastAccessed\n" +
-                         string.Join("\n", UsageReport.Select(u => $"{u.Username},{u.FeatureName},{u.UsageCount},{u.WeeklyAverage},{u.FirstAccessed},{u.LastAccessed}"));
-        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.csv", $"data:text/csv;charset=utf-8,{csvContent}");
+        var csv = new StringBuilder("Username,FeatureName,UsageCount,WeeklyAverage,FirstAccessed,LastAccessed\r\n");
+        foreach (var item in UsageReport)
+        {
+            csv.AppendLine(string.Join(',', Csv(item.Username), Csv(item.FeatureName), item.UsageCount, item.WeeklyAverage, Csv(item.FirstAccessed?.ToString()), Csv(item.LastAccessed?.ToString())));
+        }
+        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.csv", $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(csv.ToString())}");
     }
 
     private async Task ExportToPDF()
     {
-        var pdfContent = "System Usage Report\n\n" +
-                         string.Join("\n", UsageReport.Select(u => $"{u.Username} - {u.FeatureName}: First Accessed: {u.FirstAccessed} - {u.UsageCount} times (Last Accessed: {u.LastAccessed}) - Weekly Average: {u.WeeklyAverage}"));
-        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.pdf", $"data:text/plain;charset=utf-8,{pdfContent}");
+        var content = "System Usage Report\n\n" + string.Join("\n", UsageReport.Select(x => $"{x.Username} - {x.FeatureName}: First Accessed: {x.FirstAccessed} - {x.UsageCount} times (Last Accessed: {x.LastAccessed}) - Weekly Average: {x.WeeklyAverage}"));
+        await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.pdf", $"data:text/plain;charset=utf-8,{Uri.EscapeDataString(content)}");
     }
 
-    public class UserItem
-    {
-        public string UserGuid { get; set; } = string.Empty;
-        public string Username { get; set; } = string.Empty;
-    }
+    private static string Csv(string? value) => $"\"{(value ?? string.Empty).Replace("\"", "\"\"")}\"";
+    private static DateTime ParseUsageDate(string? value) => DateTime.TryParse(value, out var result) ? result : DateTime.MinValue;
+    private static string FormatPercent(double value) => $"{FormatNumber(value)}%";
+    private static string FormatNumber(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+    private static string FormatDashArray(double value) => $"{FormatNumber(value)} {FormatNumber(Math.Max(0, 100 - value))}";
 
-    public class PieChartModel
-    {
-        public string FeatureName { get; set; } = string.Empty;
-        public int UsageCount { get; set; }
-    }
-
+    private enum UsageSort { Username, FeatureName, UsageCount, WeeklyAverage, FirstAccessed, LastAccessed }
+    private sealed record FeatureSummary(string FeatureName, int UsageCount, double BarPercent, double SharePercent, double OffsetPercent, string Colour);
+    private sealed class UserItem { public string UserGuid { get; set; } = string.Empty; public string Username { get; set; } = string.Empty; }
 }

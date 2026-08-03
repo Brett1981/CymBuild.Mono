@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCore].[RecordHistory]')
 GO
+PRINT (N'Create table [SCore].[RecordHistory]')
+GO
 CREATE TABLE [SCore].[RecordHistory] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_RecordHistory_Guid] DEFAULT (newid()) ROWGUIDCOL,

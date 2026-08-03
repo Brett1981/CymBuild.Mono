@@ -155,8 +155,9 @@ namespace Concursus.API.Services.Finance
 
         private static string? ResolveCustomerOrderNumber(ApprovedTransactionForSageReadModel source)
         {
-            var reference = source.GetPreferredExternalReference();
-            return string.IsNullOrWhiteSpace(reference) ? null : reference;
+            // CYB-475: Sage customerOrderNo is the customer's purchase order number.
+            // Transaction/invoice references must not be duplicated into the PO field.
+            return TrimOrNull(source.PurchaseOrderNumber);
         }
 
         private static DateTime? ResolveDocumentDate(ApprovedTransactionForSageReadModel source)
@@ -342,13 +343,23 @@ namespace Concursus.API.Services.Finance
 
         private int? ResolveTaxCode(ApprovedTransactionForSageLineReadModel line)
         {
-            if (!string.IsNullOrWhiteSpace(line.VatCode)
-                && int.TryParse(line.VatCode.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            if (string.IsNullOrWhiteSpace(line.VatCode))
+            {
+                return _options.DefaultTaxCode;
+            }
+
+            if (int.TryParse(
+                    line.VatCode.Trim(),
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out var parsed)
+                && parsed >= 0)
             {
                 return parsed;
             }
 
-            return _options.DefaultTaxCode;
+            throw new InvalidOperationException(
+                $"Sage VAT mapping '{line.VatCode}' for line {line.LineId} is not a valid non-negative Sage tax-code identifier.");
         }
 
         private static string BuildLineDescription(ApprovedTransactionForSageLineReadModel line)

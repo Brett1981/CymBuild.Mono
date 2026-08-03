@@ -239,6 +239,11 @@
     overscroll-behavior: contain;
 }
 
+.shore-lookup:not(.is-open):focus-within,
+.shore-lookup:not(.is-open) .shore-lookup-control:focus-within {
+    z-index: auto !important;
+}
+
 /* 14I-R7 ShoreLookup stable inline menu repair.
    R3/R5 viewport positioning could leave the dropdown hidden when JS placement did not complete.
    Keep the menu in the component tree, but raise it above inline grid editors. */
@@ -314,3 +319,16 @@
 }
 /* END 14S-R18 lookup selected value tooltip clipping */
 
+/* BEGIN 15C-R2 open-only lookup stacking authority */
+.shore-lookup.is-open,
+.shore-lookup.is-open .shore-lookup-control {
+    position: relative;
+    z-index: 2147481100 !important;
+    overflow: visible !important;
+}
+
+.shore-lookup-menu,
+.shore-lookup-menu.is-fixed {
+    z-index: 2147481200 !important;
+}
+/* END 15C-R2 open-only lookup stacking authority */

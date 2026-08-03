@@ -3,6 +3,11 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataEntityTypeScope_List]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataEntityTypeScope_List]')
+GO
 
 CREATE PROCEDURE [SMigration].[MetadataEntityTypeScope_List]
 (

@@ -311,6 +311,11 @@
             {
                 <MetadataMigration />
             }
+
+            @if (SelectedDevV2AdvancedTab == "schema")
+            {
+                <SchemaMigration />
+            }
         }
     </div>
 </div>
@@ -347,7 +352,8 @@
         new("postcode", "PostCode Lookup"),
         new("aiknowledgeimport", "AI Knowledge Import"),
         new("onboarding", "Onboarding Migration"),
-        new("metadata", "Metadata Migration")
+        new("metadata", "Metadata Migration"),
+        new("schema", "Schema Management")
     };
 
     private void SelectDevV2Tab(string tabKey)

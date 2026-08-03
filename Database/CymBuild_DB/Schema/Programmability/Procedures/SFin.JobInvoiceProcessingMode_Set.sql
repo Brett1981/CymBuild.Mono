@@ -13,6 +13,7 @@ CREATE PROCEDURE [SFin].[JobInvoiceProcessingMode_Set]
     , @ChangedByUserGuid  UNIQUEIDENTIFIER = NULL
     , @Reason             NVARCHAR(500) = N''
     , @Source             NVARCHAR(50) = N'UI'
+	, @UserId			  INT = -1
 )
 AS
 BEGIN
@@ -33,7 +34,16 @@ BEGIN
     IF (@JobId IS NULL)
         THROW 50002, 'Job not found (or inactive).', 1;
 
-    SET @ChangedByUserId = ISNULL(SCore.GetCurrentUserId(), -1);
+	DECLARE @UserGuid UNIQUEIDENTIFIER;
+	SET @ChangedByUserId = @UserId;
+
+
+	SELECT @UserGuid = Guid 
+	FROM SCore.Identities
+	WHERE ID = @UserId;
+	
+	
+
 
     IF (@OldMode = @NewMode)
         RETURN;
@@ -56,8 +66,9 @@ BEGIN
     VALUES
     (
           @JobId, @JobGuid, @OldMode, @NewMode
-        , @ChangedByUserId, @ChangedByUserGuid
+        , @ChangedByUserId, @UserGuid
         , ISNULL(@Reason, N''), ISNULL(@Source, N'UI')
+		
     );
 
     COMMIT;

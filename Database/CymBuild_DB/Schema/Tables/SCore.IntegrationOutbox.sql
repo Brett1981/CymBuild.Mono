@@ -3,6 +3,14 @@ GO
 
 PRINT (N'Create table [SCore].[IntegrationOutbox]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SCore].[IntegrationOutbox]')
+GO
 CREATE TABLE [SCore].[IntegrationOutbox] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_IntegrationOutbox_RowStatus] DEFAULT (1),
@@ -48,4 +56,15 @@ CREATE INDEX [IX_IntegrationOutbox_Unpublished]
   INCLUDE ([EventType], [Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
+GO
+
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_IntegrationOutbox_PublishClaim] on table [SCore].[IntegrationOutbox]')
+GO
+
+
+PRINT (N'Create index [IX_IntegrationOutbox_Unpublished] on table [SCore].[IntegrationOutbox]')
 GO

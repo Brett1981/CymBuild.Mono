@@ -8,6 +8,19 @@ GO
 
 PRINT (N'Create table [SSop].[Quotes]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SSop].[Quotes]')
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SSop].[Quotes]')
+GO
 CREATE TABLE [SSop].[Quotes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Quotes_RowStatus] DEFAULT (1),
@@ -78,6 +91,19 @@ GO
 CREATE UNIQUE INDEX [IX_Quote_Status]
   ON [SSop].[Quotes] ([ID])
   INCLUDE ([IsFinal], [ExpiryDate], [DateSent], [DateAccepted], [DateRejected], [DeadDate], [DateDeclinedToQuote])
+  WITH (FILLFACTOR = 80)
+  ON [PRIMARY]
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create index [IX_Quotes_Active_QuoteGrid] on table [SSop].[Quotes]')
+GO
+CREATE INDEX [IX_Quotes_Active_QuoteGrid]
+  ON [SSop].[Quotes] ([ID], [RowStatus])
+  INCLUDE ([Guid], [FullNumber], [DescriptionOfWorks], [Overview], [EnquiryServiceID], [QuotingConsultantId], [OrganisationalUnitID], [JobTypeId], [Date], [ExternalReference], [DateSent], [RevisionNumber], [OriginalQuoteId], [ChaseDate1], [ChaseDate2])
+  WHERE ([ID]>(0) AND [RowStatus]<>(0) AND [RowStatus]<>(254))
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO

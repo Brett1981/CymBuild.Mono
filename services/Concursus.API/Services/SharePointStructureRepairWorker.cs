@@ -470,46 +470,108 @@ WHERE Guid = @Guid
             public string PayloadJson { get; set; } = string.Empty;
         }
 
-        private static async Task<ClaimedOutboxItem?> TryClaimNextAsync(EF.Core efCore, CancellationToken cancellationToken)
+        private static async Task<ClaimedOutboxItem?> TryClaimNextAsync(
+    EF.Core efCore,
+    CancellationToken cancellationToken)
         {
             const string sql = @"
 ;WITH NextItem AS
 (
     SELECT TOP (1)
-           o.ID
-    FROM SCore.IntegrationOutbox AS o WITH (UPDLOCK, READPAST, ROWLOCK)
+        o.ID
+    FROM SCore.IntegrationOutbox AS o
+        WITH
+        (
+            UPDLOCK,
+            READPAST,
+            READCOMMITTEDLOCK,
+            ROWLOCK
+        )
     WHERE o.EventType = N'SharePointStructureRepairRequested'
-      AND o.RowStatus NOT IN (0,254)
+      AND o.RowStatus <> 0
+      AND o.RowStatus <> 254
       AND o.PublishedOnUtc IS NULL
       AND ISNULL(o.PublishAttempts, 0) < 10
-    ORDER BY o.CreatedOnUtc ASC, o.ID ASC
+    ORDER BY
+        o.CreatedOnUtc ASC,
+        o.ID ASC
 )
 UPDATE o
-SET PublishAttempts = ISNULL(o.PublishAttempts, 0) + 1
-OUTPUT inserted.ID,
-       inserted.PayloadJson
+SET
+    o.PublishAttempts = ISNULL(o.PublishAttempts, 0) + 1
+OUTPUT
+    inserted.ID,
+    inserted.PayloadJson
 FROM SCore.IntegrationOutbox AS o
-JOIN NextItem AS ni
+INNER JOIN NextItem AS ni
     ON ni.ID = o.ID;";
 
             await using var connection = efCore.CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            await using var command = new SqlCommand(sql, connection)
+            await connection
+                .OpenAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            await using var transaction =
+                (SqlTransaction)await connection
+                    .BeginTransactionAsync(
+                        IsolationLevel.ReadCommitted,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+            try
             {
-                CommandType = CommandType.Text
-            };
+                ClaimedOutboxItem? claimedItem = null;
 
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                await using (var command = new SqlCommand(
+                    sql,
+                    connection,
+                    transaction)
+                {
+                    CommandType = CommandType.Text,
+                    CommandTimeout = 30
+                })
+                {
+                    await using var reader = await command
+                        .ExecuteReaderAsync(cancellationToken)
+                        .ConfigureAwait(false);
 
-            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                return null;
+                    if (await reader
+                        .ReadAsync(cancellationToken)
+                        .ConfigureAwait(false))
+                    {
+                        claimedItem = new ClaimedOutboxItem
+                        {
+                            Id = reader.GetInt64(
+                                reader.GetOrdinal("ID")),
 
-            return new ClaimedOutboxItem
+                            PayloadJson = reader.GetString(
+                                reader.GetOrdinal("PayloadJson"))
+                        };
+                    }
+                }
+
+                await transaction
+                    .CommitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                return claimedItem;
+            }
+            catch
             {
-                Id = reader.GetInt64(reader.GetOrdinal("ID")),
-                PayloadJson = reader.GetString(reader.GetOrdinal("PayloadJson"))
-            };
+                try
+                {
+                    await transaction
+                        .RollbackAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Preserve the original claim failure.
+                }
+
+                throw;
+            }
         }
 
         private static async Task MarkPublishedAsync(EF.Core efCore, long id, CancellationToken cancellationToken)

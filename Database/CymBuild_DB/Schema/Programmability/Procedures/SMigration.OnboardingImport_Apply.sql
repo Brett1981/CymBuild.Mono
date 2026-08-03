@@ -1,10 +1,8 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
 PRINT (N'Create procedure [SMigration].[OnboardingImport_Apply]')
 GO
-
-
 
 
 /* ================================================================================================
@@ -18,7 +16,24 @@ GO
    - Business-key collisions are updated/remapped/skipped instead of inserted as duplicates.
    - Relationship/bridge tables are de-duplicated by their natural key before insert.
    ================================================================================================ */
-CREATE   PROCEDURE [SMigration].[OnboardingImport_Apply]
+PRINT (N'Create procedure [SMigration].[OnboardingImport_Apply]')
+GO
+PRINT (N'Create procedure [SMigration].[OnboardingImport_Apply]')
+GO
+
+
+/* ================================================================================================
+   Apply import
+
+   CymBuild-safe apply rules:
+   - Preview mode performs no writes.
+   - Real apply is transaction protected and rollback-safe.
+   - Every true insert creates/uses SCore.DataObjects via SCore.UpsertDataObject first.
+   - Sentinel GUIDs are ignored.
+   - Business-key collisions are updated/remapped/skipped instead of inserted as duplicates.
+   - Relationship/bridge tables are de-duplicated by their natural key before insert.
+   ================================================================================================ */
+CREATE     PROCEDURE [SMigration].[OnboardingImport_Apply]
     @RunGuid UNIQUEIDENTIFIER,
     @AllowWarnings BIT = 1,
     @PreviewOnly BIT = 0
@@ -34,6 +49,19 @@ BEGIN
         @StartedTran BIT = 0;
 
     DECLARE @ZeroGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+    DECLARE
+        @SourceBusinessUnitGroupGuid UNIQUEIDENTIFIER = NULL,
+        @SourceBusinessUnitOrganisationalUnitGuid UNIQUEIDENTIFIER = NULL,
+        @TargetBusinessUnitGroupGuid UNIQUEIDENTIFIER = NULL,
+        @TargetBusinessUnitOrganisationalUnitGuid UNIQUEIDENTIFIER = NULL,
+        @SourceBusinessUnitGroupName NVARCHAR(250) = NULL;
+
+    SELECT
+        @SourceBusinessUnitGroupGuid = runHeader.SourceBusinessUnitGroupGuid,
+        @SourceBusinessUnitOrganisationalUnitGuid = runHeader.SourceBusinessUnitOrganisationalUnitGuid
+    FROM SMigration.Onboarding_Run AS runHeader
+    WHERE runHeader.RunGuid = @RunGuid;
 
     EXEC SMigration.OnboardingValidate @RunGuid = @RunGuid;
 
@@ -74,6 +102,8 @@ BEGIN
             BEGIN TRAN;
         END;
 
+        EXEC SMigration.OnboardingRunStageSelection_ApplyToStage @RunGuid = @RunGuid;
+
         /* ========================================================================================
            Shared remap tables
            ======================================================================================== */
@@ -81,6 +111,12 @@ BEGIN
         (
             SourceWorkflowGuid UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
             TargetWorkflowGuid UNIQUEIDENTIFIER NOT NULL
+        );
+
+        DECLARE @WorkflowStatusGuidRemap TABLE
+        (
+            SourceWorkflowStatusGuid UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+            TargetWorkflowStatusGuid UNIQUEIDENTIFIER NOT NULL
         );
         
         DECLARE @GroupGuidRemap TABLE
@@ -350,6 +386,96 @@ BEGIN
             ON m.SourceGroupGuid = ou.DefaultSecurityGroupGuid
         WHERE ou.RunGuid = @RunGuid;
 
+        /*
+           R4 F4 parent OU identity-map foundation.
+           A selected source business unit may already exist in the target under a different Guid.
+           Resolve that root by: exact OU Guid, mapped/default security group, then a conservative name fallback.
+           This lets child OUs map to the existing target parent rather than forcing a same-Guid parent.
+        */
+        SELECT TOP (1)
+            @TargetBusinessUnitGroupGuid = m.TargetGroupGuid
+        FROM @GroupGuidRemap AS m
+        WHERE m.SourceGroupGuid = @SourceBusinessUnitGroupGuid;
+
+        IF @TargetBusinessUnitGroupGuid IS NULL
+           AND EXISTS
+           (
+               SELECT 1
+               FROM SCore.Groups AS existingBusinessUnitGroup
+               WHERE existingBusinessUnitGroup.Guid = @SourceBusinessUnitGroupGuid
+                 AND existingBusinessUnitGroup.ID > 0
+           )
+        BEGIN
+            SET @TargetBusinessUnitGroupGuid = @SourceBusinessUnitGroupGuid;
+        END;
+
+        SELECT TOP (1)
+            @SourceBusinessUnitGroupName = sourceBusinessUnitGroup.Name
+        FROM SMigration.Onboarding_Groups AS sourceBusinessUnitGroup
+        WHERE sourceBusinessUnitGroup.RunGuid = @RunGuid
+          AND sourceBusinessUnitGroup.GroupGuid = @SourceBusinessUnitGroupGuid;
+
+        SELECT TOP (1)
+            @TargetBusinessUnitOrganisationalUnitGuid = targetBusinessUnitOu.Guid
+        FROM SCore.OrganisationalUnits AS targetBusinessUnitOu
+        WHERE targetBusinessUnitOu.Guid = @SourceBusinessUnitOrganisationalUnitGuid
+          AND targetBusinessUnitOu.ID > 0
+        ORDER BY
+            CASE WHEN targetBusinessUnitOu.RowStatus NOT IN (0, 254) THEN 0 ELSE 1 END,
+            targetBusinessUnitOu.ID;
+
+        IF @TargetBusinessUnitOrganisationalUnitGuid IS NULL
+           AND @TargetBusinessUnitGroupGuid IS NOT NULL
+           AND @TargetBusinessUnitGroupGuid <> @ZeroGuid
+        BEGIN
+            SELECT TOP (1)
+                @TargetBusinessUnitOrganisationalUnitGuid = targetBusinessUnitOu.Guid
+            FROM SCore.OrganisationalUnits AS targetBusinessUnitOu
+            INNER JOIN SCore.Groups AS targetBusinessUnitGroup
+                ON targetBusinessUnitGroup.ID = targetBusinessUnitOu.DefaultSecurityGroupId
+            WHERE targetBusinessUnitGroup.Guid = @TargetBusinessUnitGroupGuid
+              AND targetBusinessUnitOu.ID > 0
+            ORDER BY
+                CASE WHEN targetBusinessUnitOu.RowStatus NOT IN (0, 254) THEN 0 ELSE 1 END,
+                targetBusinessUnitOu.ID;
+        END;
+
+        IF @TargetBusinessUnitOrganisationalUnitGuid IS NULL
+           AND NULLIF(LTRIM(RTRIM(ISNULL(@SourceBusinessUnitGroupName, N''))), N'') IS NOT NULL
+        BEGIN
+            SELECT TOP (1)
+                @TargetBusinessUnitOrganisationalUnitGuid = targetBusinessUnitOu.Guid
+            FROM SCore.OrganisationalUnits AS targetBusinessUnitOu
+            WHERE targetBusinessUnitOu.ID > 0
+              AND LOWER(LTRIM(RTRIM(targetBusinessUnitOu.Name))) = LOWER(LTRIM(RTRIM(@SourceBusinessUnitGroupName)))
+            ORDER BY
+                CASE WHEN targetBusinessUnitOu.RowStatus NOT IN (0, 254) THEN 0 ELSE 1 END,
+                targetBusinessUnitOu.ID;
+        END;
+
+        IF @SourceBusinessUnitOrganisationalUnitGuid IS NOT NULL
+           AND @SourceBusinessUnitOrganisationalUnitGuid <> @ZeroGuid
+           AND @TargetBusinessUnitOrganisationalUnitGuid IS NOT NULL
+           AND @TargetBusinessUnitOrganisationalUnitGuid <> @ZeroGuid
+        BEGIN
+            INSERT INTO @OrganisationalUnitGuidRemap
+            (
+                SourceOrganisationalUnitGuid,
+                TargetOrganisationalUnitGuid
+            )
+            SELECT
+                @SourceBusinessUnitOrganisationalUnitGuid,
+                @TargetBusinessUnitOrganisationalUnitGuid
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM @OrganisationalUnitGuidRemap AS existingBusinessUnitMap
+                WHERE existingBusinessUnitMap.SourceOrganisationalUnitGuid = @SourceBusinessUnitOrganisationalUnitGuid
+            );
+
+            EXEC SMigration.OnboardingLog_Add @RunGuid, N'Import', N'OrganisationalUnits', N'Map', 1, N'Mapped source business unit OU to existing target OU for parent resolution.';
+        END;
+
         /* ========================================================================================
            2. Addresses
            Guid-safe only, with sentinel protection.
@@ -602,6 +728,7 @@ BEGIN
         BEGIN
             DECLARE
                 @ParentGuid UNIQUEIDENTIFIER,
+                @ParentName NVARCHAR(250),
                 @ResolvedParentGuid UNIQUEIDENTIFIER,
                 @Name NVARCHAR(250),
                 @AddressGuid UNIQUEIDENTIFIER,
@@ -617,6 +744,7 @@ BEGIN
 
             SELECT
                 @ParentGuid = s.ParentOrganisationalUnitGuid,
+                @ParentName = s.ParentOrganisationalUnitName,
                 @Name = s.Name,
                 @AddressGuid = s.AddressGuid,
                 @ContactGuid = s.ContactGuid,
@@ -641,6 +769,79 @@ BEGIN
                 @DefaultSecurityGroupGuid = m.TargetGroupGuid
             FROM @GroupGuidRemap AS m
             WHERE m.SourceGroupGuid = @DefaultSecurityGroupGuid;
+
+            IF @ResolvedParentGuid IS NOT NULL
+               AND @ResolvedParentGuid <> @ZeroGuid
+               AND NOT EXISTS
+               (
+                   SELECT 1
+                   FROM SCore.OrganisationalUnits AS parentCheck
+                   WHERE parentCheck.Guid = @ResolvedParentGuid
+                     AND parentCheck.ID > 0
+               )
+            BEGIN
+                DECLARE @StagedParentName NVARCHAR(250) = NULL;
+
+                SELECT TOP (1)
+                    @StagedParentName = parentStage.Name
+                FROM SMigration.Onboarding_OrganisationalUnits AS parentStage
+                WHERE parentStage.RunGuid = @RunGuid
+                  AND parentStage.OrganisationalUnitGuid = @ParentGuid;
+
+                SET @StagedParentName = NULLIF(LTRIM(RTRIM(ISNULL(@StagedParentName, N''))), N'');
+
+                IF @StagedParentName IS NULL
+                BEGIN
+                    SET @StagedParentName = NULLIF(LTRIM(RTRIM(ISNULL(@ParentName, N''))), N'');
+                END;
+
+                IF @StagedParentName IS NOT NULL
+                BEGIN
+                    SELECT TOP (1)
+                        @ResolvedParentGuid = targetParent.Guid
+                    FROM SCore.OrganisationalUnits AS targetParent
+                    WHERE targetParent.ID > 0
+                      AND LOWER(LTRIM(RTRIM(targetParent.Name))) = LOWER(LTRIM(RTRIM(@StagedParentName)))
+                    ORDER BY
+                        CASE WHEN targetParent.RowStatus NOT IN (0, 254) THEN 0 ELSE 1 END,
+                        targetParent.ID;
+
+                    IF @ResolvedParentGuid IS NOT NULL
+                       AND @ResolvedParentGuid <> @ZeroGuid
+                    BEGIN
+                        INSERT INTO @OrganisationalUnitGuidRemap
+                        (
+                            SourceOrganisationalUnitGuid,
+                            TargetOrganisationalUnitGuid
+                        )
+                        SELECT
+                            @ParentGuid,
+                            @ResolvedParentGuid
+                        WHERE NOT EXISTS
+                        (
+                            SELECT 1
+                            FROM @OrganisationalUnitGuidRemap AS existingParentMap
+                            WHERE existingParentMap.SourceOrganisationalUnitGuid = @ParentGuid
+                        );
+                    END;
+                END;
+            END;
+
+            IF @ResolvedParentGuid IS NOT NULL
+               AND @ResolvedParentGuid <> @ZeroGuid
+               AND NOT EXISTS
+               (
+                   SELECT 1
+                   FROM SCore.OrganisationalUnits AS parentCheck
+                   WHERE parentCheck.Guid = @ResolvedParentGuid
+                     AND parentCheck.ID > 0
+               )
+               AND @ParentGuid = @SourceBusinessUnitOrganisationalUnitGuid
+               AND @TargetBusinessUnitOrganisationalUnitGuid IS NOT NULL
+               AND @TargetBusinessUnitOrganisationalUnitGuid <> @ZeroGuid
+            BEGIN
+                SET @ResolvedParentGuid = @TargetBusinessUnitOrganisationalUnitGuid;
+            END;
 
             SET @ExistingGuid = NULL;
 
@@ -683,18 +884,158 @@ BEGIN
                 );
             END;
 
-            EXEC SCore.OrganisationalUnitsUpsert
-                @ParentOrganisationalUnitGuid = @ResolvedParentGuid,
-                @Name = @Name,
-                @AddressGuid = @AddressGuid,
-                @ContactGuid = @ContactGuid,
-                @OfficialAddressGuid = @OfficialAddressGuid,
-                @OfficialContactGuid = @OfficialContactGuid,
-                @DepartmentPrefix = @DepartmentPrefix,
-                @CostCentreCode = @CostCentreCode,
-                @DefaultSecurityGroupGuid = @DefaultSecurityGroupGuid,
-                @Guid = @ApplyOuGuid OUTPUT,
-                @QuoteThreshold = @QuoteThreshold;
+            IF @ExistingGuid IS NULL
+               AND
+               (
+                   @ResolvedParentGuid IS NULL
+                   OR @ResolvedParentGuid = @ZeroGuid
+                   OR NOT EXISTS
+                   (
+                       SELECT 1
+                       FROM SCore.OrganisationalUnits AS parentCheck
+                       WHERE parentCheck.Guid = @ResolvedParentGuid
+                         AND parentCheck.ID > 0
+                   )
+               )
+            BEGIN
+                DECLARE @ParentResolutionMessage NVARCHAR(2048);
+
+                SET @ParentResolutionMessage = CONCAT(
+                    N'Unable to apply OrganisationalUnit "', ISNULL(@Name, N''),
+                    N'" because its parent organisational unit could not be resolved in the target database. Source parent Guid: ',
+                    CONVERT(NVARCHAR(36), ISNULL(@ParentGuid, @ZeroGuid)),
+                    CASE
+                        WHEN NULLIF(LTRIM(RTRIM(ISNULL(@ParentName, N''))), N'') IS NULL THEN N''
+                        ELSE CONCAT(N'. Source parent Name: ', @ParentName)
+                    END,
+                    N'. Restage this run if the source parent name is missing, select/include the parent OU in this run, or ensure the target has a matching parent OU/default security group mapping before applying.'
+                );
+
+                THROW 62431, @ParentResolutionMessage, 1;
+            END;
+
+            IF @ExistingGuid IS NULL
+               AND EXISTS
+               (
+                   SELECT 1
+                   FROM SCore.DataObjects AS dataObject
+                   WHERE dataObject.Guid = @ApplyOuGuid
+               )
+               AND NOT EXISTS
+               (
+                   SELECT 1
+                   FROM SCore.OrganisationalUnits AS existingOu
+                   WHERE existingOu.Guid = @ApplyOuGuid
+               )
+            BEGIN
+                DECLARE
+                    @RepairParentId INT,
+                    @RepairParentOrgNode HIERARCHYID,
+                    @RepairLastChild HIERARCHYID,
+                    @RepairNewOrgNode HIERARCHYID,
+                    @RepairAddressId INT,
+                    @RepairContactId INT,
+                    @RepairOfficialAddressId INT,
+                    @RepairOfficialContactId INT,
+                    @RepairDefaultSecurityGroupId INT;
+
+                SELECT
+                    @RepairParentId = parentOu.ID,
+                    @RepairParentOrgNode = parentOu.OrgNode
+                FROM SCore.OrganisationalUnits AS parentOu
+                WHERE parentOu.Guid = @ResolvedParentGuid
+                  AND parentOu.ID > 0;
+
+                IF @RepairParentId IS NULL OR @RepairParentOrgNode IS NULL
+                BEGIN
+                    DECLARE @RepairParentResolutionMessage NVARCHAR(2048);
+
+                    SET @RepairParentResolutionMessage = CONCAT(
+                        N'Unable to repair orphan OrganisationalUnit DataObject for "', ISNULL(@Name, N''),
+                        N'" because the parent organisational unit could not be resolved in the target database. Source parent Guid: ',
+                        CONVERT(NVARCHAR(36), ISNULL(@ParentGuid, @ZeroGuid)),
+                        N'. Select/include the parent OU in this run, or ensure the target has a matching parent OU/default security group mapping before applying.'
+                    );
+
+                    THROW 62430, @RepairParentResolutionMessage, 1;
+                END;
+
+                SELECT @RepairAddressId = addr.ID
+                FROM SCrm.Addresses AS addr
+                WHERE addr.Guid = @AddressGuid;
+
+                SELECT @RepairContactId = contact.ID
+                FROM SCrm.Contacts AS contact
+                WHERE contact.Guid = @ContactGuid;
+
+                SELECT @RepairOfficialAddressId = addr.ID
+                FROM SCrm.Addresses AS addr
+                WHERE addr.Guid = @OfficialAddressGuid;
+
+                SELECT @RepairOfficialContactId = contact.ID
+                FROM SCrm.Contacts AS contact
+                WHERE contact.Guid = @OfficialContactGuid;
+
+                SELECT @RepairDefaultSecurityGroupId = grp.ID
+                FROM SCore.Groups AS grp
+                WHERE grp.Guid = @DefaultSecurityGroupGuid;
+
+                SELECT @RepairLastChild = MAX(childOu.OrgNode)
+                FROM SCore.OrganisationalUnits AS childOu
+                WHERE childOu.OrgNode.GetAncestor(1) = @RepairParentOrgNode;
+
+                SET @RepairNewOrgNode = @RepairParentOrgNode.GetDescendant(@RepairLastChild, NULL);
+
+                INSERT INTO SCore.OrganisationalUnits
+                (
+                    RowStatus,
+                    Guid,
+                    Name,
+                    AddressId,
+                    ContactId,
+                    OfficialAddressId,
+                    OfficialContactId,
+                    DepartmentPrefix,
+                    CostCentreCode,
+                    DefaultSecurityGroupId,
+                    ParentID,
+                    OrgNode,
+                    QuoteThreshold
+                )
+                VALUES
+                (
+                    1,
+                    @ApplyOuGuid,
+                    @Name,
+                    @RepairAddressId,
+                    @RepairContactId,
+                    @RepairOfficialAddressId,
+                    @RepairOfficialContactId,
+                    @DepartmentPrefix,
+                    @CostCentreCode,
+                    @RepairDefaultSecurityGroupId,
+                    @RepairParentId,
+                    @RepairNewOrgNode,
+                    @QuoteThreshold
+                );
+
+                EXEC SMigration.OnboardingLog_Add @RunGuid, N'Import', N'OrganisationalUnits', N'RepairInsert', 1, N'Repaired an orphan DataObject by inserting the missing OrganisationalUnit row.';
+            END
+            ELSE
+            BEGIN
+                EXEC SCore.OrganisationalUnitsUpsert
+                    @ParentOrganisationalUnitGuid = @ResolvedParentGuid,
+                    @Name = @Name,
+                    @AddressGuid = @AddressGuid,
+                    @ContactGuid = @ContactGuid,
+                    @OfficialAddressGuid = @OfficialAddressGuid,
+                    @OfficialContactGuid = @OfficialContactGuid,
+                    @DepartmentPrefix = @DepartmentPrefix,
+                    @CostCentreCode = @CostCentreCode,
+                    @DefaultSecurityGroupGuid = @DefaultSecurityGroupGuid,
+                    @Guid = @ApplyOuGuid OUTPUT,
+                    @QuoteThreshold = @QuoteThreshold;
+            END;
 
             SET @cnt += 1;
 
@@ -1122,6 +1463,20 @@ BEGIN
                 AND t.RowStatus = s.RowStatus
           );
 
+        /*
+           Guard against target identity-seed drift before inserting SCore.UserGroups.
+           Some environments contain user-created rows whose ID is higher than the current
+           identity seed. SQL Server would otherwise attempt to allocate an existing ID and
+           fail with PK_UserGroups even though the staged natural key is not a duplicate.
+        */
+        DECLARE @MaxUserGroupIdentityValue INT;
+
+        SELECT
+            @MaxUserGroupIdentityValue = ISNULL(MAX(targetUserGroup.ID), 0)
+        FROM SCore.UserGroups AS targetUserGroup WITH (HOLDLOCK);
+
+        DBCC CHECKIDENT (N'SCore.UserGroups', RESEED, @MaxUserGroupIdentityValue) WITH NO_INFOMSGS;
+
         DECLARE cur_ug CURSOR LOCAL FAST_FORWARD FOR
         SELECT
             c.UserGroupGuid
@@ -1185,6 +1540,254 @@ BEGIN
             N'Insert',
             @cnt,
             N'Inserted distinct missing user groups only.';
+
+/* ========================================================================================
+   7. WorkflowStatuses
+   Match order:
+   1) Guid
+   2) Name + resolved OrganisationalUnitID
+   3) Insert true missing WorkflowStatus
+   ======================================================================================== */
+        UPDATE t
+        SET
+            t.RowStatus = s.RowStatus,
+            t.OrganisationalUnitId = ISNULL(ou.ID, -1),
+            t.Name = s.Name,
+            t.Description = s.Description,
+            t.ShowInEnquiries = s.ShowInEnquiries,
+            t.ShowInQuotes = s.ShowInQuotes,
+            t.ShowInJobs = s.ShowInJobs,
+            t.Enabled = s.Enabled,
+            t.IsPredefined = s.IsPredefined,
+            t.SortOrder = s.SortOrder,
+            t.Colour = s.Colour,
+            t.Icon = s.Icon,
+            t.SendNotification = s.SendNotification,
+            t.IsCompleteStatus = s.IsCompleteStatus,
+            t.IsCustomerWaitingStatus = s.IsCustomerWaitingStatus,
+            t.RequiresUsersAction = s.RequiresUsersAction,
+            t.IsActiveStatus = s.IsActiveStatus,
+            t.AuthorisationNeeded = s.AuthorisationNeeded,
+            t.IsAuthStatus = s.IsAuthStatus
+        FROM SCore.WorkflowStatus AS t
+        INNER JOIN SMigration.Onboarding_WorkflowStatuses AS s
+            ON s.WorkflowStatusGuid = t.Guid
+           AND t.ID > 0
+        LEFT JOIN @OrganisationalUnitGuidRemap AS ouMap
+            ON ouMap.SourceOrganisationalUnitGuid = s.OrganisationalUnitGuid
+        LEFT JOIN SCore.OrganisationalUnits AS ou
+            ON ou.Guid = COALESCE(ouMap.TargetOrganisationalUnitGuid, s.OrganisationalUnitGuid)
+        WHERE s.RunGuid = @RunGuid
+          AND s.WorkflowStatusGuid <> @ZeroGuid;
+
+        SET @cnt = @@ROWCOUNT;
+        EXEC SMigration.OnboardingLog_Add @RunGuid, N'Import', N'WorkflowStatuses', N'Update', @cnt, N'Updated workflow statuses matched by Guid.';
+
+        ;WITH NameMatches AS
+        (
+            SELECT
+                s.WorkflowStatusGuid AS SourceWorkflowStatusGuid,
+                t.Guid AS TargetWorkflowStatusGuid,
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY s.WorkflowStatusGuid
+                    ORDER BY
+                        CASE WHEN t.RowStatus NOT IN (0,254) THEN 0 ELSE 1 END,
+                        t.ID
+                ) AS MatchRank
+            FROM SMigration.Onboarding_WorkflowStatuses AS s
+            LEFT JOIN @OrganisationalUnitGuidRemap AS ouMap
+                ON ouMap.SourceOrganisationalUnitGuid = s.OrganisationalUnitGuid
+            LEFT JOIN SCore.OrganisationalUnits AS ou
+                ON ou.Guid = COALESCE(ouMap.TargetOrganisationalUnitGuid, s.OrganisationalUnitGuid)
+            INNER JOIN SCore.WorkflowStatus AS t
+                ON LOWER(LTRIM(RTRIM(t.Name))) = LOWER(LTRIM(RTRIM(s.Name)))
+               AND ISNULL(t.OrganisationalUnitId, -1) = ISNULL(ou.ID, -1)
+               AND t.ID > 0
+            WHERE s.RunGuid = @RunGuid
+              AND s.WorkflowStatusGuid <> @ZeroGuid
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM SCore.WorkflowStatus AS x
+                  WHERE x.Guid = s.WorkflowStatusGuid
+                    AND x.ID > 0
+              )
+        )
+        INSERT INTO @WorkflowStatusGuidRemap
+        (
+            SourceWorkflowStatusGuid,
+            TargetWorkflowStatusGuid
+        )
+        SELECT
+            nm.SourceWorkflowStatusGuid,
+            nm.TargetWorkflowStatusGuid
+        FROM NameMatches AS nm
+        WHERE nm.MatchRank = 1
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM @WorkflowStatusGuidRemap AS x
+              WHERE x.SourceWorkflowStatusGuid = nm.SourceWorkflowStatusGuid
+          );
+
+        UPDATE t
+        SET
+            t.RowStatus = s.RowStatus,
+            t.OrganisationalUnitId = ISNULL(ou.ID, -1),
+            t.Name = s.Name,
+            t.Description = s.Description,
+            t.ShowInEnquiries = s.ShowInEnquiries,
+            t.ShowInQuotes = s.ShowInQuotes,
+            t.ShowInJobs = s.ShowInJobs,
+            t.Enabled = s.Enabled,
+            t.IsPredefined = s.IsPredefined,
+            t.SortOrder = s.SortOrder,
+            t.Colour = s.Colour,
+            t.Icon = s.Icon,
+            t.SendNotification = s.SendNotification,
+            t.IsCompleteStatus = s.IsCompleteStatus,
+            t.IsCustomerWaitingStatus = s.IsCustomerWaitingStatus,
+            t.RequiresUsersAction = s.RequiresUsersAction,
+            t.IsActiveStatus = s.IsActiveStatus,
+            t.AuthorisationNeeded = s.AuthorisationNeeded,
+            t.IsAuthStatus = s.IsAuthStatus
+        FROM @WorkflowStatusGuidRemap AS m
+        INNER JOIN SMigration.Onboarding_WorkflowStatuses AS s
+            ON s.RunGuid = @RunGuid
+           AND s.WorkflowStatusGuid = m.SourceWorkflowStatusGuid
+        INNER JOIN SCore.WorkflowStatus AS t
+            ON t.Guid = m.TargetWorkflowStatusGuid
+           AND t.ID > 0
+        LEFT JOIN @OrganisationalUnitGuidRemap AS ouMap
+            ON ouMap.SourceOrganisationalUnitGuid = s.OrganisationalUnitGuid
+        LEFT JOIN SCore.OrganisationalUnits AS ou
+            ON ou.Guid = COALESCE(ouMap.TargetOrganisationalUnitGuid, s.OrganisationalUnitGuid);
+
+        SET @cnt = @@ROWCOUNT;
+        EXEC SMigration.OnboardingLog_Add @RunGuid, N'Import', N'WorkflowStatuses', N'Update', @cnt, N'Updated workflow statuses matched by Name + OU.';
+
+        UPDATE wt
+           SET wt.FromStatusGuid = m.TargetWorkflowStatusGuid
+        FROM SMigration.Onboarding_WorkflowTransitions AS wt
+        INNER JOIN @WorkflowStatusGuidRemap AS m
+            ON m.SourceWorkflowStatusGuid = wt.FromStatusGuid
+        WHERE wt.RunGuid = @RunGuid;
+
+        UPDATE wt
+           SET wt.ToStatusGuid = m.TargetWorkflowStatusGuid
+        FROM SMigration.Onboarding_WorkflowTransitions AS wt
+        INNER JOIN @WorkflowStatusGuidRemap AS m
+            ON m.SourceWorkflowStatusGuid = wt.ToStatusGuid
+        WHERE wt.RunGuid = @RunGuid;
+
+        UPDATE wsng
+           SET wsng.WorkflowStatusGuid = m.TargetWorkflowStatusGuid
+        FROM SMigration.Onboarding_WorkflowStatusNotificationGroups AS wsng
+        INNER JOIN @WorkflowStatusGuidRemap AS m
+            ON m.SourceWorkflowStatusGuid = wsng.WorkflowStatusGuid
+        WHERE wsng.RunGuid = @RunGuid;
+
+        DECLARE cur_workflow_statuses CURSOR LOCAL FAST_FORWARD FOR
+        SELECT s.WorkflowStatusGuid
+        FROM SMigration.Onboarding_WorkflowStatuses AS s
+        LEFT JOIN @OrganisationalUnitGuidRemap AS ouMap
+            ON ouMap.SourceOrganisationalUnitGuid = s.OrganisationalUnitGuid
+        LEFT JOIN SCore.OrganisationalUnits AS ou
+            ON ou.Guid = COALESCE(ouMap.TargetOrganisationalUnitGuid, s.OrganisationalUnitGuid)
+        WHERE s.RunGuid = @RunGuid
+          AND s.WorkflowStatusGuid <> @ZeroGuid
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SCore.WorkflowStatus AS t
+              WHERE t.Guid = s.WorkflowStatusGuid
+                AND t.ID > 0
+          )
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SCore.WorkflowStatus AS t
+              WHERE t.ID > 0
+                AND LOWER(LTRIM(RTRIM(t.Name))) = LOWER(LTRIM(RTRIM(s.Name)))
+                AND ISNULL(t.OrganisationalUnitId, -1) = ISNULL(ou.ID, -1)
+          );
+
+        OPEN cur_workflow_statuses;
+        FETCH NEXT FROM cur_workflow_statuses INTO @Guid;
+
+        SET @cnt = 0;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            EXEC SCore.UpsertDataObject
+                @Guid = @Guid,
+                @SchemeName = N'SCore',
+                @ObjectName = N'WorkflowStatus',
+                @IncludeDefaultSecurity = 0,
+                @IsInsert = @IsInsert OUTPUT;
+
+            INSERT INTO SCore.WorkflowStatus
+            (
+                RowStatus,
+                Guid,
+                OrganisationalUnitId,
+                Name,
+                Description,
+                ShowInEnquiries,
+                ShowInQuotes,
+                ShowInJobs,
+                Enabled,
+                IsPredefined,
+                SortOrder,
+                Colour,
+                Icon,
+                SendNotification,
+                IsCompleteStatus,
+                IsCustomerWaitingStatus,
+                RequiresUsersAction,
+                IsActiveStatus,
+                AuthorisationNeeded,
+                IsAuthStatus
+            )
+            SELECT
+                s.RowStatus,
+                s.WorkflowStatusGuid,
+                ISNULL(ou.ID, -1),
+                s.Name,
+                s.Description,
+                s.ShowInEnquiries,
+                s.ShowInQuotes,
+                s.ShowInJobs,
+                s.Enabled,
+                s.IsPredefined,
+                s.SortOrder,
+                s.Colour,
+                s.Icon,
+                s.SendNotification,
+                s.IsCompleteStatus,
+                s.IsCustomerWaitingStatus,
+                s.RequiresUsersAction,
+                s.IsActiveStatus,
+                s.AuthorisationNeeded,
+                s.IsAuthStatus
+            FROM SMigration.Onboarding_WorkflowStatuses AS s
+            LEFT JOIN @OrganisationalUnitGuidRemap AS ouMap
+                ON ouMap.SourceOrganisationalUnitGuid = s.OrganisationalUnitGuid
+            LEFT JOIN SCore.OrganisationalUnits AS ou
+                ON ou.Guid = COALESCE(ouMap.TargetOrganisationalUnitGuid, s.OrganisationalUnitGuid)
+            WHERE s.RunGuid = @RunGuid
+              AND s.WorkflowStatusGuid = @Guid;
+
+            SET @cnt += @@ROWCOUNT;
+
+            FETCH NEXT FROM cur_workflow_statuses INTO @Guid;
+        END;
+
+        CLOSE cur_workflow_statuses;
+        DEALLOCATE cur_workflow_statuses;
+
+        EXEC SMigration.OnboardingLog_Add @RunGuid, N'Import', N'WorkflowStatuses', N'Insert', @cnt, N'Inserted new workflow statuses only.';
 
 /* ========================================================================================
    7. Workflows

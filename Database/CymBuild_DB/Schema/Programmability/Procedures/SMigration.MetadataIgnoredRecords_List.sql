@@ -3,8 +3,13 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataIgnoredRecords_List]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataIgnoredRecords_List]
+PRINT (N'Create procedure [SMigration].[MetadataIgnoredRecords_List]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataIgnoredRecords_List]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @IncludeInactive BIT = 0

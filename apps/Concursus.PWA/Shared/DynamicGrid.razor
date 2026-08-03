@@ -148,6 +148,7 @@
                                         else if (selectedItem.ViewDefinition.GridViewTypeId == 1 && GridCode != "MYPROJECTS")
                                         {
                                             <DynamicGridView @ref="@Dgv"
+                                                             FormHelper="@(FormHelper ?? ParentEditPage?.ActiveFormHelper)"
                                                              @key="@($"Grid-{GridCode}-{selectedItem?.ViewDefinition?.Code}")"
                                                              ResyncDataObject="@ResyncDataObject"
                                                              OnActionCompleted="HandleActionCompleted"

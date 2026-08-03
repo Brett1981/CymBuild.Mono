@@ -31,6 +31,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private readonly HashSet<string> _serverFilterExcludedColumns = new(StringComparer.OrdinalIgnoreCase);
 
     private const int FilterInputDebounceMilliseconds = 500;
+    private const string BypassReadOnlyForAutomationReenableKey =
+        "BypassReadOnlyForAutomationReenable";
 
     private System.Type? _detailPageType;
     private MessageDisplay _messageDisplay = new();
@@ -119,6 +121,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         : "is-new";
 
     [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    [Parameter] public FormHelper? FormHelper { get; set; }
     [Parameter] public bool FullGrid { get; set; }
     [Parameter] public string GridCode { get; set; } = string.Empty;
     public bool HasChanges { get; private set; }
@@ -1166,22 +1169,20 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             IsDrawdownInlineSaving = true;
             await InvokeAsync(StateHasChanged);
 
-            var apiHttp = HttpClientFactory.CreateClient("ShoreApiHttp");
-            var endpoint = IsMonthlyDrawdownGrid
-                ? $"api/invoice-schedules/{invoiceScheduleGuid}/month-configurations"
-                : $"api/invoice-schedules/{invoiceScheduleGuid}/percentage-configurations";
+            var helper = FormHelper ?? formHelper
+                ?? throw new InvalidOperationException(
+                    "FormHelper is required for invoice schedule drawdown amendments.");
 
-            var response = await apiHttp.PutAsJsonAsync(endpoint, new { Rows = rows });
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync();
-                DrawdownInlineError = $"Failed to save drawdowns: {(int)response.StatusCode} {response.ReasonPhrase} {body}";
-                return;
-            }
+            var updatedCount = await helper.InvoiceScheduleDrawdownsBulkUpdateAsync(
+                invoiceScheduleGuid,
+                GridCode,
+                rows,
+                bypassReadOnlyForAutomationReenable:
+                    GetTransientBool(BypassReadOnlyForAutomationReenableKey));
 
             IsDrawdownInlineEditing = false;
             _drawdownInlineOriginalRows.Clear();
-            Toast.ShowSuccess("Drawdowns saved successfully.");
+            Toast.ShowSuccess($"Saved {updatedCount} drawdown row(s).");
 
             await LoadPageAsync(preservePage: true);
 
@@ -1218,16 +1219,17 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             return;
         }
 
-        var apiHttp = HttpClientFactory.CreateClient("ShoreApiHttp");
-        var options = await apiHttp.GetFromJsonAsync<List<InvoiceScheduleDrawdownStageLookupModel>>(
-            $"api/invoice-schedules/{invoiceScheduleGuid}/drawdown-stages");
+        var helper = FormHelper ?? formHelper
+            ?? throw new InvalidOperationException(
+                "FormHelper is required for invoice schedule drawdown stage lookup.");
 
-        DrawdownStageOptions = options ?? new List<InvoiceScheduleDrawdownStageLookupModel>();
+        DrawdownStageOptions =
+            await helper.InvoiceScheduleDrawdownStageLookupGetAsync(invoiceScheduleGuid);
     }
 
-    private List<DrawdownInlineSaveRow> BuildDrawdownInlineSaveRows()
+    private List<InvoiceScheduleDrawdownBulkEditRowModel> BuildDrawdownInlineSaveRows()
     {
-        var result = new List<DrawdownInlineSaveRow>();
+        var result = new List<InvoiceScheduleDrawdownBulkEditRowModel>();
         var index = 0;
 
         foreach (var row in _rows)
@@ -1251,7 +1253,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                 throw new InvalidOperationException($"Drawdown row {index} must not have a negative value.");
             }
 
-            result.Add(new DrawdownInlineSaveRow
+            result.Add(new InvoiceScheduleDrawdownBulkEditRowModel
             {
                 Guid = rowGuid,
                 PeriodNumber = GetDrawdownPeriodNumber(row, index),
@@ -1770,6 +1772,19 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         InteractionTracker.Log(NavManager.Uri, "Back To Top Clicked");
     }
 
+    private bool GetTransientBool(string key, bool defaultValue = false)
+    {
+        if (TransientVirtualProperties is not null
+            && TransientVirtualProperties.TryGetValue(key, out var anyValue)
+            && anyValue is not null
+            && anyValue.Is(BoolValue.Descriptor))
+        {
+            return anyValue.Unpack<BoolValue>().Value;
+        }
+
+        return defaultValue;
+    }
+
     private bool TryResolveInvoiceScheduleGuid(out Guid invoiceScheduleGuid)
     {
         invoiceScheduleGuid = Guid.Empty;
@@ -1952,17 +1967,6 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         GC.SuppressFinalize(this);
     }
 
-
-    private sealed class DrawdownInlineSaveRow
-    {
-        public Guid Guid { get; set; }
-        public int PeriodNumber { get; set; }
-        public decimal Amount { get; set; }
-        public decimal Percentage { get; set; }
-        public DateTime OnDayOfMonth { get; set; }
-        public string Description { get; set; } = string.Empty;
-        public Guid? RibaStageGuid { get; set; }
-    }
 
     private sealed class MonthlySeriesModel
     {

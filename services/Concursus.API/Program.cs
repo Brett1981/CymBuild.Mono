@@ -81,6 +81,9 @@ try
     builder.Services.AddHttpClient<TranslationServiceImpl>();
     builder.Services.AddSignalR();
 
+    // SDI-139290: in-process cache for resolved SharePoint document locations.
+    builder.Services.AddMemoryCache();
+
     // Register shared HTTP context accessor once.
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddCymBuildAIAssistant(builder.Configuration);

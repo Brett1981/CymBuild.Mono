@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCrm].[Counties]')
 GO
+PRINT (N'Create table [SCrm].[Counties]')
+GO
 CREATE TABLE [SCrm].[Counties] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Counties_RowStatus] DEFAULT (1),

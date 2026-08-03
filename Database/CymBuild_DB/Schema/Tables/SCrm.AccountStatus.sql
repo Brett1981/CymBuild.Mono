@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SCrm].[AccountStatus]')
 GO
+PRINT (N'Create table [SCrm].[AccountStatus]')
+GO
 CREATE TABLE [SCrm].[AccountStatus] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_AccountStatus_RowStatus] DEFAULT (1),

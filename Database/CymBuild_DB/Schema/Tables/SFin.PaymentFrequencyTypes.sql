@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[PaymentFrequencyTypes]')
 GO
+PRINT (N'Create table [SFin].[PaymentFrequencyTypes]')
+GO
 CREATE TABLE [SFin].[PaymentFrequencyTypes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_PaymentFrequencyTypes_RowStatus] DEFAULT (1),

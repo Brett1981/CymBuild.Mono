@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SSop].[Enquiries]')
 GO
+PRINT (N'Create table [SSop].[Enquiries]')
+GO
 CREATE TABLE [SSop].[Enquiries] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_Enquiries_RowStatus] DEFAULT (1),

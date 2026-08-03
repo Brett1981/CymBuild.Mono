@@ -7,6 +7,7 @@ using Concursus.API.Services.AIAssistant;
 using Concursus.API.Services.Finance;
 using Concursus.API.Services.Graph;
 using Concursus.API.Services.Monitoring;
+using Microsoft.Extensions.Caching.Memory;
 using Concursus.Common.Shared;
 using Concursus.Common.Shared.Classes;
 using Concursus.Common.Shared.Data;
@@ -46,6 +47,7 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
     private readonly IAIAssistantAnswerService? _aiAssistantAnswerService;
     private readonly IBlueGenClient? _blueGenClient;
+    private readonly IMemoryCache _memoryCache;
 
     private static readonly Guid JobEntityTypeGuid =
     Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c");
@@ -69,8 +71,10 @@ public partial class CoreService : Core.Core.CoreBase
         IDelegatedGraphClientFactory delegatedGraphClientFactory,
         ISageInboundPaymentSyncService sageInboundPaymentSyncService,
         ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository,
+        IMemoryCache memoryCache,
         IAIAssistantAnswerService? aiAssistantAnswerService = null,
-        IBlueGenClient? blueGenClient = null)
+        IBlueGenClient? blueGenClient = null
+        )
     {
         _config = config;
         _serviceBase = new ServiceBase(config, httpContextAccessor, new Logging(logger, config));
@@ -84,6 +88,7 @@ public partial class CoreService : Core.Core.CoreBase
         _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository ?? throw new ArgumentNullException(nameof(sageInboundDiagnosticsRepository));
         _aiAssistantAnswerService = aiAssistantAnswerService;
         _blueGenClient = blueGenClient;
+        _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
 
         _serviceBase.logger.LogTrace("Core Service Initialised");
     }
@@ -483,6 +488,8 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                 oldMode = (InvoiceProcessingMode)Convert.ToInt32(oldObj);
             }
 
+
+
             // Apply via your audited proc (and legacy ManualInvoicingEnabled sync)
             await using (var cmd = new SqlCommand("SFin.JobInvoiceProcessingMode_Set", cn))
             {
@@ -495,6 +502,8 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                 });
                 cmd.Parameters.Add(new SqlParameter("@Reason", SqlDbType.NVarChar, 500) { Value = request.Reason ?? "" });
                 cmd.Parameters.Add(new SqlParameter("@Source", SqlDbType.NVarChar, 50) { Value = string.IsNullOrWhiteSpace(request.Source) ? "UI" : request.Source });
+                cmd.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = request.UserId});
+
 
                 await cmd.ExecuteNonQueryAsync(context.CancellationToken);
             }
@@ -616,9 +625,11 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
 
             var updatedCount = await _serviceBase._entityFramework
                 .InvoiceScheduleDrawdownsBulkUpdateAsync(
+                    request.UserId,
                     invoiceScheduleGuid,
                     request.GridCode,
                     rows,
+                    request.BypassReadOnlyForAutomationReenable,
                     context.CancellationToken)
                 .ConfigureAwait(false);
 

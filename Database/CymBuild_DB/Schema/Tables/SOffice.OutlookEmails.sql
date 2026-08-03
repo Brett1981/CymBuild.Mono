@@ -3,6 +3,14 @@ GO
 
 PRINT (N'Create table [SOffice].[OutlookEmails]')
 GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+PRINT (N'Create table [SOffice].[OutlookEmails]')
+GO
 CREATE TABLE [SOffice].[OutlookEmails] (
   [ID] [bigint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_OutlookEmails_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -95,4 +103,10 @@ CREATE FULLTEXT INDEX
   KEY INDEX [PK_OutlookEmails]
   ON [OutlookEmails]
   WITH CHANGE_TRACKING AUTO, STOPLIST SYSTEM
+GO
+
+
+
+
+PRINT (N'Create full-text index on table [SOffice].[OutlookEmails]')
 GO

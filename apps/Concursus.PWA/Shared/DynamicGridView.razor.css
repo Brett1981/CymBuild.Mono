@@ -176,34 +176,6 @@
     margin-top: 1rem;
 }
 
-.cb-v2-btn-primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: .45rem;
-    min-height: 38px;
-    padding: .55rem .95rem;
-    border: 1px solid var(--cb-v2-primary, #2563eb);
-    border-radius: var(--cb-v2-radius-sm, 10px);
-    background: var(--cb-v2-primary, #2563eb);
-    color: #fff;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
-    transition: all var(--cb-v2-transition-fast, .16s ease);
-}
-
-.cb-v2-btn-primary:hover:not(:disabled) {
-    background: var(--cb-v2-primary-dark, #1d4ed8);
-    border-color: var(--cb-v2-primary-dark, #1d4ed8);
-    color: #fff;
-}
-
-.cb-v2-btn-primary:disabled {
-    opacity: .6;
-    cursor: not-allowed;
-}
-
 .dynamic-grid-view-v2-grid-card {
     overflow: hidden;
 }

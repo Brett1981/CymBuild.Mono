@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[SageExportTransactions]')
 GO
+PRINT (N'Create table [SFin].[SageExportTransactions]')
+GO
 CREATE TABLE [SFin].[SageExportTransactions] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DEFAULT_SageExportTransactions_RowStatus] DEFAULT (0),

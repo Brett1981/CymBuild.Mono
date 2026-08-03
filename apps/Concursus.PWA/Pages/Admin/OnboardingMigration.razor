@@ -1,4 +1,4 @@
-﻿@page "/admin/onboarding-migration"
+@page "/admin/onboarding-migration"
 @using Concursus.API.Client.Models
 @using Concursus.API.Client.Models.OnboardingMigration
 @using Concursus.PWA.Classes
@@ -6,58 +6,194 @@
 @inject UserService userService
 @inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 
+<div class="cb-v2-shell onboarding-workbench-shell">
+    <div class="onboarding-workbench-layout">
+        <aside class="onboarding-sidebar" aria-label="OnBoarding workbench navigation">
+            <div class="onboarding-sidebar-brand">
+                <div class="onboarding-sidebar-icon" aria-hidden="true">OB</div>
+                <div>
+                    <h2>OnBoarding</h2>
+                    <span>Migration workbench</span>
+                </div>
+            </div>
 
-<div class="cb-v2-shell">
-    <div class="cb-v2-page onboarding-migration-page">
+            <nav class="onboarding-sidebar-nav">
+                @foreach (var group in WorkbenchSteps.GroupBy(x => x.Group))
+                {
+                    <div class="onboarding-sidebar-group">
+                        <div class="onboarding-sidebar-group-label">@group.Key</div>
 
-        <div class="cb-v2-card">
-            <div class="cb-v2-card-body">
-                <div class="cb-v2-panel-header">
-                    <div>
-                        <h2 class="cb-v2-title">Onboarding Migration</h2>
-                        <div class="cb-v2-description">
-                            Stage, validate, compare and apply onboarding migrations using the SMigration framework.
+                        @foreach (var step in group)
+                        {
+                            <button type="button"
+                                    class="onboarding-sidebar-link @(SelectedTab == step.Key ? "selected" : string.Empty)"
+                                    @onclick="@(() => SelectTabAsync(step.Key))">
+                                <span class="onboarding-sidebar-link-icon">@step.Index</span>
+                                <span class="onboarding-sidebar-link-text">
+                                    <span class="onboarding-sidebar-link-title">@step.Title</span>
+                                    <span class="onboarding-sidebar-link-description">@step.Description</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </nav>
+        </aside>
+
+        <main class="cb-v2-page onboarding-migration-page onboarding-workspace">
+            <div class="cb-v2-card onboarding-top-card">
+                <div class="cb-v2-card-body onboarding-top-card-body">
+                    <div class="onboarding-environment-flow">
+                        <div class="onboarding-environment-node source">
+                            <span class="onboarding-context-label">Source Environment</span>
+                            <strong>@SourceContextDisplay</strong>
+                            <span>Cross-server staging uses the API two-connection path when source and target servers differ.</span>
+                        </div>
+
+                        <div class="onboarding-flow-arrow" aria-hidden="true">→</div>
+
+                        <div class="onboarding-environment-node target">
+                            <span class="onboarding-context-label">Target Environment</span>
+                            <strong>@TargetContextDisplay</strong>
+                            <span>Procedures execute against the selected target database.</span>
                         </div>
                     </div>
 
-                    <div class="cb-v2-actions">
-                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "setup" ? "selected" : "")" @onclick="@(() => SelectTabAsync("setup"))">Setup</button>
-                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "staged" ? "selected" : "")" @onclick="@(() => SelectTabAsync("staged"))">Staged Data</button>
-                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "diff" ? "selected" : "")" @onclick="@(() => SelectTabAsync("diff"))">Diff</button>
-                        <button type="button" class="cb-v2-btn-chip @(SelectedTab == "audit" ? "selected" : "")" @onclick="@(() => SelectTabAsync("audit"))">Audit</button>
+                    <div class="onboarding-top-actions">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => RefreshAllAsync())"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Refresh
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => SelectTabAsync("setup"))">
+                            Setup
+                        </button>
                     </div>
                 </div>
             </div>
-        </div>
 
-        @if (!string.IsNullOrWhiteSpace(Message))
-        {
-            <div class="cb-v2-card">
-                <div class="cb-v2-card-body onboarding-inline-message">
-                    <span class="cb-v2-badge cb-v2-badge-info">Info</span>
-                    <span>@Message</span>
+            <div class="onboarding-context-strip">
+                <div class="onboarding-context-chip">
+                    <span class="onboarding-context-label">Selected Run</span>
+                    <strong>@(HasRunGuid ? RunGuidText : "None selected")</strong>
+                </div>
+
+                <div class="onboarding-context-chip">
+                    <span class="onboarding-context-label">Business Unit</span>
+                    <strong>@SelectedBusinessUnitDescription</strong>
+                </div>
+
+                <div class="onboarding-context-chip">
+                    <span class="onboarding-context-label">Target</span>
+                    <strong>@TargetDatabaseDisplay</strong>
+                </div>
+
+                <div class="onboarding-context-chip">
+                    <span class="onboarding-context-label">Mode</span>
+                    <strong>@(PreviewOnly ? "Preview only" : "Apply enabled")</strong>
                 </div>
             </div>
-        }
 
-        @if (!string.IsNullOrWhiteSpace(Error))
+            @if (IsBusy)
+            {
+                <div class="cb-v2-card onboarding-message-card onboarding-busy-card">
+                    <div class="cb-v2-card-body onboarding-inline-message">
+                        <span class="cb-v2-badge cb-v2-badge-info">Working</span>
+                        <span>@BusyMessage</span>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Message))
+            {
+                <div class="cb-v2-card onboarding-message-card">
+                    <div class="cb-v2-card-body onboarding-inline-message">
+                        <span class="cb-v2-badge cb-v2-badge-info">Info</span>
+                        <span>@Message</span>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Error))
+            {
+                <div class="cb-v2-card onboarding-message-card">
+                    <div class="cb-v2-card-body onboarding-inline-message">
+                        <span class="cb-v2-badge cb-v2-badge-danger">Error</span>
+                        <span>@Error</span>
+                    </div>
+                </div>
+            }
+
+        @if (SelectedTab == "overview")
         {
             <div class="cb-v2-card">
-                <div class="cb-v2-card-body onboarding-inline-message">
-                    <span class="cb-v2-badge cb-v2-badge-danger">Error</span>
-                    <span>@Error</span>
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Overview</h3>
+                            <div class="cb-v2-description">
+                                This workbench now allows source and target database context to be selected. Same-server staging keeps the existing SQL path; cross-server staging reads from the source SQL connection and writes controlled staging rows to the selected target database through the API.
+                            </div>
+                        </div>
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => SelectTabAsync("setup"))">
+                            Start Setup
+                        </button>
+                    </div>
+
+                    <div class="cb-v2-summary-grid onboarding-section-block">
+                        @StatusCard("Setup", HasBusinessUnit ? "Ready" : "Needs business unit", HasBusinessUnit ? "cb-v2-summary-success" : "cb-v2-summary-warning", "Load lookups and select the source business unit.")
+                        @StatusCard("Stage", HasRunGuid ? "Run selected" : "No run", HasRunGuid ? "cb-v2-summary-info" : "cb-v2-summary-muted", HasRunGuid ? RunGuidText : "Stage a new run or select an existing run.")
+                        @StatusCard("Validation", ValidationSummaryText, ValidationSummaryCss, "Validation issues are read from the audit dashboard.")
+                        @StatusCard("Apply Mode", PreviewOnly ? "Preview only" : "Apply enabled", PreviewOnly ? "cb-v2-summary-info" : "cb-v2-summary-danger", PreviewOnly ? "No target changes will be made." : "Apply will write to target via existing SQL procedure.")
+                    </div>
                 </div>
             </div>
+
+            @RunSummaryPanel()
         }
 
         @if (SelectedTab == "setup")
         {
             <div class="cb-v2-card">
                 <div class="cb-v2-card-body">
-                    <div class="onboarding-form-grid">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Setup</h3>
+                            <div class="cb-v2-description">
+                                Select the source and target context, load source lookups, choose the business unit, review OnBoarding scope, then create and stage a run.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="onboarding-form-grid onboarding-environment-form-grid">
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Source Server</label>
+                            <input class="cb-v2-input onboarding-input-full" @bind="SourceServerName" placeholder="Blank = target/API server" />
+                            <span class="onboarding-field-note">Blank uses the target/API server. Different source server uses API-managed cross-server staging.</span>
+                        </div>
+
                         <div class="onboarding-field">
                             <label class="cb-v2-strong">Source Database</label>
                             <input class="cb-v2-input onboarding-input-full" @bind="SourceDatabase" />
+                            <span class="onboarding-field-note">Read-only source database used by existing SMigration staging SQL.</span>
+                        </div>
+
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Target Server</label>
+                            <input class="cb-v2-input onboarding-input-full" @bind="TargetServerName" placeholder="Blank = current API SQL server" />
+                            <span class="onboarding-field-note">Blank uses the current API SQL server. Cross-server target execution remains controlled by the API connection template.</span>
+                        </div>
+
+                        <div class="onboarding-field">
+                            <label class="cb-v2-strong">Target Database</label>
+                            <input class="cb-v2-input onboarding-input-full" @bind="TargetDatabaseName" placeholder="Blank = current API database" />
+                            <span class="onboarding-field-note">OnBoarding procedures and staged data are read/written here.</span>
                         </div>
 
                         <div class="onboarding-field">
@@ -88,124 +224,292 @@
                         </div>
                     </div>
 
-                    <div class="cb-v2-actions onboarding-actions-row">
-                        <label class="onboarding-check">
-                            <input type="checkbox" @bind="AllowWarnings" />
-                            <span>Allow warnings</span>
-                        </label>
-
-                        <label class="onboarding-check">
-                            <input type="checkbox" @bind="PreviewOnly" />
-                            <span>Preview only</span>
-                        </label>
+                    <div class="@GuardrailPanelCss">
+                        <span class="@GuardrailBadgeCss">R3 staging</span>
+                        <span>@SameServerGuardrailMessage</span>
                     </div>
 
                     <div class="cb-v2-actions onboarding-actions-row">
                         <button type="button"
                                 class="cb-v2-btn-secondary"
                                 @onclick="LoadLookupsAsync"
-                                disabled="@IsBusy">
+                                disabled="@(IsBusy || !CanUseOnboardingContext)">
                             Load Lookups
                         </button>
 
                         <button type="button"
                                 class="cb-v2-btn-secondary"
+                                @onclick="ReserveRunAsync"
+                                disabled="@(IsBusy || !CanReserveRun)">
+                            Create Draft Run
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => SelectTabAsync("scope"))">
+                            Review OnBoarding Scope
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-primary"
                                 @onclick="StageAsync"
-                                disabled="@(IsBusy || string.IsNullOrWhiteSpace(BusinessUnitGroupGuidText))">
-                            Stage
-                        </button>
-
-                        <button type="button"
-                                class="cb-v2-btn-secondary"
-                                @onclick="ValidateAsync"
-                                disabled="@(IsBusy || !HasRunGuid)">
-                            Validate
-                        </button>
-
-                        <button type="button"
-                                class="cb-v2-btn-secondary"
-                                @onclick="ApplyAsync"
-                                disabled="@(IsBusy || !HasRunGuid)">
-                            Apply
+                                disabled="@(IsBusy || !CanReserveRun)">
+                            Create &amp; Stage Run
                         </button>
 
                         <button type="button"
                                 class="cb-v2-btn-secondary"
                                 @onclick="@(() => RefreshAllAsync())"
                                 disabled="@(IsBusy || !HasRunGuid)">
-                            Refresh
+                            Refresh Selected Run
                         </button>
                     </div>
                 </div>
             </div>
 
-            @if (StageResult is not null)
-            {
-                <div class="cb-v2-summary-grid">
-                    @SummaryCard("Groups", StageResult.GroupCount, "cb-v2-summary-info")
-                    @SummaryCard("Identities", StageResult.IdentityCount, "cb-v2-summary-purple")
-                    @SummaryCard("User Groups", StageResult.UserGroupCount, "cb-v2-summary-info")
-                    @SummaryCard("Workflow Groups", StageResult.WorkflowNotificationGroupCount, "cb-v2-summary-warning")
-                    @SummaryCard("Job Types", StageResult.JobTypeCount, "cb-v2-summary-info")
-                    @SummaryCard("Activities", StageResult.ActivityTypeCount, "cb-v2-summary-success")
-                    @SummaryCard("Milestones", StageResult.MilestoneTypeCount, "cb-v2-summary-purple")
-                    @SummaryCard("Products", StageResult.ProductCount, "cb-v2-summary-success")
-                    @SummaryCard("JT Activities", StageResult.JobTypeActivityTypeCount, "cb-v2-summary-muted")
-                    @SummaryCard("JT Milestones", StageResult.JobTypeMilestoneTemplateCount, "cb-v2-summary-muted")
-                    @SummaryCard("Product Activities", StageResult.ProductJobActivityCount, "cb-v2-summary-info")
-                </div>
-            }
+            @RunSummaryPanel()
         }
 
-        @if (SelectedTab == "staged")
+        @if (SelectedTab == "scope")
         {
             <div class="cb-v2-card">
-                <div class="cb-v2-toolbar">
-                    <div class="cb-v2-toolbar-left">
-                        <select class="cb-v2-select" value="@SelectedStagedEntity" @onchange="OnStagedEntityChangedAsync">
-                            @foreach (var entity in Entities)
-                            {
-                                <option value="@entity">@entity</option>
-                            }
-                        </select>
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">OnBoarding Scope</h3>
+                            <div class="cb-v2-description">
+                                Select which OnBoarding scope items should be used for this run. Defaults match the existing full OnBoarding scope.
+                            </div>
+                        </div>
+                        <span class="cb-v2-badge cb-v2-badge-info">Persisted by run</span>
+                    </div>
 
-                        <input class="cb-v2-input" placeholder="Search staged values" @bind="StagedSearchText" />
+                    <div class="onboarding-warning-panel preview onboarding-section-block">
+                        <span class="cb-v2-badge cb-v2-badge-info">R2 behaviour</span>
+                        <span>Selections are saved against the run only. SCore.EntityTypes.IsOnBoarding only makes extra record types eligible to appear as configured-only scope; it does not mean that a table can be migrated without an implemented OnBoarding handler.</span>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row onboarding-action-panel">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="LoadEntityScopeAsync"
+                                disabled="@IsBusy">
+                            Load Scope
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="DefaultEntityScopeAsync"
+                                disabled="@(IsBusy || !CanReserveRun)">
+                            Default Scope
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="SelectAllEntityScopeAsync"
+                                disabled="@(IsBusy || EntitySelectionRows.Count == 0 || !CanReserveRun)">
+                            Select All
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="DeselectOptionalEntityScopeAsync"
+                                disabled="@(IsBusy || EntitySelectionRows.Count == 0 || !CanReserveRun)">
+                            Deselect Optional
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-primary"
+                                @onclick="SaveEntityScopeAsync"
+                                disabled="@(IsBusy || EntitySelectionRows.Count == 0 || !CanReserveRun)">
+                            Save Scope
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-primary"
+                                @onclick="SaveScopeAndStageAsync"
+                                disabled="@(IsBusy || EntitySelectionRows.Count == 0 || !CanReserveRun)">
+                            Save Scope &amp; Stage
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(ScopeMessage))
+                    {
+                        <div class="onboarding-inline-note">@ScopeMessage</div>
+                    }
+
+                    @if (SelectedConfiguredOnlyScopeCount > 0)
+                    {
+                        <div class="onboarding-warning-panel preview onboarding-section-block">
+                            <span class="cb-v2-badge cb-v2-badge-info">Configured scope</span>
+                            <span>@SelectedConfiguredOnlyScopeCount selected configured-only scope item(s) are persisted for this run. They are not staged or applied until a controlled OnBoarding handler exists, and validation will block apply while they remain selected.</span>
+                        </div>
+                    }
+
+                    @if (EntitySelectionRows.Count == 0)
+                    {
+                        <div class="cb-v2-empty-state compact onboarding-section-block">Load the OnBoarding scope to review the default OnBoarding buckets.</div>
+                    }
+                    else
+                    {
+                        <div class="onboarding-scope-groups onboarding-section-block">
+                            @foreach (var group in EntitySelectionGroups)
+                            {
+                                <section class="onboarding-scope-group" aria-label="@group.Key">
+                                    <div class="onboarding-scope-group-heading">
+                                        <div>
+                                            <h4>@group.Key</h4>
+                                            <span>@GetScopeCategoryDescription(group.Key)</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="onboarding-scope-list">
+                                        @foreach (var entity in group)
+                                        {
+                                            var dependencies = entity.RequiredDependencies;
+                                            var hasDependencyWarning = GetMissingDependencies(entity).Count > 0;
+                                            var isConfiguredOnly = IsConfiguredOnlyScope(entity);
+
+                                            <div class="onboarding-scope-row @(entity.IsSelected ? "selected" : "not-selected") @(hasDependencyWarning || (entity.IsSelected && isConfiguredOnly) ? "warning" : string.Empty)">
+                                                <label class="onboarding-scope-check">
+                                                    <input type="checkbox"
+                                                           checked="@entity.IsSelected"
+                                                           disabled="@(IsBusy || entity.IsRequired || !entity.CanDeselect)"
+                                                           @onchange="@((ChangeEventArgs args) => OnEntitySelectionChanged(entity, args))" />
+                                                    <span>
+                                                        <strong>@entity.EntityName</strong>
+                                                        <small>@entity.EntityCode</small>
+                                                    </span>
+                                                </label>
+
+                                                <div class="onboarding-scope-description">@entity.Description</div>
+
+                                                <div class="onboarding-scope-meta">
+                                                    <span>@GetScopeTableLabel(entity)</span>
+                                                    <span>@(entity.IsSelected ? "Selected" : "Excluded")</span>
+                                                    <span>@(string.IsNullOrWhiteSpace(entity.SelectionSource) ? "Default" : entity.SelectionSource)</span>
+                                                    <span>@GetScopeImplementationLabel(entity)</span>
+                                                </div>
+
+                                                @if (dependencies.Count > 0)
+                                                {
+                                                    <div class="onboarding-scope-dependencies">
+                                                        Requires: @string.Join(", ", dependencies)
+                                                    </div>
+                                                }
+
+                                                @if (hasDependencyWarning)
+                                                {
+                                                    <div class="onboarding-scope-warning">
+                                                        Missing selected dependency: @string.Join(", ", GetMissingDependencies(entity))
+                                                    </div>
+                                                }
+
+                                                @if (entity.IsSelected && isConfiguredOnly)
+                                                {
+                                                    <div class="onboarding-scope-warning">
+                                                        Configured-only: this scope item is persisted but will not be staged/applied until a controlled handler is implemented.
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </section>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (SelectedTab == "stage")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Stage &amp; Compare</h3>
+                            <div class="cb-v2-description">
+                                Stage the selected source business unit using implemented OnBoarding scope items, then inspect staged rows and target differences.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row onboarding-action-panel">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="LoadLookupsAsync"
+                                disabled="@(IsBusy || !CanUseOnboardingContext)">
+                            Load Lookups
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="StageAsync"
+                                disabled="@(IsBusy || !CanReserveRun)">
+                            Stage Source Data
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => RefreshAllAsync())"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Refresh Stage &amp; Diff
+                        </button>
                     </div>
                 </div>
+            </div>
 
-                <div class="cb-v2-card-body onboarding-detail-grid">
-                    <div>
-                        @if (FilteredStagedRows.Count == 0)
-                        {
-                            <div class="cb-v2-empty-state compact">No staged rows found.</div>
-                        }
-                        else
-                        {
-                            <div class="cb-v2-table-wrap">
-                                <table class="cb-v2-table cb-v2-dashboard-grid">
-                                    <thead>
-                                        <tr>
-                                            <th>Guid</th>
-                                            <th>Summary</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var row in FilteredStagedRows)
-                                        {
-                                            <tr class="cb-v2-clickable-row row-accent-blue @(SelectedStagedRow == row ? "cb-v2-table-row-selected" : "")"
-                                                @onclick="@(() => SelectStagedRow(row))">
-                                                <td class="cb-v2-ellipsis">@row.RowGuid</td>
-                                                <td>@BuildSummary(row.Values)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
+            @StageSummaryPanel()
+
+            <div class="onboarding-stage-compare-grid">
+                <div class="cb-v2-card">
+                    <div class="cb-v2-toolbar">
+                        <div class="cb-v2-toolbar-left">
+                            <span class="cb-v2-strong">Staged Data</span>
+                            <select class="cb-v2-select" value="@SelectedStagedEntity" @onchange="OnStagedEntityChangedAsync">
+                                @foreach (var entity in InspectableEntityCodes)
+                                {
+                                    <option value="@entity">@entity</option>
+                                }
+                            </select>
+
+                            <input class="cb-v2-input" placeholder="Search staged values" @bind="StagedSearchText" />
+                        </div>
                     </div>
 
-                    <div class="cb-v2-card">
-                        <div class="cb-v2-card-body">
+                    <div class="cb-v2-card-body onboarding-detail-grid compact-detail-grid">
+                        <div>
+                            @if (FilteredStagedRows.Count == 0)
+                            {
+                                <div class="cb-v2-empty-state compact">No staged rows found.</div>
+                            }
+                            else
+                            {
+                                <div class="cb-v2-table-wrap">
+                                    <table class="cb-v2-table cb-v2-dashboard-grid">
+                                        <thead>
+                                            <tr>
+                                                <th>Guid</th>
+                                                <th>Summary</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var row in FilteredStagedRows)
+                                            {
+                                                <tr class="cb-v2-clickable-row row-accent-blue @(SelectedStagedRow == row ? "cb-v2-table-row-selected" : string.Empty)"
+                                                    @onclick="@(() => SelectStagedRow(row))">
+                                                    <td class="cb-v2-ellipsis">@row.RowGuid</td>
+                                                    <td>@BuildSummary(row.Values)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="onboarding-detail-panel">
                             <h4 class="cb-v2-title">Row Detail</h4>
 
                             @if (SelectedStagedRow is null)
@@ -225,65 +529,97 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        }
 
-        @if (SelectedTab == "diff")
-        {
-            <div class="cb-v2-card">
-                <div class="cb-v2-toolbar">
-                    <div class="cb-v2-toolbar-left">
-                        <select class="cb-v2-select" value="@SelectedDiffEntity" @onchange="OnDiffEntityChangedAsync">
-                            @foreach (var entity in Entities)
+                <div class="cb-v2-card">
+                    <div class="cb-v2-toolbar">
+                        <div class="cb-v2-toolbar-left">
+                            <span class="cb-v2-strong">Comparison</span>
+                            <select class="cb-v2-select" value="@SelectedDiffEntity" @onchange="OnDiffEntityChangedAsync">
+                                @foreach (var entity in InspectableEntityCodes)
+                                {
+                                    <option value="@entity">@entity</option>
+                                }
+                            </select>
+
+                            <select class="cb-v2-select" @bind="SelectedDiffType">
+                                <option value="">All</option>
+                                <option value="MissingInTarget">Missing In Target</option>
+                                <option value="Different">Different</option>
+                                <option value="Same">Same</option>
+                            </select>
+
+                            <span class="cb-v2-badge cb-v2-badge-info">@StageSelectionSummaryText</span>
+                        </div>
+
+                        <div class="cb-v2-toolbar-right onboarding-selection-actions">
+                            <button type="button"
+                                    class="cb-v2-btn-secondary compact"
+                                    @onclick="SelectVisibleDiffRowsAsync"
+                                    disabled="@(IsBusy || FilteredDiffRows.Count == 0 || !HasRunGuid)">
+                                Select Visible
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary compact"
+                                    @onclick="ClearRowSelectionAsync"
+                                    disabled="@(IsBusy || !HasRunGuid)">
+                                Clear Selection
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-primary compact"
+                                    @onclick="SaveRowSelectionAsync"
+                                    disabled="@(IsBusy || !HasRunGuid)">
+                                Save Selection
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="onboarding-inline-note onboarding-selection-note">
+                        Row selection is optional. If no rows are selected for the run, apply uses all staged rows. If any rows are selected, apply uses only selected rows.
+                    </div>
+
+                    <div class="cb-v2-card-body onboarding-detail-grid compact-detail-grid">
+                        <div>
+                            @if (FilteredDiffRows.Count == 0)
                             {
-                                <option value="@entity">@entity</option>
+                                <div class="cb-v2-empty-state compact">No diff rows found.</div>
                             }
-                        </select>
-
-                        <select class="cb-v2-select" @bind="SelectedDiffType">
-                            <option value="">All</option>
-                            <option value="MissingInTarget">Missing In Target</option>
-                            <option value="Different">Different</option>
-                            <option value="Same">Same</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="cb-v2-card-body onboarding-detail-grid">
-                    <div>
-                        @if (FilteredDiffRows.Count == 0)
-                        {
-                            <div class="cb-v2-empty-state compact">No diff rows found.</div>
-                        }
-                        else
-                        {
-                            <div class="cb-v2-table-wrap">
-                                <table class="cb-v2-table cb-v2-dashboard-grid">
-                                    <thead>
-                                        <tr>
-                                            <th>Guid</th>
-                                            <th>Status</th>
-                                            <th>Columns</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var row in FilteredDiffRows)
-                                        {
-                                            <tr class="cb-v2-clickable-row @RowAccentForDiff(row.DiffType) @(SelectedDiffRow == row ? "cb-v2-table-row-selected" : "")"
-                                                @onclick="@(() => SelectDiffRow(row))">
-                                                <td class="cb-v2-ellipsis">@row.RowGuid</td>
-                                                <td>@DiffBadge(row.DiffType)</td>
-                                                <td>@string.Join(", ", row.DifferingColumns)</td>
+                            else
+                            {
+                                <div class="cb-v2-table-wrap">
+                                    <table class="cb-v2-table cb-v2-dashboard-grid">
+                                        <thead>
+                                            <tr>
+                                                <th class="onboarding-selection-column">Use</th>
+                                                <th>Guid</th>
+                                                <th>Status</th>
+                                                <th>Columns</th>
                                             </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        }
-                    </div>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var row in FilteredDiffRows)
+                                            {
+                                                <tr class="cb-v2-clickable-row @RowAccentForDiff(row.DiffType) @(SelectedDiffRow == row ? "cb-v2-table-row-selected" : string.Empty)"
+                                                    @onclick="@(() => SelectDiffRow(row))">
+                                                    <td class="onboarding-selection-column">
+                                                        <input type="checkbox"
+                                                               checked="@IsDiffRowSelected(row)"
+                                                               @onclick:stopPropagation="true"
+                                                               @onchange="@((ChangeEventArgs args) => ToggleDiffRowSelection(row, args))" />
+                                                    </td>
+                                                    <td class="cb-v2-ellipsis">@row.RowGuid</td>
+                                                    <td>@DiffBadge(row.DiffType)</td>
+                                                    <td>@string.Join(", ", row.DifferingColumns)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
 
-                    <div class="cb-v2-card">
-                        <div class="cb-v2-card-body">
+                        <div class="onboarding-detail-panel">
                             <h4 class="cb-v2-title">Compare Values</h4>
 
                             @if (SelectedDiffRow is null)
@@ -295,7 +631,7 @@
                                 <div class="onboarding-compare-grid">
                                     <div>
                                         <div class="cb-v2-strong onboarding-section-label">Source</div>
-                                        <div class="onboarding-value-list">
+                                        <div class="onboarding-value-list compact-value-list">
                                             @foreach (var item in SelectedDiffRow.SourceValues.OrderBy(x => x.Key))
                                             {
                                                 <div class="onboarding-value-key">@item.Key</div>
@@ -306,7 +642,7 @@
 
                                     <div>
                                         <div class="cb-v2-strong onboarding-section-label">Target</div>
-                                        <div class="onboarding-value-list">
+                                        <div class="onboarding-value-list compact-value-list">
                                             @foreach (var item in SelectedDiffRow.TargetValues.OrderBy(x => x.Key))
                                             {
                                                 <div class="onboarding-value-key">@item.Key</div>
@@ -322,154 +658,203 @@
             </div>
         }
 
-        @if (SelectedTab == "audit")
+        @if (SelectedTab == "validation")
         {
             <div class="cb-v2-card">
-                <div class="cb-v2-toolbar">
-                    <div class="cb-v2-toolbar-left">
-                        <select class="cb-v2-select onboarding-audit-run-select"
-                                value="@SelectedAuditRunGuidText"
-                                @onchange="OnAuditRunChangedAsync">
-                            <option value="">Select migration run...</option>
-                            @foreach (var item in AllAvailableRuns)
-                            {
-                                <option value="@item.Guid">@item.Description</option>
-                            }
-                        </select>
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Validation</h3>
+                            <div class="cb-v2-description">
+                                Run the existing validation stored procedure and review errors/warnings before preview or apply.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row onboarding-action-panel">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="ValidateAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Validate Run
+                        </button>
 
                         <button type="button"
                                 class="cb-v2-btn-secondary"
-                                @onclick="LoadAllRunsAsync"
-                                disabled="@IsBusy">
-                            Load All Runs
+                                @onclick="@(() => RefreshAllAsync())"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Refresh Validation
                         </button>
                     </div>
                 </div>
             </div>
-            <div class="cb-v2-summary-grid">
-                @AuditFilterCard("Entities", AuditDashboard?.StagedEntityCount ?? 0, "cb-v2-summary-info", "", "")
-                @AuditFilterCard("Rows", AuditDashboard?.TotalStagedRows ?? 0, "cb-v2-summary-purple", "", "")
-                @AuditFilterCard("Errors", AuditDashboard?.ValidationErrorCount ?? 0, "cb-v2-summary-danger", "Error", "")
-                @AuditFilterCard("Warnings", AuditDashboard?.ValidationWarningCount ?? 0, "cb-v2-summary-warning", "Warning", "")
-                @AuditFilterCard("Log Rows", AuditDashboard?.ExecutionLogCount ?? 0, "cb-v2-summary-muted", "", "")
-                @AuditFilterCard("Inserted", AuditDashboard?.InsertedRowCount ?? 0, "cb-v2-summary-success", "Insert", "")
-                @AuditFilterCard("Updated", AuditDashboard?.UpdatedRowCount ?? 0, "cb-v2-summary-info", "Update", "")
-            </div>
 
+            @ValidationSummaryPanel()
+            @ValidationIssuesPanel()
+        }
+
+        @if (SelectedTab == "readiness")
+        {
             <div class="cb-v2-card">
                 <div class="cb-v2-card-body">
-                    <h4 class="cb-v2-title">Validation Issues</h4>
-
-                    @if (AuditDashboard is null || FilteredValidationIssues.Count == 0)
-                    {
-                        <div class="cb-v2-empty-state compact">No validation issues recorded.</div>
-                    }
-                    else
-                    {
-                        <div class="cb-v2-table-wrap onboarding-section-block">
-                            <table class="cb-v2-table">
-                                <thead>
-                                    <tr>
-                                        <th>Severity</th>
-                                        <th>Entity</th>
-                                        <th>Code</th>
-                                        <th>Message</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in FilteredValidationIssues)
-                                    {
-                                        <tr class="@RowAccentForSeverity(item.Severity)">
-                                            <td>@SeverityBadge(item.Severity)</td>
-                                            <td>@item.EntityName</td>
-                                            <td>@item.IssueCode</td>
-                                            <td>@item.IssueMessage</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Readiness / Preview</h3>
+                            <div class="cb-v2-description">
+                                Confirm the run is staged and validated, then execute the existing apply procedure in preview mode.
+                            </div>
                         </div>
-                    }
+                    </div>
+
+                    <div class="onboarding-readiness-grid onboarding-section-block">
+                        @ReadinessItem("Run selected", HasRunGuid, HasRunGuid ? RunGuidText : "Stage a run or select one from Runs.")
+                        @ReadinessItem("Source configured", !string.IsNullOrWhiteSpace(SourceDatabase), SourceContextDisplay)
+                        @ReadinessItem("Business unit selected", HasBusinessUnit, SelectedBusinessUnitDescription)
+                        @ReadinessItem("No blocking validation errors", !HasValidationErrors, ValidationSummaryText)
+                    </div>
+
+                    <div class="onboarding-warning-panel onboarding-section-block">
+                        <span class="cb-v2-badge cb-v2-badge-info">Preview safe</span>
+                        <span>Preview uses the existing apply endpoint with PreviewOnly enabled, so no target data is written.</span>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row onboarding-action-panel">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="ValidateAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Validate First
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="PreviewAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Run Preview
+                        </button>
+                    </div>
                 </div>
             </div>
 
+            @ValidationSummaryPanel()
+        }
+
+        @if (SelectedTab == "apply")
+        {
             <div class="cb-v2-card">
                 <div class="cb-v2-card-body">
-                    <h4 class="cb-v2-title">Execution Log</h4>
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Apply</h3>
+                            <div class="cb-v2-description">
+                                Execute the existing OnBoarding apply procedure. Preview only remains enabled by default.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="onboarding-apply-options onboarding-section-block">
+                        <label class="onboarding-check">
+                            <input type="checkbox" @bind="AllowWarnings" />
+                            <span>Allow warnings</span>
+                        </label>
+
+                        <label class="onboarding-check">
+                            <input type="checkbox" @bind="PreviewOnly" />
+                            <span>Preview only</span>
+                        </label>
+                    </div>
+
+                    <div class="onboarding-warning-panel preview onboarding-section-block">
+                        <span class="cb-v2-badge cb-v2-badge-info">Row selection</span>
+                        <span>@StageSelectionApplyText</span>
+                    </div>
+
+                    <div class="onboarding-warning-panel @(PreviewOnly ? "preview" : "danger") onboarding-section-block">
+                        <span class="cb-v2-badge @(PreviewOnly ? "cb-v2-badge-info" : "cb-v2-badge-danger")">@(PreviewOnly ? "Preview mode" : "Apply mode")</span>
+                        <span>@(PreviewOnly ? "No target data will be written." : "Preview only is off. This will apply changes to the target through the existing SMigration.OnboardingImport_Apply procedure.")</span>
+                    </div>
+
+                    <div class="cb-v2-actions onboarding-actions-row onboarding-action-panel">
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="ApplyAsync"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            @(PreviewOnly ? "Run Preview" : "Apply Migration")
+                        </button>
+
+                        <button type="button"
+                                class="cb-v2-btn-secondary"
+                                @onclick="@(() => RefreshAllAsync())"
+                                disabled="@(IsBusy || !HasRunGuid)">
+                            Refresh Audit
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @RunSummaryPanel()
+        }
+
+        @if (SelectedTab == "audit")
+        {
+            @AuditSummaryPanel()
+            @ValidationIssuesPanel()
+            @ExecutionLogPanel()
+        }
+
+        @if (SelectedTab == "runs")
+        {
+            <div class="cb-v2-card">
+                <div class="cb-v2-card-body">
+                    <div class="onboarding-section-heading">
+                        <div>
+                            <h3 class="cb-v2-title">Runs</h3>
+                            <div class="cb-v2-description">
+                                Load prior OnBoarding runs for the configured source database and select one for review, validation, preview or apply.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="cb-v2-toolbar onboarding-audit-toolbar">
                         <div class="cb-v2-toolbar-left">
-                            <select class="cb-v2-select" @bind="SelectedAuditAction">
-                                <option value="">All actions</option>
-                                @foreach (var action in AuditActions)
+                            <select class="cb-v2-select onboarding-audit-run-select"
+                                    value="@SelectedAuditRunGuidText"
+                                    @onchange="OnAuditRunChangedAsync">
+                                <option value="">Select migration run...</option>
+                                @foreach (var item in AllAvailableRuns)
                                 {
-                                    <option value="@action">@action</option>
-                                }
-                            </select>
-
-                            <select class="cb-v2-select" @bind="SelectedAuditEntity">
-                                <option value="">All entities</option>
-                                @foreach (var entity in AuditEntities)
-                                {
-                                    <option value="@entity">@entity</option>
+                                    <option value="@item.Guid">@item.Description</option>
                                 }
                             </select>
 
                             <button type="button"
                                     class="cb-v2-btn-secondary"
-                                    @onclick="ClearAuditFilters">
-                                Clear Filters
+                                    @onclick="LoadAllRunsAsync"
+                                    disabled="@IsBusy">
+                                Load Source Runs
                             </button>
                         </div>
                     </div>
-                    @if (AuditDashboard is null || FilteredExecutionLog.Count == 0)
-                    {
-                        <div class="cb-v2-empty-state compact">No execution log entries recorded.</div>
-                    }
-                    else
-                    {
-                        <div class="cb-v2-table-wrap onboarding-section-block">
-                            <table class="cb-v2-table">
-                                <thead>
-                                    <tr>
-                                        <th>Step</th>
-                                        <th>Entity</th>
-                                        <th>Action</th>
-                                        <th>Affected</th>
-                                        <th>Details</th>
-                                        <th>UTC</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in FilteredExecutionLog)
-                                    {
-                                        <tr class="@RowAccentForAction(item.ActionName)">
-                                            <td>@item.StepName</td>
-                                            <td>@item.EntityName</td>
-                                            <td>@item.ActionName</td>
-                                            <td>@item.AffectedCount</td>
-                                            <td>@item.Details</td>
-                                            <td>@item.LoggedUtcText</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
                 </div>
             </div>
+
+            @RunSummaryPanel()
+            @AuditSummaryPanel()
         }
+        </main>
     </div>
 </div>
 
 @code {
-    private readonly List<string> Entities = new()
+    private readonly List<string> FallbackEntities = new()
     {
         "OrganisationalUnits",
-        "Addresses",
-        "Contacts",
         "Groups",
         "Identities",
         "UserGroups",
+        "Workflows",
+        "WorkflowStatuses",
+        "WorkflowTransitions",
         "WorkflowStatusNotificationGroups",
         "JobTypes",
         "ActivityTypes",
@@ -480,13 +865,32 @@
         "ProductJobActivities"
     };
 
+    private readonly List<WorkbenchStep> WorkbenchSteps = new()
+    {
+        new("overview", "01", "Overview", "Current run status", "Overview"),
+        new("setup", "02", "Setup", "Source and business unit", "Migration"),
+        new("scope", "03", "OnBoarding Scope", "Run selections", "Migration"),
+        new("runs", "04", "Runs", "Load prior runs", "Migration"),
+        new("stage", "05", "Stage & Compare", "Staged rows and diff", "Migration"),
+        new("validation", "06", "Validation", "Issues and warnings", "Migration"),
+        new("readiness", "07", "Readiness / Preview", "Preflight preview", "Release"),
+        new("apply", "08", "Apply", "Preview or apply", "Release"),
+        new("audit", "09", "Audit", "Issues and log", "Release")
+    };
+
     private List<OnboardingMigrationLookupItemModel> BusinessUnitGroups = new();
     private List<OnboardingMigrationLookupItemModel> AvailableRuns = new();
     private List<OnboardingMigrationLookupItemModel> AllAvailableRuns = new();
+    private List<OnboardingMigrationEntityScopeModel> EntityScope = new();
+    private List<OnboardingMigrationEntitySelectionModel> EntitySelections = new();
     private string SelectedAuditRunGuidText = string.Empty;
+    private string ScopeMessage = string.Empty;
 
-    private string SelectedTab = "setup";
+    private string SelectedTab = "overview";
+    private string SourceServerName = string.Empty;
     private string SourceDatabase = "CymBuild_UAT";
+    private string TargetServerName = string.Empty;
+    private string TargetDatabaseName = string.Empty;
     private string BusinessUnitGroupGuidText = string.Empty;
     private string RunGuidText = string.Empty;
     private string Notes = string.Empty;
@@ -499,6 +903,7 @@
     private string StagedSearchText = string.Empty;
 
     private bool IsBusy;
+    private string BusyMessage = "Working...";
     private string Message = string.Empty;
     private string Error = string.Empty;
 
@@ -507,12 +912,145 @@
     private OnboardingMigrationAuditDashboardModel? AuditDashboard;
     private List<OnboardingMigrationStagedRowModel> StagedRows = new();
     private List<OnboardingMigrationDiffRowModel> DiffRows = new();
+    private List<OnboardingMigrationStageSelectionModel> StageSelections = new();
     private OnboardingMigrationStagedRowModel? SelectedStagedRow;
     private OnboardingMigrationDiffRowModel? SelectedDiffRow;
 
     private bool HasRunGuid => Guid.TryParse(RunGuidText, out _);
+    private bool HasBusinessUnit => Guid.TryParse(BusinessUnitGroupGuidText, out _);
     private string SelectedAuditAction = string.Empty;
     private string SelectedAuditEntity = string.Empty;
+    private string SelectedValidationSeverity = string.Empty;
+
+    private bool HasValidationErrors => (AuditDashboard?.ValidationErrorCount ?? 0) > 0;
+    private bool HasValidationWarnings => (AuditDashboard?.ValidationWarningCount ?? 0) > 0;
+    private int ValidationIssueCount => (AuditDashboard?.ValidationErrorCount ?? 0) + (AuditDashboard?.ValidationWarningCount ?? 0);
+
+    private string SourceDatabaseDisplay => string.IsNullOrWhiteSpace(SourceDatabase) ? "Not set" : SourceDatabase;
+    private string SourceServerDisplay => string.IsNullOrWhiteSpace(SourceServerName) ? "Current/target SQL server" : SourceServerName;
+    private string TargetServerDisplay => string.IsNullOrWhiteSpace(TargetServerName) ? "Current API SQL server" : TargetServerName;
+    private string TargetDatabaseDisplay => string.IsNullOrWhiteSpace(TargetDatabaseName) ? "Current API database" : TargetDatabaseName;
+    private string SourceContextDisplay => $"{SourceServerDisplay} / {SourceDatabaseDisplay}";
+    private string TargetContextDisplay => $"{TargetServerDisplay} / {TargetDatabaseDisplay}";
+
+    private bool IsSameServerContext =>
+        string.IsNullOrWhiteSpace(SourceServerName)
+        || string.IsNullOrWhiteSpace(TargetServerName)
+        || string.Equals(NormalizeServerName(SourceServerName), NormalizeServerName(TargetServerName), StringComparison.OrdinalIgnoreCase);
+
+    private bool CanUseOnboardingContext =>
+        !string.IsNullOrWhiteSpace(SourceDatabase);
+
+    private bool CanReserveRun =>
+        CanUseOnboardingContext
+        && Guid.TryParse(BusinessUnitGroupGuidText, out _);
+
+    private string SameServerGuardrailMessage => IsSameServerContext
+        ? "Same-server staging will use the existing SMigration SQL path. Blank server fields use the current API SQL server."
+        : "Cross-server staging is enabled. The API opens separate source and target SQL connections, reads the source database read-only, and writes controlled SMigration staging rows to the selected target database.";
+
+    private string GuardrailPanelCss => "onboarding-warning-panel preview onboarding-section-block";
+
+    private string GuardrailBadgeCss => "cb-v2-badge cb-v2-badge-info";
+
+    private List<OnboardingMigrationEntitySelectionModel> EntitySelectionRows =>
+        EntitySelections
+            .OrderBy(x => x.DisplayOrder)
+            .ThenBy(x => x.EntityCode)
+            .ToList();
+
+
+    private List<IGrouping<string, OnboardingMigrationEntitySelectionModel>> EntitySelectionGroups =>
+        EntitySelectionRows
+            .Where(x => !x.IsSupportData)
+            .GroupBy(x => string.IsNullOrWhiteSpace(x.ScopeCategory) ? "Operational Configuration" : x.ScopeCategory)
+            .OrderBy(x => GetScopeCategoryOrder(x.Key))
+            .ThenBy(x => x.Key)
+            .ToList();
+
+    private List<string> InspectableEntityCodes
+    {
+        get
+        {
+            var selectedCodes = EntitySelections
+                .Where(x => x.IsSelected && IsImplementedMigrationScope(x))
+                .OrderBy(x => x.DisplayOrder)
+                .ThenBy(x => x.EntityCode)
+                .Select(x => x.EntityCode)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            return EntitySelections.Count > 0 ? selectedCodes : FallbackEntities;
+        }
+    }
+
+    private int SelectedConfiguredOnlyScopeCount =>
+        EntitySelections.Count(x => x.IsSelected && IsConfiguredOnlyScope(x));
+
+    private bool IsConfiguredOnlyScope(OnboardingMigrationEntitySelectionModel entity) =>
+        entity is not null
+        && !entity.IsSupportData
+        && !IsImplementedMigrationScope(entity);
+
+    private bool IsImplementedMigrationScope(OnboardingMigrationEntitySelectionModel entity) =>
+        entity is not null
+        && !entity.IsSupportData
+        && (entity.IsImplemented
+            || (!string.IsNullOrWhiteSpace(entity.StageTableName)
+                && entity.StageTableName.StartsWith("SMigration.Onboarding_", StringComparison.OrdinalIgnoreCase)
+                && FallbackEntities.Any(code => string.Equals(code, entity.EntityCode, StringComparison.OrdinalIgnoreCase))));
+
+    private static int GetScopeCategoryOrder(string category) => category switch
+    {
+        "Access Foundation" => 10,
+        "Operational Configuration" => 20,
+        "Additional Eligible Record Types" => 30,
+        "Internal / Support Data" => 90,
+        _ => 80
+    };
+
+    private static string GetScopeCategoryDescription(string category) => category switch
+    {
+        "Access Foundation" => "Core access records that allow the new unit and its users to use CymBuild safely.",
+        "Operational Configuration" => "Configuration records that support the CymBuild critical path for the new unit.",
+        "Additional Eligible Record Types" => "EntityTypes marked IsOnBoarding = 1. These are configurable only until a controlled handler exists.",
+        "Internal / Support Data" => "Support records staged by implemented handlers and normally hidden from run selection.",
+        _ => "OnBoarding scope items available for this run."
+    };
+
+    private static string GetScopeImplementationLabel(OnboardingMigrationEntitySelectionModel entity) =>
+        entity.IsSupportData
+            ? "Support data"
+            : entity.IsImplemented
+                ? "Implemented handler"
+                : "Configured only";
+
+    private static string GetScopeTableLabel(OnboardingMigrationEntitySelectionModel entity)
+    {
+        if (!string.IsNullOrWhiteSpace(entity.SourceSchemaName) || !string.IsNullOrWhiteSpace(entity.SourceTableName))
+            return $"{entity.SourceSchemaName}.{entity.SourceTableName}".Trim('.');
+
+        return string.IsNullOrWhiteSpace(entity.StageTableName) ? "No table mapping" : entity.StageTableName;
+    }
+
+    private string SelectedBusinessUnitDescription =>
+        BusinessUnitGroups.FirstOrDefault(x => string.Equals(x.Guid.ToString(), BusinessUnitGroupGuidText, StringComparison.OrdinalIgnoreCase))?.Description
+        ?? (string.IsNullOrWhiteSpace(BusinessUnitGroupGuidText) ? "Not selected" : BusinessUnitGroupGuidText);
+
+    private string SelectedRunDescription =>
+        AvailableRuns.Concat(AllAvailableRuns)
+            .FirstOrDefault(x => string.Equals(x.Guid.ToString(), RunGuidText, StringComparison.OrdinalIgnoreCase))?.Description
+        ?? (HasRunGuid ? RunGuidText : "No run selected");
+
+    private string ValidationSummaryText => ValidationIssueCount == 0
+        ? "No recorded issues"
+        : $"{AuditDashboard?.ValidationErrorCount ?? 0} error(s), {AuditDashboard?.ValidationWarningCount ?? 0} warning(s)";
+
+    private string ValidationSummaryCss => HasValidationErrors
+        ? "cb-v2-summary-danger"
+        : HasValidationWarnings
+            ? "cb-v2-summary-warning"
+            : "cb-v2-summary-success";
 
     private List<OnboardingMigrationExecutionLogItemModel> FilteredExecutionLog =>
         AuditDashboard?.ExecutionLog
@@ -557,7 +1095,13 @@
             ? DiffRows
             : DiffRows.Where(x => string.Equals(x.DiffType, SelectedDiffType, StringComparison.OrdinalIgnoreCase)).ToList();
 
-    private string SelectedValidationSeverity = string.Empty;
+    private string StageSelectionSummaryText => StageSelections.Count == 0
+        ? "No row selection: all rows"
+        : $"{StageSelections.Count} selected row(s)";
+
+    private string StageSelectionApplyText => StageSelections.Count == 0
+        ? "No row-level selection exists for this run. Apply will use all staged rows."
+        : $"{StageSelections.Count} row-level selection(s) exist for this run. Apply will prune unselected staged rows before real apply.";
 
     private List<OnboardingMigrationValidationIssueModel> FilteredValidationIssues =>
         AuditDashboard?.ValidationIssues
@@ -565,18 +1109,6 @@
                 || string.Equals(x.Severity, SelectedValidationSeverity, StringComparison.OrdinalIgnoreCase))
             .ToList()
         ?? new();
-
-    private async Task SelectTabAsync(string tab)
-    {
-        SelectedTab = tab;
-
-        if (tab == "audit" && AllAvailableRuns.Count == 0)
-            await LoadAllRunsAsync();
-    }
-
-    private void SelectStagedRow(OnboardingMigrationStagedRowModel row) => SelectedStagedRow = row;
-
-    private void SelectDiffRow(OnboardingMigrationDiffRowModel row) => SelectedDiffRow = row;
 
     private API.Client.FormHelper? _formHelper;
 
@@ -589,13 +1121,412 @@
             userService);
     }
 
+    private async Task SelectTabAsync(string tab)
+    {
+        SelectedTab = tab;
+
+        if (tab == "runs" && AllAvailableRuns.Count == 0)
+            await LoadAllRunsAsync();
+
+        if (tab == "scope" && EntitySelectionRows.Count == 0)
+            await LoadEntityScopeAsync();
+    }
+
+    private async Task LoadEntityScopeAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            EntityScope = await FormHelper.OnboardingMigrationEntityScopeListAsync(targetServerName: TargetServerName, targetDatabaseName: TargetDatabaseName);
+
+            if (Guid.TryParse(RunGuidText, out var runGuid))
+            {
+                EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionListAsync(runGuid, TargetServerName, TargetDatabaseName);
+                ScopeMessage = "Run-specific OnBoarding scope loaded.";
+            }
+            else
+            {
+                EntitySelections = EntityScope
+                    .OrderBy(x => x.DisplayOrder)
+                    .Select(x => new OnboardingMigrationEntitySelectionModel
+                    {
+                        EntityScopeGuid = x.EntityScopeGuid,
+                        EntityCode = x.Code,
+                        EntityName = x.Name,
+                        Description = x.Description,
+                        StageTableName = x.StageTableName,
+                        ScopeCategory = x.ScopeCategory,
+                        ScopeType = x.ScopeType,
+                        IsImplemented = x.IsImplemented,
+                        IsSupportData = x.IsSupportData,
+                        HandlerKey = x.HandlerKey,
+                        PrimaryEntityTypeGuid = x.PrimaryEntityTypeGuid,
+                        SourceSchemaName = x.SourceSchemaName,
+                        SourceTableName = x.SourceTableName,
+                        DisplayOrder = x.DisplayOrder,
+                        IsSelected = x.DefaultSelected,
+                        DefaultSelected = x.DefaultSelected,
+                        CanDeselect = x.CanDeselect,
+                        IsRequired = x.IsRequired,
+                        RequiredDependencyCodes = x.RequiredDependencyCodes,
+                        SelectionSource = "Default"
+                    })
+                    .ToList();
+
+                ScopeMessage = "Default scope loaded locally. Saving scope will create or update a draft run before persisting selections.";
+            }
+
+            EnsureSelectedEntityAvailable();
+        }, clearMessage: false, busyMessage: "Loading OnBoarding scope...");
+    }
+
+    private async Task DefaultEntityScopeAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = await ReserveRunCoreAsync();
+            EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionDefaultAsync(runGuid, TargetServerName, TargetDatabaseName);
+            ScopeMessage = "Default OnBoarding scope persisted for the selected draft run.";
+            EnsureSelectedEntityAvailable();
+        }, clearMessage: false, busyMessage: "Defaulting OnBoarding scope...");
+    }
+
+    private async Task SelectAllEntityScopeAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await EnsureEntityScopeRowsLoadedCoreAsync();
+
+            foreach (var entity in EntitySelections)
+                entity.IsSelected = true;
+
+            await SaveEntitySelectionsCoreAsync();
+            ScopeMessage = "All OnBoarding scopes selected and saved.";
+        }, clearMessage: false, busyMessage: "Selecting all OnBoarding scopes...");
+    }
+
+    private async Task DeselectOptionalEntityScopeAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await EnsureEntityScopeRowsLoadedCoreAsync();
+
+            foreach (var entity in EntitySelections.Where(x => x.CanDeselect && !x.IsRequired))
+                entity.IsSelected = false;
+
+            await SaveEntitySelectionsCoreAsync();
+            ScopeMessage = "Optional OnBoarding scopes deselected and saved. Re-stage this run before preview/apply.";
+        }, clearMessage: false, busyMessage: "Deselecting optional OnBoarding scopes...");
+    }
+
+    private async Task SaveEntityScopeAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await EnsureEntityScopeRowsLoadedCoreAsync();
+            await SaveEntitySelectionsCoreAsync();
+            ScopeMessage = "OnBoarding scope saved. Re-stage this run if data was already staged.";
+        }, clearMessage: false, busyMessage: "Saving OnBoarding scope...");
+    }
+
+    private void OnEntitySelectionChanged(OnboardingMigrationEntitySelectionModel entity, ChangeEventArgs args)
+    {
+        if (entity.IsRequired || !entity.CanDeselect)
+            return;
+
+        entity.IsSelected = Convert.ToBoolean(args.Value);
+        ScopeMessage = "OnBoarding scope has unsaved changes.";
+    }
+
+    private async Task SaveScopeAndStageAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await EnsureEntityScopeRowsLoadedCoreAsync();
+            await SaveEntitySelectionsCoreAsync();
+            ScopeMessage = "OnBoarding scope saved for the run. Staging source data now...";
+            await StageCoreAsync();
+        }, clearMessage: false, busyMessage: "Saving OnBoarding scope and staging OnBoarding source data...");
+    }
+
+    private async Task EnsureEntityScopeDefaultsForRunCoreAsync()
+    {
+        var runGuid = await ReserveRunCoreAsync();
+
+        if (EntitySelections.Count == 0)
+        {
+            EntityScope = await FormHelper.OnboardingMigrationEntityScopeListAsync(targetServerName: TargetServerName, targetDatabaseName: TargetDatabaseName);
+            EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionDefaultAsync(runGuid, TargetServerName, TargetDatabaseName);
+        }
+        else
+        {
+            await SaveEntitySelectionsCoreAsync();
+        }
+
+        EnsureSelectedEntityAvailable();
+    }
+
+    private async Task EnsureEntityScopeRowsLoadedCoreAsync()
+    {
+        if (EntitySelections.Count > 0)
+            return;
+
+        EntityScope = await FormHelper.OnboardingMigrationEntityScopeListAsync(targetServerName: TargetServerName, targetDatabaseName: TargetDatabaseName);
+        EntitySelections = EntityScope
+            .OrderBy(x => x.DisplayOrder)
+            .Select(x => new OnboardingMigrationEntitySelectionModel
+            {
+                EntityScopeGuid = x.EntityScopeGuid,
+                EntityCode = x.Code,
+                EntityName = x.Name,
+                Description = x.Description,
+                StageTableName = x.StageTableName,
+                ScopeCategory = x.ScopeCategory,
+                ScopeType = x.ScopeType,
+                IsImplemented = x.IsImplemented,
+                IsSupportData = x.IsSupportData,
+                HandlerKey = x.HandlerKey,
+                PrimaryEntityTypeGuid = x.PrimaryEntityTypeGuid,
+                SourceSchemaName = x.SourceSchemaName,
+                SourceTableName = x.SourceTableName,
+                DisplayOrder = x.DisplayOrder,
+                IsSelected = x.DefaultSelected,
+                DefaultSelected = x.DefaultSelected,
+                CanDeselect = x.CanDeselect,
+                IsRequired = x.IsRequired,
+                RequiredDependencyCodes = x.RequiredDependencyCodes,
+                SelectionSource = "Default"
+            })
+            .ToList();
+    }
+
+    private async Task SaveEntitySelectionsCoreAsync()
+    {
+        var runGuid = await ReserveRunCoreAsync();
+        ValidateEntityScopeDependencies();
+        EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionSaveAsync(runGuid, EntitySelections, TargetServerName, TargetDatabaseName);
+        EnsureSelectedEntityAvailable();
+    }
+
+    private async Task ReserveRunAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = await ReserveRunCoreAsync();
+            AllAvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(SourceDatabase, SourceServerName, TargetServerName, TargetDatabaseName);
+            Message = $"Draft OnBoarding run reserved: {runGuid}.";
+        }, busyMessage: "Creating draft OnBoarding run...");
+    }
+
+    private async Task<Guid> ReserveRunCoreAsync()
+    {
+        if (!Guid.TryParse(BusinessUnitGroupGuidText, out var businessUnitGuid))
+            throw new InvalidOperationException("Select a Business Unit before saving OnBoarding scope or reserving a run.");
+
+        var existingRunGuid = Guid.TryParse(RunGuidText, out var parsedRunGuid)
+            ? parsedRunGuid
+            : (Guid?)null;
+
+        var reservedRun = await FormHelper.OnboardingMigrationRunReserveAsync(
+            existingRunGuid,
+            SourceDatabase,
+            businessUnitGuid,
+            Notes,
+            SourceServerName,
+            TargetServerName,
+            TargetDatabaseName);
+
+        if (reservedRun.RunGuid == Guid.Empty)
+            throw new InvalidOperationException("OnBoarding run reserve did not return a valid run Guid.");
+
+        RunGuidText = reservedRun.RunGuid.ToString();
+        SelectedAuditRunGuidText = RunGuidText;
+        Report = reservedRun;
+        ApplyReportContextToSetup();
+
+        if (!AvailableRuns.Any(x => x.Guid == reservedRun.RunGuid))
+        {
+            AvailableRuns.Insert(0, new OnboardingMigrationLookupItemModel
+            {
+                Guid = reservedRun.RunGuid,
+                Name = reservedRun.CreatedUtcText,
+                Code = reservedRun.SourceDatabase,
+                Description = $"{reservedRun.CreatedUtcText} | {reservedRun.SourceServerName} / {reservedRun.SourceDatabase} -> {reservedRun.TargetServerName} / {reservedRun.TargetDatabaseName} | {reservedRun.Notes}"
+            });
+        }
+
+        return reservedRun.RunGuid;
+    }
+
+    private void ValidateEntityScopeDependencies()
+    {
+        var selectedCodes = EntitySelections
+            .Where(x => x.IsSelected)
+            .Select(x => x.EntityCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var dependencyMessages = EntitySelections
+            .Where(x => x.IsSelected)
+            .SelectMany(x => GetMissingDependencies(x).Select(missing => $"{x.EntityCode} requires {missing}"))
+            .ToList();
+
+        if (dependencyMessages.Count > 0)
+            throw new InvalidOperationException($"OnBoarding scope dependency validation failed: {string.Join("; ", dependencyMessages)}");
+    }
+
+    private List<string> GetMissingDependencies(OnboardingMigrationEntitySelectionModel entity)
+    {
+        if (!entity.IsSelected)
+            return new List<string>();
+
+        var selectedCodes = EntitySelections
+            .Where(x => x.IsSelected)
+            .Select(x => x.EntityCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return entity.RequiredDependencies
+            .Where(x => !selectedCodes.Contains(x))
+            .ToList();
+    }
+
+    private void EnsureSelectedEntityAvailable()
+    {
+        var inspectable = InspectableEntityCodes;
+        if (inspectable.Count == 0)
+        {
+            StagedRows = new List<OnboardingMigrationStagedRowModel>();
+            DiffRows = new List<OnboardingMigrationDiffRowModel>();
+            SelectedStagedRow = null;
+            SelectedDiffRow = null;
+            return;
+        }
+
+        if (!inspectable.Contains(SelectedStagedEntity, StringComparer.OrdinalIgnoreCase))
+            SelectedStagedEntity = inspectable[0];
+
+        if (!inspectable.Contains(SelectedDiffEntity, StringComparer.OrdinalIgnoreCase))
+            SelectedDiffEntity = inspectable[0];
+    }
+
+    private static string NormalizeServerName(string? value) =>
+        (value ?? string.Empty)
+            .Trim()
+            .Replace("/", "\\", StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+    private void ApplyReportContextToSetup()
+    {
+        if (Report is null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(Report.SourceServerName))
+            SourceServerName = Report.SourceServerName;
+
+        if (!string.IsNullOrWhiteSpace(Report.SourceDatabase))
+            SourceDatabase = Report.SourceDatabase;
+
+        if (!string.IsNullOrWhiteSpace(Report.TargetServerName))
+            TargetServerName = Report.TargetServerName;
+
+        if (!string.IsNullOrWhiteSpace(Report.TargetDatabaseName))
+            TargetDatabaseName = Report.TargetDatabaseName;
+    }
+
+    private void SelectStagedRow(OnboardingMigrationStagedRowModel row) => SelectedStagedRow = row;
+
+    private void SelectDiffRow(OnboardingMigrationDiffRowModel row) => SelectedDiffRow = row;
+
+    private static string BuildStageSelectionKey(string entityName, Guid rowGuid) =>
+        $"{entityName.Trim().ToUpperInvariant()}|{rowGuid:D}";
+
+    private bool IsDiffRowSelected(OnboardingMigrationDiffRowModel row) =>
+        row is not null
+        && row.RowGuid != Guid.Empty
+        && StageSelections.Any(selection => string.Equals(selection.EntityName, row.EntityName, StringComparison.OrdinalIgnoreCase)
+            && selection.RowGuid == row.RowGuid);
+
+    private void ToggleDiffRowSelection(OnboardingMigrationDiffRowModel row, ChangeEventArgs args)
+    {
+        if (row is null || row.RowGuid == Guid.Empty)
+            return;
+
+        var isSelected = args.Value is bool boolValue
+            ? boolValue
+            : bool.TryParse(Convert.ToString(args.Value), out var parsed) && parsed;
+
+        var key = BuildStageSelectionKey(row.EntityName, row.RowGuid);
+        StageSelections = StageSelections
+            .Where(selection => BuildStageSelectionKey(selection.EntityName, selection.RowGuid) != key)
+            .ToList();
+
+        if (isSelected)
+        {
+            StageSelections.Add(new OnboardingMigrationStageSelectionModel
+            {
+                EntityName = row.EntityName,
+                RowGuid = row.RowGuid
+            });
+        }
+    }
+
+    private async Task SelectVisibleDiffRowsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var existing = StageSelections
+                .GroupBy(selection => BuildStageSelectionKey(selection.EntityName, selection.RowGuid))
+                .ToDictionary(group => group.Key, group => group.First());
+
+            foreach (var row in FilteredDiffRows)
+            {
+                if (row.RowGuid == Guid.Empty || string.IsNullOrWhiteSpace(row.EntityName))
+                    continue;
+
+                existing[BuildStageSelectionKey(row.EntityName, row.RowGuid)] = new OnboardingMigrationStageSelectionModel
+                {
+                    EntityName = row.EntityName,
+                    RowGuid = row.RowGuid
+                };
+            }
+
+            StageSelections = existing.Values
+                .OrderBy(x => x.EntityName)
+                .ThenBy(x => x.RowGuid)
+                .ToList();
+
+            Message = $"Selected {FilteredDiffRows.Count} visible comparison row(s). Save selection to persist it for apply.";
+            await Task.CompletedTask;
+        }, clearMessage: false, busyMessage: "Selecting visible OnBoarding rows...");
+    }
+
+    private async Task SaveRowSelectionAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = GetRequiredRunGuid();
+            StageSelections = await FormHelper.OnboardingMigrationStageSelectionSaveAsync(runGuid, StageSelections, TargetServerName, TargetDatabaseName);
+            Message = StageSelections.Count == 0
+                ? "Row selection cleared. Apply will use all staged rows."
+                : $"Saved {StageSelections.Count} row selection(s). Apply will use selected rows only.";
+        }, clearMessage: false, busyMessage: "Saving OnBoarding row selections...");
+    }
+
+    private async Task ClearRowSelectionAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = GetRequiredRunGuid();
+            StageSelections = await FormHelper.OnboardingMigrationStageSelectionSaveAsync(runGuid, Array.Empty<OnboardingMigrationStageSelectionModel>(), TargetServerName, TargetDatabaseName);
+            Message = "Row selection cleared. Apply will use all staged rows.";
+        }, clearMessage: false, busyMessage: "Clearing OnBoarding row selections...");
+    }
+
     private async Task LoadAllRunsAsync()
     {
         await ExecuteAsync(async () =>
         {
-            AllAvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(string.Empty);
-            Message = "All migration runs loaded.";
-        }, clearMessage: false);
+            AllAvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(SourceDatabase, SourceServerName, TargetServerName, TargetDatabaseName);
+            Message = "Source migration runs loaded.";
+        }, clearMessage: false, busyMessage: "Loading source OnBoarding runs...");
     }
 
     private async Task OnAuditRunChangedAsync(ChangeEventArgs args)
@@ -606,13 +1537,20 @@
             return;
 
         RunGuidText = SelectedAuditRunGuidText;
-        AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(selectedRunGuid);
-        Report = await FormHelper.OnboardingMigrationReportAsync(selectedRunGuid);
 
-        SelectedAuditAction = string.Empty;
-        SelectedAuditEntity = string.Empty;
-
-        StateHasChanged();
+        await ExecuteAsync(async () =>
+        {
+            AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(selectedRunGuid, TargetServerName, TargetDatabaseName);
+            Report = await FormHelper.OnboardingMigrationReportAsync(selectedRunGuid, TargetServerName, TargetDatabaseName);
+            ApplyReportContextToSetup();
+            EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionListAsync(selectedRunGuid, TargetServerName, TargetDatabaseName);
+            StageSelections = await FormHelper.OnboardingMigrationStageSelectionListAsync(selectedRunGuid, TargetServerName, TargetDatabaseName);
+            EnsureSelectedEntityAvailable();
+            SelectedAuditAction = string.Empty;
+            SelectedAuditEntity = string.Empty;
+            SelectedValidationSeverity = string.Empty;
+            Message = "Migration run selected.";
+        }, clearMessage: false, busyMessage: "Loading selected OnBoarding run...");
     }
 
     private void ApplyAuditCardFilter(string actionFilter, string entityFilter)
@@ -630,32 +1568,41 @@
 
     private async Task StageAsync()
     {
-        await ExecuteAsync(async () =>
-        {
-            if (!Guid.TryParse(BusinessUnitGroupGuidText, out var businessUnitGuid))
-                throw new InvalidOperationException("Business Unit Group Guid must be a valid Guid.");
+        await ExecuteAsync(StageCoreAsync, busyMessage: "Staging OnBoarding source data...");
+    }
 
-            var runGuid = Guid.TryParse(RunGuidText, out var parsedRunGuid)
-                ? parsedRunGuid
-                : (Guid?)null;
+    private async Task StageCoreAsync()
+    {
+        if (!Guid.TryParse(BusinessUnitGroupGuidText, out var businessUnitGuid))
+            throw new InvalidOperationException("Business Unit Group Guid must be a valid Guid.");
 
-            StageResult = await FormHelper.OnboardingMigrationStageAsync(
-                SourceDatabase,
-                businessUnitGuid,
-                runGuid,
-                Notes);
+        await EnsureEntityScopeDefaultsForRunCoreAsync();
 
-            RunGuidText = StageResult.RunGuid.ToString();
-            Message = $"Stage completed for run {RunGuidText}.";
+        var runGuid = Guid.TryParse(RunGuidText, out var parsedRunGuid)
+            ? parsedRunGuid
+            : (Guid?)null;
 
-            await RefreshAllAsync(clearMessage: false);
-        });
+        StageResult = await FormHelper.OnboardingMigrationStageAsync(
+            SourceDatabase,
+            businessUnitGuid,
+            runGuid,
+            Notes,
+            SourceServerName,
+            TargetServerName,
+            TargetDatabaseName);
+
+        RunGuidText = StageResult.RunGuid.ToString();
+        SelectedAuditRunGuidText = RunGuidText;
+        Message = $"Stage completed for run {RunGuidText}.";
+
+        await RefreshAllAsync(clearMessage: false);
     }
 
     private void ClearAuditFilters()
     {
         SelectedAuditAction = string.Empty;
         SelectedAuditEntity = string.Empty;
+        SelectedValidationSeverity = string.Empty;
     }
 
     private async Task ValidateAsync()
@@ -663,11 +1610,29 @@
         await ExecuteAsync(async () =>
         {
             var runGuid = GetRequiredRunGuid();
-            var issues = await FormHelper.OnboardingMigrationValidateAsync(runGuid);
+            var issues = await FormHelper.OnboardingMigrationValidateAsync(runGuid, TargetServerName, TargetDatabaseName);
 
             Message = $"Validation completed. Issues found: {issues.Count}.";
             await RefreshAllAsync(clearMessage: false);
-        });
+        }, busyMessage: "Validating staged OnBoarding data...");
+    }
+
+    private async Task PreviewAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = GetRequiredRunGuid();
+
+            Message = await FormHelper.OnboardingMigrationApplyAsync(
+                runGuid,
+                AllowWarnings,
+                previewOnly: true,
+                targetServerName: TargetServerName,
+                targetDatabaseName: TargetDatabaseName);
+
+            PreviewOnly = true;
+            await RefreshAllAsync(clearMessage: false);
+        }, busyMessage: "Running OnBoarding apply preview...");
     }
 
     private async Task ApplyAsync()
@@ -679,25 +1644,28 @@
             Message = await FormHelper.OnboardingMigrationApplyAsync(
                 runGuid,
                 AllowWarnings,
-                PreviewOnly);
+                PreviewOnly,
+                TargetServerName,
+                TargetDatabaseName);
 
             await RefreshAllAsync(clearMessage: false);
-        });
+        }, busyMessage: PreviewOnly ? "Running OnBoarding preview..." : "Applying OnBoarding migration...");
     }
 
     private async Task LoadLookupsAsync()
     {
         await ExecuteAsync(async () =>
         {
-            BusinessUnitGroups = await FormHelper.OnboardingMigrationBusinessUnitGroupsAsync(SourceDatabase);
-            AvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(SourceDatabase);
+            BusinessUnitGroups = await FormHelper.OnboardingMigrationBusinessUnitGroupsAsync(SourceDatabase, SourceServerName, TargetServerName, TargetDatabaseName);
+            AvailableRuns = await FormHelper.OnboardingMigrationRunsAsync(SourceDatabase, SourceServerName, TargetServerName, TargetDatabaseName);
 
             if (BusinessUnitGroups.Count == 1)
                 BusinessUnitGroupGuidText = BusinessUnitGroups[0].Guid.ToString();
 
             Message = "Lookup data refreshed.";
-        });
+        }, busyMessage: "Loading OnBoarding lookup data...");
     }
+
     private async Task RefreshAllAsync(bool clearMessage = true)
     {
         if (!Guid.TryParse(RunGuidText, out var runGuid))
@@ -705,18 +1673,26 @@
 
         await ExecuteAsync(async () =>
         {
-            Report = await FormHelper.OnboardingMigrationReportAsync(runGuid);
-            AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(runGuid);
+            Report = await FormHelper.OnboardingMigrationReportAsync(runGuid, TargetServerName, TargetDatabaseName);
+            ApplyReportContextToSetup();
+            AuditDashboard = await FormHelper.OnboardingMigrationAuditDashboardAsync(runGuid, TargetServerName, TargetDatabaseName);
+            EntitySelections = await FormHelper.OnboardingMigrationRunEntitySelectionListAsync(runGuid, TargetServerName, TargetDatabaseName);
+            StageSelections = await FormHelper.OnboardingMigrationStageSelectionListAsync(runGuid, TargetServerName, TargetDatabaseName);
+            EnsureSelectedEntityAvailable();
             SelectedAuditRunGuidText = RunGuidText;
-            StagedRows = await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity);
-            DiffRows = await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity);
+            StagedRows = InspectableEntityCodes.Count == 0
+                ? new List<OnboardingMigrationStagedRowModel>()
+                : await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity, TargetServerName, TargetDatabaseName);
+            DiffRows = InspectableEntityCodes.Count == 0
+                ? new List<OnboardingMigrationDiffRowModel>()
+                : await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity, TargetServerName, TargetDatabaseName);
 
             SelectedStagedRow = StagedRows.FirstOrDefault();
             SelectedDiffRow = DiffRows.FirstOrDefault();
 
             if (clearMessage)
                 Message = "Migration data refreshed.";
-        }, clearMessage);
+        }, clearMessage, busyMessage: "Refreshing OnBoarding run data...");
     }
 
     private async Task OnStagedEntityChangedAsync(ChangeEventArgs args)
@@ -728,9 +1704,9 @@
 
         await ExecuteAsync(async () =>
         {
-            StagedRows = await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity);
+            StagedRows = await FormHelper.OnboardingMigrationStagedDataAsync(runGuid, SelectedStagedEntity, TargetServerName, TargetDatabaseName);
             SelectedStagedRow = StagedRows.FirstOrDefault();
-        }, clearMessage: false);
+        }, clearMessage: false, busyMessage: "Loading staged entity rows...");
     }
 
     private async Task OnDiffEntityChangedAsync(ChangeEventArgs args)
@@ -742,17 +1718,19 @@
 
         await ExecuteAsync(async () =>
         {
-            DiffRows = await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity);
+            StageSelections = await FormHelper.OnboardingMigrationStageSelectionListAsync(runGuid, TargetServerName, TargetDatabaseName);
+            DiffRows = await FormHelper.OnboardingMigrationDiffAsync(runGuid, SelectedDiffEntity, TargetServerName, TargetDatabaseName);
             SelectedDiffRow = DiffRows.FirstOrDefault();
-        }, clearMessage: false);
+        }, clearMessage: false, busyMessage: "Loading entity comparison rows...");
     }
 
-    private async Task ExecuteAsync(Func<Task> action, bool clearMessage = true)
+    private async Task ExecuteAsync(Func<Task> action, bool clearMessage = true, string busyMessage = "Working...")
     {
         if (IsBusy)
             return;
 
         IsBusy = true;
+        BusyMessage = busyMessage;
         Error = string.Empty;
 
         if (clearMessage)
@@ -769,6 +1747,7 @@
         finally
         {
             IsBusy = false;
+            BusyMessage = "Working...";
             StateHasChanged();
         }
     }
@@ -815,6 +1794,322 @@
             _ => "row-accent-slate"
         };
 
+    private RenderFragment RunSummaryPanel() => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card-body");
+        builder.OpenElement(seq++, "h4");
+        builder.AddAttribute(seq++, "class", "cb-v2-title");
+        builder.AddContent(seq++, "Selected Run Summary");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "onboarding-run-summary-grid");
+        builder.AddContent(seq++, SummaryItem("Run", SelectedRunDescription));
+        builder.AddContent(seq++, SummaryItem("Source", Report is null ? SourceContextDisplay : $"{(string.IsNullOrWhiteSpace(Report.SourceServerName) ? SourceServerDisplay : Report.SourceServerName)} / {Report.SourceDatabase}"));
+        builder.AddContent(seq++, SummaryItem("Target", Report is null ? TargetContextDisplay : $"{(string.IsNullOrWhiteSpace(Report.TargetServerName) ? TargetServerDisplay : Report.TargetServerName)} / {(string.IsNullOrWhiteSpace(Report.TargetDatabaseName) ? TargetDatabaseDisplay : Report.TargetDatabaseName)}"));
+        builder.AddContent(seq++, SummaryItem("Business Unit Guid", Report?.SourceBusinessUnitGroupGuid == Guid.Empty ? BusinessUnitGroupGuidText : Report?.SourceBusinessUnitGroupGuid.ToString() ?? BusinessUnitGroupGuidText));
+        builder.AddContent(seq++, SummaryItem("Created By", Report?.CreatedBy ?? "Not loaded"));
+        builder.AddContent(seq++, SummaryItem("Created UTC", Report?.CreatedUtcText ?? "Not loaded"));
+        builder.AddContent(seq++, SummaryItem("Notes", Report?.Notes ?? Notes));
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment StageSummaryPanel() => builder =>
+    {
+        var stagedCounts = AuditDashboard?.StagedCounts ?? Report?.StagedCounts ?? new List<OnboardingMigrationEntityCountModel>();
+        var seq = 0;
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-grid");
+
+        if (StageResult is not null)
+        {
+            builder.AddContent(seq++, SummaryCard("Groups", StageResult.GroupCount, "cb-v2-summary-info"));
+            builder.AddContent(seq++, SummaryCard("Identities", StageResult.IdentityCount, "cb-v2-summary-purple"));
+            builder.AddContent(seq++, SummaryCard("User Groups", StageResult.UserGroupCount, "cb-v2-summary-info"));
+            builder.AddContent(seq++, SummaryCard("Workflow Groups", StageResult.WorkflowNotificationGroupCount, "cb-v2-summary-warning"));
+            builder.AddContent(seq++, SummaryCard("Job Types", StageResult.JobTypeCount, "cb-v2-summary-info"));
+            builder.AddContent(seq++, SummaryCard("Activities", StageResult.ActivityTypeCount, "cb-v2-summary-success"));
+            builder.AddContent(seq++, SummaryCard("Milestones", StageResult.MilestoneTypeCount, "cb-v2-summary-purple"));
+            builder.AddContent(seq++, SummaryCard("Products", StageResult.ProductCount, "cb-v2-summary-success"));
+            builder.AddContent(seq++, SummaryCard("JT Activities", StageResult.JobTypeActivityTypeCount, "cb-v2-summary-muted"));
+            builder.AddContent(seq++, SummaryCard("JT Milestones", StageResult.JobTypeMilestoneTemplateCount, "cb-v2-summary-muted"));
+            builder.AddContent(seq++, SummaryCard("Product Activities", StageResult.ProductJobActivityCount, "cb-v2-summary-info"));
+        }
+        else if (stagedCounts.Count > 0)
+        {
+            foreach (var count in stagedCounts)
+                builder.AddContent(seq++, SummaryCard(count.EntityName, count.Count, "cb-v2-summary-info"));
+        }
+        else
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "cb-v2-empty-state compact onboarding-full-span");
+            builder.AddContent(seq++, "No staged count summary is loaded yet.");
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+    };
+
+    private RenderFragment ValidationSummaryPanel() => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-grid");
+        builder.AddContent(seq++, StatusCard("Errors", (AuditDashboard?.ValidationErrorCount ?? 0).ToString(), (AuditDashboard?.ValidationErrorCount ?? 0) > 0 ? "cb-v2-summary-danger" : "cb-v2-summary-success", "Blocking validation issue count."));
+        builder.AddContent(seq++, StatusCard("Warnings", (AuditDashboard?.ValidationWarningCount ?? 0).ToString(), (AuditDashboard?.ValidationWarningCount ?? 0) > 0 ? "cb-v2-summary-warning" : "cb-v2-summary-success", "Warning issue count."));
+        builder.AddContent(seq++, StatusCard("Execution Log", (AuditDashboard?.ExecutionLogCount ?? 0).ToString(), "cb-v2-summary-muted", "Recorded OnBoarding log entries."));
+        builder.AddContent(seq++, StatusCard("Mode", PreviewOnly ? "Preview" : "Apply", PreviewOnly ? "cb-v2-summary-info" : "cb-v2-summary-danger", PreviewOnly ? "Preview only is currently enabled." : "Apply mode is currently enabled."));
+        builder.CloseElement();
+    };
+
+    private RenderFragment AuditSummaryPanel() => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-grid");
+        builder.AddContent(seq++, AuditFilterCard("Entities", AuditDashboard?.StagedEntityCount ?? 0, "cb-v2-summary-info", "", ""));
+        builder.AddContent(seq++, AuditFilterCard("Rows", AuditDashboard?.TotalStagedRows ?? 0, "cb-v2-summary-purple", "", ""));
+        builder.AddContent(seq++, AuditFilterCard("Errors", AuditDashboard?.ValidationErrorCount ?? 0, "cb-v2-summary-danger", "Error", ""));
+        builder.AddContent(seq++, AuditFilterCard("Warnings", AuditDashboard?.ValidationWarningCount ?? 0, "cb-v2-summary-warning", "Warning", ""));
+        builder.AddContent(seq++, AuditFilterCard("Log Rows", AuditDashboard?.ExecutionLogCount ?? 0, "cb-v2-summary-muted", "", ""));
+        builder.AddContent(seq++, AuditFilterCard("Inserted", AuditDashboard?.InsertedRowCount ?? 0, "cb-v2-summary-success", "Insert", ""));
+        builder.AddContent(seq++, AuditFilterCard("Updated", AuditDashboard?.UpdatedRowCount ?? 0, "cb-v2-summary-info", "Update", ""));
+        builder.CloseElement();
+    };
+
+    private RenderFragment ValidationIssuesPanel() => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card-body");
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "onboarding-section-heading");
+        builder.OpenElement(seq++, "div");
+        builder.OpenElement(seq++, "h4");
+        builder.AddAttribute(seq++, "class", "cb-v2-title");
+        builder.AddContent(seq++, "Validation Issues");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-description");
+        builder.AddContent(seq++, "Filter and review recorded validation issues for the selected run.");
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-actions");
+        builder.OpenElement(seq++, "select");
+        builder.AddAttribute(seq++, "class", "cb-v2-select");
+        builder.AddAttribute(seq++, "value", SelectedValidationSeverity);
+        builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => SelectedValidationSeverity = Convert.ToString(args.Value) ?? string.Empty));
+        builder.OpenElement(seq++, "option");
+        builder.AddAttribute(seq++, "value", "");
+        builder.AddContent(seq++, "All severities");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "option");
+        builder.AddAttribute(seq++, "value", "Error");
+        builder.AddContent(seq++, "Error");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "option");
+        builder.AddAttribute(seq++, "value", "Warning");
+        builder.AddContent(seq++, "Warning");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+
+        if (AuditDashboard is null || FilteredValidationIssues.Count == 0)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "cb-v2-empty-state compact");
+            builder.AddContent(seq++, "No validation issues recorded.");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "cb-v2-table-wrap onboarding-section-block");
+            builder.OpenElement(seq++, "table");
+            builder.AddAttribute(seq++, "class", "cb-v2-table");
+            builder.OpenElement(seq++, "thead");
+            builder.OpenElement(seq++, "tr");
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Severity"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Entity"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Code"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Message"); builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.OpenElement(seq++, "tbody");
+
+            foreach (var item in FilteredValidationIssues)
+            {
+                builder.OpenElement(seq++, "tr");
+                builder.AddAttribute(seq++, "class", RowAccentForSeverity(item.Severity));
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, SeverityBadge(item.Severity)); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.EntityName); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.IssueCode); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.IssueMessage); builder.CloseElement();
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment ExecutionLogPanel() => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-card-body");
+        builder.OpenElement(seq++, "h4");
+        builder.AddAttribute(seq++, "class", "cb-v2-title");
+        builder.AddContent(seq++, "Execution Log");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-toolbar onboarding-audit-toolbar");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-toolbar-left");
+
+        builder.OpenElement(seq++, "select");
+        builder.AddAttribute(seq++, "class", "cb-v2-select");
+        builder.AddAttribute(seq++, "value", SelectedAuditAction);
+        builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => SelectedAuditAction = Convert.ToString(args.Value) ?? string.Empty));
+        builder.OpenElement(seq++, "option");
+        builder.AddAttribute(seq++, "value", "");
+        builder.AddContent(seq++, "All actions");
+        builder.CloseElement();
+        foreach (var action in AuditActions)
+        {
+            builder.OpenElement(seq++, "option");
+            builder.AddAttribute(seq++, "value", action);
+            builder.AddContent(seq++, action);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "select");
+        builder.AddAttribute(seq++, "class", "cb-v2-select");
+        builder.AddAttribute(seq++, "value", SelectedAuditEntity);
+        builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, args => SelectedAuditEntity = Convert.ToString(args.Value) ?? string.Empty));
+        builder.OpenElement(seq++, "option");
+        builder.AddAttribute(seq++, "value", "");
+        builder.AddContent(seq++, "All entities");
+        builder.CloseElement();
+        foreach (var entity in AuditEntities)
+        {
+            builder.OpenElement(seq++, "option");
+            builder.AddAttribute(seq++, "value", entity);
+            builder.AddContent(seq++, entity);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "button");
+        builder.AddAttribute(seq++, "type", "button");
+        builder.AddAttribute(seq++, "class", "cb-v2-btn-secondary");
+        builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, ClearAuditFilters));
+        builder.AddContent(seq++, "Clear Filters");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+
+        if (AuditDashboard is null || FilteredExecutionLog.Count == 0)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "cb-v2-empty-state compact");
+            builder.AddContent(seq++, "No execution log entries recorded.");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "cb-v2-table-wrap onboarding-section-block");
+            builder.OpenElement(seq++, "table");
+            builder.AddAttribute(seq++, "class", "cb-v2-table");
+            builder.OpenElement(seq++, "thead");
+            builder.OpenElement(seq++, "tr");
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Step"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Entity"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Action"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Affected"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "Details"); builder.CloseElement();
+            builder.OpenElement(seq++, "th"); builder.AddContent(seq++, "UTC"); builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.OpenElement(seq++, "tbody");
+            foreach (var item in FilteredExecutionLog)
+            {
+                builder.OpenElement(seq++, "tr");
+                builder.AddAttribute(seq++, "class", RowAccentForAction(item.ActionName));
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.StepName); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.EntityName); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.ActionName); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.AffectedCount); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.Details); builder.CloseElement();
+                builder.OpenElement(seq++, "td"); builder.AddContent(seq++, item.LoggedUtcText); builder.CloseElement();
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment SummaryItem(string label, string value) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "onboarding-run-summary-item");
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", "onboarding-run-summary-label");
+        builder.AddContent(seq++, label);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", "onboarding-run-summary-value");
+        builder.AddContent(seq++, string.IsNullOrWhiteSpace(value) ? "Not set" : value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment StatusCard(string title, string value, string css, string subtitle) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", $"cb-v2-summary-card {css}");
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-title");
+        builder.AddContent(seq++, title);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-value");
+        builder.AddContent(seq++, value);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "cb-v2-summary-subtitle");
+        builder.AddContent(seq++, subtitle);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
     private RenderFragment SummaryCard(string title, int value, string css) => builder =>
     {
         var seq = 0;
@@ -831,6 +2126,26 @@
         builder.OpenElement(seq++, "div");
         builder.AddAttribute(seq++, "class", "cb-v2-summary-subtitle");
         builder.AddContent(seq++, "Staged count");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment ReadinessItem(string title, bool isReady, string detail) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", $"onboarding-readiness-item {(isReady ? "ready" : "not-ready")}");
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", "onboarding-readiness-state");
+        builder.AddContent(seq++, isReady ? "Ready" : "Check");
+        builder.CloseElement();
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", "onboarding-readiness-title");
+        builder.AddContent(seq++, title);
+        builder.CloseElement();
+        builder.OpenElement(seq++, "span");
+        builder.AddAttribute(seq++, "class", "onboarding-readiness-detail");
+        builder.AddContent(seq++, detail);
         builder.CloseElement();
         builder.CloseElement();
     };
@@ -902,4 +2217,6 @@
         builder.AddContent(2, severity);
         builder.CloseElement();
     };
+
+    private sealed record WorkbenchStep(string Key, string Index, string Title, string Description, string Group);
 }

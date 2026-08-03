@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[GridDefinitions]')
 GO
+PRINT (N'Create table [SUserInterface].[GridDefinitions]')
+GO
 CREATE TABLE [SUserInterface].[GridDefinitions] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_GridDefinition_RowStatus] DEFAULT (0),

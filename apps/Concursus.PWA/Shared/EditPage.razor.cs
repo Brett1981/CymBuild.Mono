@@ -1921,7 +1921,7 @@ public partial class EditPage
         }
         else
         {
-            // Unified exit path for all non-windowed pages: Dashboard â†’ Job, Grid â†’ Job, Job â†’
+            // Unified exit path for all non-windowed pages: Dashboard / Job, Grid / Job, Job /
             // Job (History), etc.
             //
             // We let NavigateToCorrectPage:
@@ -1930,7 +1930,7 @@ public partial class EditPage
             // - Navigate directly to that URL
             //
             // This avoids broken URLs like: /JobDetail/.../{...}/https://localhost:44368/jobs/...
-            // and correctly handles: Job A â†’ Job B (History) â†’ Save & Exit â†’ Job A â†’ Save & Exit â†’ Grid
+            // and correctly handles: Job A / Job B (History) / Save & Exit / Job A / Save & Exit / Grid
 
             PWAFunctions.ResetStateService(stateService);
 

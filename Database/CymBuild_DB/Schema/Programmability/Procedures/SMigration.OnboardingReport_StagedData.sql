@@ -1,6 +1,8 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+PRINT (N'Create procedure [SMigration].[OnboardingReport_StagedData]')
+GO
 PRINT (N'Create procedure [SMigration].[OnboardingReport_StagedData]')
 GO
 
@@ -172,6 +174,88 @@ BEGIN
         FROM SMigration.Onboarding_UserGroups AS s
         WHERE s.RunGuid = @RunGuid
         ORDER BY s.IdentityGuid, s.GroupGuid;
+        RETURN;
+    END;
+
+    IF @EntityName = N'Workflows'
+    BEGIN
+        SELECT
+            EntityName = N'Workflows',
+            RowGuid = CONVERT(NVARCHAR(36), s.WorkflowGuid),
+            ValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), s.RowStatus) AS RowStatus,
+                    s.Name,
+                    ISNULL(CONVERT(NVARCHAR(36), s.OrganisationalUnitGuid), N'') AS OrganisationalUnitGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), s.EntityTypeGuid), N'') AS EntityTypeGuid,
+                    ISNULL(CONVERT(NVARCHAR(36), s.EntityHoBTGuid), N'') AS EntityHoBTGuid,
+                    ISNULL(s.Description, N'') AS Description,
+                    CONVERT(NVARCHAR(5), ISNULL(s.Enabled, 0)) AS Enabled
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            )
+        FROM SMigration.Onboarding_Workflows AS s
+        WHERE s.RunGuid = @RunGuid
+        ORDER BY s.Name;
+        RETURN;
+    END;
+
+    IF @EntityName = N'WorkflowStatuses'
+    BEGIN
+        SELECT
+            EntityName = N'WorkflowStatuses',
+            RowGuid = CONVERT(NVARCHAR(36), s.WorkflowStatusGuid),
+            ValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), s.RowStatus) AS RowStatus,
+                    ISNULL(CONVERT(NVARCHAR(36), s.OrganisationalUnitGuid), N'') AS OrganisationalUnitGuid,
+                    s.Name,
+                    s.Description,
+                    CONVERT(NVARCHAR(5), s.ShowInEnquiries) AS ShowInEnquiries,
+                    CONVERT(NVARCHAR(5), s.ShowInQuotes) AS ShowInQuotes,
+                    CONVERT(NVARCHAR(5), s.ShowInJobs) AS ShowInJobs,
+                    CONVERT(NVARCHAR(5), s.Enabled) AS Enabled,
+                    CONVERT(NVARCHAR(5), s.IsPredefined) AS IsPredefined,
+                    CONVERT(NVARCHAR(20), s.SortOrder) AS SortOrder,
+                    s.Colour,
+                    ISNULL(s.Icon, N'') AS Icon,
+                    CONVERT(NVARCHAR(5), s.SendNotification) AS SendNotification,
+                    CONVERT(NVARCHAR(5), s.IsCompleteStatus) AS IsCompleteStatus,
+                    CONVERT(NVARCHAR(5), s.IsCustomerWaitingStatus) AS IsCustomerWaitingStatus,
+                    CONVERT(NVARCHAR(5), s.RequiresUsersAction) AS RequiresUsersAction,
+                    CONVERT(NVARCHAR(5), s.IsActiveStatus) AS IsActiveStatus,
+                    CONVERT(NVARCHAR(5), s.AuthorisationNeeded) AS AuthorisationNeeded,
+                    CONVERT(NVARCHAR(5), s.IsAuthStatus) AS IsAuthStatus
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            )
+        FROM SMigration.Onboarding_WorkflowStatuses AS s
+        WHERE s.RunGuid = @RunGuid
+        ORDER BY s.SortOrder, s.Name;
+        RETURN;
+    END;
+
+    IF @EntityName = N'WorkflowTransitions'
+    BEGIN
+        SELECT
+            EntityName = N'WorkflowTransitions',
+            RowGuid = CONVERT(NVARCHAR(36), s.WorkflowTransitionGuid),
+            ValuesJson =
+            (
+                SELECT
+                    CONVERT(NVARCHAR(10), s.RowStatus) AS RowStatus,
+                    CONVERT(NVARCHAR(36), s.WorkflowGuid) AS WorkflowGuid,
+                    CONVERT(NVARCHAR(36), s.FromStatusGuid) AS FromStatusGuid,
+                    CONVERT(NVARCHAR(36), s.ToStatusGuid) AS ToStatusGuid,
+                    CONVERT(NVARCHAR(5), s.IsFinal) AS IsFinal,
+                    CONVERT(NVARCHAR(5), s.Enabled) AS Enabled,
+                    CONVERT(NVARCHAR(20), s.SortOrder) AS SortOrder,
+                    s.Description
+                FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+            )
+        FROM SMigration.Onboarding_WorkflowTransitions AS s
+        WHERE s.RunGuid = @RunGuid
+        ORDER BY s.WorkflowGuid, s.SortOrder, s.Description;
         RETURN;
     END;
 

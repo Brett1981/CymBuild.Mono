@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SFin].[InvoiceScheduleTriggerInstances]')
 GO
+PRINT (N'Create table [SFin].[InvoiceScheduleTriggerInstances]')
+GO
 CREATE TABLE [SFin].[InvoiceScheduleTriggerInstances] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_InvoiceScheduleTriggerInstances_RowStatus] DEFAULT (0),

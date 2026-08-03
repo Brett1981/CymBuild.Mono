@@ -10,10 +10,12 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using System.Data;
 using System.Net;
+using System.Runtime.Caching;
 
 namespace Concursus.API.Services;
 
@@ -179,44 +181,101 @@ ORDER BY NavigationSortOrder, RecordSortValue, RecordTitle;
 
         return response;
     }
-    public override async Task<DocumentsResolveResponse> DocumentsResolve(DocumentsResolveRequest request, ServerCallContext context)
+    public override async Task<DocumentsResolveResponse> DocumentsResolve(
+        DocumentsResolveRequest request,
+        ServerCallContext context)
     {
-        var resp = new DocumentsResolveResponse();
+        var response = new DocumentsResolveResponse();
 
         try
         {
-            if (!Guid.TryParse(request.RecordGuid, out var recordGuid) || recordGuid == Guid.Empty)
+            if (!Guid.TryParse(request.RecordGuid, out var recordGuid) ||
+                recordGuid == Guid.Empty)
             {
-                resp.ErrorReturned = "RecordGuid is required.";
-                return resp;
+                response.ErrorReturned = "RecordGuid is required.";
+                return response;
             }
 
             if (request.EntityTypeId <= 0)
             {
-                resp.ErrorReturned = "EntityTypeId is required.";
-                return resp;
+                response.ErrorReturned = "EntityTypeId is required.";
+                return response;
+            }
+
+            /*
+             * SDI-139290
+             *
+             * A successfully resolved SharePoint location is effectively static.
+             * Cache it by record and entity type so repeated tab opens avoid:
+             *
+             *   - resolving the EntityType GUID;
+             *   - loading the complete DataObject;
+             *   - resolving the SharePoint metadata/site;
+             *   - enumerating Graph drives; and
+             *   - resolving the Graph folder.
+             *
+             * A resync supplies SharePointUrlHint. That deliberately bypasses the
+             * cache and refreshes it with the newly resolved location.
+             *
+             * SiteIdentifier is held inside the cached value rather than in the
+             * key because the authoritative site is database-driven and is not
+             * known until the first uncached resolve has completed.
+             */
+            var cacheKey = $"{recordGuid:N}|{request.EntityTypeId}";
+            var bypassCache = !string.IsNullOrWhiteSpace(request.SharePointUrlHint);
+
+            if (!bypassCache &&
+                TryGetCachedDocumentsLocation(cacheKey, out var cachedLocation))
+            {
+                response.Location = BuildDocumentsLocation(
+                    request,
+                    cachedLocation);
+
+                return response;
+            }
+
+            var connectionString = _config.GetConnectionString("ShoreDB");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                response.ErrorReturned = "ShoreDB is not configured.";
+                return response;
             }
 
             Guid entityTypeGuid;
 
-            await using (var cn = new SqlConnection(_config.GetConnectionString("ShoreDB")))
+            await using (var connection = new SqlConnection(connectionString))
             {
-                await cn.OpenAsync(context.CancellationToken);
+                await connection.OpenAsync(context.CancellationToken);
 
-                const string entityTypeSql = @"
-SELECT TOP (1) et.Guid
-FROM SCore.EntityTypes et
+                const string entityTypeSql = """
+SELECT TOP (1)
+       et.Guid
+FROM SCore.EntityTypes AS et
 WHERE et.ID = @EntityTypeId
-  AND et.RowStatus NOT IN (0,254);";
+  AND et.RowStatus <> 0
+  AND et.RowStatus <> 254;
+""";
 
-                await using var cmd = new SqlCommand(entityTypeSql, cn);
-                cmd.Parameters.Add(new SqlParameter("@EntityTypeId", SqlDbType.Int) { Value = request.EntityTypeId });
+                await using var command = new SqlCommand(entityTypeSql, connection)
+                {
+                    CommandType = CommandType.Text
+                };
 
-                var scalar = await cmd.ExecuteScalarAsync(context.CancellationToken);
+                command.Parameters.Add(
+                    new SqlParameter("@EntityTypeId", SqlDbType.Int)
+                    {
+                        Value = request.EntityTypeId
+                    });
+
+                var scalar = await command.ExecuteScalarAsync(
+                    context.CancellationToken);
+
                 if (scalar is null || scalar == DBNull.Value)
                 {
-                    resp.ErrorReturned = $"EntityTypeId {request.EntityTypeId} could not be resolved.";
-                    return resp;
+                    response.ErrorReturned =
+                        $"EntityTypeId {request.EntityTypeId} could not be resolved.";
+
+                    return response;
                 }
 
                 entityTypeGuid = (Guid)scalar;
@@ -228,37 +287,131 @@ WHERE et.ID = @EntityTypeId
                 entityTypeGuid,
                 false);
 
-            var sharePointUrl = dataObject?.SharePointUrl ?? request.SharePointUrlHint ?? string.Empty;
+            if (dataObject is null || dataObject.Guid == Guid.Empty)
+            {
+                response.ErrorReturned =
+                    $"Record {recordGuid} could not be loaded.";
+
+                return response;
+            }
+
+            /*
+             * The resync operation supplies the latest URL as a hint. When present,
+             * it must take priority over the currently persisted URL.
+             */
+            var sharePointUrl =
+                !string.IsNullOrWhiteSpace(request.SharePointUrlHint)
+                    ? request.SharePointUrlHint.Trim()
+                    : (dataObject.SharePointUrl ?? string.Empty).Trim();
+
             if (string.IsNullOrWhiteSpace(sharePointUrl))
             {
-                resp.ErrorReturned = "DataObject.SharePointUrl is empty; cannot resolve document location.";
-                return resp;
+                response.ErrorReturned =
+                    "DataObject.SharePointUrl is empty; " +
+                    "the document location cannot be resolved.";
+
+                return response;
+            }
+
+            /*
+             * Prefer the site identifier persisted for this record. When absent,
+             * resolve it through the source-controlled SharePoint structure:
+             *
+             * Entity type / object ID
+             *   -> SCore.tvf_GetSharePointDetailsForObject
+             *   -> SCore.SharepointEntityStructure
+             *   -> SCore.SharepointSites.SiteIdentifier
+             *
+             * This prevents Quotes and Enquiries being incorrectly resolved against
+             * the ConcursusJobs site.
+             */
+            var siteId =
+                (dataObject.SharePointSiteIdentifier ?? string.Empty).Trim();
+
+            if (string.IsNullOrWhiteSpace(siteId))
+            {
+                var sharePointDetails = await _serviceBase
+                    ._entityFramework
+                    .GetSharePointDetailsForObject(dataObject);
+
+                var matchingSiteIdentifiers = sharePointDetails
+                    .Select(detail => detail.SiteIdentifier?.Trim())
+                    .Where(identifier => !string.IsNullOrWhiteSpace(identifier))
+                    .Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (matchingSiteIdentifiers.Count == 0)
+                {
+                    response.ErrorReturned =
+                        $"No active SharePoint site mapping was found for " +
+                        $"EntityTypeId {request.EntityTypeId}, " +
+                        $"EntityTypeGuid {entityTypeGuid}, " +
+                        $"RecordGuid {recordGuid}.";
+
+                    return response;
+                }
+
+                if (matchingSiteIdentifiers.Count > 1)
+                {
+                    response.ErrorReturned =
+                        $"Multiple active SharePoint sites were resolved for " +
+                        $"EntityTypeId {request.EntityTypeId}: " +
+                        $"{string.Join(", ", matchingSiteIdentifiers)}. " +
+                        $"The SharePoint entity structure must resolve to one site.";
+
+                    return response;
+                }
+
+                siteId = matchingSiteIdentifiers[0];
             }
 
             var graph = GetAppOnlyGraphClient();
-            var siteId = ResolveSiteIdFromEnvironment(_config);
-            var (driveName, relativePath) = ParseDriveAndPathFromSharePointUrl(sharePointUrl);
+            var (driveName, relativePath) =
+                ParseDriveAndPathFromSharePointUrl(sharePointUrl);
 
-            var drives = await graph.Sites[siteId].Drives.GetAsync(rc =>
-            {
-                rc.QueryParameters.Top = 999;
-            }, context.CancellationToken);
+            var drives = await graph
+                .Sites[siteId]
+                .Drives
+                .GetAsync(
+                    requestConfiguration =>
+                    {
+                        requestConfiguration.QueryParameters.Top = 999;
+                    },
+                    context.CancellationToken);
 
-            var drive = drives?.Value?.FirstOrDefault(d =>
-                string.Equals(d.Name, driveName, StringComparison.OrdinalIgnoreCase));
+            var drive = drives?.Value?.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.Name,
+                    driveName,
+                    StringComparison.OrdinalIgnoreCase));
 
             if (drive?.Id is null)
             {
-                var available = string.Join(", ", drives?.Value?.Select(d => d.Name).Where(n => !string.IsNullOrWhiteSpace(n)) ?? Array.Empty<string>());
-                resp.ErrorReturned = $"Drive/library '{driveName}' not found on site '{siteId}'. Available drives: {available}";
-                return resp;
+                var availableDrives = string.Join(
+                    ", ",
+                    drives?.Value?
+                        .Select(candidate => candidate.Name)
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                    ?? Array.Empty<string>());
+
+                response.ErrorReturned =
+                    $"Drive/library '{driveName}' was not found on " +
+                    $"SharePoint site '{siteId}'. " +
+                    $"Available drives: {availableDrives}";
+
+                return response;
             }
 
             Microsoft.Graph.Models.DriveItem? folderItem;
 
             if (string.IsNullOrWhiteSpace(relativePath))
             {
-                folderItem = await graph.Drives[drive.Id].Root.GetAsync(null, context.CancellationToken);
+                folderItem = await graph
+                    .Drives[drive.Id]
+                    .Root
+                    .GetAsync(
+                        cancellationToken: context.CancellationToken);
             }
             else
             {
@@ -266,39 +419,54 @@ WHERE et.ID = @EntityTypeId
                     .Drives[drive.Id]
                     .Root
                     .ItemWithPath(relativePath)
-                    .GetAsync(null, context.CancellationToken);
+                    .GetAsync(
+                        cancellationToken: context.CancellationToken);
             }
 
             if (folderItem?.Id is null)
             {
-                resp.ErrorReturned = $"Folder not found at path '{relativePath}' in drive '{driveName}'.";
-                return resp;
+                response.ErrorReturned =
+                    $"Folder '{relativePath}' was not found in " +
+                    $"drive '{driveName}' on site '{siteId}'.";
+
+                return response;
             }
 
-            resp.Location = new DocumentsLocation
-            {
-                RecordGuid = request.RecordGuid ?? string.Empty,
-                EntityQueryGuid = request.EntityQueryGuid ?? string.Empty,
-                SiteId = siteId,
-                DriveId = drive.Id,
-                RootFolderId = folderItem.Id,
-                RootFolderName = folderItem.Name ?? driveName ?? "Documents",
-                SharePointWebUrl = folderItem.WebUrl ?? string.Empty,
-                Capabilities = new DocumentCapabilities
-                {
-                    CanDownload = true,
-                    CanUpload = true,
-                    CanDelete = true,
-                    CanCreateFolder = true
-                }
-            };
+            var resolvedLocation = new ResolvedDocumentsLocation(
+                siteId,
+                drive.Id,
+                folderItem.Id,
+                folderItem.Name ?? driveName,
+                folderItem.WebUrl ?? string.Empty);
+
+            StoreCachedDocumentsLocation(
+                cacheKey,
+                resolvedLocation);
+
+            response.Location = BuildDocumentsLocation(
+                request,
+                resolvedLocation);
+
+            // CymBuild's custom logger accepts one completed string rather than
+            // Microsoft.Extensions.Logging structured-message arguments.
+            _serviceBase.logger.LogInformation(
+                $"DocumentsResolve succeeded. " +
+                $"RecordGuid={recordGuid}, " +
+                $"EntityTypeId={request.EntityTypeId}, " +
+                $"SiteIdentifier={siteId}, " +
+                $"Drive={driveName}, " +
+                $"RelativePath={relativePath}.");
         }
         catch (Exception ex)
         {
-            resp.ErrorReturned = ex.Message;
+            _serviceBase.logger.LogException(
+                ex,
+                "DocumentsResolve failed.");
+
+            response.ErrorReturned = ex.Message;
         }
 
-        return resp;
+        return response;
     }
 
     public override async Task DocumentsDownloadFileStream(
@@ -729,6 +897,75 @@ WHERE et.ID = @EntityTypeId
         return sp.GetGraphClient();
     }
 
+    // SDI-139290: short-TTL cache of resolved SharePoint document locations.
+    // The CoreService is scoped, while IMemoryCache is shared by dependency injection, so
+    // entries survive across repeated tab opens. Only immutable primitive values are cached;
+    // a fresh protobuf DocumentsLocation is built for each response.
+    private sealed record ResolvedDocumentsLocation(
+        string SiteId,
+        string DriveId,
+        string RootFolderId,
+        string RootFolderName,
+        string SharePointWebUrl);
+
+    private const string DocumentsLocationCacheKeyPrefix = "docs-location:";
+
+    private static readonly TimeSpan DocumentsLocationCacheTtl =
+        TimeSpan.FromMinutes(15);
+
+    private bool TryGetCachedDocumentsLocation(
+        string cacheKey,
+        out ResolvedDocumentsLocation location)
+    {
+        if (_memoryCache.TryGetValue(
+                DocumentsLocationCacheKeyPrefix + cacheKey,
+                out ResolvedDocumentsLocation? cached) &&
+            cached is not null)
+        {
+            location = cached;
+            return true;
+        }
+
+        location = default!;
+        return false;
+    }
+
+    private void StoreCachedDocumentsLocation(
+        string cacheKey,
+        ResolvedDocumentsLocation location)
+    {
+        _memoryCache.Set(
+            DocumentsLocationCacheKeyPrefix + cacheKey,
+            location,
+            new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = DocumentsLocationCacheTtl
+            });
+    }
+
+    private static DocumentsLocation BuildDocumentsLocation(
+        DocumentsResolveRequest request,
+        ResolvedDocumentsLocation resolved)
+    {
+        return new DocumentsLocation
+        {
+            RecordGuid = request.RecordGuid ?? string.Empty,
+            EntityQueryGuid = request.EntityQueryGuid ?? string.Empty,
+            SiteId = resolved.SiteId,
+            DriveId = resolved.DriveId,
+            RootFolderId = resolved.RootFolderId,
+            RootFolderName = resolved.RootFolderName,
+            SharePointWebUrl = resolved.SharePointWebUrl,
+            Capabilities = new DocumentCapabilities
+            {
+                CanDownload = true,
+                CanUpload = true,
+                CanDelete = true,
+                CanCreateFolder = true
+            }
+        };
+    }
+
     private static DocumentsListItem MapDocumentsListItem(Microsoft.Graph.Models.DriveItem item)
     {
         var isFolder = item.Folder is not null;
@@ -781,35 +1018,71 @@ WHERE et.ID = @EntityTypeId
         return value;
     }
 
-    private static (string driveName, string relativePath) ParseDriveAndPathFromSharePointUrl(string sharePointUrl)
+    private static (string driveName, string relativePath)
+        ParseDriveAndPathFromSharePointUrl(string sharePointUrl)
     {
         if (string.IsNullOrWhiteSpace(sharePointUrl))
+        {
             throw new InvalidOperationException("SharePointUrl is empty.");
+        }
 
         if (!Uri.TryCreate(sharePointUrl, UriKind.Absolute, out var uri))
-            throw new InvalidOperationException($"SharePointUrl is not a valid absolute URL: {sharePointUrl}");
+        {
+            throw new InvalidOperationException(
+                $"SharePointUrl is not a valid absolute URL: {sharePointUrl}");
+        }
 
-        var segments = uri.AbsolutePath
+        /*
+         * Modern SharePoint library links commonly use:
+         *
+         * /Forms/AllItems.aspx?id=<server-relative-folder-path>
+         *
+         * RootFolder is retained as a fallback for older SharePoint links.
+         */
+        var effectivePath =
+            GetSharePointQueryParameter(uri, "id")
+            ?? GetSharePointQueryParameter(uri, "RootFolder")
+            ?? uri.AbsolutePath;
+
+        var segments = effectivePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => WebUtility.UrlDecode(s))
+            .Select(WebUtility.UrlDecode)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToList();
 
         if (segments.Count == 0)
-            throw new InvalidOperationException($"SharePointUrl has no path segments: {sharePointUrl}");
+        {
+            throw new InvalidOperationException(
+                $"SharePointUrl has no usable path segments: {sharePointUrl}");
+        }
 
-        if (segments.Count >= 2 && segments[^2].Equals("Forms", StringComparison.OrdinalIgnoreCase))
+        /*
+         * Remove Forms/AllItems.aspx when no query-string folder path was
+         * available and the absolute URL path is being used.
+         */
+        if (segments.Count >= 2 &&
+            segments[^2].Equals(
+                "Forms",
+                StringComparison.OrdinalIgnoreCase))
         {
             segments.RemoveRange(segments.Count - 2, 2);
         }
 
         int libraryIndex;
-        var first = segments[0];
 
-        if (first.Equals("sites", StringComparison.OrdinalIgnoreCase) ||
-            first.Equals("teams", StringComparison.OrdinalIgnoreCase))
+        if (segments[0].Equals(
+                "sites",
+                StringComparison.OrdinalIgnoreCase) ||
+            segments[0].Equals(
+                "teams",
+                StringComparison.OrdinalIgnoreCase))
         {
             if (segments.Count < 3)
-                throw new InvalidOperationException($"SharePointUrl does not contain a library segment after /{first}/<name>/: {sharePointUrl}");
+            {
+                throw new InvalidOperationException(
+                    $"SharePointUrl does not contain a library after " +
+                    $"/{segments[0]}/<site-name>/: {sharePointUrl}");
+            }
 
             libraryIndex = 2;
         }
@@ -819,24 +1092,55 @@ WHERE et.ID = @EntityTypeId
         }
 
         var driveName = segments[libraryIndex];
-        var relativeParts = segments.Skip(libraryIndex + 1).ToList();
-        var relativePath = string.Join("/", relativeParts);
+        var relativePath = string.Join(
+            "/",
+            segments.Skip(libraryIndex + 1));
 
         return (driveName, relativePath);
     }
 
-    private static string ResolveSiteIdFromEnvironment(IConfiguration config)
+    private static string? GetSharePointQueryParameter(
+        Uri uri,
+        string parameterName)
     {
-        var appConfig = new AppConfiguration(config);
+        var query = uri.Query;
 
-        switch ((appConfig.EnvironmentType ?? string.Empty).ToUpperInvariant())
+        if (string.IsNullOrWhiteSpace(query))
         {
-            case "DEV":
-            case "TEST":
-                return appConfig.DevSharepointIdentifier;
-
-            default:
-                return "environmentalscientifics.sharepoint.com,405ced4f-6a48-4c59-a6fc-f03f9adc3626,39e2f733-4aff-4568-a053-52dacbe1f03e";
+            return null;
         }
+
+        foreach (var pair in query
+                     .TrimStart('?')
+                     .Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = pair.IndexOf('=');
+
+            var rawName = separatorIndex >= 0
+                ? pair[..separatorIndex]
+                : pair;
+
+            var rawValue = separatorIndex >= 0
+                ? pair[(separatorIndex + 1)..]
+                : string.Empty;
+
+            var decodedName = WebUtility.UrlDecode(rawName);
+
+            if (!string.Equals(
+                    decodedName,
+                    parameterName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var decodedValue = WebUtility.UrlDecode(rawValue);
+
+            return string.IsNullOrWhiteSpace(decodedValue)
+                ? null
+                : decodedValue;
+        }
+
+        return null;
     }
 }

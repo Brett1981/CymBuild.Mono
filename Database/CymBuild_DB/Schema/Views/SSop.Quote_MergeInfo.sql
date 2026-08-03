@@ -3,6 +3,9 @@ GO
 
 PRINT (N'Create view [SSop].[Quote_MergeInfo]')
 GO
+PRINT (N'Create view [SSop].[Quote_MergeInfo]')
+GO
+
 CREATE VIEW [SSop].[Quote_MergeInfo]
 AS
 SELECT		q.ID,
@@ -10,7 +13,7 @@ SELECT		q.ID,
 			q.RowVersion,
 			q.Guid,
 			q.Number																					 AS QuoteNumber,
-			e.DescriptionOfWorks																		 AS QuoteOverview,
+			q.DescriptionOfWorks																		 AS QuoteOverview,
 			q.Date																						 AS QuoteDate,
 			q.FeeCap,
 																																	/* UPRN */

@@ -21,15 +21,15 @@
     <!--<PackageReference Include="Grpc.AspNetCore.Server" Version="2.71.0" />-->
     <PackageReference Include="Grpc.Net.Client.Web" Version="2.80.0" />
     <PackageReference Include="Grpc.Net.ClientFactory" Version="2.80.0" />
-    <PackageReference Include="Grpc.Tools" Version="2.81.1">
+    <PackageReference Include="Grpc.Tools" Version="2.82.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="itext" Version="9.6.0" />
+    <PackageReference Include="itext" Version="9.7.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />

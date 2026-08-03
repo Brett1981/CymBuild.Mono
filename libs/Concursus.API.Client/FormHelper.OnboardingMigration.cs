@@ -1,4 +1,4 @@
-﻿using Concursus.API.Client.Models.OnboardingMigration;
+using Concursus.API.Client.Models.OnboardingMigration;
 using Concursus.API.Core;
 using System.Linq;
 
@@ -11,11 +11,17 @@ public partial class FormHelper
         Guid businessUnitGroupGuid,
         Guid? runGuid,
         string notes,
+        string sourceServerName = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var request = new OnboardingMigrationStageRequest
         {
             SourceDatabase = sourceDatabase ?? string.Empty,
+            SourceServerName = sourceServerName ?? string.Empty,
+            TargetServerName = targetServerName ?? string.Empty,
+            TargetDatabaseName = targetDatabaseName ?? string.Empty,
             BusinessUnitGroupGuid = businessUnitGroupGuid.ToString(),
             RunGuid = runGuid?.ToString() ?? string.Empty,
             Notes = notes ?? string.Empty
@@ -40,12 +46,59 @@ public partial class FormHelper
         };
     }
 
+
+    public async Task<OnboardingMigrationReportModel> OnboardingMigrationRunReserveAsync(
+        Guid? runGuid,
+        string sourceDatabase,
+        Guid businessUnitGroupGuid,
+        string notes,
+        string sourceServerName = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.OnboardingMigrationRunReserveAsync(
+            new OnboardingMigrationRunReserveRequest
+            {
+                RunGuid = runGuid?.ToString() ?? string.Empty,
+                SourceDatabase = sourceDatabase ?? string.Empty,
+                SourceServerName = sourceServerName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                BusinessUnitGroupGuid = businessUnitGroupGuid.ToString(),
+                Notes = notes ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new OnboardingMigrationReportModel
+        {
+            RunGuid = Guid.TryParse(reply.RunSummary?.RunGuid, out var parsedRunGuid) ? parsedRunGuid : Guid.Empty,
+            SourceDatabase = reply.RunSummary?.SourceDatabase ?? string.Empty,
+            SourceServerName = reply.RunSummary?.SourceServerName ?? string.Empty,
+            TargetServerName = reply.RunSummary?.TargetServerName ?? string.Empty,
+            TargetDatabaseName = reply.RunSummary?.TargetDatabaseName ?? string.Empty,
+            SourceBusinessUnitGroupGuid = Guid.TryParse(reply.RunSummary?.SourceBusinessUnitGroupGuid, out var parsedBuGuid) ? parsedBuGuid : Guid.Empty,
+            Notes = reply.RunSummary?.Notes ?? string.Empty,
+            CreatedUtcText = reply.RunSummary?.CreatedUtc ?? string.Empty,
+            CreatedBy = reply.RunSummary?.CreatedBy ?? string.Empty
+        };
+    }
+
     public async Task<List<OnboardingMigrationLookupItemModel>> OnboardingMigrationBusinessUnitGroupsAsync(
-    string sourceDatabase,
-    CancellationToken cancellationToken = default)
+        string sourceDatabase,
+        string sourceServerName = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationBusinessUnitGroupsAsync(
-            new OnboardingMigrationLookupRequest { SourceDatabase = sourceDatabase ?? string.Empty },
+            new OnboardingMigrationLookupRequest
+            {
+                SourceDatabase = sourceDatabase ?? string.Empty,
+                SourceServerName = sourceServerName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
             cancellationToken: cancellationToken);
 
         return reply.Items.Select(x => new OnboardingMigrationLookupItemModel
@@ -59,10 +112,19 @@ public partial class FormHelper
 
     public async Task<List<OnboardingMigrationLookupItemModel>> OnboardingMigrationRunsAsync(
         string sourceDatabase,
+        string sourceServerName = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationRunsAsync(
-            new OnboardingMigrationLookupRequest { SourceDatabase = sourceDatabase ?? string.Empty },
+            new OnboardingMigrationLookupRequest
+            {
+                SourceDatabase = sourceDatabase ?? string.Empty,
+                SourceServerName = sourceServerName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
             cancellationToken: cancellationToken);
 
         return reply.Items.Select(x => new OnboardingMigrationLookupItemModel
@@ -76,10 +138,17 @@ public partial class FormHelper
 
     public async Task<List<OnboardingMigrationValidationIssueModel>> OnboardingMigrationValidateAsync(
         Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationValidateAsync(
-            new OnboardingMigrationRunRequest { RunGuid = runGuid.ToString() },
+            new OnboardingMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
             cancellationToken: cancellationToken);
 
         return reply.ValidationIssues.Select(x => new OnboardingMigrationValidationIssueModel
@@ -97,6 +166,8 @@ public partial class FormHelper
         Guid runGuid,
         bool allowWarnings,
         bool previewOnly,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationApplyAsync(
@@ -104,7 +175,9 @@ public partial class FormHelper
             {
                 RunGuid = runGuid.ToString(),
                 AllowWarnings = allowWarnings,
-                PreviewOnly = previewOnly
+                PreviewOnly = previewOnly,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
             },
             cancellationToken: cancellationToken);
 
@@ -113,16 +186,26 @@ public partial class FormHelper
 
     public async Task<OnboardingMigrationReportModel> OnboardingMigrationReportAsync(
         Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationReportAsync(
-            new OnboardingMigrationRunRequest { RunGuid = runGuid.ToString() },
+            new OnboardingMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
             cancellationToken: cancellationToken);
 
         var result = new OnboardingMigrationReportModel
         {
             RunGuid = Guid.TryParse(reply.RunSummary?.RunGuid, out var parsedRunGuid) ? parsedRunGuid : Guid.Empty,
             SourceDatabase = reply.RunSummary?.SourceDatabase ?? string.Empty,
+            SourceServerName = reply.RunSummary?.SourceServerName ?? string.Empty,
+            TargetServerName = reply.RunSummary?.TargetServerName ?? string.Empty,
+            TargetDatabaseName = reply.RunSummary?.TargetDatabaseName ?? string.Empty,
             SourceBusinessUnitGroupGuid = Guid.TryParse(reply.RunSummary?.SourceBusinessUnitGroupGuid, out var parsedBuGuid) ? parsedBuGuid : Guid.Empty,
             Notes = reply.RunSummary?.Notes ?? string.Empty,
             CreatedUtcText = reply.RunSummary?.CreatedUtc ?? string.Empty,
@@ -161,13 +244,17 @@ public partial class FormHelper
     public async Task<List<OnboardingMigrationStagedRowModel>> OnboardingMigrationStagedDataAsync(
         Guid runGuid,
         string entityName,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationStagedDataAsync(
             new OnboardingMigrationStagedDataRequest
             {
                 RunGuid = runGuid.ToString(),
-                EntityName = entityName ?? string.Empty
+                EntityName = entityName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
             },
             cancellationToken: cancellationToken);
 
@@ -182,13 +269,17 @@ public partial class FormHelper
     public async Task<List<OnboardingMigrationDiffRowModel>> OnboardingMigrationDiffAsync(
         Guid runGuid,
         string entityName,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationDiffAsync(
             new OnboardingMigrationDiffRequest
             {
                 RunGuid = runGuid.ToString(),
-                EntityName = entityName ?? string.Empty
+                EntityName = entityName ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
             },
             cancellationToken: cancellationToken);
 
@@ -212,14 +303,82 @@ public partial class FormHelper
         return result;
     }
 
+
+    public async Task<List<OnboardingMigrationStageSelectionModel>> OnboardingMigrationStageSelectionListAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.OnboardingMigrationStageSelectionListAsync(
+            new OnboardingMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Selections.Select(x => new OnboardingMigrationStageSelectionModel
+        {
+            EntityName = x.EntityName,
+            RowGuid = Guid.TryParse(x.RowGuid, out var rowGuid) ? rowGuid : Guid.Empty,
+            SelectedOnUtcText = x.SelectedOnUtc
+        }).ToList();
+    }
+
+    public async Task<List<OnboardingMigrationStageSelectionModel>> OnboardingMigrationStageSelectionSaveAsync(
+        Guid runGuid,
+        IEnumerable<OnboardingMigrationStageSelectionModel> selections,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var request = new OnboardingMigrationStageSelectionSaveRequest
+        {
+            RunGuid = runGuid.ToString(),
+            TargetServerName = targetServerName ?? string.Empty,
+            TargetDatabaseName = targetDatabaseName ?? string.Empty
+        };
+
+        foreach (var selection in selections ?? Enumerable.Empty<OnboardingMigrationStageSelectionModel>())
+        {
+            if (selection.RowGuid == Guid.Empty || string.IsNullOrWhiteSpace(selection.EntityName))
+            {
+                continue;
+            }
+
+            request.Selections.Add(new OnboardingMigrationStageSelectionItem
+            {
+                EntityName = selection.EntityName,
+                RowGuid = selection.RowGuid.ToString()
+            });
+        }
+
+        var reply = await _coreClient.OnboardingMigrationStageSelectionSaveAsync(
+            request,
+            cancellationToken: cancellationToken);
+
+        return reply.Selections.Select(x => new OnboardingMigrationStageSelectionModel
+        {
+            EntityName = x.EntityName,
+            RowGuid = Guid.TryParse(x.RowGuid, out var rowGuid) ? rowGuid : Guid.Empty,
+            SelectedOnUtcText = x.SelectedOnUtc
+        }).ToList();
+    }
+
     public async Task<OnboardingMigrationAuditDashboardModel> OnboardingMigrationAuditDashboardAsync(
         Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.OnboardingMigrationAuditDashboardAsync(
             new OnboardingMigrationAuditDashboardRequest
             {
-                RunGuid = runGuid.ToString()
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
             },
             cancellationToken: cancellationToken);
 
@@ -262,4 +421,141 @@ public partial class FormHelper
 
         return result;
     }
+
+    public async Task<List<OnboardingMigrationEntityScopeModel>> OnboardingMigrationEntityScopeListAsync(
+        string searchText = "",
+        bool includeInactive = false,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.OnboardingMigrationEntityScopeListAsync(
+            new OnboardingMigrationEntityScopeRequest
+            {
+                SearchText = searchText ?? string.Empty,
+                IncludeInactive = includeInactive,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Items.Select(MapEntityScope).ToList();
+    }
+
+    public async Task<List<OnboardingMigrationEntitySelectionModel>> OnboardingMigrationRunEntitySelectionDefaultAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.OnboardingMigrationRunEntitySelectionDefaultAsync(
+            new OnboardingMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Items.Select(MapEntitySelection).ToList();
+    }
+
+    public async Task<List<OnboardingMigrationEntitySelectionModel>> OnboardingMigrationRunEntitySelectionListAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.OnboardingMigrationRunEntitySelectionListAsync(
+            new OnboardingMigrationRunRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Items.Select(MapEntitySelection).ToList();
+    }
+
+    public async Task<List<OnboardingMigrationEntitySelectionModel>> OnboardingMigrationRunEntitySelectionSaveAsync(
+        Guid runGuid,
+        IEnumerable<OnboardingMigrationEntitySelectionModel> selections,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var request = new OnboardingMigrationEntitySelectionSaveRequest
+        {
+            RunGuid = runGuid.ToString(),
+            TargetServerName = targetServerName ?? string.Empty,
+            TargetDatabaseName = targetDatabaseName ?? string.Empty
+        };
+
+        foreach (var selection in selections ?? Enumerable.Empty<OnboardingMigrationEntitySelectionModel>())
+        {
+            request.Selections.Add(new OnboardingMigrationEntitySelectionSaveItem
+            {
+                EntityCode = selection.EntityCode ?? string.Empty,
+                IsSelected = selection.IsSelected
+            });
+        }
+
+        var reply = await _coreClient.OnboardingMigrationRunEntitySelectionSaveAsync(
+            request,
+            cancellationToken: cancellationToken);
+
+        return reply.Items.Select(MapEntitySelection).ToList();
+    }
+
+    private static OnboardingMigrationEntityScopeModel MapEntityScope(OnboardingMigrationEntityScopeItem item) =>
+        new()
+        {
+            EntityScopeGuid = Guid.TryParse(item.EntityScopeGuid, out var entityScopeGuid) ? entityScopeGuid : Guid.Empty,
+            Code = item.Code,
+            Name = item.Name,
+            Description = item.Description,
+            StageTableName = item.StageTableName,
+            ScopeCategory = item.ScopeCategory,
+            ScopeType = item.ScopeType,
+            IsImplemented = item.IsImplemented,
+            IsSupportData = item.IsSupportData,
+            HandlerKey = item.HandlerKey,
+            PrimaryEntityTypeGuid = Guid.TryParse(item.PrimaryEntityTypeGuid, out var primaryEntityTypeGuid) ? primaryEntityTypeGuid : null,
+            SourceSchemaName = item.SourceSchemaName,
+            SourceTableName = item.SourceTableName,
+            DisplayOrder = item.DisplayOrder,
+            DefaultSelected = item.DefaultSelected,
+            CanDeselect = item.CanDeselect,
+            IsRequired = item.IsRequired,
+            RequiredDependencyCodes = item.RequiredDependencyCodes,
+            RowStatus = item.RowStatus
+        };
+
+    private static OnboardingMigrationEntitySelectionModel MapEntitySelection(OnboardingMigrationEntitySelectionItem item) =>
+        new()
+        {
+            EntityScopeGuid = Guid.TryParse(item.EntityScopeGuid, out var entityScopeGuid) ? entityScopeGuid : Guid.Empty,
+            SelectionGuid = Guid.TryParse(item.SelectionGuid, out var selectionGuid) ? selectionGuid : Guid.Empty,
+            EntityCode = item.EntityCode,
+            EntityName = item.EntityName,
+            Description = item.Description,
+            StageTableName = item.StageTableName,
+            ScopeCategory = item.ScopeCategory,
+            ScopeType = item.ScopeType,
+            IsImplemented = item.IsImplemented,
+            IsSupportData = item.IsSupportData,
+            HandlerKey = item.HandlerKey,
+            PrimaryEntityTypeGuid = Guid.TryParse(item.PrimaryEntityTypeGuid, out var primaryEntityTypeGuid) ? primaryEntityTypeGuid : null,
+            SourceSchemaName = item.SourceSchemaName,
+            SourceTableName = item.SourceTableName,
+            DisplayOrder = item.DisplayOrder,
+            IsSelected = item.IsSelected,
+            DefaultSelected = item.DefaultSelected,
+            CanDeselect = item.CanDeselect,
+            IsRequired = item.IsRequired,
+            RequiredDependencyCodes = item.RequiredDependencyCodes,
+            SelectionSource = item.SelectionSource,
+            SelectedOnUtc = item.SelectedOnUtc
+        };
 }

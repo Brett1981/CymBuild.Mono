@@ -5,6 +5,9 @@ PRINT (N'Create function [SSop].[tvf_Quotes]')
 GO
 PRINT (N'Create function [SSop].[tvf_Quotes]')
 GO
+PRINT (N'Create function [SSop].[tvf_Quotes]')
+GO
+
 --exec score.PostDeploymentScript
 
 
@@ -13,7 +16,7 @@ CREATE FUNCTION [SSop].[tvf_Quotes]
     @UserId INT
 )
 RETURNS TABLE
---WITH SCHEMABINDING
+     --WITH SCHEMABINDING
 AS
 RETURN
 SELECT
@@ -160,25 +163,18 @@ OUTER APPLY
 ) AS ew
 OUTER APPLY
 (
-    SELECT
+    SELECT TOP (1)
         CONCAT(CONVERT(date, dot.DateTimeUTC), N' - ', dot.Comment) AS Comment
     FROM SCore.DataObjectTransition AS dot
     JOIN SCore.WorkflowStatus AS ws
         ON ws.ID = dot.StatusID
     WHERE dot.DataObjectGuid = q.Guid
-      AND dot.RowStatus NOT IN (0,254)
-      AND ws.RowStatus NOT IN (0,254)
-      AND NOT EXISTS
-          (
-              SELECT 1
-              FROM SCore.DataObjectTransition AS dot2
-              JOIN SCore.WorkflowStatus AS ws2
-                  ON ws2.ID = dot2.StatusID
-              WHERE dot2.DataObjectGuid = q.Guid
-                AND dot2.RowStatus NOT IN (0,254)
-                AND ws2.RowStatus NOT IN (0,254)
-                AND dot2.ID > dot.ID
-          )
+      AND dot.RowStatus <> 0
+      AND dot.RowStatus <> 254
+      AND ws.RowStatus <> 0
+      AND ws.RowStatus <> 254
+    ORDER BY
+        dot.ID DESC
 ) AS LastStatusComment
 WHERE q.ID > 0
   AND q.RowStatus NOT IN (0,254)

@@ -1,5 +1,9 @@
 ﻿PRINT (N'Create table [SCore].[EntityTypes]')
 GO
+PRINT (N'Create table [SCore].[EntityTypes]')
+GO
+PRINT (N'Create table [SCore].[EntityTypes]')
+GO
 CREATE TABLE [SCore].[EntityTypes] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_EntityTypes_RowStatus] DEFAULT (0),
@@ -15,7 +19,8 @@ CREATE TABLE [SCore].[EntityTypes] (
   [DetailPageUrl] [nvarchar](250) NOT NULL CONSTRAINT [DF_EntityTypes_DetailPageUrl] DEFAULT (''),
   [IconId] [int] NOT NULL CONSTRAINT [DF__EntityTyp__IconI__10CA0B99] DEFAULT (-1),
   [IsMetaData] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsMetaData] DEFAULT (0),
-  [IsDeletable] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsDeletable] DEFAULT (1)
+  [IsDeletable] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsDeletable] DEFAULT (1),
+  [IsOnBoarding] [bit] NOT NULL CONSTRAINT [DF_EntityTypes_IsOnBoarding] DEFAULT (0)
 )
 ON [METADATA]
 GO

@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SUserInterface].[WidgetTypes]')
 GO
+PRINT (N'Create table [SUserInterface].[WidgetTypes]')
+GO
 CREATE TABLE [SUserInterface].[WidgetTypes] (
   [Id] [smallint] IDENTITY,
   [Guid] [uniqueidentifier] NOT NULL CONSTRAINT [DF_WidgetTypes_Guid] DEFAULT (newid()) ROWGUIDCOL,
@@ -28,4 +30,14 @@ GO
 CREATE UNIQUE INDEX [IX_UQ_WidgetTypes_Name]
   ON [SUserInterface].[WidgetTypes] ([Name])
   ON [METADATA]
+GO
+
+
+
+
+PRINT (N'Create index [IX_UQ_WidgetTypes_Guid] on table [SUserInterface].[WidgetTypes]')
+GO
+
+
+PRINT (N'Create index [IX_UQ_WidgetTypes_Name] on table [SUserInterface].[WidgetTypes]')
 GO

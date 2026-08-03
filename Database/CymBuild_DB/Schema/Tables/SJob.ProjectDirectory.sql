@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[ProjectDirectory]')
 GO
+PRINT (N'Create table [SJob].[ProjectDirectory]')
+GO
 CREATE TABLE [SJob].[ProjectDirectory] (
   [ID] [int] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_ProjectDirectory_RowStatus] DEFAULT (1),

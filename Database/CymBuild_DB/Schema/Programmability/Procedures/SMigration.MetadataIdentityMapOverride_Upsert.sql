@@ -4,7 +4,19 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataIdentityMapOverride_Upsert]
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
+GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
+GO
+
+CREATE PROCEDURE [SMigration].[MetadataIdentityMapOverride_Upsert]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128),

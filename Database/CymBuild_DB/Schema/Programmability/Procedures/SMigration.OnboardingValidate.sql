@@ -1,6 +1,13 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+
+
+/* ================================================================================================
+   Validate staged data against target
+   ================================================================================================ */
+PRINT (N'Create procedure [SMigration].[OnboardingValidate]')
+GO
 PRINT (N'Create procedure [SMigration].[OnboardingValidate]')
 GO
 
@@ -16,7 +23,110 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
+    EXEC SMigration.OnboardingRunEntitySelection_ApplyToStage @RunGuid = @RunGuid;
+
     DELETE FROM SMigration.Onboarding_ValidationIssues WHERE RunGuid = @RunGuid;
+
+    /* OnBoarding scope dependency and handler guardrails */
+    DECLARE @SelectedState TABLE
+    (
+        EntityScopeGuid UNIQUEIDENTIFIER NOT NULL,
+        EntityCode NVARCHAR(100) NOT NULL PRIMARY KEY,
+        EntityName NVARCHAR(200) NOT NULL,
+        RequiredDependencyCodes NVARCHAR(1000) NOT NULL,
+        IsImplemented BIT NOT NULL,
+        IsSupportData BIT NOT NULL,
+        ScopeType NVARCHAR(40) NOT NULL,
+        IsSelected BIT NOT NULL
+    );
+
+    INSERT INTO @SelectedState
+    (
+        EntityScopeGuid,
+        EntityCode,
+        EntityName,
+        RequiredDependencyCodes,
+        IsImplemented,
+        IsSupportData,
+        ScopeType,
+        IsSelected
+    )
+    SELECT
+        scope.Guid AS EntityScopeGuid,
+        scope.Code AS EntityCode,
+        scope.Name AS EntityName,
+        scope.RequiredDependencyCodes,
+        scope.IsImplemented,
+        scope.IsSupportData,
+        scope.ScopeType,
+        CONVERT(BIT, ISNULL(selection.IsSelected, scope.DefaultSelected)) AS IsSelected
+    FROM SMigration.Onboarding_EntityScope AS scope
+    LEFT JOIN SMigration.Onboarding_RunEntitySelections AS selection
+        ON selection.RunGuid = @RunGuid
+       AND selection.EntityCode = scope.Code
+       AND selection.RowStatus NOT IN (0,254)
+    WHERE scope.RowStatus NOT IN (0,254)
+      AND scope.IsSupportData = 0;
+
+    ;WITH DependencyRows AS
+    (
+        SELECT
+            selected.EntityScopeGuid,
+            selected.EntityCode,
+            selected.EntityName,
+            DependencyCode = LTRIM(RTRIM(split.value))
+        FROM @SelectedState AS selected
+        CROSS APPLY STRING_SPLIT(selected.RequiredDependencyCodes, N',') AS split
+        WHERE selected.IsSelected = 1
+          AND ISNULL(LTRIM(RTRIM(split.value)), N'') <> N''
+    )
+    INSERT INTO SMigration.Onboarding_ValidationIssues
+    (
+        RunGuid,
+        EntityName,
+        StageTable,
+        StageGuid,
+        Severity,
+        IssueCode,
+        IssueMessage
+    )
+    SELECT
+        @RunGuid,
+        dependency.EntityCode,
+        N'SMigration.Onboarding_RunEntitySelections',
+        dependency.EntityScopeGuid,
+        N'Error',
+        N'ENTITY_SCOPE_DEPENDENCY_NOT_SELECTED',
+        CONCAT(N'OnBoarding scope ', dependency.EntityCode, N' requires ', dependency.DependencyCode, N' to also be selected.')
+    FROM DependencyRows AS dependency
+    LEFT JOIN @SelectedState AS requiredScope
+        ON requiredScope.EntityCode = dependency.DependencyCode
+       AND requiredScope.IsSelected = 1
+    WHERE requiredScope.EntityCode IS NULL;
+
+    /* Configured-only rows are eligible for future OnBoarding work, but have no safe staging/apply handler yet. */
+    INSERT INTO SMigration.Onboarding_ValidationIssues
+    (
+        RunGuid,
+        EntityName,
+        StageTable,
+        StageGuid,
+        Severity,
+        IssueCode,
+        IssueMessage
+    )
+    SELECT
+        @RunGuid,
+        selected.EntityCode,
+        selected.ScopeType,
+        selected.EntityScopeGuid,
+        N'Error',
+        N'ENTITY_SCOPE_HANDLER_NOT_IMPLEMENTED',
+        CONCAT(N'OnBoarding scope ', selected.EntityCode, N' is configured/eligible but does not yet have an implemented staging/apply handler. Deselect it or add a controlled OnBoarding handler before apply.')
+    FROM @SelectedState AS selected
+    WHERE selected.IsSelected = 1
+      AND ISNULL(selected.IsImplemented, 0) = 0
+      AND ISNULL(selected.IsSupportData, 0) = 0;
 
     /* Address dependencies */
     INSERT INTO SMigration.Onboarding_ValidationIssues
@@ -200,13 +310,20 @@ BEGIN
         s.WorkflowTransitionGuid,
         N'Error',
         N'MISSING_FROM_WORKFLOW_STATUS',
-        N'WorkflowTransition FromStatusGuid does not exist in target WorkflowStatus.'
+        N'WorkflowTransition FromStatusGuid does not exist in target or staged WorkflowStatus.'
     FROM SMigration.Onboarding_WorkflowTransitions AS s
     LEFT JOIN SCore.WorkflowStatus AS ws
         ON ws.Guid = s.FromStatusGuid
     WHERE s.RunGuid = @RunGuid
       AND s.FromStatusGuid <> '00000000-0000-0000-0000-000000000000'
-      AND ws.ID IS NULL;
+      AND ws.ID IS NULL
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Onboarding_WorkflowStatuses AS stagedStatus
+          WHERE stagedStatus.RunGuid = @RunGuid
+            AND stagedStatus.WorkflowStatusGuid = s.FromStatusGuid
+      );
 
     /* WorkflowTransition missing ToStatus */
     INSERT INTO SMigration.Onboarding_ValidationIssues
@@ -226,13 +343,20 @@ BEGIN
         s.WorkflowTransitionGuid,
         N'Error',
         N'MISSING_TO_WORKFLOW_STATUS',
-        N'WorkflowTransition ToStatusGuid does not exist in target WorkflowStatus.'
+        N'WorkflowTransition ToStatusGuid does not exist in target or staged WorkflowStatus.'
     FROM SMigration.Onboarding_WorkflowTransitions AS s
     LEFT JOIN SCore.WorkflowStatus AS ws
         ON ws.Guid = s.ToStatusGuid
     WHERE s.RunGuid = @RunGuid
       AND s.ToStatusGuid <> '00000000-0000-0000-0000-000000000000'
-      AND ws.ID IS NULL;
+      AND ws.ID IS NULL
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Onboarding_WorkflowStatuses AS stagedStatus
+          WHERE stagedStatus.RunGuid = @RunGuid
+            AND stagedStatus.WorkflowStatusGuid = s.ToStatusGuid
+      );
 
     /* Workflow dependencies */
     INSERT INTO SMigration.Onboarding_ValidationIssues
@@ -250,6 +374,25 @@ BEGIN
           FROM SMigration.Onboarding_Workflows AS sw
           WHERE sw.RunGuid = @RunGuid
             AND sw.WorkflowGuid = s.WorkflowGuid
+      );
+
+
+    /* Workflow notification group missing WorkflowStatus */
+    INSERT INTO SMigration.Onboarding_ValidationIssues
+    (RunGuid, EntityName, StageTable, StageGuid, Severity, IssueCode, IssueMessage)
+    SELECT @RunGuid, N'WorkflowStatusNotificationGroup', N'SMigration.Onboarding_WorkflowStatusNotificationGroups', s.WorkflowNotificationGroupGuid, N'Error', N'MISSING_WORKFLOW_STATUS',
+        N'WorkflowStatusNotificationGroup references a WorkflowStatus Guid that does not exist in target or staged workflow statuses.'
+    FROM SMigration.Onboarding_WorkflowStatusNotificationGroups AS s
+    LEFT JOIN SCore.WorkflowStatus AS ws
+        ON ws.Guid = s.WorkflowStatusGuid
+    WHERE s.RunGuid = @RunGuid
+      AND ws.ID IS NULL
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Onboarding_WorkflowStatuses AS stagedStatus
+          WHERE stagedStatus.RunGuid = @RunGuid
+            AND stagedStatus.WorkflowStatusGuid = s.WorkflowStatusGuid
       );
 
     /* Job setup dependencies */
@@ -329,7 +472,19 @@ BEGIN
         @AffectedCount = @FullErrorCount,
         @Details = @FullError
 
-    SELECT * FROM SMigration.Onboarding_ValidationIssues WHERE RunGuid = @RunGuid ORDER BY ID;
+    SELECT
+        vi.ID,
+        vi.RunGuid,
+        vi.EntityName,
+        vi.StageTable,
+        vi.StageGuid,
+        vi.Severity,
+        vi.IssueCode,
+        vi.IssueMessage,
+        vi.CreatedUtc
+    FROM SMigration.Onboarding_ValidationIssues AS vi
+    WHERE vi.RunGuid = @RunGuid
+    ORDER BY vi.ID;
 END
 
 GO

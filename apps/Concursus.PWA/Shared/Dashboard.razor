@@ -17,34 +17,6 @@
 
 @attribute [Authorize]
 
-<style>
-    .custom-telerik-grid {
-        max-height: auto;
-        width: 100%;
-        height: auto;
-        overflow: auto;
-    }
-
-    .card h5 {
-        max-width: 200px;
-    }
-
-    .custom-ellipsis,
-    .k-grid td.custom-ellipsis,
-    .k-grid tr.custom-ellipsis .k-table-td {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .cb-v2-dashboard-loading {
-        min-height: 90px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-</style>
-
 <AuthorizeView>
     <Authorized>
         <MessageDisplay @ref="_messageDisplay"
@@ -68,7 +40,7 @@
 
                         @if (_recentItemsLoading)
                         {
-                            <div class="cb-v2-dashboard-loading">
+                            <div class="cb-v2-dashboard-loading cb-v2-loading-state">
                                 <div class="cb-v2-muted">Loading recent items...</div>
                             </div>
                         }
@@ -78,16 +50,29 @@
                         }
                         else if (_recentItems?.RecentItems?.Count > 0)
                         {
-                            <TelerikGrid Data="@_recentItems.RecentItems"
-                                         PageSize="10"
-                                         Class="custom-telerik-grid"
-                                         SelectionMode="GridSelectionMode.Single"
-                                         OnRowDoubleClick="HandleRowDoubleClick">
-                                <GridColumns>
-                                    <GridColumn Field="@nameof(RecentItem.EntityTypeLabel)" Title="Type" />
-                                    <GridColumn Field="@nameof(RecentItem.Label)" Title="Record" />
-                                </GridColumns>
-                            </TelerikGrid>
+                            <div class="dashboard-recent-table-wrap cb-v2-table-wrap">
+                                <table class="cb-v2-table dashboard-recent-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Type</th>
+                                            <th>Record</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in _recentItems.RecentItems)
+                                        {
+                                            <tr class="cb-v2-clickable-row cb-v2-focusable-row"
+                                                tabindex="0"
+                                                title="Double-click or press Enter to open"
+                                                @ondblclick="() => OpenRecentItem(item)"
+                                                @onkeydown="args => HandleRecentItemKeyDown(args, item)">
+                                                <td>@item.EntityTypeLabel</td>
+                                                <td><div class="cb-v2-ellipsis" title="@item.Label">@item.Label</div></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
                         }
                         else
                         {
@@ -111,7 +96,7 @@
 
                         @if (_scheduleItemsLoading)
                         {
-                            <div class="cb-v2-dashboard-loading">
+                            <div class="cb-v2-dashboard-loading cb-v2-loading-state">
                                 <div class="cb-v2-muted">Loading scheduled items...</div>
                             </div>
                         }
@@ -172,7 +157,7 @@
                 @if (_metricsLoading)
                 {
                     <div class="card shadow-sm p-2 m-2 flex-fill">
-                        <div class="cb-v2-dashboard-loading">
+                        <div class="cb-v2-dashboard-loading cb-v2-loading-state">
                             <div class="cb-v2-muted">Loading dashboard metrics...</div>
                         </div>
                     </div>

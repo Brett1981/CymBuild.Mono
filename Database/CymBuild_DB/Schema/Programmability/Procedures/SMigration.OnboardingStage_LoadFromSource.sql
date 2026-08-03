@@ -1,10 +1,32 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
+/* ================================================================================================
+   Load onboarding migration stage from source DB.
+
+   CymBuild rules preserved:
+   - Source DB is read-only.
+   - Target staging tables are deployment target only.
+   - No manual DB promotion.
+   - Explicit columns only.
+   - Sentinel GUID rows are ignored.
+   - RowStatus NOT IN (0,254) used for active migration scope where appropriate.
+   - Workflow parent rows are staged before WorkflowStatusNotificationGroups.
+
+   Critical workflow note:
+   Active WorkflowStatusNotificationGroups may reference a Workflow parent whose RowStatus is not
+   active in the source. Therefore Workflow parent staging intentionally does NOT filter wf.RowStatus.
+   Filtering wf.RowStatus here was the cause of StagedWorkflows = 0 while WSNG rows were staged,
+   which then caused MISSING_WORKFLOW validation errors.
+   ================================================================================================ */
 PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
 GO
-
-
+PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
+GO
+PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
+GO
+PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
+GO
 
 /* ================================================================================================
    Load onboarding migration stage from source DB.
@@ -27,6 +49,9 @@ GO
 CREATE PROCEDURE [SMigration].[OnboardingStage_LoadFromSource]
     @SourceDatabase SYSNAME,
     @BusinessUnitGroupGuid UNIQUEIDENTIFIER,
+    @SourceServerName SYSNAME = N'',
+    @TargetServerName SYSNAME = N'',
+    @TargetDatabaseName SYSNAME = N'',
     @RunGuid UNIQUEIDENTIFIER = NULL,
     @Notes NVARCHAR(1000) = N''
 AS
@@ -81,34 +106,35 @@ BEGIN
             @OutGuid = @SourceBusinessUnitOrganisationalUnitGuid OUTPUT;
     END;
 
-    INSERT INTO SMigration.Onboarding_Run
-    (
-        RunGuid,
-        SourceDatabase,
-        SourceBusinessUnitGroupGuid,
-        SourceBusinessUnitOrganisationalUnitGuid,
-        Notes
-    )
-    VALUES
-    (
-        @RunGuid,
-        @SourceDatabase,
-        @BusinessUnitGroupGuid,
-        @SourceBusinessUnitOrganisationalUnitGuid,
-        @Notes
-    );
+    EXEC SMigration.OnboardingRun_Reserve
+        @RunGuid = @RunGuid,
+        @SourceDatabase = @SourceDatabase,
+        @BusinessUnitGroupGuid = @BusinessUnitGroupGuid,
+        @SourceServerName = @SourceServerName,
+        @TargetServerName = @TargetServerName,
+        @TargetDatabaseName = @TargetDatabaseName,
+        @SourceBusinessUnitOrganisationalUnitGuid = @SourceBusinessUnitOrganisationalUnitGuid,
+        @Notes = @Notes;
 
     IF @SourceBusinessUnitOrganisationalUnitGuid IS NULL
     BEGIN
+        DECLARE @SourceBusinessUnitError NVARCHAR(2048) = CONCAT(
+            N'Could not resolve selected source business unit group ',
+            CONVERT(NVARCHAR(36), @BusinessUnitGroupGuid),
+            N' to a source organisational unit in database ',
+            QUOTENAME(@SourceDatabase),
+            N'. The OnBoarding business unit must be a group used as SCore.OrganisationalUnits.DefaultSecurityGroupId, or have an organisational unit with the same name. Reload the OnBoarding business-unit lookup after deploying this patch; the lookup now only returns resolvable business-unit groups.'
+        );
+
         EXEC SMigration.OnboardingLog_Add
             @RunGuid,
             N'Stage',
             N'All',
             N'Failed',
             0,
-            N'Could not resolve source business unit OU';
+            @SourceBusinessUnitError;
 
-        RETURN;
+        THROW 51000, @SourceBusinessUnitError, 1;
     END;
 
     /* ============================================================================================
@@ -146,7 +172,11 @@ BEGIN
         ) AS b
         WHERE ou.RowStatus NOT IN (0,254)
           AND ou.ID > 0
-          AND ou.OrgNode.IsDescendantOf(b.OrgNode) = 1
+          AND
+          (
+              ou.OrgNode.IsDescendantOf(b.OrgNode) = 1
+              OR b.OrgNode.IsDescendantOf(ou.OrgNode) = 1
+          )
     ),
     RelevantGroups AS
     (
@@ -239,6 +269,7 @@ BEGIN
         RowStatus,
         Name,
         ParentOrganisationalUnitGuid,
+        ParentOrganisationalUnitName,
         AddressGuid,
         ContactGuid,
         OfficialAddressGuid,
@@ -255,6 +286,7 @@ BEGIN
         ou.RowStatus,
         ou.Name,
         parent.Guid,
+        parent.Name,
         a.Guid,
         c.Guid,
         oa.Guid,
@@ -286,7 +318,11 @@ BEGIN
     WHERE ou.RowStatus NOT IN (0,254)
       AND ou.ID > 0
       AND ou.Guid <> ''00000000-0000-0000-0000-000000000000''
-      AND ou.OrgNode.IsDescendantOf(b.OrgNode) = 1;';
+      AND
+      (
+          ou.OrgNode.IsDescendantOf(b.OrgNode) = 1
+          OR b.OrgNode.IsDescendantOf(ou.OrgNode) = 1
+      );';
 
     EXEC sp_executesql
         @sql,
@@ -337,9 +373,10 @@ BEGIN
                   OR EXISTS
                   (
                       SELECT 1
-                      FROM SMigration.Onboarding_OrganisationalUnits AS sou
-                      WHERE sou.RunGuid = @RunGuid
-                        AND sou.OrganisationalUnitGuid = ou.Guid
+                      FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.OrganisationalUnits AS businessUnit
+                      WHERE businessUnit.Guid = @BusinessUnitOuGuid
+                        AND businessUnit.ID > 0
+                        AND ou.OrgNode.IsDescendantOf(businessUnit.OrgNode) = 1
                   )
               )
         )
@@ -377,8 +414,9 @@ BEGIN
 
         EXEC sp_executesql
             @sql,
-            N'@RunGuid UNIQUEIDENTIFIER',
-            @RunGuid = @RunGuid;
+            N'@RunGuid UNIQUEIDENTIFIER, @BusinessUnitOuGuid UNIQUEIDENTIFIER',
+            @RunGuid = @RunGuid,
+            @BusinessUnitOuGuid = @SourceBusinessUnitOrganisationalUnitGuid;
 
     /* ============================================================================================
        3. Addresses required by staged OUs
@@ -785,6 +823,144 @@ BEGIN
         N'@RunGuid UNIQUEIDENTIFIER',
         @RunGuid = @RunGuid;
 
+/* WorkflowStatuses required by staged workflows, transitions and notification groups */
+    SET @sql = N'
+    ;WITH WorkflowStatusGuids AS
+    (
+        SELECT DISTINCT fromWs.Guid AS WorkflowStatusGuid
+        FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowTransition AS wt
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.Workflow AS wf
+            ON wf.ID = wt.WorkflowID
+        INNER JOIN SMigration.Onboarding_Workflows AS sw
+            ON sw.RunGuid = @RunGuid
+           AND sw.WorkflowGuid = wf.Guid
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatus AS fromWs
+            ON fromWs.ID = wt.FromStatusID
+           AND wt.FromStatusID > 0
+        WHERE wt.ID > 0
+          AND wt.RowStatus NOT IN (0,254)
+          AND fromWs.RowStatus NOT IN (0,254)
+          AND fromWs.Guid <> ''00000000-0000-0000-0000-000000000000''
+
+        UNION
+
+        SELECT DISTINCT toWs.Guid AS WorkflowStatusGuid
+        FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowTransition AS wt
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.Workflow AS wf
+            ON wf.ID = wt.WorkflowID
+        INNER JOIN SMigration.Onboarding_Workflows AS sw
+            ON sw.RunGuid = @RunGuid
+           AND sw.WorkflowGuid = wf.Guid
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatus AS toWs
+            ON toWs.ID = wt.ToStatusID
+           AND wt.ToStatusID > 0
+        WHERE wt.ID > 0
+          AND wt.RowStatus NOT IN (0,254)
+          AND toWs.RowStatus NOT IN (0,254)
+          AND toWs.Guid <> ''00000000-0000-0000-0000-000000000000''
+
+        UNION
+
+        SELECT DISTINCT ws.Guid AS WorkflowStatusGuid
+        FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatusNotificationGroups AS wsng
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.Workflow AS wf
+            ON wf.ID = wsng.WorkflowID
+        INNER JOIN SMigration.Onboarding_Workflows AS sw
+            ON sw.RunGuid = @RunGuid
+           AND sw.WorkflowGuid = wf.Guid
+        INNER JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatus AS ws
+            ON ws.Guid = wsng.WorkflowStatusGuid
+        WHERE wsng.ID > 0
+          AND wsng.RowStatus NOT IN (0,254)
+          AND ws.RowStatus NOT IN (0,254)
+          AND ws.Guid <> ''00000000-0000-0000-0000-000000000000''
+
+        UNION
+
+        SELECT DISTINCT ws.Guid AS WorkflowStatusGuid
+        FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatus AS ws
+        LEFT JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.OrganisationalUnits AS ou
+            ON ou.ID = ws.OrganisationalUnitId
+        CROSS JOIN
+        (
+            SELECT OrgNode
+            FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.OrganisationalUnits
+            WHERE Guid = @BusinessUnitOuGuid
+        ) AS b
+        WHERE ws.ID > 0
+          AND ws.RowStatus NOT IN (0,254)
+          AND ws.Guid <> ''00000000-0000-0000-0000-000000000000''
+          AND
+          (
+              ws.OrganisationalUnitId = -1
+              OR ou.OrgNode.IsDescendantOf(b.OrgNode) = 1
+          )
+    )
+    INSERT INTO SMigration.Onboarding_WorkflowStatuses
+    (
+        RunGuid,
+        WorkflowStatusGuid,
+        RowStatus,
+        OrganisationalUnitGuid,
+        Name,
+        Description,
+        ShowInEnquiries,
+        ShowInQuotes,
+        ShowInJobs,
+        Enabled,
+        IsPredefined,
+        SortOrder,
+        Colour,
+        Icon,
+        SendNotification,
+        IsCompleteStatus,
+        IsCustomerWaitingStatus,
+        RequiresUsersAction,
+        IsActiveStatus,
+        AuthorisationNeeded,
+        IsAuthStatus
+    )
+    SELECT DISTINCT
+        @RunGuid,
+        ws.Guid,
+        ws.RowStatus,
+        ou.Guid,
+        ws.Name,
+        ws.Description,
+        ws.ShowInEnquiries,
+        ws.ShowInQuotes,
+        ws.ShowInJobs,
+        ws.Enabled,
+        ws.IsPredefined,
+        ws.SortOrder,
+        ws.Colour,
+        ws.Icon,
+        ws.SendNotification,
+        ws.IsCompleteStatus,
+        ws.IsCustomerWaitingStatus,
+        ws.RequiresUsersAction,
+        ws.IsActiveStatus,
+        ws.AuthorisationNeeded,
+        ws.IsAuthStatus
+    FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.WorkflowStatus AS ws
+    INNER JOIN WorkflowStatusGuids AS relevant
+        ON relevant.WorkflowStatusGuid = ws.Guid
+    LEFT JOIN ' + QUOTENAME(@SourceDatabase) + N'.SCore.OrganisationalUnits AS ou
+        ON ou.ID = ws.OrganisationalUnitId
+    WHERE NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Onboarding_WorkflowStatuses AS existing
+        WHERE existing.RunGuid = @RunGuid
+          AND existing.WorkflowStatusGuid = ws.Guid
+    );';
+
+    EXEC sp_executesql
+        @sql,
+        N'@RunGuid UNIQUEIDENTIFIER, @BusinessUnitOuGuid UNIQUEIDENTIFIER',
+        @RunGuid = @RunGuid,
+        @BusinessUnitOuGuid = @SourceBusinessUnitOrganisationalUnitGuid;
+
 /* WorkflowTransitions for staged workflows */
         SET @sql = N'
         INSERT INTO SMigration.Onboarding_WorkflowTransitions
@@ -921,12 +1097,21 @@ BEGIN
           FROM SMigration.Onboarding_OrganisationalUnits AS sou
           WHERE sou.RunGuid = @RunGuid
             AND sou.OrganisationalUnitGuid = ou.Guid
+      )
+      AND EXISTS
+      (
+          SELECT 1
+          FROM ' + QUOTENAME(@SourceDatabase) + N'.SCore.OrganisationalUnits AS businessUnit
+          WHERE businessUnit.Guid = @BusinessUnitOuGuid
+            AND businessUnit.ID > 0
+            AND ou.OrgNode.IsDescendantOf(businessUnit.OrgNode) = 1
       );';
 
     EXEC sp_executesql
         @sql,
-        N'@RunGuid UNIQUEIDENTIFIER',
-        @RunGuid = @RunGuid;
+        N'@RunGuid UNIQUEIDENTIFIER, @BusinessUnitOuGuid UNIQUEIDENTIFIER',
+        @RunGuid = @RunGuid,
+        @BusinessUnitOuGuid = @SourceBusinessUnitOrganisationalUnitGuid;
 
     /* ============================================================================================
        11. ActivityTypes only those used by staged jobtypes
@@ -1259,6 +1444,12 @@ BEGIN
         @RunGuid = @RunGuid;
 
     /* ============================================================================================
+       Apply persisted run entity scope before counts/validation/apply.
+       This preserves the existing full scope when no run-specific selections exist.
+       ============================================================================================ */
+    EXEC SMigration.OnboardingRunEntitySelection_ApplyToStage @RunGuid = @RunGuid;
+
+    /* ============================================================================================
        Stage execution log counts
        ============================================================================================ */
     DECLARE @c INT;
@@ -1283,6 +1474,9 @@ BEGIN
 
     SELECT @c = COUNT(*) FROM SMigration.Onboarding_Workflows WHERE RunGuid = @RunGuid;
     EXEC SMigration.OnboardingLog_Add @RunGuid, N'Stage', N'Workflows', N'Stage', @c, N'';
+
+    SELECT @c = COUNT(*) FROM SMigration.Onboarding_WorkflowStatuses WHERE RunGuid = @RunGuid;
+    EXEC SMigration.OnboardingLog_Add @RunGuid, N'Stage', N'WorkflowStatuses', N'Stage', @c, N'';
 
     SELECT @c = COUNT(*) FROM SMigration.Onboarding_WorkflowTransitions WHERE RunGuid = @RunGuid;
     EXEC SMigration.OnboardingLog_Add @RunGuid, N'Stage', N'WorkflowTransitions', N'Stage', @c, N'';

@@ -16,7 +16,14 @@
     /* Borders */
     --cb-v2-border: #e5eaf3;
     --cb-v2-border-soft: #e2e8f0;
-    --cb-v2-border-strong: #d8e1ef;
+    --cb-v2-border-mid: #94a3b8;
+    --cb-v2-border-strong: #64748b;
+    --cb-v2-control-border-soft: var(--cb-v2-border-mid);
+    --cb-v2-control-border: var(--cb-v2-border-strong);
+    --cb-v2-control-border-hover: #475569;
+    --cb-v2-control-border-focus: var(--cb-v2-primary, #2563eb);
+    --cb-v2-control-border-dark: #8ea0bb;
+    --cb-v2-control-border-dark-hover: var(--cb-v2-border-strong);
     /* Backgrounds */
     --cb-v2-bg: #ffffff;
     --cb-v2-bg-soft: #f8fafc;
@@ -51,6 +58,17 @@
     --cb-v2-radius-md: 16px;
     --cb-v2-radius-lg: 18px;
     --cb-v2-radius-pill: 999px;
+    --cb-v2-nested-border-radius: var(--cb-v2-radius-md);
+    /* Spacing */
+    --cb-v2-space-1: 0.25rem;
+    --cb-v2-space-2: 0.5rem;
+    --cb-v2-space-3: 0.75rem;
+    --cb-v2-space-4: 1rem;
+    --cb-v2-space-5: 1.25rem;
+    --cb-v2-space-6: 1.5rem;
+    /* Controls */
+    --cb-v2-control-min-height: 46px;
+    --cb-v2-control-focus-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.16);
     /* Shadows */
     --cb-v2-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
     --cb-v2-shadow-md: 0 10px 24px rgba(15, 23, 42, 0.08);
@@ -74,12 +92,31 @@
 }
 
 .cb-v2-shell {
-    gap: 1rem;
+    gap: var(--cb-v2-space-4);
 }
 
 .cb-v2-page {
-    gap: 1.5rem;
-    padding: 1.5rem;
+    gap: var(--cb-v2-space-6);
+    padding: var(--cb-v2-space-6);
+}
+
+.cb-v2-stack {
+    display: grid;
+    gap: var(--cb-v2-space-4);
+    width: 100%;
+    color: var(--cb-v2-text);
+}
+
+.cb-v2-field {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.cb-v2-field > label {
+    color: var(--cb-v2-text-muted);
+    font-size: 0.82rem;
+    font-weight: 650;
 }
 
 /* =========================================================
@@ -98,7 +135,7 @@
 
 .cb-v2-card-body,
 .cb-v2-panel-body {
-    padding: 1rem 1.25rem;
+    padding: var(--cb-v2-space-4) var(--cb-v2-space-5);
 }
 
 .cb-v2-panel-header,
@@ -107,7 +144,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--cb-v2-space-4);
     flex-wrap: wrap;
 }
 
@@ -146,7 +183,7 @@
    ========================================================= */
 
 .cb-v2-toolbar {
-    padding: 1rem 1.25rem;
+    padding: var(--cb-v2-space-4) var(--cb-v2-space-5);
 }
 
 .cb-v2-toolbar-left,
@@ -154,7 +191,7 @@
 .cb-v2-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--cb-v2-space-3);
     flex-wrap: wrap;
 }
 
@@ -164,8 +201,8 @@
 
 .cb-v2-input,
 .cb-v2-select {
-    min-height: 46px;
-    padding: 0.75rem 0.9rem;
+    min-height: var(--cb-v2-control-min-height);
+    padding: var(--cb-v2-space-3) 0.9rem;
     border-radius: var(--cb-v2-radius-sm);
     border: 1px solid var(--cb-v2-border-strong);
     background: var(--cb-v2-bg);
@@ -404,6 +441,30 @@
     color: var(--cb-v2-text-muted);
 }
 
+.cb-v2-stat-card {
+    display: grid;
+    gap: var(--cb-v2-space-1);
+    padding: 0.9rem var(--cb-v2-space-4);
+    border: 1px solid var(--cb-v2-border-mid);
+    border-radius: var(--cb-v2-radius-sm);
+    background: var(--cb-v2-bg);
+    box-shadow: var(--cb-v2-shadow-sm);
+}
+
+.cb-v2-stat-label {
+    color: var(--cb-v2-text-muted);
+    font-size: 0.8rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.cb-v2-stat-value {
+    color: var(--cb-v2-text-strong);
+    font-size: 1.45rem;
+    font-weight: 800;
+}
+
 /* =========================================================
    9. Tables
    ========================================================= */
@@ -450,6 +511,39 @@
 
 .cb-v2-table-row-selected {
     background: var(--cb-v2-info-soft) !important;
+}
+
+.cb-v2-sort-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.cb-v2-sort-button:hover,
+.cb-v2-sort-button:focus-visible {
+    color: var(--cb-v2-primary-dark);
+    outline: none;
+}
+
+.cb-v2-table-sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--cb-v2-bg-soft);
+}
+
+.cb-v2-table-compact th,
+.cb-v2-table-compact td {
+    padding: 0.55rem 0.65rem;
+    vertical-align: middle;
 }
 
 .row-accent-green td:first-child,
@@ -504,12 +598,55 @@
         background: #f6f9ff;
     }
 
+.cb-v2-focusable-row:focus-visible {
+    outline: 2px solid var(--cb-v2-primary);
+    outline-offset: -2px;
+}
+
 .cb-v2-table-footer {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.75rem;
     padding: 0.75rem 0;
+}
+
+/* 15C-R2 generated metadata state bridges. These selectors intentionally live in the shared
+   stylesheet because lookup and validation content cross Razor CSS-isolation boundaries. */
+.flexpropertygroup:has(.shore-lookup.is-open),
+.flexpropertygroup > .card-body:has(.shore-lookup.is-open),
+.flexpropertygroup-field:has(.shore-lookup.is-open) {
+    position: relative !important;
+    z-index: 2147481000 !important;
+    overflow: visible !important;
+}
+
+.shore-lookup.is-open,
+.shore-lookup.is-open .shore-lookup-control {
+    position: relative !important;
+    z-index: 2147481100 !important;
+    overflow: visible !important;
+}
+
+.shore-lookup.is-open .shore-lookup-menu {
+    z-index: 2147481200 !important;
+}
+
+.flexpropertygroup-field.is-validation-visible {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+
+.shore-input-field .input-group:not(.shore-input-multiline-group) > .invalid-feedback:not(:empty) {
+    display: block !important;
+    flex: 0 0 100% !important;
+    order: 100 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    margin: 0.25rem 0 0 !important;
 }
 
 /* =========================================================
@@ -531,6 +668,23 @@
     font-weight: 700;
 }
 
+.cb-v2-eyebrow {
+    margin: 0;
+    color: var(--cb-v2-primary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.cb-v2-success-message {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--cb-v2-success-text);
+    font-weight: 650;
+}
+
 /* =========================================================
    11. Empty States
    ========================================================= */
@@ -544,6 +698,23 @@
     color: var(--cb-v2-text-muted);
     gap: 0.5rem;
     text-align: center;
+}
+
+.cb-v2-loading-state {
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: var(--cb-v2-space-6);
+    color: var(--cb-v2-text-muted);
+}
+
+.cb-v2-state-surface {
+    padding: var(--cb-v2-space-4);
+    border: 1px dashed var(--cb-v2-border-mid);
+    border-radius: var(--cb-v2-radius-sm);
+    background: var(--cb-v2-bg-soft);
 }
 
     .cb-v2-empty-state.compact {
@@ -1036,16 +1207,8 @@
     }
 }
 
-/* 14D-R4 shared control border consistency.
-   Gives native/bootstrap controls, panels and grid shells the same darker border language used by
-   outline buttons while keeping the CymBuild V2 primary focus treatment. */
-:root {
-    --cb-v2-control-border: #64748b;
-    --cb-v2-control-border-soft: #94a3b8;
-    --cb-v2-control-border-hover: #475569;
-    --cb-v2-control-border-focus: var(--cb-v2-primary, #2563eb);
-    --cb-v2-control-focus-shadow: 0 0 0 0.16rem rgba(37, 99, 235, 0.16);
-}
+/* Shared control border consistency.
+   Gives native/bootstrap controls, panels and transitional Telerik surfaces the same border and focus language. */
 
 .form-control,
 .form-select,
@@ -1139,13 +1302,7 @@ select.form-select,
     border-color: var(--cb-v2-control-border-soft) !important;
 }
 
-/* 14D-R5 border completion for groups and grids.
-   Completes the 14D-R4 control border pass for form group containers, drawer/tab shells and
-   native table/grid surfaces that live in separate isolated components. */
-:root {
-    --cb-v2-border-strong: var(--cb-v2-control-border, #64748b);
-    --cb-v2-border-mid: var(--cb-v2-control-border-soft, #94a3b8);
-}
+/* Shared group and grid border consistency. */
 
 .flexpropertygroup,
 .flexpropertygroups > .card,
@@ -1208,12 +1365,7 @@ textarea.form-control,
     border-color: var(--cb-v2-border-mid) !important;
 }
 
-/* 14D-R6 Rounded toolbar and button border completion.
-   Completes the border language for native V2 controls without changing behaviour. */
-:root {
-    --cb-v2-control-border-dark: #8ea0bb;
-    --cb-v2-control-border-dark-hover: #64748b;
-}
+/* Shared toolbar and button border consistency. */
 
 .cb-v2-toolbar .btn:not(.btn-link),
 .cb-v2-actions .btn:not(.btn-link),
@@ -1237,11 +1389,7 @@ textarea.form-control,
     border-color: var(--cb-v2-control-border-dark-hover, #64748b) !important;
 }
 
-/* 14D-R7 shared clean nested border tokens.
-   Keeps the darker border language but avoids stacking rounded borders on nested shells. */
-:root {
-    --cb-v2-nested-border-radius: var(--cb-v2-radius-md, 16px);
-}
+/* Avoid stacked shadows on nested shared surfaces. */
 
 .cb-v2-card .cb-v2-card,
 .cb-v2-card .cb-v2-panel,
@@ -1340,6 +1488,7 @@ textarea.form-control,
 /* 14J Native dev/diagnostics page helpers.
    Shared styling for non-Telerik developer diagnostics pages. */
 .cb-native-dev-page {
+    display: grid;
     gap: 1rem;
 }
 
@@ -1414,6 +1563,10 @@ textarea.form-control,
 .cb-native-dev-table {
     margin-bottom: 0;
     min-width: 980px;
+}
+
+.cb-native-dev-table-compact {
+    min-width: 620px;
 }
 
 .cb-native-dev-table th,
@@ -1493,6 +1646,41 @@ textarea.form-control,
     width: min(100%, 1100px);
 }
 
+.cb-native-dev-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, .58);
+}
+
+.cb-native-dev-modal {
+    max-height: min(90vh, 760px);
+    overflow: hidden;
+    border: 1px solid var(--cb-v2-border-mid, #cbd5e1);
+    border-radius: var(--cb-v2-radius-md, 16px);
+    background: var(--cb-v2-bg, #ffffff);
+    box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+}
+
+.cb-native-dev-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-bottom: 1px solid var(--cb-v2-border-soft, #e2e8f0);
+}
+
+.cb-native-dev-modal-body {
+    max-height: calc(min(90vh, 760px) - 4.5rem);
+    overflow: auto;
+    padding: 1.1rem;
+}
+
 @media (max-width: 768px) {
     .cb-native-dev-toolbar,
     .cb-native-dev-pager {
@@ -1510,4 +1698,77 @@ textarea.form-control,
         width: 100%;
     }
 }
+/* 15C-R3: use the live invalid input as layout authority. ShoreInput can update independently of
+   FlexPropertyGroup, so parent classes calculated during the earlier render may be stale. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text:has(input.form-control.is-invalid),
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.shore-input-field input.form-control.is-invalid) {
+    grid-column: 1 / -1 !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
 
+.flexpropertygroup-field:has(.shore-input-field input.form-control.is-invalid) .developer-inspectable,
+.flexpropertygroup-field:has(.shore-input-field input.form-control.is-invalid) .shore-input-field,
+.flexpropertygroup-field:has(.shore-input-field input.form-control.is-invalid) .input-group:not(.shore-input-multiline-group) {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.flexpropertygroup-field:has(.shore-input-field input.form-control.is-invalid) .input-group:not(.shore-input-multiline-group) > input.form-control {
+    flex: 1 1 0 !important;
+    width: 1% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+}
+/* 15D-R1: globally rendered text actions and shared primary button primitive.
+   RenderTreeBuilder output does not receive the component CSS-isolation attribute, so the
+   document folder text action belongs here with the other application-wide primitives. */
+.v2-docs .v2-tree-link {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+.v2-docs .v2-tree-link:focus-visible {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    color: var(--cb-v2-primary-dark, #1d4ed8) !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 2px !important;
+    text-underline-offset: 3px !important;
+}
+
+.cb-v2-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    min-height: 38px;
+    padding: .55rem .95rem;
+    border: 1px solid var(--cb-v2-primary, #2563eb);
+    border-radius: var(--cb-v2-radius-sm, 10px);
+    background: var(--cb-v2-primary, #2563eb);
+    color: #fff;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: all var(--cb-v2-transition-fast, .16s ease);
+}
+
+.cb-v2-btn-primary:hover:not(:disabled) {
+    background: var(--cb-v2-primary-dark, #1d4ed8);
+    border-color: var(--cb-v2-primary-dark, #1d4ed8);
+    color: #fff;
+}
+
+.cb-v2-btn-primary:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+    box-shadow: none;
+}

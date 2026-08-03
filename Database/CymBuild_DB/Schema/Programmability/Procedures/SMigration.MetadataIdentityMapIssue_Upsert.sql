@@ -6,6 +6,11 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataIdentityMapIssue_Upsert]')
 GO
+SET QUOTED_IDENTIFIER, ANSI_NULLS ON
+GO
+
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapIssue_Upsert]')
+GO
 
 CREATE PROCEDURE [SMigration].[MetadataIdentityMapIssue_Upsert]
 (

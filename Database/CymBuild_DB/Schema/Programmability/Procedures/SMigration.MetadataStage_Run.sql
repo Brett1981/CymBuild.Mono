@@ -5,7 +5,17 @@ PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
 GO
 
 
-CREATE OR ALTER PROCEDURE [SMigration].[MetadataStage_Run]
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
+
+
+CREATE PROCEDURE [SMigration].[MetadataStage_Run]
 (
     @RunGuid UNIQUEIDENTIFIER
 )

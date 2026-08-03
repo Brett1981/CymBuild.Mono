@@ -4,7 +4,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 
-<div class="shore-lookup @CssClass @(IsInvalid ? "is-invalid" : "is-data-valid")">
+<div class="shore-lookup @(_isOpen ? "is-open" : string.Empty) @CssClass @(IsInvalid ? "is-invalid" : "is-data-valid")">
     <div class="shore-lookup-control">
         <input id="@Id"
                class="form-control shore-lookup-input"
