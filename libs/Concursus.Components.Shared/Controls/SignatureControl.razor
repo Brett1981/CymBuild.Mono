@@ -7,7 +7,6 @@
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime js
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 
 <section class="signature-control cb-v2-stack" aria-label="Signature">
     <div class="signature-upload-row cb-v2-field">
@@ -195,7 +194,7 @@
 
     private void EnsureFormHelper()
     {
-        formHelper ??= new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+        formHelper ??= new FormHelper(coreClient, Guid.Empty.ToString(), userService);
     }
 
     private void StartSavedConfirmation()

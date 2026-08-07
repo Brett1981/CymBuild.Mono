@@ -2288,6 +2288,40 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
 
+    public override async Task<UserUsageLast7DaysResponse> GetUserUsageLast7Days(Empty request, ServerCallContext context)
+    {
+        try
+        {
+            var usageData = await _serviceBase._entityFramework.GetUserUsageLast7Days();
+            var response = new UserUsageLast7DaysResponse();
+            foreach (var user in usageData)
+            {
+                var item = new UserUsageLast7DaysData
+                {
+                    Username = user.Username,
+                    UserGuid = user.UserGuid.ToString(),
+                    UsageCountLast7Days = user.UsageCountLast7Days,
+                    UsageCountPrevious7Days = user.UsageCountPrevious7Days,
+                    ActiveDaysLast7Days = user.ActiveDaysLast7Days,
+                    FeaturesUsedLast7Days = user.FeaturesUsedLast7Days,
+                    UsageTrend = user.UsageTrend
+                };
+                if (user.LastAccessedLast7Days.HasValue)
+                {
+                    item.LastAccessedLast7Days = Timestamp.FromDateTime(
+                        DateTime.SpecifyKind(user.LastAccessedLast7Days.Value, DateTimeKind.Utc));
+                }
+                response.Users.Add(item);
+            }
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex);
+            throw new RpcException(new Status(StatusCode.Internal, "The seven-day user usage report could not be retrieved."));
+        }
+    }
+
     public override async Task<GetQuoteDashboardDataRes> GetQuoteDashboardData(GetQuoteDashboardDataReq req, ServerCallContext context)
     {
         try

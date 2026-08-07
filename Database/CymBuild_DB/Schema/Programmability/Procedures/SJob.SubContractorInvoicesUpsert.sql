@@ -28,7 +28,8 @@ BEGIN
 			@MilestoneId	BIGINT,
 			@JobId			INT,
 			@IsInsert		BIT,
-			@SubContractorId INT;
+			@SubContractorId INT,
+			@IsPurchaseLedger BIT;
 
 
 	SELECT @MilestoneId = ID
@@ -43,9 +44,15 @@ BEGIN
 	FROM SJob.Jobs
 	WHERE ([Guid] = @JobGuid);
 
-	SELECT @SubContractorId = ID
+	SELECT 
+			@SubContractorId = ID,
+			@IsPurchaseLedger = IsPurchaseLedger
 	FROM SCrm.Accounts
 	WHERE ([Guid] = @SubContractorGuid)
+
+
+	IF(@IsPurchaseLedger = 0)
+		THROW 60361, N'Account must be set to a purchase ledger. ', 1;
 
 	
 

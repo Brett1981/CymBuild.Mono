@@ -1,0 +1,2137 @@
+@page "/admin/schema-migration"
+@using System.Net
+@using System.Text
+@using Microsoft.JSInterop
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.SchemaMigration
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="schema-workbench">
+    <aside class="schema-workbench-sidebar">
+        <div class="schema-workbench-brand">
+            <span class="schema-workbench-brand-icon bi bi-hdd-network"></span>
+            <div>
+                <h1>Schema Management</h1>
+                <span>CYB-361 lifecycle workbench</span>
+            </div>
+        </div>
+
+        <nav class="schema-workbench-nav" aria-label="Schema management sections">
+            @NavButton("overview", "bi-house", "Overview")
+            @NavButton("setup", "bi-gear", "Setup")
+            @NavButton("runs", "bi-clock-history", "Runs")
+            @NavButton("compare", "bi-columns-gap", "Stage & Compare")
+            @NavButton("excluded", "bi-slash-circle", "Excluded Objects")
+            @NavButton("validate", "bi-shield-check", "Validate & Review")
+            @NavButton("deploy", "bi-rocket-takeoff", "Deploy & Audit")
+            @NavButton("standards", "bi-journal-text", "Standards")
+        </nav>
+    </aside>
+
+    <main class="schema-workbench-main">
+        <header class="schema-workbench-topbar">
+            <div class="schema-environment-flow">
+                <div class="schema-environment-chip">
+                    <span class="schema-env-icon source bi bi-database-fill"></span>
+                    <div>
+                        <span>Source Environment</span>
+                        <strong>@SourceEnvironment</strong>
+                        <small>@SourceServerNameDisplay / @SourceDatabaseName</small>
+                    </div>
+                </div>
+                <span class="schema-flow-arrow bi bi-arrow-right-short"></span>
+                <div class="schema-environment-chip">
+                    <span class="schema-env-icon target bi bi-database-fill"></span>
+                    <div>
+                        <span>Target Environment</span>
+                        <strong>@TargetEnvironment</strong>
+                        <small>@TargetServerNameDisplay / @TargetDatabaseName</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-topbar-actions">
+                <button type="button" class="cb-v2-btn-secondary" @onclick="RefreshCurrentViewAsync" disabled="@(IsBusy || !HasRunGuid)">
+                    <span class="bi bi-arrow-clockwise"></span>
+                    Refresh
+                </button>
+                <button type="button" class="cb-v2-btn-primary" @onclick="CreateRunAsync" disabled="@(IsBusy || !CanCreateRun)">
+                    <span class="bi bi-plus-circle"></span>
+                    Create Run
+                </button>
+                <label class="schema-run-picker">
+                    <span>Run:</span>
+                    <select class="cb-v2-select" @bind="RunGuidText">
+                        <option value="">New run...</option>
+                        @foreach (var run in AvailableRuns)
+                        {
+                            <option value="@run.RunGuid">@FormatRunOption(run)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <div class="schema-notice schema-notice-info">
+                <span class="bi bi-info-circle"></span>
+                <span>@Message</span>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Error))
+        {
+            <div class="schema-notice schema-notice-error">
+                <span class="bi bi-exclamation-triangle"></span>
+                <span>@ErrorDisplayText</span>
+            </div>
+        }
+
+        @if (IsSchemaMigrationBootstrapRequired)
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Initialise Schema Migration on the @BootstrapDatabaseRole</h2>
+                            <p>The selected @BootstrapDatabaseRole database does not yet contain the minimum SMigration workbench and source-authoritative exclusion objects. The browser will not deploy them or request DDL permissions. Run the controlled dry-run and apply commands below from the repository root using an approved deployment account, then retry <strong>Create Run</strong>.</p>
+                        </div>
+                    </div>
+
+                    <div class="schema-warning-panel">
+                        <strong>Controlled bootstrap only</strong>
+                        <span>The bootstrap installs only the source-controlled Schema Migration administration schema, tables, indexes and procedures. It does not compare or deploy application schema objects, change workflow status, or alter business data. LIVE-looking targets remain protected and are not given an automatic <code>-AllowLive</code> override.</span>
+                    </div>
+
+                    <div class="schema-command-grid">
+                        <label class="schema-command-block">
+                            <strong>1. Bootstrap dry-run</strong>
+                            <small>Checks the selected @BootstrapDatabaseRole database and lists missing SMigration objects without changing SQL Server.</small>
+                            <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@BootstrapWhatIfPowerShellScript</textarea>
+                        </label>
+                        <label class="schema-command-block">
+                            <strong>2. Bootstrap apply</strong>
+                            <small>Applies the idempotent source-controlled bootstrap after the dry-run has been reviewed.</small>
+                            <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@BootstrapApplyPowerShellScript</textarea>
+                        </label>
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (IsBusy)
+        {
+            <div class="schema-notice schema-notice-processing" role="status" aria-live="polite">
+                <span class="schema-spinner" aria-hidden="true"></span>
+                <span>@BusyMessage</span>
+            </div>
+        }
+
+        <section class="schema-summary-grid">
+            @SummaryCard("Selected", SelectedPlanCountText, SelectedPlanSummaryDetail, SelectedPlanCount > 0 ? "info" : "success", SelectedCardAction)
+            @SummaryCard("Excluded", ExcludedCount.ToString("N0"), "Source-authoritative exclusions applied to every target dataset", ExcludedCount > 0 ? "info" : "success", ExcludedCardAction)
+            @SummaryCard("Different", DifferentCount.ToString("N0"), "Objects whose source and target definitions differ", DifferentCount > 0 ? "warning" : "success")
+            @SummaryCard("Missing Target", MissingInTargetCount.ToString("N0"), "Source-controlled objects not currently in target", MissingInTargetCount > 0 ? "info" : "success")
+            @SummaryCard("Target Drift", MissingInSourceCount.ToString("N0"), "Objects present in target but missing from source", MissingInSourceCount > 0 ? "danger" : "success")
+            @SummaryCard("Validation", ValidationSummaryText, "Deployment cannot proceed while failures exist", ValidationSummaryCss)
+        </section>
+
+        @if (SelectedSection == "overview")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Schema lifecycle</h2>
+                            <p>The workbench follows the same governance model as Metadata and OnBoarding: Create / Validate / Report / Deploy / Audit. The browser never reads SQL directly or executes ad-hoc DDL. Comparison maintenance is triggered through FormHelper and the gRPC API, while deployment remains a controlled runner/worker responsibility.</p>
+                        </div>
+                        <button type="button" class="cb-v2-btn-primary" @onclick="@(() => SelectSection("setup"))">Start Setup</button>
+                    </div>
+
+                    <div class="schema-lifecycle-grid">
+                        @LifecycleCard("Create", "Create an auditable schema run tied to Jira and release references.")
+                        @LifecycleCard("Stage & Compare", "The API runs SCore.PreDeploymentScript on the target and on any non-DEV source before reading both catalog snapshots, then records object-level differences. DEV sources are skipped because schema binding is already disabled.")
+                        @LifecycleCard("Validate", "Target drift, missing objects, table differences and deployment-readiness risks are surfaced before review.")
+                        @LifecycleCard("Deploy & Audit", "The controlled runner or future queued worker applies the accepted source-controlled plan. A future browser button will only enqueue the job; the worker performs deployment and runs SCore.PostDeploymentScript after confirmed success.")
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "setup")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Setup</h2>
+                            <p>Select the source and target context. Different servers are supported through the API connection template, matching the cross-server migration pattern.</p>
+                        </div>
+                    </div>
+
+                    <div class="schema-form-grid">
+                        <label>
+                            <span>Source Environment</span>
+                            <input class="cb-v2-input" @bind="SourceEnvironment" />
+                        </label>
+                        <label>
+                            <span>Target Environment</span>
+                            <input class="cb-v2-input" @bind="TargetEnvironment" />
+                        </label>
+                        <label>
+                            <span>Source Server</span>
+                            <input class="cb-v2-input" @bind="SourceServerName" placeholder="Blank = current API SQL server" />
+                        </label>
+                        <label>
+                            <span>Source Database</span>
+                            <input class="cb-v2-input" @bind="SourceDatabaseName" />
+                        </label>
+                        <label>
+                            <span>Target Server</span>
+                            <input class="cb-v2-input" @bind="TargetServerName" placeholder="Blank = current API SQL server" />
+                        </label>
+                        <label>
+                            <span>Target Database</span>
+                            <input class="cb-v2-input" @bind="TargetDatabaseName" />
+                        </label>
+                        <label>
+                            <span>Jira Reference</span>
+                            <input class="cb-v2-input" @bind="JiraReference" placeholder="CYB-361 / CYB-362" />
+                        </label>
+                        <label>
+                            <span>Release Reference</span>
+                            <input class="cb-v2-input" @bind="ReleaseReference" placeholder="Release / branch / build" />
+                            <small>Required. It is stored with the run and used by the controlled deployment process.</small>
+                        </label>
+                        <label class="schema-field-wide">
+                            <span>Notes</span>
+                            <textarea class="cb-v2-input" rows="3" @bind="Notes"></textarea>
+                        </label>
+                    </div>
+
+                    <div class="schema-actions-row">
+                        <button type="button" class="cb-v2-btn-primary" @onclick="CreateRunAsync" disabled="@(IsBusy || !CanCreateRun)">Create Schema Run</button>
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadRunsAsync())" disabled="@IsBusy">Load Runs</button>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "runs")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Runs</h2>
+                            <p>Select a previous schema comparison run for the current target context.</p>
+                        </div>
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadRunsAsync())" disabled="@IsBusy">Refresh Runs</button>
+                    </div>
+
+                    <div class="schema-table-wrap">
+                        <table class="schema-table">
+                            <thead>
+                                <tr>
+                                    <th>Created</th>
+                                    <th>Status</th>
+                                    <th>Source</th>
+                                    <th>Target</th>
+                                    <th>Jira</th>
+                                    <th>Release</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var run in AvailableRuns)
+                                {
+                                    <tr class="@(run.RunGuid.ToString() == RunGuidText ? "selected" : string.Empty)" @onclick="@(() => SelectRunAsync(run.RunGuid))">
+                                        <td>@run.CreatedOnUtc</td>
+                                        <td><span class="schema-pill">@run.RunStatus</span></td>
+                                        <td>@run.SourceDatabaseName</td>
+                                        <td>@run.TargetDatabaseName</td>
+                                        <td>@run.JiraReference</td>
+                                        <td>@run.ReleaseReference</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "compare")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Stage & Compare</h2>
+                            <p>Through FormHelper and the gRPC API, the API runs SCore.PreDeploymentScript on the target and on a non-DEV source before reading catalog definitions and recording auditable comparison rows. The browser never executes SQL directly.</p>
+                        </div>
+                        <div class="schema-actions-row compact">
+                            <button type="button" class="cb-v2-btn-primary" @onclick="CompareAsync" disabled="@(IsBusy || !HasRunGuid)">Run Compare</button>
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadObjectsAsync())" disabled="@(IsBusy || !HasRunGuid)">Load Rows</button>
+                        </div>
+                    </div>
+
+                    <div class="schema-maintenance-note">
+                        <strong>Comparison preparation</strong>
+                        <span>Run Compare invokes <code>SCore.PreDeploymentScript</code> through the API on the target and on the source unless the run source environment is DEV. If preparation or comparison fails, the API attempts <code>SCore.PostDeploymentScript</code> recovery on every database it prepared.</span>
+                    </div>
+
+                    @if (IsSelectedPlanView)
+                    {
+                        <div class="schema-selected-view-note">
+                            <div>
+                                <strong>Selected deployment plan</strong>
+                                <span>Showing all @(SelectedPlanCount.ToString("N0")) effective selected row(s) for this run, independent of the normal comparison filters.</span>
+                            </div>
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="ShowAllComparisonRowsAsync" disabled="@IsBusy">Show All Comparison Rows</button>
+                        </div>
+                    }
+
+                    <div class="schema-filter-row">
+                        <select class="cb-v2-select" @bind="SelectedDifferenceType" disabled="@IsSelectedPlanView">
+                            <option value="">All differences</option>
+                            <option value="Different">Different</option>
+                            <option value="MissingInTarget">Missing in target</option>
+                            <option value="MissingInSource">Target drift</option>
+                            <option value="Equal">Equal</option>
+                        </select>
+                        <select class="cb-v2-select" @bind="SelectedObjectType" disabled="@IsSelectedPlanView">
+                            <option value="">All object types</option>
+                            @foreach (var item in ObjectTypes)
+                            {
+                                <option value="@item">@item</option>
+                            }
+                        </select>
+                        <input class="cb-v2-input" @bind="ObjectSearchText" placeholder="Search schema/object/parent" disabled="@IsSelectedPlanView" />
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadObjectsAsync())" disabled="@(IsBusy || !HasRunGuid || IsSelectedPlanView)">Apply Filters</button>
+                    </div>
+
+                    <div class="schema-selection-panel">
+                        <div>
+                            <strong>Deployment selection</strong>
+                            <span>@SelectionStatusText</span>
+                            <small>The saved configuration is persistent for this run and can be consumed by the controlled runner or future worker. If no explicit selection is saved, all deployable differences are included.</small>
+                        </div>
+                        <div class="schema-actions-row compact">
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="SelectAllDeployableRows" disabled="@(IsBusy || !ObjectRows.Any(x => x.IsDeployable))">Select All</button>
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="DeselectAllDeployableRows" disabled="@(IsBusy || !ObjectRows.Any(x => x.IsDeployable))">Deselect All</button>
+                            <button type="button" class="cb-v2-btn-primary" @onclick="SaveSelectionAsync" disabled="@(IsBusy || !HasRunGuid)">Save Selection</button>
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="ClearSelectionAsync" disabled="@(IsBusy || !HasRunGuid)">Clear Selection</button>
+                        </div>
+                    </div>
+
+                    <div class="schema-compare-layout">
+                        <div class="schema-table-wrap">
+                            <table class="schema-table">
+                                <thead>
+                                    <tr>
+                                        <th>Migrate</th>
+                                        <th>Difference</th>
+                                        <th>Type</th>
+                                        <th>Schema</th>
+                                        <th>Object</th>
+                                        <th>Risk</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in ObjectRows)
+                                    {
+                                        <tr class="@(SelectedObjectRow?.ComparisonGuid == row.ComparisonGuid ? "selected" : string.Empty)" @onclick="@(() => SelectObjectRowAsync(row))">
+                                            <td>
+                                                <input type="checkbox"
+                                                       class="schema-selection-checkbox"
+                                                       checked="@row.IsSelected"
+                                                       disabled="@(!row.IsDeployable)"
+                                                       title="@(row.IsDeployable ? "Include in deployment plan" : "Not deployable from source to target")"
+                                                       @onclick:stopPropagation="true"
+                                                       @onchange="@((ChangeEventArgs args) => SetObjectSelection(row, args))" />
+                                            </td>
+                                            <td><span class="schema-pill @DifferenceCss(row.DifferenceType)">@DifferenceLabel(row.DifferenceType)</span></td>
+                                            <td>@row.ObjectType</td>
+                                            <td>@row.SchemaName</td>
+                                            <td>@row.ObjectName</td>
+                                            <td>@(row.IsDestructiveRisk ? "Review" : "Normal")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <aside class="schema-detail-panel">
+                            @if (SelectedObjectRow is null)
+                            {
+                                <div class="schema-empty-state">Select a comparison row to view source and target definitions.</div>
+                            }
+                            else
+                            {
+                                <div class="schema-detail-overview">
+                                    <span class="schema-detail-kicker">@SelectedObjectRow.ObjectType</span>
+                                    <h3>@SelectedObjectRow.SchemaName.@SelectedObjectRow.ObjectName</h3>
+                                    <p>@SelectedObjectRow.Notes</p>
+                                    <div class="schema-detail-meta-grid">
+                                        <span><strong>Difference</strong>@DifferenceLabel(SelectedObjectRow.DifferenceType)</span>
+                                        <span><strong>Risk</strong>@(SelectedObjectRow.IsDestructiveRisk ? "Review" : "Normal")</span>
+                                        <span><strong>Parent</strong>@DisplayEmpty(SelectedObjectRow.ParentObjectName)</span>
+                                        <span><strong>Source hash</strong>@DisplayHash(SelectedObjectRow.SourceHash)</span>
+                                        <span><strong>Target hash</strong>@DisplayHash(SelectedObjectRow.TargetHash)</span>
+                                    </div>
+                                </div>
+
+                                <div class="schema-exclusion-editor">
+                                    <div>
+                                        <strong>Exclude from future datasets</strong>
+                                        <span>This writes a source-authoritative exclusion by stable object identity. It is synchronized to every target during Run Compare.</span>
+                                    </div>
+                                    <label>
+                                        <span>Exclusion reason</span>
+                                        <textarea class="cb-v2-input" rows="2" @bind="ExclusionReason" @bind:event="oninput" placeholder="Why should this object be excluded from all schema datasets?"></textarea>
+                                    </label>
+                                    <button type="button" class="cb-v2-btn-secondary" @onclick="ExcludeSelectedObjectAsync" disabled="@(IsBusy || string.IsNullOrWhiteSpace(ExclusionReason))">
+                                        <span class="bi bi-slash-circle"></span>
+                                        Exclude From All Databases
+                                    </button>
+                                </div>
+
+                                <div class="schema-detail-differences">
+                                    <div class="schema-detail-subheading">
+                                        <h4>Differences</h4>
+                                        @if (HasEffectiveDefinitionMatch(SelectedObjectRow))
+                                        {
+                                            <span class="schema-pill success">Formatting only</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="schema-pill @DifferenceCss(SelectedObjectRow.DifferenceType)">@DifferenceLabel(SelectedObjectRow.DifferenceType)</span>
+                                        }
+                                    </div>
+
+                                    @if (HasEffectiveDefinitionMatch(SelectedObjectRow))
+                                    {
+                                        <div class="schema-effective-match">
+                                            Source and target are effectively identical after normalising whitespace, comments and identifier quoting. Re-run compare after R7 to remove this row from the Different list.
+                                        </div>
+                                    }
+
+                                    <div class="schema-definition-grid">
+                                        <div>
+                                            <strong>Source Definition</strong>
+                                            <div class="schema-code-diff" @ref="SourceDefinitionScrollElement">@DefinitionDiffMarkup(SelectedObjectRow.SourceDefinition, SelectedObjectRow.TargetDefinition)</div>
+                                        </div>
+                                        <div>
+                                            <strong>Target Definition</strong>
+                                            <div class="schema-code-diff" @ref="TargetDefinitionScrollElement">@DefinitionDiffMarkup(SelectedObjectRow.TargetDefinition, SelectedObjectRow.SourceDefinition)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </aside>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "excluded")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Excluded Objects</h2>
+                            <p>Exclusions are maintained in the source database and synchronized to every target database during comparison. They are not tied to one run or one target dataset.</p>
+                        </div>
+                        <div class="schema-actions-row compact">
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="LoadExcludedObjectsAsync" disabled="@(IsBusy || !HasRunGuid)">Refresh</button>
+                        </div>
+                    </div>
+
+                    <div class="schema-warning-panel">
+                        <strong>Source-authoritative global policy</strong>
+                        <span>Excluded objects are omitted from comparisons, selection, validation and deployment plans. Unexclude an object here and rerun comparison to include it again. The selected target shows whether its copy is synchronized with the source policy.</span>
+                    </div>
+
+                    <label class="schema-toggle-row">
+                        <input type="checkbox" checked="@ShowInactiveExcludedObjects" @onchange="ExcludedInactiveChangedAsync" />
+                        <span>Show previously unexcluded records</span>
+                    </label>
+
+                    <div class="schema-table-wrap">
+                        <table class="schema-table">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Type</th>
+                                    <th>Schema</th>
+                                    <th>Object</th>
+                                    <th>Parent</th>
+                                    <th>Reason</th>
+                                    <th>Origin</th>
+                                    <th>Target sync</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!ExcludedObjects.Any())
+                                {
+                                    <tr><td colspan="9">No schema exclusions are recorded for the source policy.</td></tr>
+                                }
+                                @foreach (var exclusion in ExcludedObjects)
+                                {
+                                    <tr>
+                                        <td><span class="schema-pill @(exclusion.IsActive ? "warning" : "success")">@(exclusion.IsActive ? "Excluded" : "Included")</span></td>
+                                        <td>@exclusion.ObjectType</td>
+                                        <td>@exclusion.SchemaName</td>
+                                        <td>@exclusion.ObjectName</td>
+                                        <td>@DisplayEmpty(exclusion.ParentObjectName)</td>
+                                        <td>@exclusion.Reason</td>
+                                        <td>@exclusion.OriginServerName / @exclusion.OriginDatabaseName</td>
+                                        <td><span class="schema-pill @(exclusion.IsSynchronizedToTarget ? "success" : "warning")">@(exclusion.IsSynchronizedToTarget ? "Synchronized" : "Pending compare")</span></td>
+                                        <td>
+                                            @if (exclusion.IsActive)
+                                            {
+                                                <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => UnexcludeObjectAsync(exclusion))" disabled="@IsBusy">Unexclude</button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "validate")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Validate & Review</h2>
+                            <p>Validation is scoped to the saved deployment selection. If no explicit selection exists, all deployable differences are validated before review.</p>
+                        </div>
+                        <div class="schema-actions-row compact">
+                            <button type="button" class="cb-v2-btn-primary" @onclick="ValidateAsync" disabled="@(IsBusy || !HasRunGuid)">Validate</button>
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="ContinueToDeploy" disabled="@(IsBusy || !CanReview)">Continue to Deploy &amp; Audit</button>
+                        </div>
+                    </div>
+
+                    <div class="schema-plan-panel schema-validation-scope-panel">
+                        <div>
+                            <strong>Validation scope</strong>
+                            <span>@ValidationScopeText</span>
+                            <small>Validation uses the persisted effective deployment plan. Unsaved checkbox changes are not included until Save Selection is used.</small>
+                        </div>
+                        <div class="schema-actions-row compact">
+                            <button type="button" class="cb-v2-btn-secondary" @onclick="ShowSelectedRowsAsync" disabled="@(IsBusy || !HasRunGuid)">View Selected Rows</button>
+                        </div>
+                    </div>
+
+                    <div class="schema-review-note">
+                        <label>
+                            <span>Review Note</span>
+                            <textarea class="cb-v2-input" rows="3" @bind="ReviewNote" @bind:event="oninput" placeholder="Record review notes, approvals, rollback plan, or deployment caveats."></textarea>
+                            <small>This note is carried into Deploy &amp; Audit and is persisted only when <strong>Accept Run</strong> is selected.</small>
+                        </label>
+                    </div>
+
+                    <div class="schema-table-wrap schema-validation-wrap">
+                        <table class="schema-table schema-validation-table">
+                            <thead>
+                                <tr>
+                                    <th>Severity</th>
+                                    <th>Issue</th>
+                                    <th>Object</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var issue in ValidationIssues)
+                                {
+                                    <tr>
+                                        <td><span class="schema-pill @SeverityCss(issue.Severity)">@issue.Severity</span></td>
+                                        <td>@issue.IssueCode</td>
+                                        <td>@issue.ObjectType @issue.SchemaName.@issue.ObjectName</td>
+                                        <td>@issue.IssueMessage</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "deploy")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Deploy & Audit</h2>
+                            <p>Schema deployment remains source-controlled SQL. This page configures and accepts the persistent plan; the PowerShell runner or future controlled worker performs deployment outside the browser.</p>
+                        </div>
+                    </div>
+
+                    <div class="schema-warning-panel">
+                        <strong>Governance guardrail</strong>
+                        <span>No QA/UAT/LIVE DDL executes from this browser page. Configure, validate and accept the plan here, then run <code>tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1</code> from a controlled deployment account. The runner reads the accepted plan, performs pre/post deployment maintenance and writes SMigration audit automatically.</span>
+                    </div>
+
+                    <div class="schema-acceptance-panel">
+                        <div>
+                            <strong>Run acceptance</strong>
+                            <span>@RunAcceptanceStatusText</span>
+                            <small>Acceptance is valid only for the currently validated selection. Changing the saved selection resets validation and acceptance.</small>
+                            <label>
+                                <span>@AcceptanceNoteLabel</span>
+                                <textarea class="cb-v2-input" rows="2" @bind="DeploymentAcceptanceNote" @bind:event="oninput" placeholder="@AcceptanceNotePlaceholder" disabled="@IsAcceptanceNoteLocked"></textarea>
+                                @if (IsAcceptanceUpdateAvailable)
+                                {
+                                    <small>The run is already accepted. Enter an additional note and select <strong>Update Acceptance</strong> to append it to the SMigration audit without changing the saved plan.</small>
+                                }
+                                else if (IsAcceptanceNoteLocked && IsRunAccepted)
+                                {
+                                    <small>The accepted plan is no longer in an editable Reviewed state. Acceptance notes are locked for this run status.</small>
+                                }
+                            </label>
+                        </div>
+                        <button type="button" class="cb-v2-btn-primary" @onclick="AcceptRunAsync" disabled="@(IsBusy || !CanAcceptRun)">@AcceptanceActionText</button>
+                    </div>
+
+                    <div class="schema-plan-panel">
+                        <div>
+                            <strong>Persistent deployment plan</strong>
+                            <span>@DeploymentPlanStatusText</span>
+                            <small>The controlled PowerShell runner and future deployment worker read this configuration from <code>SMigration.SchemaDeploymentPlan_Get</code>. A run with no explicit selection deploys all deployable differences.</small>
+                        </div>
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadDeploymentPlanAsync())" disabled="@(IsBusy || !HasRunGuid)">Refresh Plan</button>
+                    </div>
+
+                    <div class="schema-exec-script-panel">
+                        <div>
+                            <strong>SQL execution helper</strong>
+                            <span>This helper only returns the plan for inspection. It does not deploy SQL; use the controlled PowerShell runner to perform deployment.</span>
+                        </div>
+                        <textarea class="schema-exec-script" rows="10" readonly>@DeploymentPlanSqlScript</textarea>
+                    </div>
+
+                    <div class="schema-exec-script-panel">
+                        <div>
+                            <strong>PowerShell deployment commands</strong>
+                            <span>The commands are generated from this run's target server, target database, run Guid and release reference. Run the dry-run first, then use the apply command only after the preview succeeds.</span>
+                        </div>
+
+                        <div class="schema-form-grid">
+                            <label>
+                                <span>Runner release reference</span>
+                                <input class="cb-v2-input" @bind="RunnerReleaseReference" @bind:event="oninput" placeholder="For example: 26.3" />
+                                <small>For an older run with no saved release reference, enter it here. The apply runner records a non-blank value back to SMigration.</small>
+                            </label>
+                        </div>
+
+                        @if (string.IsNullOrWhiteSpace(EffectiveRunnerReleaseReference))
+                        {
+                            <div class="schema-warning-panel">
+                                <strong>Release reference not supplied</strong>
+                                <span>The generated command remains executable, but it will omit <code>-ReleaseReference</code>. Enter the release reference above before the controlled apply so the deployment audit records the release correctly.</span>
+                            </div>
+                        }
+
+                        @if (DeploymentPlan is not null && !DeploymentPlan.HasExplicitSelection && DeploymentPlan.DeployableCount > 0)
+                        {
+                            <div class="schema-warning-panel">
+                                <strong>Default safe deployment plan</strong>
+                                <span>No explicit selection is saved. The generated runner command will attempt the <strong>@DeploymentPlan.SelectedCount.ToString("N0")</strong> non-destructive differences selected by default out of <strong>@DeploymentPlan.DeployableCount.ToString("N0")</strong> deployable rows. Destructive-risk rows, including target-only constraint removals, require an explicit saved selection.</span>
+                            </div>
+                        }
+
+                        <div class="schema-command-grid">
+                            <label class="schema-command-block">
+                                <strong>1. Dry-run</strong>
+                                <small>Resolves and preflights the accepted source-controlled plan without deploying SQL or writing deployment audit rows.</small>
+                                <textarea class="schema-exec-script schema-powershell-script" rows="7" readonly>@DeploymentWhatIfPowerShellScript</textarea>
+                            </label>
+                            <label class="schema-command-block">
+                                <strong>2. Apply</strong>
+                                <small>Runs the controlled deployment after the dry-run succeeds. LIVE-looking targets remain protected by the runner and are not given an automatic <code>-AllowLive</code> override.</small>
+                                <textarea class="schema-exec-script schema-powershell-script" rows="7" readonly>@DeploymentApplyPowerShellScript</textarea>
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (DeploymentPlanRows.Any())
+                    {
+                        <div class="schema-table-wrap schema-plan-wrap">
+                            <table class="schema-table schema-plan-table">
+                                <thead>
+                                    <tr>
+                                        <th>Order</th>
+                                        <th>Type</th>
+                                        <th>Schema</th>
+                                        <th>Object</th>
+                                        <th>Difference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var planIndex = 0; planIndex < DeploymentPlanRows.Count; planIndex++)
+                                    {
+                                        var planRow = DeploymentPlanRows[planIndex];
+                                        <tr>
+                                            <td>@(planIndex + 1)</td>
+                                            <td>@planRow.ObjectType</td>
+                                            <td>@planRow.SchemaName</td>
+                                            <td>@planRow.ObjectName</td>
+                                            <td><span class="schema-pill @DifferenceCss(planRow.DifferenceType)">@DifferenceLabel(planRow.DifferenceType)</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    <div class="schema-form-grid">
+                        <label>
+                            <span>Deployment Outcome</span>
+                            <select class="cb-v2-select" @bind="DeploymentOutcome">
+                                <option value="Succeeded">Succeeded</option>
+                                <option value="Failed">Failed</option>
+                                <option value="RolledBack">Rolled back</option>
+                                <option value="Deferred">Deferred</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Deployment Reference</span>
+                            <input class="cb-v2-input" @bind="DeploymentReference" placeholder="Deployment run / release / change reference" />
+                        </label>
+                        <label class="schema-field-wide">
+                            <span>Deployment Notes</span>
+                            <textarea class="cb-v2-input" rows="3" @bind="DeploymentNotes"></textarea>
+                        </label>
+                    </div>
+
+                    <div class="schema-actions-row">
+                        <button type="button" class="cb-v2-btn-primary" @onclick="RecordDeploymentOutcomeAsync" disabled="@(IsBusy || !CanRecordDeploymentOutcome)">Record Deployment Outcome</button>
+                    </div>
+
+                    <div class="schema-maintenance-note">
+                        <strong>External deployment outcome</strong>
+                        <span>The PowerShell runner records its own outcome and post-deployment maintenance. A future Run Deployment button will only enqueue a controlled worker; after confirmed deployment success, that worker must execute SCore.PostDeploymentScript and write the SMigration audit. Use this manual outcome form only for an approved external process that has not already written audit.</span>
+                    </div>
+
+                    <h3>Audit log</h3>
+                    <div class="schema-table-wrap">
+                        <table class="schema-table">
+                            <thead>
+                                <tr>
+                                    <th>Created</th>
+                                    <th>Step</th>
+                                    <th>Status</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in ExecutionLog)
+                                {
+                                    <tr>
+                                        <td>@log.CreatedOnUtc</td>
+                                        <td>@log.StepName</td>
+                                        <td><span class="schema-pill">@log.StepStatus</span></td>
+                                        <td>@log.Message</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (SelectedSection == "standards")
+        {
+            <section class="schema-card">
+                <div class="schema-card-body">
+                    <div class="schema-section-heading">
+                        <div>
+                            <h2>Schema standards</h2>
+                            <p>These are the CYB-361 operating rules built into this first workbench patch.</p>
+                        </div>
+                    </div>
+
+                    <div class="schema-standard-grid">
+                        @StandardCard("Source of truth", "SQL definitions live in source control. Database environments are deployment targets only.")
+                        @StandardCard("Repeatable SQL", "Objects must be authored as idempotent SQL Server assets with explicit columns and deployment-safe ordering.")
+                        @StandardCard("Validation before deployment", "Comparison and validation must run before review and audit outcome recording.")
+                        @StandardCard("No manual promotion", "QA, UAT and LIVE schema change records are governed by deployment outcome audit, not browser-executed DDL.")
+                        @StandardCard("Traceability", "Runs capture Jira reference, release reference, source/target context, timestamps, validation and execution log entries.")
+                        @StandardCard("Alignment", "The lifecycle mirrors Metadata and OnBoarding: Create / Validate / Report / Deploy / Audit.")
+                    </div>
+                </div>
+            </section>
+        }
+    </main>
+</div>
+
+@code {
+    private string SelectedSection { get; set; } = "overview";
+    private bool IsBusy { get; set; }
+    private string BusyMessage { get; set; } = string.Empty;
+    private string Message { get; set; } = string.Empty;
+    private string Error { get; set; } = string.Empty;
+
+    private string SourceEnvironment { get; set; } = "DEV";
+    private string TargetEnvironment { get; set; } = "QA";
+    private string SourceServerName { get; set; } = @"SOC-SQLDEVBRE01\GENERAL";
+    private string SourceDatabaseName { get; set; } = "CymBuild_Dev";
+    private string TargetServerName { get; set; } = @"SOC-SQLDEVBRE01\GENERAL";
+    private string TargetDatabaseName { get; set; } = "CymBuild_QA";
+    private string JiraReference { get; set; } = "CYB-361";
+    private string ReleaseReference { get; set; } = string.Empty;
+    private string Notes { get; set; } = string.Empty;
+    private string RunGuidText { get; set; } = string.Empty;
+
+    private string SelectedDifferenceType { get; set; } = "Different";
+    private string SelectedObjectType { get; set; } = string.Empty;
+    private string ObjectSearchText { get; set; } = string.Empty;
+    private string ReviewNote { get; set; } = string.Empty;
+    private string DeploymentOutcome { get; set; } = "Succeeded";
+    private string DeploymentReference { get; set; } = string.Empty;
+    private string DeploymentNotes { get; set; } = string.Empty;
+    private string DeploymentAcceptanceNote { get; set; } = string.Empty;
+    private string RunnerReleaseReference { get; set; } = string.Empty;
+    private Guid RunnerReleaseReferenceRunGuid { get; set; } = Guid.Empty;
+    private string ExclusionReason { get; set; } = string.Empty;
+    private bool ShowInactiveExcludedObjects { get; set; }
+
+    private SchemaMigrationDashboardModel? Dashboard { get; set; }
+    private List<SchemaMigrationRunModel> AvailableRuns { get; set; } = new();
+    private List<SchemaMigrationObjectComparisonModel> ObjectRows { get; set; } = new();
+    private List<SchemaMigrationObjectComparisonModel> DeploymentPlanRows { get; set; } = new();
+    private SchemaMigrationDeploymentPlanModel? DeploymentPlan { get; set; }
+    private List<SchemaMigrationValidationIssueModel> ValidationIssues { get; set; } = new();
+    private List<SchemaMigrationExecutionLogItemModel> ExecutionLog { get; set; } = new();
+    private List<SchemaMigrationExcludedObjectModel> ExcludedObjects { get; set; } = new();
+    private SchemaMigrationObjectComparisonModel? SelectedObjectRow { get; set; }
+    private bool IsSelectedPlanView { get; set; }
+
+    private ElementReference SourceDefinitionScrollElement;
+    private ElementReference TargetDefinitionScrollElement;
+    private IJSObjectReference? schemaMigrationWorkbenchModule;
+    private bool shouldBindDefinitionScrollSync;
+
+    private FormHelper? formHelper;
+
+    private readonly string[] ObjectTypes =
+    {
+        "Schema",
+        "Table",
+        "TableType",
+        "View",
+        "StoredProcedure",
+        "Function",
+        "Trigger",
+        "Sequence",
+        "Constraint",
+        "Index"
+    };
+
+    protected override void OnInitialized()
+    {
+        formHelper = new FormHelper(
+            coreClient,
+            sageIntegrationService,
+            Guid.Empty.ToString(),
+            userService);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRunsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            schemaMigrationWorkbenchModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                "import",
+                "/schemaMigrationWorkbench.js?v=13");
+        }
+
+        if (shouldBindDefinitionScrollSync && schemaMigrationWorkbenchModule is not null && SelectedObjectRow is not null)
+        {
+            shouldBindDefinitionScrollSync = false;
+            await schemaMigrationWorkbenchModule.InvokeVoidAsync(
+                "bindDefinitionScrollSync",
+                SourceDefinitionScrollElement,
+                TargetDefinitionScrollElement);
+        }
+    }
+
+    private FormHelper CurrentFormHelper =>
+        formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
+
+    private bool HasRunGuid => Guid.TryParse(RunGuidText, out _);
+    private bool CanCreateRun =>
+        !string.IsNullOrWhiteSpace(SourceDatabaseName)
+        && !string.IsNullOrWhiteSpace(TargetDatabaseName)
+        && !string.IsNullOrWhiteSpace(ReleaseReference);
+    private bool IsCurrentPlanValidated =>
+        (Dashboard?.Run.RunStatus ?? string.Empty).Equals("Validated", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsRunnerDeploymentRecorded =>
+        (Dashboard?.Run.RunStatus ?? string.Empty).StartsWith("DeploymentApplied", StringComparison.OrdinalIgnoreCase)
+        || (Dashboard?.Run.RunStatus ?? string.Empty).StartsWith("DeploymentPartiallyApplied", StringComparison.OrdinalIgnoreCase);
+
+    private bool HasValidationFailures => ValidationIssues.Any(x => x.Severity.Equals("Fail", StringComparison.OrdinalIgnoreCase));
+    private bool IsRunAccepted => Dashboard?.Run.IsReviewed ?? false;
+    private bool IsCurrentPlanReviewed =>
+        (Dashboard?.Run.RunStatus ?? string.Empty).Equals("Reviewed", StringComparison.OrdinalIgnoreCase);
+
+    private bool CanReview => HasRunGuid
+        && IsCurrentPlanValidated
+        && !HasValidationFailures;
+
+    private bool IsAcceptanceUpdateAvailable => HasRunGuid
+        && IsRunAccepted
+        && IsCurrentPlanReviewed
+        && !IsRunnerDeploymentRecorded
+        && !HasValidationFailures;
+
+    private bool CanUpdateAcceptance => IsAcceptanceUpdateAvailable
+        && !string.IsNullOrWhiteSpace(DeploymentAcceptanceNote);
+
+    private bool IsAcceptanceNoteLocked => !CanReview && !IsAcceptanceUpdateAvailable;
+    private bool CanAcceptRun => CanReview || CanUpdateAcceptance;
+    private string AcceptanceActionText => CanReview
+        ? "Accept Run"
+        : IsAcceptanceUpdateAvailable
+            ? "Update Acceptance"
+            : IsRunnerDeploymentRecorded
+                ? "Deployment Recorded"
+                : "Acceptance Locked";
+    private string AcceptanceNoteLabel => IsAcceptanceUpdateAvailable ? "Additional acceptance note" : "Acceptance note";
+    private string AcceptanceNotePlaceholder => IsRunnerDeploymentRecorded
+        ? "Deployment has been recorded; acceptance notes are locked."
+        : IsAcceptanceUpdateAvailable
+            ? "Enter an additional audit note for the already accepted, unchanged deployment plan."
+            : "Optional acceptance note for audit and controlled deployment readiness.";
+
+    private bool CanRecordDeploymentOutcome => HasRunGuid
+        && !IsRunnerDeploymentRecorded
+        && (Dashboard?.Run.IsReviewed ?? false)
+        && !HasValidationFailures;
+
+    private string RunAcceptanceStatusText => (Dashboard?.Run.IsReviewed ?? false)
+        ? string.IsNullOrWhiteSpace(Dashboard.Run.ReviewedOnUtc)
+            ? "Accepted for deployment. The controlled runner or worker can consume the saved deployment plan."
+            : $"Accepted for deployment on {Dashboard.Run.ReviewedOnUtc}. The controlled runner or worker can consume the saved deployment plan."
+        : "Not yet accepted for deployment. Accept the run after validating the selected plan and recording any caveats.";
+
+    private const string SchemaMigrationBootstrapRequiredMarker = "SCHEMA_MIGRATION_BOOTSTRAP_REQUIRED|";
+    private const string SchemaMigrationSourceBootstrapRequiredMarker = "SCHEMA_MIGRATION_SOURCE_BOOTSTRAP_REQUIRED|";
+
+    private bool IsSourceSchemaMigrationBootstrapRequired =>
+        !string.IsNullOrWhiteSpace(Error)
+        && Error.Contains(SchemaMigrationSourceBootstrapRequiredMarker, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsSchemaMigrationBootstrapRequired =>
+        !string.IsNullOrWhiteSpace(Error)
+        &&
+        (
+            Error.Contains(SchemaMigrationBootstrapRequiredMarker, StringComparison.OrdinalIgnoreCase)
+            || IsSourceSchemaMigrationBootstrapRequired
+        );
+
+    private string BootstrapDatabaseRole => IsSourceSchemaMigrationBootstrapRequired ? "source" : "target";
+
+    private string ErrorDisplayText
+    {
+        get
+        {
+            if (!IsSchemaMigrationBootstrapRequired)
+            {
+                return Error;
+            }
+
+            var marker = IsSourceSchemaMigrationBootstrapRequired
+                ? SchemaMigrationSourceBootstrapRequiredMarker
+                : SchemaMigrationBootstrapRequiredMarker;
+            var markerIndex = Error.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex < 0)
+            {
+                return Error;
+            }
+
+            var detail = Error[(markerIndex + marker.Length)..].Trim();
+            var statusSuffixIndex = detail.LastIndexOf("\")", StringComparison.Ordinal);
+            if (statusSuffixIndex > 0)
+            {
+                detail = detail[..statusSuffixIndex];
+            }
+
+            return detail.Trim().TrimEnd('"', ')');
+        }
+    }
+
+    private string BootstrapWhatIfPowerShellScript => BuildBootstrapPowerShellScript(apply: false);
+    private string BootstrapApplyPowerShellScript => BuildBootstrapPowerShellScript(apply: true);
+
+    private string DeploymentPlanSqlScript => BuildDeploymentPlanSqlScript();
+    private string DeploymentWhatIfPowerShellScript => BuildDeploymentPowerShellScript(apply: false);
+    private string DeploymentApplyPowerShellScript => BuildDeploymentPowerShellScript(apply: true);
+    private string EffectiveRunnerReleaseReference =>
+        !string.IsNullOrWhiteSpace(RunnerReleaseReference)
+            ? RunnerReleaseReference.Trim()
+            : !string.IsNullOrWhiteSpace(Dashboard?.Run.ReleaseReference)
+                ? Dashboard.Run.ReleaseReference.Trim()
+                : !string.IsNullOrWhiteSpace(ReleaseReference)
+                    ? ReleaseReference.Trim()
+                    : string.Empty;
+
+    private string SourceServerNameDisplay => string.IsNullOrWhiteSpace(SourceServerName) ? "API SQL" : SourceServerName;
+    private string TargetServerNameDisplay => string.IsNullOrWhiteSpace(TargetServerName) ? "API SQL" : TargetServerName;
+
+    private int DifferentCount => Dashboard?.DifferentCount ?? 0;
+    private int MissingInTargetCount => Dashboard?.MissingInTargetCount ?? 0;
+    private int MissingInSourceCount => Dashboard?.MissingInSourceCount ?? 0;
+    private int FailCount => Dashboard?.FailCount ?? 0;
+    private int WarnCount => Dashboard?.WarnCount ?? 0;
+    private int InfoCount => Dashboard?.InfoCount ?? 0;
+    private int ExcludedCount => Dashboard?.ExcludedCount ?? ExcludedObjects.Count(x => x.IsActive);
+
+    private string ValidationSummaryText => FailCount > 0
+        ? $"{FailCount} fail"
+        : WarnCount > 0
+            ? $"{WarnCount} warn"
+            : InfoCount > 0
+                ? $"{InfoCount} info"
+                : "No issues";
+
+    private string ValidationSummaryCss => FailCount > 0 ? "danger" : WarnCount > 0 ? "warning" : "success";
+
+    private int DeployableRowsCount => ObjectRows.Count(x => x.IsDeployable);
+    private int SelectedRowsCount => ObjectRows.Count(x => x.IsDeployable && x.IsSelected);
+    private int ExplicitSelectionRowsCount => ObjectRows.Count(x => x.HasExplicitSelection);
+    private int SelectedPlanCount => DeploymentPlan?.SelectedCount ?? 0;
+    private Func<Task>? SelectedCardAction => HasRunGuid ? ShowSelectedRowsAsync : null;
+    private Func<Task>? ExcludedCardAction => HasRunGuid ? ShowExcludedObjectsAsync : null;
+    private string SelectedPlanCountText => DeploymentPlan is null ? "—" : SelectedPlanCount.ToString("N0");
+    private string SelectedPlanSummaryDetail => DeploymentPlan is null
+        ? "Load or select a run to see its effective deployment plan"
+        : DeploymentPlan.HasExplicitSelection
+            ? $"Explicit saved selection: {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable rows"
+            : $"Default safe plan: {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable rows are included; destructive-risk rows require explicit selection";
+
+    private string SelectionStatusText => IsSelectedPlanView
+        ? DeploymentPlanStatusText
+        : DeployableRowsCount == 0
+            ? "Load comparison rows to configure the deployment selection."
+            : ExplicitSelectionRowsCount == 0
+                ? $"No explicit selection saved. {SelectedRowsCount:N0} of {DeployableRowsCount:N0} loaded deployable differences are included by the default safe non-destructive plan."
+                : $"{SelectedRowsCount:N0} of {DeployableRowsCount:N0} loaded deployable differences are selected. This selection is saved for the controlled deployment process.";
+
+    private string DeploymentPlanStatusText => DeploymentPlan is null
+        ? "Refresh the plan to see which selected objects the controlled deployment process will consume."
+        : DeploymentPlan.HasExplicitSelection
+            ? $"{DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable differences are explicitly selected."
+            : $"No explicit selection exists. The default safe plan includes {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable differences; destructive-risk rows require explicit selection.";
+
+    private string ValidationScopeText => DeploymentPlan is null
+        ? "Deployment plan has not been loaded. Refresh the plan before relying on the displayed count."
+        : DeploymentPlan.HasExplicitSelection
+            ? $"Only the {DeploymentPlan.SelectedCount:N0} explicitly selected row(s) will be validated."
+            : $"No explicit selection is saved, so the {DeploymentPlan.SelectedCount:N0} default safe non-destructive row(s) will be validated. Destructive-risk rows are validated only after explicit selection.";
+
+    private RenderFragment NavButton(string key, string iconCss, string text) => @<button type="button"
+        class="schema-nav-button @(SelectedSection == key ? "selected" : string.Empty)"
+        @onclick="@(() => SelectSectionAsync(key))">
+        <span class="bi @iconCss"></span>
+        <span>@text</span>
+    </button>;
+
+    private RenderFragment SummaryCard(string label, string value, string detail, string state, Func<Task>? onClick = null) => onClick is null
+        ? @<div class="schema-summary-card @state">
+            <span>@label</span>
+            <strong>@value</strong>
+            <small>@detail</small>
+        </div>
+        : @<button type="button" class="schema-summary-card schema-summary-card-interactive @state" @onclick="onClick">
+            <span>@label</span>
+            <strong>@value</strong>
+            <small>@detail</small>
+        </button>;
+
+    private RenderFragment LifecycleCard(string title, string description) => @<div class="schema-lifecycle-card">
+        <strong>@title</strong>
+        <span>@description</span>
+    </div>;
+
+    private RenderFragment StandardCard(string title, string description) => @<div class="schema-standard-card">
+        <strong>@title</strong>
+        <span>@description</span>
+    </div>;
+
+    private void SelectSection(string section)
+    {
+        SelectedSection = section;
+    }
+
+    private async Task SelectSectionAsync(string section)
+    {
+        SelectedSection = section;
+        if (section == "excluded" && HasRunGuid)
+        {
+            await LoadExcludedObjectsAsync();
+        }
+    }
+
+    private async Task SelectRunAsync(Guid runGuid)
+    {
+        RunGuidText = runGuid.ToString();
+        RunnerReleaseReference = string.Empty;
+        RunnerReleaseReferenceRunGuid = Guid.Empty;
+        await RefreshDashboardAsync();
+        await LoadDeploymentPlanAsync(clearMessages: false);
+        await LoadObjectsAsync();
+    }
+
+    private async Task CreateRunAsync()
+    {
+        await RunBusyAsync("Creating schema run...", async () =>
+        {
+            var run = await CurrentFormHelper.SchemaMigrationRunCreateAsync(
+                SourceEnvironment,
+                TargetEnvironment,
+                SourceServerName,
+                SourceDatabaseName,
+                TargetServerName,
+                TargetDatabaseName,
+                JiraReference,
+                ReleaseReference,
+                Notes);
+
+            RunGuidText = run.RunGuid.ToString();
+            RunnerReleaseReference = ReleaseReference.Trim();
+            RunnerReleaseReferenceRunGuid = run.RunGuid;
+            Message = "Schema run created. Next step: Stage & Compare.";
+            await LoadRunsAsync(refreshDashboard: false);
+            await RefreshDashboardAsync();
+            SelectedSection = "compare";
+        });
+    }
+
+    private async Task CompareAsync()
+    {
+        await RunBusyAsync("Preparing source and target, then comparing schema...", async () =>
+        {
+            Dashboard = await CurrentFormHelper.SchemaMigrationCompareAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+            ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
+            Message = "Schema comparison completed after controlled pre-deployment preparation. Validation and acceptance must be completed for the refreshed plan.";
+            await LoadObjectsAsync(clearMessages: false);
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            SelectedSection = "compare";
+        });
+    }
+
+    private async Task ValidateAsync()
+    {
+        await RunBusyAsync("Validating schema comparison...", async () =>
+        {
+            ValidationIssues = await CurrentFormHelper.SchemaMigrationValidateAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+            await RefreshDashboardAsync();
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            Message = ValidationIssues.Any(x => x.Severity == "Fail")
+                ? $"Validation completed for {SelectedPlanCount:N0} effective selected row(s), with failures. Resolve before review."
+                : $"Validation completed for {SelectedPlanCount:N0} effective selected row(s). The run can be reviewed when all warnings have been considered.";
+            SelectedSection = "validate";
+        });
+    }
+
+    private void ContinueToDeploy()
+    {
+        if (!CanReview)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(DeploymentAcceptanceNote) && !string.IsNullOrWhiteSpace(ReviewNote))
+        {
+            DeploymentAcceptanceNote = ReviewNote.Trim();
+        }
+
+        Message = "Validation review is complete. Confirm the acceptance note and select Accept Run before using the controlled deployment runner.";
+        SelectedSection = "deploy";
+    }
+
+    private async Task AcceptRunAsync()
+    {
+        await RunBusyAsync("Accepting schema run for deployment...", async () =>
+        {
+            var note = string.IsNullOrWhiteSpace(DeploymentAcceptanceNote)
+                ? $"Accepted for deployment from Schema Management UI. Deployment plan: {DeploymentPlanStatusText}"
+                : DeploymentAcceptanceNote;
+
+            var result = await CurrentFormHelper.SchemaMigrationReviewSetAsync(CurrentRunGuid(), note, TargetServerName, TargetDatabaseName);
+            Message = result.Message;
+            if (result.Success)
+            {
+                DeploymentAcceptanceNote = string.Empty;
+            }
+            await RefreshDashboardAsync();
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            SelectedSection = "deploy";
+        });
+    }
+
+    private async Task RecordDeploymentOutcomeAsync()
+    {
+        await RunBusyAsync("Recording schema deployment outcome...", async () =>
+        {
+            var result = await CurrentFormHelper.SchemaMigrationDeploymentOutcomeAsync(
+                CurrentRunGuid(),
+                DeploymentOutcome,
+                DeploymentReference,
+                DeploymentNotes,
+                TargetServerName,
+                TargetDatabaseName);
+            Message = result.Message;
+            await RefreshDashboardAsync();
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            SelectedSection = "deploy";
+        });
+    }
+
+    private async Task LoadRunsAsync(bool refreshDashboard = true)
+    {
+        await RunBusyAsync("Loading schema runs...", async () =>
+        {
+            AvailableRuns = await CurrentFormHelper.SchemaMigrationRunsAsync(50, TargetServerName, TargetDatabaseName);
+            if (refreshDashboard && HasRunGuid)
+            {
+                await RefreshDashboardAsync();
+            }
+        }, preserveMessage: true);
+    }
+
+    private async Task LoadObjectsAsync(bool clearMessages = true)
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        IsSelectedPlanView = false;
+        await RunBusyAsync("Loading comparison rows...", async () =>
+        {
+            ObjectRows = await CurrentFormHelper.SchemaMigrationObjectsAsync(
+                CurrentRunGuid(),
+                SelectedObjectType,
+                SelectedDifferenceType,
+                ObjectSearchText,
+                TargetServerName,
+                TargetDatabaseName);
+
+            var firstRow = ObjectRows.FirstOrDefault();
+            SelectedObjectRow = firstRow;
+            if (firstRow is not null)
+            {
+                await LoadObjectDetailAsync(firstRow);
+            }
+        }, preserveMessage: !clearMessages);
+    }
+
+    private async Task ShowSelectedRowsAsync()
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        await RunBusyAsync("Loading selected schema rows...", async () =>
+        {
+            DeploymentPlan = await CurrentFormHelper.SchemaMigrationDeploymentPlanAsync(
+                CurrentRunGuid(),
+                TargetServerName,
+                TargetDatabaseName);
+            DeploymentPlanRows = DeploymentPlan.Rows;
+            ObjectRows = DeploymentPlanRows.ToList();
+            SelectedDifferenceType = string.Empty;
+            SelectedObjectType = string.Empty;
+            ObjectSearchText = string.Empty;
+            IsSelectedPlanView = true;
+            SelectedSection = "compare";
+
+            var firstRow = ObjectRows.FirstOrDefault();
+            SelectedObjectRow = firstRow;
+            if (firstRow is not null)
+            {
+                await LoadObjectDetailAsync(firstRow);
+            }
+        }, preserveMessage: true);
+    }
+
+    private async Task ShowAllComparisonRowsAsync()
+    {
+        SelectedDifferenceType = string.Empty;
+        SelectedObjectType = string.Empty;
+        ObjectSearchText = string.Empty;
+        await LoadObjectsAsync(clearMessages: false);
+    }
+
+    private void SetObjectSelection(SchemaMigrationObjectComparisonModel row, ChangeEventArgs args)
+    {
+        if (!row.IsDeployable)
+        {
+            row.IsSelected = false;
+            return;
+        }
+
+        row.IsSelected = args.Value is bool boolValue
+            ? boolValue
+            : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+    }
+
+    private void SelectAllDeployableRows()
+    {
+        foreach (var row in ObjectRows.Where(x => x.IsDeployable))
+        {
+            row.IsSelected = true;
+        }
+    }
+
+    private void DeselectAllDeployableRows()
+    {
+        foreach (var row in ObjectRows.Where(x => x.IsDeployable))
+        {
+            row.IsSelected = false;
+        }
+    }
+
+    private async Task SaveSelectionAsync()
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        await RunBusyAsync("Saving schema deployment selection...", async () =>
+        {
+            var allRows = await CurrentFormHelper.SchemaMigrationObjectsAsync(
+                CurrentRunGuid(),
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                TargetServerName,
+                TargetDatabaseName);
+
+            var visibleSelectionByKey = ObjectRows
+                .Where(x => x.IsDeployable)
+                .GroupBy(SelectionKey)
+                .ToDictionary(x => x.Key, x => x.Last().IsSelected, StringComparer.OrdinalIgnoreCase);
+
+            var selections = allRows
+                .Where(x => x.IsDeployable)
+                .Select(row => new SchemaMigrationSelectionItemModel
+                {
+                    ComparisonGuid = row.ComparisonGuid,
+                    IsSelected = visibleSelectionByKey.TryGetValue(SelectionKey(row), out var selected) ? selected : row.IsSelected
+                })
+                .Where(x => x.IsSelected)
+                .ToList();
+
+            var result = await CurrentFormHelper.SchemaMigrationSelectionSaveAsync(
+                CurrentRunGuid(),
+                selections,
+                "Saved from Schema Management UI.",
+                TargetServerName,
+                TargetDatabaseName);
+
+            Message = result.Message;
+            ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
+            await RefreshDashboardAsync();
+            await LoadObjectsAsync(clearMessages: false);
+            await LoadDeploymentPlanAsync(clearMessages: false);
+        });
+    }
+
+    private async Task ClearSelectionAsync()
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        await RunBusyAsync("Clearing schema deployment selection...", async () =>
+        {
+            var result = await CurrentFormHelper.SchemaMigrationSelectionClearAsync(
+                CurrentRunGuid(),
+                "Cleared from Schema Management UI.",
+                TargetServerName,
+                TargetDatabaseName);
+
+            Message = result.Message;
+            ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
+            await RefreshDashboardAsync();
+            await LoadObjectsAsync(clearMessages: false);
+            await LoadDeploymentPlanAsync(clearMessages: false);
+        });
+    }
+
+    private async Task LoadDeploymentPlanAsync(bool clearMessages = true)
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        await RunBusyAsync("Loading schema deployment plan...", async () =>
+        {
+            DeploymentPlan = await CurrentFormHelper.SchemaMigrationDeploymentPlanAsync(
+                CurrentRunGuid(),
+                TargetServerName,
+                TargetDatabaseName);
+            DeploymentPlanRows = DeploymentPlan.Rows;
+        }, preserveMessage: !clearMessages);
+    }
+
+    private static string SelectionKey(SchemaMigrationObjectComparisonModel row) =>
+        string.Join("|", row.ObjectType, row.SchemaName, row.ObjectName, row.ParentObjectName);
+
+    private string BuildDeploymentPlanSqlScript()
+    {
+        var runGuid = HasRunGuid ? CurrentRunGuid().ToString().ToUpperInvariant() : "00000000-0000-0000-0000-000000000000";
+        var targetServer = string.IsNullOrWhiteSpace(TargetServerNameDisplay) ? "current SQL Server" : TargetServerNameDisplay;
+
+        return $@"/*
+    CYB-361 Schema Deployment Plan
+    Target server   : {targetServer}
+    Target database : {TargetDatabaseName}
+    Run Guid        : {runGuid}
+
+    This script returns the persistent source-controlled deployment plan for the run.
+    It does not execute DDL. Run tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1
+    from a controlled deployment account to apply the accepted source-controlled plan.
+*/
+
+USE {SqlQuoteIdentifier(TargetDatabaseName)};
+GO
+
+DECLARE @RunGuid UNIQUEIDENTIFIER = '{runGuid}';
+
+SELECT
+    sr.Guid,
+    sr.RunStatus,
+    sr.IsReviewed AS IsAcceptedForDeployment,
+    sr.ReviewedOnUtc,
+    sr.ReleaseReference,
+    sr.DeploymentReference
+FROM [SMigration].[Schema_Run] AS sr
+WHERE sr.Guid = @RunGuid
+  AND sr.RowStatus <> 0
+  AND sr.RowStatus <> 254;
+
+EXEC [SMigration].[SchemaDeploymentPlan_Get]
+    @RunGuid = @RunGuid;
+GO";
+    }
+
+    private string BuildBootstrapPowerShellScript(bool apply)
+    {
+        var selectedServerName = IsSourceSchemaMigrationBootstrapRequired ? SourceServerName : TargetServerName;
+        var selectedDatabaseName = IsSourceSchemaMigrationBootstrapRequired ? SourceDatabaseName : TargetDatabaseName;
+        var targetServer = string.IsNullOrWhiteSpace(selectedServerName)
+            ? $"<{BootstrapDatabaseRole.ToUpperInvariant()}-SERVER>"
+            : selectedServerName.Trim();
+        var targetDatabase = string.IsNullOrWhiteSpace(selectedDatabaseName)
+            ? $"<{BootstrapDatabaseRole.ToUpperInvariant()}-DATABASE>"
+            : selectedDatabaseName.Trim();
+
+        var lines = new List<string>
+        {
+            @".\tools\SchemaDeployment\Initialize-CymBuildSchemaMigration.ps1 `",
+            $"    -TargetServer {PowerShellQuote(targetServer)} `",
+            $"    -TargetDatabase {PowerShellQuote(targetDatabase)} `",
+            apply ? "    -Apply" : "    -WhatIf"
+        };
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private string BuildDeploymentPowerShellScript(bool apply)
+    {
+        var runGuid = HasRunGuid
+            ? CurrentRunGuid().ToString().ToUpperInvariant()
+            : "00000000-0000-0000-0000-000000000000";
+        var targetServer = string.IsNullOrWhiteSpace(TargetServerName)
+            ? "<TARGET-SERVER>"
+            : TargetServerName.Trim();
+        var targetDatabase = string.IsNullOrWhiteSpace(TargetDatabaseName)
+            ? "<TARGET-DATABASE>"
+            : TargetDatabaseName.Trim();
+        var releaseReference = EffectiveRunnerReleaseReference;
+
+        var lines = new List<string>
+        {
+            @".\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `",
+            $"    -TargetServer {PowerShellQuote(targetServer)} `",
+            $"    -TargetDatabase {PowerShellQuote(targetDatabase)} `",
+            $"    -RunGuid {PowerShellQuote(runGuid)} `"
+        };
+
+        if (!string.IsNullOrWhiteSpace(releaseReference))
+        {
+            lines.Add($"    -ReleaseReference {PowerShellQuote(releaseReference)} `");
+        }
+
+        lines.Add(apply ? "    -Apply" : "    -WhatIf");
+
+        var isFailedDeploymentRetry = (Dashboard?.Run.RunStatus ?? string.Empty)
+            .StartsWith("DeploymentFailed", StringComparison.OrdinalIgnoreCase);
+        if (isFailedDeploymentRetry)
+        {
+            lines[^1] += " `";
+            lines.Add("    -RetryFailedDeployment");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string PowerShellQuote(string value) =>
+        "'" + (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal) + "'";
+
+    private static string SqlQuoteIdentifier(string value)
+    {
+        var safeValue = string.IsNullOrWhiteSpace(value) ? "CymBuild_Dev" : value.Trim();
+        return "[" + safeValue.Replace("]", "]]") + "]";
+    }
+
+    private async Task ShowExcludedObjectsAsync()
+    {
+        SelectedSection = "excluded";
+        await LoadExcludedObjectsAsync();
+    }
+
+    private async Task LoadExcludedObjectsAsync()
+    {
+        if (!HasRunGuid)
+        {
+            ExcludedObjects = new List<SchemaMigrationExcludedObjectModel>();
+            return;
+        }
+
+        await RunBusyAsync("Loading source-authoritative schema exclusions...", async () =>
+        {
+            ExcludedObjects = await CurrentFormHelper.SchemaMigrationExcludedObjectsAsync(
+                CurrentRunGuid(),
+                TargetServerName,
+                TargetDatabaseName,
+                ShowInactiveExcludedObjects);
+            await RefreshDashboardAsync();
+        }, preserveMessage: true);
+    }
+
+    private async Task ExcludedInactiveChangedAsync(ChangeEventArgs args)
+    {
+        ShowInactiveExcludedObjects = args.Value is bool value && value;
+        await LoadExcludedObjectsAsync();
+    }
+
+    private async Task ExcludeSelectedObjectAsync()
+    {
+        if (!HasRunGuid || SelectedObjectRow is null || string.IsNullOrWhiteSpace(ExclusionReason))
+        {
+            return;
+        }
+
+        var selected = SelectedObjectRow;
+        await RunBusyAsync("Saving source-authoritative schema exclusion...", async () =>
+        {
+            var result = await CurrentFormHelper.SchemaMigrationExclusionUpsertAsync(
+                CurrentRunGuid(),
+                selected.ComparisonGuid,
+                selected.ObjectType,
+                selected.SchemaName,
+                selected.ObjectName,
+                selected.ParentObjectName,
+                true,
+                ExclusionReason.Trim(),
+                TargetServerName,
+                TargetDatabaseName);
+
+            Message = result.Message;
+            ExclusionReason = string.Empty;
+            SelectedObjectRow = null;
+            ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
+            await RefreshDashboardAsync();
+            await LoadObjectsAsync(clearMessages: false);
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            await LoadExcludedObjectsAsync();
+        });
+    }
+
+    private async Task UnexcludeObjectAsync(SchemaMigrationExcludedObjectModel exclusion)
+    {
+        if (!HasRunGuid || exclusion is null)
+        {
+            return;
+        }
+
+        await RunBusyAsync("Removing source-authoritative schema exclusion...", async () =>
+        {
+            var result = await CurrentFormHelper.SchemaMigrationExclusionUpsertAsync(
+                CurrentRunGuid(),
+                Guid.Empty,
+                exclusion.ObjectType,
+                exclusion.SchemaName,
+                exclusion.ObjectName,
+                exclusion.ParentObjectName,
+                false,
+                string.Empty,
+                TargetServerName,
+                TargetDatabaseName);
+
+            Message = result.Message;
+            ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
+            await RefreshDashboardAsync();
+            await LoadDeploymentPlanAsync(clearMessages: false);
+            await LoadExcludedObjectsAsync();
+        });
+    }
+
+    private async Task RefreshCurrentViewAsync()
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        await RefreshDashboardAsync();
+        await LoadDeploymentPlanAsync(clearMessages: false);
+        if (SelectedSection == "excluded")
+        {
+            await LoadExcludedObjectsAsync();
+        }
+        else if (SelectedSection == "compare")
+        {
+            if (IsSelectedPlanView)
+            {
+                await ShowSelectedRowsAsync();
+            }
+            else
+            {
+                await LoadObjectsAsync();
+            }
+        }
+    }
+
+    private async Task RefreshDashboardAsync()
+    {
+        if (!HasRunGuid)
+        {
+            return;
+        }
+
+        Dashboard = await CurrentFormHelper.SchemaMigrationDashboardAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+        ValidationIssues = Dashboard.ValidationIssues;
+        ExecutionLog = Dashboard.ExecutionLog;
+
+        var currentRunGuid = CurrentRunGuid();
+        if (RunnerReleaseReferenceRunGuid != currentRunGuid)
+        {
+            RunnerReleaseReference = string.IsNullOrWhiteSpace(Dashboard.Run.ReleaseReference)
+                ? string.Empty
+                : Dashboard.Run.ReleaseReference.Trim();
+            RunnerReleaseReferenceRunGuid = currentRunGuid;
+        }
+        else if (string.IsNullOrWhiteSpace(RunnerReleaseReference)
+            && !string.IsNullOrWhiteSpace(Dashboard.Run.ReleaseReference))
+        {
+            RunnerReleaseReference = Dashboard.Run.ReleaseReference.Trim();
+        }
+    }
+
+    private async Task RunBusyAsync(string busyMessage, Func<Task> action, bool preserveMessage = false)
+    {
+        Error = string.Empty;
+        if (!preserveMessage)
+        {
+            Message = string.Empty;
+        }
+
+        IsBusy = true;
+        BusyMessage = busyMessage;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            BusyMessage = string.Empty;
+        }
+    }
+
+    private Guid CurrentRunGuid() => Guid.TryParse(RunGuidText, out var runGuid) ? runGuid : Guid.Empty;
+
+    private async Task SelectObjectRowAsync(SchemaMigrationObjectComparisonModel row)
+    {
+        SelectedObjectRow = row;
+        ExclusionReason = string.Empty;
+        await RunBusyAsync(
+            "Loading schema definition...",
+            () => LoadObjectDetailAsync(row),
+            preserveMessage: true);
+    }
+
+    private async Task LoadObjectDetailAsync(SchemaMigrationObjectComparisonModel row)
+    {
+        if (!HasRunGuid || row.ComparisonGuid == Guid.Empty)
+        {
+            shouldBindDefinitionScrollSync = true;
+            return;
+        }
+
+        var detail = await CurrentFormHelper.SchemaMigrationObjectDetailAsync(
+            CurrentRunGuid(),
+            row.ComparisonGuid,
+            TargetServerName,
+            TargetDatabaseName);
+
+        if (detail is not null && SelectedObjectRow?.ComparisonGuid == row.ComparisonGuid)
+        {
+            // Preserve unsaved checkbox state held by the lightweight list row.
+            detail.IsSelected = row.IsSelected;
+            detail.HasExplicitSelection = row.HasExplicitSelection;
+            SelectedObjectRow = detail;
+        }
+
+        shouldBindDefinitionScrollSync = true;
+    }
+
+    private static string FormatRunOption(SchemaMigrationRunModel run)
+    {
+        var reference = string.IsNullOrWhiteSpace(run.JiraReference) ? run.ReleaseReference : run.JiraReference;
+        return string.IsNullOrWhiteSpace(reference)
+            ? $"{run.CreatedOnUtc} - {run.RunStatus}"
+            : $"{reference} - {run.CreatedOnUtc} - {run.RunStatus}";
+    }
+
+    private static string DifferenceLabel(string value) => value switch
+    {
+        "MissingInTarget" => "Missing target",
+        "MissingInSource" => "Target drift",
+        _ => value
+    };
+
+    private static string DifferenceCss(string value) => value switch
+    {
+        "Different" => "warning",
+        "MissingInTarget" => "info",
+        "MissingInSource" => "danger",
+        "Equal" => "success",
+        _ => string.Empty
+    };
+
+    private static string SeverityCss(string value) => value switch
+    {
+        "Fail" => "danger",
+        "Warn" => "warning",
+        "Info" => "info",
+        _ => string.Empty
+    };
+
+    private static string DisplayEmpty(string value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+    private static string DisplayHash(string value) => string.IsNullOrWhiteSpace(value) ? "—" : value[..Math.Min(12, value.Length)];
+
+    private static bool HasEffectiveDefinitionMatch(SchemaMigrationObjectComparisonModel row)
+    {
+        if (!row.DifferenceType.Equals("Different", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return NormalizeSchemaDefinition(row.SourceDefinition)
+            .Equals(NormalizeSchemaDefinition(row.TargetDefinition), StringComparison.Ordinal);
+    }
+
+    private static MarkupString DefinitionDiffMarkup(string definition, string otherDefinition)
+    {
+        if (string.IsNullOrWhiteSpace(definition))
+        {
+            return new MarkupString("<div class=\"schema-diff-empty\">No definition captured.</div>");
+        }
+
+        var lines = SplitDefinitionPreviewLines(definition);
+        var otherLines = SplitDefinitionPreviewLines(otherDefinition);
+        var alignedLines = AlignDefinitionLines(lines, otherLines);
+        var fullNormalisedMatch = NormalizeSchemaDefinition(definition).Equals(NormalizeSchemaDefinition(otherDefinition), StringComparison.Ordinal);
+
+        var html = new StringBuilder();
+        html.Append("<div class=\"schema-diff-lines\">");
+
+        var lineNumber = 0;
+        foreach (var pair in alignedLines)
+        {
+            if (pair.CurrentLine is not null)
+            {
+                lineNumber++;
+            }
+
+            var currentLine = pair.CurrentLine ?? string.Empty;
+            var otherLine = pair.OtherLine ?? string.Empty;
+            var currentNormalised = NormalizeSchemaDefinition(currentLine);
+            var otherNormalised = NormalizeSchemaDefinition(otherLine);
+            var changed = !fullNormalisedMatch
+                && !currentNormalised.Equals(otherNormalised, StringComparison.Ordinal)
+                && !(string.IsNullOrWhiteSpace(currentNormalised) && string.IsNullOrWhiteSpace(otherNormalised));
+
+            html.Append(changed ? "<div class=\"schema-diff-line changed\"" : "<div class=\"schema-diff-line\"");
+            html.Append(" data-line=\"");
+            html.Append(pair.CurrentLine is null ? string.Empty : lineNumber.ToString());
+            html.Append("\"><code>");
+            html.Append(changed
+                ? InlineDefinitionDiffMarkup(currentLine, otherLine)
+                : WebUtility.HtmlEncode(currentLine.Length == 0 ? " " : currentLine));
+            html.Append("</code></div>");
+        }
+
+        html.Append("</div>");
+        return new MarkupString(html.ToString());
+    }
+
+    private static List<DefinitionLinePair> AlignDefinitionLines(IReadOnlyList<string> currentLines, IReadOnlyList<string> otherLines)
+    {
+        var result = new List<DefinitionLinePair>();
+        var currentIndex = 0;
+        var otherIndex = 0;
+
+        while (currentIndex < currentLines.Count || otherIndex < otherLines.Count)
+        {
+            if (currentIndex >= currentLines.Count)
+            {
+                result.Add(new DefinitionLinePair(null, otherLines[otherIndex++]));
+                continue;
+            }
+
+            if (otherIndex >= otherLines.Count)
+            {
+                result.Add(new DefinitionLinePair(currentLines[currentIndex++], null));
+                continue;
+            }
+
+            var currentLine = currentLines[currentIndex];
+            var otherLine = otherLines[otherIndex];
+            var currentNormalised = NormalizeSchemaDefinition(currentLine);
+            var otherNormalised = NormalizeSchemaDefinition(otherLine);
+
+            if (currentNormalised.Equals(otherNormalised, StringComparison.Ordinal))
+            {
+                result.Add(new DefinitionLinePair(currentLine, otherLine));
+                currentIndex++;
+                otherIndex++;
+                continue;
+            }
+
+            var nextCurrentMatchesOther = currentIndex + 1 < currentLines.Count
+                && NormalizeSchemaDefinition(currentLines[currentIndex + 1]).Equals(otherNormalised, StringComparison.Ordinal);
+            var currentMatchesNextOther = otherIndex + 1 < otherLines.Count
+                && currentNormalised.Equals(NormalizeSchemaDefinition(otherLines[otherIndex + 1]), StringComparison.Ordinal);
+
+            if (nextCurrentMatchesOther && !currentMatchesNextOther)
+            {
+                result.Add(new DefinitionLinePair(currentLine, null));
+                currentIndex++;
+                continue;
+            }
+
+            if (currentMatchesNextOther && !nextCurrentMatchesOther)
+            {
+                result.Add(new DefinitionLinePair(null, otherLine));
+                otherIndex++;
+                continue;
+            }
+
+            result.Add(new DefinitionLinePair(currentLine, otherLine));
+            currentIndex++;
+            otherIndex++;
+        }
+
+        return result;
+    }
+
+    private static string InlineDefinitionDiffMarkup(string currentLine, string otherLine)
+    {
+        if (string.IsNullOrEmpty(currentLine))
+        {
+            return "<mark class=\"schema-diff-token\"> </mark>";
+        }
+
+        var currentNormalised = NormalizeSchemaDefinition(currentLine);
+        var otherNormalised = NormalizeSchemaDefinition(otherLine);
+        if (string.IsNullOrWhiteSpace(currentNormalised) || string.IsNullOrWhiteSpace(otherNormalised))
+        {
+            return HighlightSemanticLine(currentLine);
+        }
+
+        var currentTokens = TokenizeDefinitionLine(currentLine);
+        var otherTokenKeys = TokenizeDefinitionLine(otherLine)
+            .Select(x => x.Normalised)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        var matchedCurrentIndexes = FindMatchedTokenIndexes(currentTokens.Select(x => x.Normalised).ToList(), otherTokenKeys);
+        var html = new StringBuilder();
+        for (var i = 0; i < currentTokens.Count; i++)
+        {
+            var token = currentTokens[i];
+            var encoded = WebUtility.HtmlEncode(token.Text);
+            if (!string.IsNullOrWhiteSpace(token.Normalised) && !matchedCurrentIndexes.Contains(i))
+            {
+                html.Append("<mark class=\"schema-diff-token\">");
+                html.Append(encoded);
+                html.Append("</mark>");
+            }
+            else
+            {
+                html.Append(encoded);
+            }
+        }
+
+        return html.ToString();
+    }
+
+    private static HashSet<int> FindMatchedTokenIndexes(IReadOnlyList<string> currentTokens, IReadOnlyList<string> otherTokens)
+    {
+        var currentSemanticIndexes = currentTokens
+            .Select((value, index) => new { value, index })
+            .Where(x => !string.IsNullOrWhiteSpace(x.value))
+            .ToList();
+        var otherSemanticTokens = otherTokens.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        var matched = new HashSet<int>();
+
+        var currentCount = currentSemanticIndexes.Count;
+        var otherCount = otherSemanticTokens.Count;
+        if (currentCount == 0 || otherCount == 0)
+        {
+            return matched;
+        }
+
+        var lengths = new int[currentCount + 1, otherCount + 1];
+        for (var i = currentCount - 1; i >= 0; i--)
+        {
+            for (var j = otherCount - 1; j >= 0; j--)
+            {
+                lengths[i, j] = currentSemanticIndexes[i].value.Equals(otherSemanticTokens[j], StringComparison.Ordinal)
+                    ? lengths[i + 1, j + 1] + 1
+                    : Math.Max(lengths[i + 1, j], lengths[i, j + 1]);
+            }
+        }
+
+        var currentPointer = 0;
+        var otherPointer = 0;
+        while (currentPointer < currentCount && otherPointer < otherCount)
+        {
+            if (currentSemanticIndexes[currentPointer].value.Equals(otherSemanticTokens[otherPointer], StringComparison.Ordinal))
+            {
+                matched.Add(currentSemanticIndexes[currentPointer].index);
+                currentPointer++;
+                otherPointer++;
+            }
+            else if (lengths[currentPointer + 1, otherPointer] >= lengths[currentPointer, otherPointer + 1])
+            {
+                currentPointer++;
+            }
+            else
+            {
+                otherPointer++;
+            }
+        }
+
+        return matched;
+    }
+
+    private static string HighlightSemanticLine(string line)
+    {
+        var tokens = TokenizeDefinitionLine(line);
+        var html = new StringBuilder();
+        foreach (var token in tokens)
+        {
+            var encoded = WebUtility.HtmlEncode(token.Text);
+            if (string.IsNullOrWhiteSpace(token.Normalised))
+            {
+                html.Append(encoded);
+            }
+            else
+            {
+                html.Append("<mark class=\"schema-diff-token\">");
+                html.Append(encoded);
+                html.Append("</mark>");
+            }
+        }
+
+        return html.ToString();
+    }
+
+    private static List<DefinitionToken> TokenizeDefinitionLine(string line)
+    {
+        var tokens = new List<DefinitionToken>();
+        if (line.Length == 0)
+        {
+            return tokens;
+        }
+
+        var token = new StringBuilder();
+        TokenKind? kind = null;
+
+        foreach (var ch in line)
+        {
+            var nextKind = char.IsLetterOrDigit(ch) || ch == '_' ? TokenKind.Word
+                : char.IsWhiteSpace(ch) ? TokenKind.Whitespace
+                : TokenKind.Symbol;
+
+            if (kind is null || kind == nextKind)
+            {
+                token.Append(ch);
+                kind = nextKind;
+                continue;
+            }
+
+            AddDefinitionToken(tokens, token.ToString(), kind.Value);
+            token.Clear();
+            token.Append(ch);
+            kind = nextKind;
+        }
+
+        if (kind is not null)
+        {
+            AddDefinitionToken(tokens, token.ToString(), kind.Value);
+        }
+
+        return tokens;
+    }
+
+    private static void AddDefinitionToken(ICollection<DefinitionToken> tokens, string text, TokenKind kind)
+    {
+        var normalised = kind == TokenKind.Whitespace || text is "[" or "]"
+            ? string.Empty
+            : NormalizeSchemaDefinition(text);
+        tokens.Add(new DefinitionToken(text, normalised));
+    }
+
+    private static IReadOnlyList<string> SplitDefinitionPreviewLines(string definition) =>
+        DefinitionPreview(definition).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+
+    private sealed record DefinitionLinePair(string? CurrentLine, string? OtherLine);
+    private sealed record DefinitionToken(string Text, string Normalised);
+    private enum TokenKind
+    {
+        Word,
+        Whitespace,
+        Symbol
+    }
+
+    private static string DefinitionPreview(string definition)
+    {
+        if (string.IsNullOrWhiteSpace(definition))
+        {
+            return string.Empty;
+        }
+
+        return definition.Length <= 8000 ? definition : definition[..8000] + "\n... truncated in UI preview ...";
+    }
+
+    private static string NormalizeSchemaDefinition(string definition)
+    {
+        if (string.IsNullOrWhiteSpace(definition))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(definition.Length);
+        var inString = false;
+        var i = 0;
+
+        while (i < definition.Length)
+        {
+            var ch = definition[i];
+
+            if (!inString && ch == '-' && i + 1 < definition.Length && definition[i + 1] == '-')
+            {
+                i += 2;
+                while (i < definition.Length && definition[i] != '\r' && definition[i] != '\n')
+                {
+                    i++;
+                }
+                continue;
+            }
+
+            if (!inString && ch == '/' && i + 1 < definition.Length && definition[i + 1] == '*')
+            {
+                i += 2;
+                while (i + 1 < definition.Length && !(definition[i] == '*' && definition[i + 1] == '/'))
+                {
+                    i++;
+                }
+                i = Math.Min(i + 2, definition.Length);
+                continue;
+            }
+
+            if (ch == '\'')
+            {
+                builder.Append(ch);
+                if (inString && i + 1 < definition.Length && definition[i + 1] == '\'')
+                {
+                    builder.Append(definition[i + 1]);
+                    i += 2;
+                    continue;
+                }
+
+                inString = !inString;
+                i++;
+                continue;
+            }
+
+            if (inString)
+            {
+                builder.Append(ch);
+                i++;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(ch) || ch is '[' or ']')
+            {
+                i++;
+                continue;
+            }
+
+            builder.Append(char.ToUpperInvariant(ch));
+            i++;
+        }
+
+        return builder.ToString();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (schemaMigrationWorkbenchModule is not null)
+        {
+            try
+            {
+                await schemaMigrationWorkbenchModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Browser disconnected during component disposal; no user-facing action required.
+            }
+        }
+    }
+
+}
+

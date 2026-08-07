@@ -5,7 +5,6 @@
 @using Concursus.PWA.Classes
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @attribute [Authorize]
 
 <div class="cb-v2-card">
@@ -105,7 +104,6 @@
     {
         _formHelper = new FormHelper(
             coreClient,
-            sageIntegrationService,
             Guid.Empty.ToString(),
             userService);
 

@@ -1,0 +1,16 @@
+﻿{
+    "RunGuid":  "1ab37b95-1c8a-4a2d-830a-04b61720288b",
+    "TargetServer":  "SOC-SQLDEVBRE01\\GENERAL",
+    "TargetDatabase":  "CymBuild_QA",
+    "ReleaseReference":  "26.3.1 Testing",
+    "DeploymentReference":  "26.3.1 Testing",
+    "IsApply":  false,
+    "IsWhatIf":  true,
+    "PlanCount":  1,
+    "SupportedCount":  1,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  1,
+    "RetryFailedDeployment":  false,
+    "GeneratedOnUtc":  "2026-08-05T08:28:45.6478632Z",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\1ab37b95-1c8a-4a2d-830a-04b61720288b"
+}

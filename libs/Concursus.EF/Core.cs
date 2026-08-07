@@ -4182,6 +4182,57 @@ WHERE LastAccessed BETWEEN @StartDate AND @EndDate"
             }
         }
 
+        public async Task<List<UserUsageLast7DaysData>> GetUserUsageLast7Days()
+        {
+            const string statement = @"
+SELECT
+    [UserName] AS [Username],
+    [UserGuid],
+    [UsageCountLast7Days],
+    [UsageCountPrevious7Days],
+    [ActiveDaysLast7Days],
+    [FeaturesUsedLast7Days],
+    [LastAccessedLast7Days],
+    [UsageTrend]
+FROM [SCore].[UserUsageLast7Days]
+ORDER BY
+    [UsageCountLast7Days] DESC,
+    [UserName];";
+
+            var report = new List<UserUsageLast7DaysData>();
+            await using var connection = CreateConnection();
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(statement, connection);
+
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    report.Add(new UserUsageLast7DaysData
+                    {
+                        Username = reader.GetString(reader.GetOrdinal("Username")),
+                        UserGuid = reader.GetGuid(reader.GetOrdinal("UserGuid")),
+                        UsageCountLast7Days = reader.GetInt32(reader.GetOrdinal("UsageCountLast7Days")),
+                        UsageCountPrevious7Days = reader.GetInt32(reader.GetOrdinal("UsageCountPrevious7Days")),
+                        ActiveDaysLast7Days = reader.GetInt32(reader.GetOrdinal("ActiveDaysLast7Days")),
+                        FeaturesUsedLast7Days = reader.GetInt32(reader.GetOrdinal("FeaturesUsedLast7Days")),
+                        LastAccessedLast7Days = reader.IsDBNull(reader.GetOrdinal("LastAccessedLast7Days"))
+                            ? null
+                            : reader.GetDateTime(reader.GetOrdinal("LastAccessedLast7Days")),
+                        UsageTrend = reader.GetString(reader.GetOrdinal("UsageTrend"))
+                    });
+                }
+
+                return report;
+            }
+            catch (Exception ex)
+            {
+                ex.Data["SQL"] = statement;
+                throw new Exception($"Exception occurred getting GetUserUsageLast7Days: {ex.Message}", ex);
+            }
+        }
+
         // Get User record by Guid from SCore.Identities
         public async Task<User> GetUserByGuid(Guid guid)
         {
@@ -5705,12 +5756,29 @@ ORDER BY us.SearchRank,
             {
                 if (addLogicalOperator)
                 {
-                    predicateBuilder.Append(compositeFilter.LogicalOperator);
+                    //Assume " AND " if the logical operator is ""
+                    if(compositeFilter.LogicalOperator == "")
+                    {
+                        predicateBuilder.Append(" AND ");
+                    }
+                    else
+                    {
+                        predicateBuilder.Append(compositeFilter.LogicalOperator);
+                    }
+
+
                 }
 
                 if (filterIndex > 0)
                 {
+                    //If the missing operator is String.Empty -> use " AND "
+                    if(filterSeparator == string.Empty && addLogicalOperator == false)
+                    {
+                        filterSeparator = " AND ";
+                    }
+
                     predicateBuilder.Append(" ").Append(filterSeparator).Append(" ");
+
                 }
 
                 predicateBuilder.Append(Core.CreatePropertyStatement(filter.ColumnName, filter.Operator, filter.Guid));

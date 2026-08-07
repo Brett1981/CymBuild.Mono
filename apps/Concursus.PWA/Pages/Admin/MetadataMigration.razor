@@ -6,8 +6,6 @@
 @using System.Text.Json
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 <div class="metadata-workbench">
     <aside class="metadata-workbench-sidebar">
         <div class="metadata-workbench-brand">
@@ -240,7 +238,6 @@
     {
         formHelper = new Concursus.API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             Guid.Empty.ToString(),
             userService);
     }

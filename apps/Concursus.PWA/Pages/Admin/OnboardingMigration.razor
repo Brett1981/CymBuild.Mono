@@ -4,8 +4,6 @@
 @using Concursus.PWA.Classes
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 <div class="cb-v2-shell onboarding-workbench-shell">
     <div class="onboarding-workbench-layout">
         <aside class="onboarding-sidebar" aria-label="OnBoarding workbench navigation">
@@ -1116,7 +1114,6 @@
     {
         _formHelper = new API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             Guid.Empty.ToString(),
             userService);
     }

@@ -10,7 +10,6 @@
 
 @inject Core.CoreClient coreClient
 @inject ModalService modalService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject UserService userService
 
 @attribute [Authorize]
@@ -431,7 +430,7 @@
     private void EnsureFormHelper()
     {
         var entityTypeGuid = ViewDefinition?.EntityTypeGuid.ToString() ?? Guid.Empty.ToString();
-        _formHelper ??= new FormHelper(coreClient, sageIntegrationService, entityTypeGuid, userService);
+        _formHelper ??= new FormHelper(coreClient, entityTypeGuid, userService);
     }
 
     private void InitialiseSort()

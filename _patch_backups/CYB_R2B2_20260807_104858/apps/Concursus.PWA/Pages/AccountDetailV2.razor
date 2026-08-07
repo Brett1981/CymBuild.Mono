@@ -1,0 +1,410 @@
+﻿@page "/AccountDetailV2/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+
+@using System
+@using System.Linq
+@using System.Threading.Tasks
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Classes
+@using Concursus.Components.Shared.Controls
+@using Concursus.Components.Shared.Helpers
+@using Concursus.PWA.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components
+@using Newtonsoft.Json
+@using System.Web
+
+@attribute [Authorize]
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Account Detail V2 (Experimental)</PageTitle>
+
+@if (_isLoading)
+{
+    <div class="container mt-4">
+        <div class="alert alert-info">
+            Loading account details...
+        </div>
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(_loadError))
+{
+    <div class="container mt-4">
+        <div class="alert alert-danger">
+            @_loadError
+        </div>
+    </div>
+}
+else if (_pageViewDefinition is null || _dataObject is null || _dataObjectReference is null)
+{
+    <div class="container mt-4">
+        <div class="alert alert-warning">
+            Unable to load account metadata or data.
+        </div>
+    </div>
+}
+else
+{
+    <div class="container-fluid mt-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0">
+                <i class="bi bi-briefcase-fill me-2"></i>
+                Account Detail V2 (Experimental)
+            </h4>
+
+            <div class="btn-group">
+                <button class="btn btn-sm btn-primary" @onclick="SaveAsync" disabled="@_isSaving">
+                    <i class="bi bi-save me-1"></i> Save
+                </button>
+                <button class="btn btn-sm btn-secondary" @onclick="Cancel">
+                    <i class="bi bi-x-circle me-1"></i> Cancel
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_saveSuccess))
+        {
+            <div class="alert alert-success py-2 small">@_saveSuccess</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_saveError))
+        {
+            <div class="alert alert-danger py-2 small">@_saveError</div>
+        }
+
+        <!-- Tabs (Bootstrap, keeps V2 lightweight) -->
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 0 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(0)">
+                    <i class="bi bi-person-vcard me-2" style="font-size: 1.2rem;"></i> Account
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 1 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(1)">
+                    <i class="bi bi-bank2 me-2" style="font-size: 1.2rem;"></i> Finance
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 2 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(2)">
+                    <i class="bi bi-file-medical-fill me-2" style="font-size: 1.2rem;"></i> Contracts
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(ActiveTabIndex == 3 ? "active" : "")"
+                        type="button"
+                        role="tab"
+                        @onclick="() => SetActiveTab(3)">
+                    <i class="bi bi-calendar-week me-2" style="font-size: 1.2rem;"></i> History
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content pt-3">
+            <!-- Tab 0: Account -->
+            <div class="tab-pane fade @(ActiveTabIndex == 0 ? "show active" : "")" role="tabpanel">
+                <V2FormRenderer ViewDefinition="_pageViewDefinition"
+                                DataObject="_dataObject" />
+
+                <V2DynamicGrid GridCode="ACCOUNTADDRESSES"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="ACCOUNTCONTACTS"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="ACCOUNTMEMOS"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 1: Finance -->
+            <div class="tab-pane fade @(ActiveTabIndex == 1 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="ACCOUNTTRANSACTIONS"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+
+                <V2DynamicGrid GridCode="ACCOUNTFINANCEMEMO"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 2: Contracts -->
+            <div class="tab-pane fade @(ActiveTabIndex == 2 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="ACCOUNTCONTRACTS"
+                             ParentGuid="@RecordGuid"
+                             FullGrid="true"
+                             ParentDataObjectReference="@_dataObjectReference"
+                             ParentRowStatus="@_dataObject.RowStatus" />
+            </div>
+
+            <!-- Tab 3: History -->
+            <div class="tab-pane fade @(ActiveTabIndex == 3 ? "show active" : "")" role="tabpanel">
+                <V2DynamicGrid GridCode="ACCOUNTJOBHISTORY"
+                             ParentGuid="@RecordGuid"
+                             ParentDataObjectReference="@_dataObjectReference" />
+            </div>
+        </div>
+    </div>
+}
+
+@code
+{
+    // ------------------------------------------------------------------------
+    // Route parameters (parity with non-V2 page)
+    // ------------------------------------------------------------------------
+    [Parameter] public string RecordGuid { get; set; } = string.Empty;
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ReturnUrl { get; set; }
+
+    // Optional parity params (if you later want windowed/modal behaviours)
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public string? ModalId { get; set; }
+
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+
+    // Error callback parity
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    // ------------------------------------------------------------------------
+    // V2 core state (metadata + data)
+    // ------------------------------------------------------------------------
+    private FormHelper? _formHelper;
+    private PageViewDefinition? _pageViewDefinition;
+    private DataObject? _dataObject;
+    private DataObjectReference? _dataObjectReference;
+
+    private bool _isLoading;
+    private bool _isSaving;
+    private string? _loadError;
+    private string? _saveError;
+    private string? _saveSuccess;
+
+    // Tabs
+    protected int ActiveTabIndex { get; set; } = 0;
+
+    // ------------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------------
+    protected override async Task OnInitializedAsync()
+    {
+        const string AccountEntityTypeGuid = "40476ecc-d19a-4de9-90df-e1f45cd72fb2";
+
+        try
+        {
+            _isLoading = true;
+            _loadError = null;
+
+            // Keep parity with existing pattern (FormHelper owns metadata/data lifecycle)
+            _formHelper = new FormHelper(coreClient, sageIntegrationService, AccountEntityTypeGuid, userService);
+
+            await _formHelper.LoadMetaDataAsync(isInformationPage: false);
+
+            var entityType = _formHelper.EntityType;
+            _pageViewDefinition = ViewDefinitionBuilder.BuildPageViewDefinition(entityType);
+
+            // Record + entitytype reference for grids and data load
+            _dataObjectReference = new DataObjectReference(RecordGuid, AccountEntityTypeGuid);
+
+            _dataObject = await _formHelper.ReadDataObjectAsync(RecordGuid, _dataObjectReference);
+
+            // Dropdown pipeline (the proven StructureDetailV2 approach)
+            if (_pageViewDefinition != null)
+            {
+                await V2DropdownLoader.PopulateDropdownOptionsAsync(
+                    _pageViewDefinition,
+                    LoadDropdownOptionsForFieldAsync
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            await HandleErrorAsync(ex, "AccountDetailV2/OnInitializedAsync()");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    // If you need the old ParentDataObjectReference behaviour later, we can add it here:
+    // protected override async Task OnParametersSetAsync() { ...deserialize... }
+
+    // ------------------------------------------------------------------------
+    // Tabs
+    // ------------------------------------------------------------------------
+    private void SetActiveTab(int index) => ActiveTabIndex = index;
+
+    // ------------------------------------------------------------------------
+    // Save / Cancel
+    // ------------------------------------------------------------------------
+    private async Task SaveAsync()
+    {
+        if (_formHelper is null || _dataObject is null)
+            return;
+
+        _isSaving = true;
+        _saveError = null;
+        _saveSuccess = null;
+
+        try
+        {
+            var (message, updatedDataObject) = await _formHelper.UpsertDataObject(
+                _dataObject,
+                entityQueryGuid: null,
+                validateOnly: false,
+                IsBulkUpdate: false
+            );
+
+            _dataObject = updatedDataObject;
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _saveError = message;
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_dataObject.ErrorReturned))
+            {
+                _saveError = _dataObject.ErrorReturned;
+                return;
+            }
+
+            _saveSuccess = "Record saved successfully (V2 experimental).";
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "AccountDetailV2/SaveAsync()");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        if (!string.IsNullOrWhiteSpace(ReturnUrl))
+        {
+            NavigationManager.NavigateTo(ReturnUrl!);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("/");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Dropdown loader for V2 (aligned with StructureDetailV2)
+    // ------------------------------------------------------------------------
+    private async Task<IReadOnlyList<DropdownOption>> LoadDropdownOptionsForFieldAsync(FieldDropdownConfig config)
+    {
+        if (coreClient is null || _dataObject is null)
+            return Array.Empty<DropdownOption>();
+
+        try
+        {
+            var definitionGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(config.DefinitionId);
+            if (definitionGuid == Guid.Empty)
+                return Array.Empty<DropdownOption>();
+
+            var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(_dataObject.Guid);
+
+            // Determine current selected value for THIS field (requires FieldId wired in ViewDefinitionBuilder)
+            var currentValueGuid = GetCurrentDropdownGuid(config);
+
+            var request = new DropDownDataListRequest
+            {
+                Guid = definitionGuid.ToString(),
+                ParentGuid = Guid.Empty.ToString(),
+                RecordGuid = recordGuid.ToString(),
+                CurrentSelectedValueGuid = currentValueGuid.ToString()
+            };
+
+            var reply = await coreClient.DropDownDataListAsync(request);
+
+            if (reply?.Items == null || reply.Items.Count == 0)
+                return Array.Empty<DropdownOption>();
+
+            return reply.Items
+                .Select(item => new DropdownOption
+                {
+                    Value = item.Value,
+                    Label = item.Name,
+                    Group = item.Group,
+                    ColourHex = item.ColourHex
+                })
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<DropdownOption>();
+        }
+    }
+
+    private Guid GetCurrentDropdownGuid(FieldDropdownConfig config)
+    {
+        if (_dataObject?.DataProperties == null || string.IsNullOrWhiteSpace(config.FieldId))
+            return Guid.Empty;
+
+        var prop = _dataObject.DataProperties
+            .FirstOrDefault(p =>
+                !string.IsNullOrWhiteSpace(p.EntityPropertyGuid) &&
+                string.Equals(p.EntityPropertyGuid, config.FieldId, StringComparison.OrdinalIgnoreCase));
+
+        if (prop?.Value == null)
+            return Guid.Empty;
+
+        try
+        {
+            if (prop.Value.Is(StringValue.Descriptor))
+            {
+                prop.Value.TryUnpack(out StringValue sv);
+                if (!string.IsNullOrWhiteSpace(sv?.Value) &&
+                    Guid.TryParse(sv.Value, out var parsed))
+                {
+                    return parsed;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return Guid.Empty;
+    }
+
+    // ------------------------------------------------------------------------
+    // Error handling (kept consistent with other V2 pages)
+    // ------------------------------------------------------------------------
+    private async Task HandleErrorAsync(Exception ex, string method)
+    {
+        ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+        ex.Data["AdditionalInfo"] = "An error occurred while processing your request.";
+        ex.Data["PageMethod"] = method;
+
+        if (OnError.HasDelegate)
+            await OnError.InvokeAsync(ex);
+    }
+}

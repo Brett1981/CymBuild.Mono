@@ -282,6 +282,62 @@ public partial class FormHelper
         };
     }
 
+    public async Task<List<SchemaMigrationExcludedObjectModel>> SchemaMigrationExcludedObjectsAsync(
+        Guid runGuid,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        bool includeInactive = false,
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.SchemaMigrationExcludedObjectsAsync(
+            new SchemaMigrationExcludedObjectsRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeInactive = includeInactive
+            },
+            cancellationToken: cancellationToken);
+
+        return reply.Records.Select(MapSchemaExcludedObject).ToList();
+    }
+
+    public async Task<SchemaMigrationExclusionResultModel> SchemaMigrationExclusionUpsertAsync(
+        Guid runGuid,
+        Guid comparisonGuid,
+        string objectType,
+        string schemaName,
+        string objectName,
+        string parentObjectName,
+        bool isExcluded,
+        string reason,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.SchemaMigrationExclusionUpsertAsync(
+            new SchemaMigrationExclusionUpsertRequest
+            {
+                RunGuid = runGuid.ToString(),
+                ComparisonGuid = comparisonGuid == Guid.Empty ? string.Empty : comparisonGuid.ToString(),
+                ObjectType = objectType ?? string.Empty,
+                SchemaName = schemaName ?? string.Empty,
+                ObjectName = objectName ?? string.Empty,
+                ParentObjectName = parentObjectName ?? string.Empty,
+                IsExcluded = isExcluded,
+                Reason = reason ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new SchemaMigrationExclusionResultModel
+        {
+            ExcludedCount = reply.ExcludedCount,
+            Message = reply.Message ?? string.Empty
+        };
+    }
+
     public async Task<SchemaMigrationOperationResultModel> SchemaMigrationDeploymentOutcomeAsync(
         Guid runGuid,
         string deploymentOutcome,
@@ -327,6 +383,7 @@ public partial class FormHelper
             FailCount = message.FailCount,
             WarnCount = message.WarnCount,
             InfoCount = message.InfoCount,
+            ExcludedCount = message.ExcludedCount,
             ObjectTypeCounts = message.ObjectTypeCounts.Select(MapSchemaObjectTypeCount).ToList(),
             ValidationIssues = message.ValidationIssues.Select(MapSchemaValidationIssue).ToList(),
             ExecutionLog = message.ExecutionLog.Select(MapSchemaExecutionLog).ToList()
@@ -382,6 +439,30 @@ public partial class FormHelper
             Notes = message.Notes ?? string.Empty,
             IsSelected = message.IsSelected,
             HasExplicitSelection = message.HasExplicitSelection
+        };
+    }
+
+    private static SchemaMigrationExcludedObjectModel MapSchemaExcludedObject(SchemaMigrationExcludedObject message)
+    {
+        return new SchemaMigrationExcludedObjectModel
+        {
+            Guid = Guid.TryParse(message.Guid, out var guid) ? guid : Guid.Empty,
+            ObjectType = message.ObjectType ?? string.Empty,
+            SchemaName = message.SchemaName ?? string.Empty,
+            ObjectName = message.ObjectName ?? string.Empty,
+            ParentObjectName = message.ParentObjectName ?? string.Empty,
+            StableObjectKey = message.StableObjectKey ?? string.Empty,
+            Reason = message.Reason ?? string.Empty,
+            ExclusionScope = message.ExclusionScope ?? string.Empty,
+            OriginServerName = message.OriginServerName ?? string.Empty,
+            OriginDatabaseName = message.OriginDatabaseName ?? string.Empty,
+            ExcludedByUserId = message.ExcludedByUserId,
+            ExcludedOnUtcText = message.ExcludedOnUtc ?? string.Empty,
+            UnexcludedOnUtcText = message.UnexcludedOnUtc ?? string.Empty,
+            LastSeenRunGuid = Guid.TryParse(message.LastSeenRunGuid, out var lastSeenRunGuid) ? lastSeenRunGuid : Guid.Empty,
+            LastSeenOnUtcText = message.LastSeenOnUtc ?? string.Empty,
+            RowStatus = message.RowStatus,
+            IsSynchronizedToTarget = message.IsSynchronizedToTarget
         };
     }
 

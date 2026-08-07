@@ -1,0 +1,77 @@
+# CymBuild automated testing
+
+This folder contains the shared conventions and repository-level test infrastructure for CymBuild.
+
+## Mandatory boundaries
+
+Automated tests must preserve the production flow:
+
+```text
+Blazor PWA -> FormHelper/API.Client -> gRPC API -> EF -> SQL Server
+```
+
+Tests must not introduce direct UI-to-API, UI-to-EF, or UI-to-SQL dependencies. Business decisions remain outside Razor components. Database tests must deploy source-controlled SQL to disposable databases; they must never write to shared DEV, QA, UAT, or LIVE databases.
+
+## Test levels
+
+Use xUnit traits so tests can be selected consistently:
+
+```csharp
+[Trait("Level", "Unit")]
+[Trait("Area", "Finance")]
+```
+
+Supported levels are `Unit`, `Component`, `Architecture`, `Integration`, `Database`, and `EndToEnd`. Area values should use stable subsystem names such as `Finance`, `Workflow`, `Outbox`, `SchemaMigration`, `MetadataMigration`, `Outlook`, `PostCode`, and `Sage`.
+
+## Determinism
+
+Tests must not depend on wall-clock time, random ordering, developer machine settings, live credentials, or shared mutable data. Use controlled clocks, explicit ordering, stable identifiers, fake external clients, and isolated SQL Server databases as appropriate.
+
+## Commands
+
+Run the current fast test portfolio with coverage:
+
+```powershell
+.\tools\Testing\Invoke-CymBuildFastTests.ps1 -Configuration Release
+```
+
+List the discovered fast projects without executing them:
+
+```powershell
+.\tools\Testing\Invoke-CymBuildFastTests.ps1 -ListOnly
+```
+
+Generate a repository test baseline report:
+
+```powershell
+.\tools\Testing\Get-CymBuildTestBaseline.ps1
+```
+
+Results are written below the ignored root `TestResults` directory. R0 records coverage but deliberately sets no global percentage threshold. Coverage gating will be introduced as a project-specific ratchet after the first substantive test projects are established.
+
+## R1 foundational projects
+
+R1 adds the first grouped fast-test projects:
+
+- `CymBuild.Architecture.Tests`
+- `Concursus.Common.Shared.Tests`
+- `Concursus.EF.Tests`
+
+It also expands `Concursus.API.Tests` with finance eligibility and exact outbound payload serialization tests. These remain fast tests and are discovered automatically by `Invoke-CymBuildFastTests.ps1`.
+
+Architecture tests intentionally lock currently compliant project and persistence boundaries. Existing legacy PWA HTTP usage is documented technical debt and is not silently approved as the target architecture; it will be characterised and migrated behind FormHelper/API.Client in later tranches without behaviour loss.
+
+## R2 FormHelper and metadata-driven UI projects
+
+R2 adds:
+
+- `Concursus.API.Client.Tests` for controlled gRPC request/reply mapping, validation, error handling, and deterministic client helpers;
+- `Concursus.Components.Shared.Tests` for `ViewDefinitionBuilder`, `V2DropdownLoader`, `V2FormRenderer`, and `V2FieldEditor`.
+
+The API Client suite uses an in-process `CallInvoker` test double. It does not call a live API, bypass FormHelper, or introduce UI-to-API coupling. The component suite uses bUnit for rendered component assertions and continues to treat EntityType/EntityProperty metadata and `DataObject` values as the source of truth.
+
+## R3 API orchestration and workers
+
+R3 expands `Concursus.API.Tests` with deterministic coverage for transaction-to-Sage orchestration, inbound payment synchronization, submission administration, hosted-worker disabled paths, Sage configuration validation, invoice automation guards, and outbox payload contracts.
+
+External boundaries are mocked at their existing interfaces. The tests do not call live Sage, Kafka, SQL Server, or shared environments. Database atomicity, stored procedures, DataObjects, workflow transitions, outbox persistence, and application-lock behaviour remain reserved for the dedicated SQL Server integration tranche.

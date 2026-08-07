@@ -39,6 +39,48 @@ public partial class CoreService
                 request.TargetDatabaseName,
                 context.CancellationToken).ConfigureAwait(false);
 
+            var missingBootstrapObjects = await ReadSchemaMigrationBootstrapMissingObjectsAsync(
+                cn,
+                context.CancellationToken).ConfigureAwait(false);
+
+            if (missingBootstrapObjects.Count > 0)
+            {
+                var targetServer = string.IsNullOrWhiteSpace(request.TargetServerName)
+                    ? cn.DataSource
+                    : request.TargetServerName.Trim();
+                var targetDatabase = string.IsNullOrWhiteSpace(request.TargetDatabaseName)
+                    ? cn.Database
+                    : request.TargetDatabaseName.Trim();
+                var missingObjects = string.Join(", ", missingBootstrapObjects);
+
+                throw new RpcException(new Status(
+                    StatusCode.FailedPrecondition,
+                    $"SCHEMA_MIGRATION_BOOTSTRAP_REQUIRED|The Schema Migration workbench is not initialised in target '{targetServer} / {targetDatabase}'. Missing: {missingObjects}. Run tools/SchemaDeployment/Initialize-CymBuildSchemaMigration.ps1 from a controlled deployment account, then retry Create Run."));
+            }
+
+            await using var sourceReadinessConnection = await OpenSqlForServerDatabaseAsync(
+                templateConnection.ConnectionString,
+                request.SourceServerName,
+                request.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            var missingSourceBootstrapObjects = await ReadSchemaMigrationBootstrapMissingObjectsAsync(
+                sourceReadinessConnection,
+                context.CancellationToken).ConfigureAwait(false);
+            if (missingSourceBootstrapObjects.Count > 0)
+            {
+                var sourceServer = string.IsNullOrWhiteSpace(request.SourceServerName)
+                    ? sourceReadinessConnection.DataSource
+                    : request.SourceServerName.Trim();
+                var sourceDatabase = string.IsNullOrWhiteSpace(request.SourceDatabaseName)
+                    ? sourceReadinessConnection.Database
+                    : request.SourceDatabaseName.Trim();
+                var missingObjects = string.Join(", ", missingSourceBootstrapObjects);
+
+                throw new RpcException(new Status(
+                    StatusCode.FailedPrecondition,
+                    $"SCHEMA_MIGRATION_SOURCE_BOOTSTRAP_REQUIRED|The Schema Migration workbench is not initialised in source '{sourceServer} / {sourceDatabase}'. Missing: {missingObjects}. Run tools/SchemaDeployment/Initialize-CymBuildSchemaMigration.ps1 from a controlled deployment account, then retry Create Run."));
+            }
+
             var runGuid = Guid.NewGuid();
             await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
 
@@ -180,7 +222,8 @@ SELECT TOP (@Top)
     r.Notes,
     r.SummaryJson
 FROM SMigration.Schema_Run AS r
-WHERE r.RowStatus NOT IN (0,254)
+WHERE r.RowStatus <> 0
+  AND r.RowStatus <> 254
 ORDER BY r.ID DESC;", cn)
         {
             CommandType = CommandType.Text,
@@ -218,7 +261,10 @@ ORDER BY r.ID DESC;", cn)
 
         try
         {
-            await using var targetConnection = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
+            await using var targetConnection = await OpenSchemaTargetSqlAsync(
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
             var run = await ReadSchemaRunSummaryAsync(targetConnection, runGuid, context.CancellationToken).ConfigureAwait(false);
 
             await using var sourceConnection = await OpenSqlForServerDatabaseAsync(
@@ -227,75 +273,193 @@ ORDER BY r.ID DESC;", cn)
                 run.SourceDatabaseName,
                 context.CancellationToken).ConfigureAwait(false);
 
-            await RunSchemaPreCompareMaintenanceAsync(
-                targetConnection,
+            await EnsureSchemaExclusionInfrastructureAsync(
                 sourceConnection,
-                runGuid,
-                run,
+                "SOURCE",
+                run.SourceServerName,
+                run.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            await EnsureSchemaExclusionInfrastructureAsync(
+                targetConnection,
+                "TARGET",
+                run.TargetServerName,
+                run.TargetDatabaseName,
                 context.CancellationToken).ConfigureAwait(false);
 
-            var sourceObjects = await ReadSchemaSnapshotAsync(sourceConnection, context.CancellationToken).ConfigureAwait(false);
-            var targetObjects = await ReadSchemaSnapshotAsync(targetConnection, context.CancellationToken).ConfigureAwait(false);
-            var comparisonRows = BuildSchemaComparisonRows(sourceObjects, targetObjects);
+            var sourceIsDevelopment = IsDevelopmentSchemaSource(run.SourceEnvironment, run.SourceDatabaseName);
+            var sourceAndTargetAreSameDatabase = AreSameSqlDatabase(sourceConnection, targetConnection);
+            var sourcePreDeploymentAttempted = false;
+            var targetPreDeploymentAttempted = false;
 
-            await using var tx = (SqlTransaction)await targetConnection.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
             try
             {
-                await DeactivateSchemaRowsAsync(
-                    targetConnection,
-                    tx,
-                    "SMigration.Schema_ObjectComparisons",
-                    runGuid,
-                    context.CancellationToken).ConfigureAwait(false);
-
-                foreach (var row in comparisonRows)
+                if (!sourceIsDevelopment && !sourceAndTargetAreSameDatabase)
                 {
-                    await InsertSchemaComparisonRowAsync(targetConnection, tx, runGuid, row, context.CancellationToken).ConfigureAwait(false);
+                    sourcePreDeploymentAttempted = true;
+                    await ExecuteSchemaMaintenanceProcedureAsync(
+                        sourceConnection,
+                        SchemaMaintenanceProcedure.PreDeployment,
+                        context.CancellationToken).ConfigureAwait(false);
                 }
 
-                var summary = new
-                {
-                    ComparedObjects = comparisonRows.Count,
-                    EqualCount = comparisonRows.Count(x => x.DifferenceType == "Equal"),
-                    MissingInTargetCount = comparisonRows.Count(x => x.DifferenceType == "MissingInTarget"),
-                    MissingInSourceCount = comparisonRows.Count(x => x.DifferenceType == "MissingInSource"),
-                    DifferentCount = comparisonRows.Count(x => x.DifferenceType == "Different")
-                };
-
-                await UpdateSchemaRunStatusAsync(
+                targetPreDeploymentAttempted = true;
+                await ExecuteSchemaMaintenanceProcedureAsync(
                     targetConnection,
-                    tx,
-                    runGuid,
-                    SchemaMigrationCompared,
-                    compared: true,
-                    validated: false,
-                    reviewed: false,
-                    applied: false,
-                    summaryJson: JsonSerializer.Serialize(summary),
-                    cancellationToken: context.CancellationToken).ConfigureAwait(false);
-
-                await AddSchemaExecutionLogAsync(
-                    targetConnection,
-                    tx,
-                    runGuid,
-                    "Compare",
-                    "Succeeded",
-                    $"Schema comparison completed. {summary.ComparedObjects} objects compared.",
-                    JsonSerializer.Serialize(summary),
+                    SchemaMaintenanceProcedure.PreDeployment,
                     context.CancellationToken).ConfigureAwait(false);
 
-                await tx.CommitAsync(context.CancellationToken).ConfigureAwait(false);
+                var exclusionSync = await SynchronizeSchemaExclusionsAsync(
+                    sourceConnection,
+                    targetConnection,
+                    runGuid,
+                    context.CancellationToken).ConfigureAwait(false);
+                var sourceObjects = await ReadSchemaSnapshotAsync(sourceConnection, context.CancellationToken).ConfigureAwait(false);
+                var targetObjects = await ReadSchemaSnapshotAsync(targetConnection, context.CancellationToken).ConfigureAwait(false);
+                var comparisonRows = BuildSchemaComparisonRows(
+                    sourceObjects,
+                    targetObjects,
+                    exclusionSync.ActiveStableObjectKeys);
+
+                await using var tx = (SqlTransaction)await targetConnection.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await DeactivateSchemaRowsAsync(
+                        targetConnection,
+                        tx,
+                        "SMigration.Schema_ObjectComparisons",
+                        runGuid,
+                        context.CancellationToken).ConfigureAwait(false);
+                    await DeactivateSchemaRowsAsync(
+                        targetConnection,
+                        tx,
+                        "SMigration.Schema_ValidationIssues",
+                        runGuid,
+                        context.CancellationToken).ConfigureAwait(false);
+
+                    foreach (var row in comparisonRows)
+                    {
+                        await InsertSchemaComparisonRowAsync(targetConnection, tx, runGuid, row, context.CancellationToken).ConfigureAwait(false);
+                    }
+
+                    var sourcePreparation = sourceIsDevelopment
+                        ? "SkippedDevelopmentSource"
+                        : sourceAndTargetAreSameDatabase
+                            ? "AppliedWithTarget"
+                            : "Applied";
+
+                    var summary = new
+                    {
+                        ComparedObjects = comparisonRows.Count,
+                        EqualCount = comparisonRows.Count(x => x.DifferenceType == "Equal"),
+                        MissingInTargetCount = comparisonRows.Count(x => x.DifferenceType == "MissingInTarget"),
+                        MissingInSourceCount = comparisonRows.Count(x => x.DifferenceType == "MissingInSource"),
+                        DifferentCount = comparisonRows.Count(x => x.DifferenceType == "Different"),
+                        SourcePreDeployment = sourcePreparation,
+                        TargetPreDeployment = "Applied",
+                        SourceAndTargetAreSameDatabase = sourceAndTargetAreSameDatabase,
+                        ExcludedObjectCount = exclusionSync.ActiveCount,
+                        ExclusionRowsSynchronizedToTarget = exclusionSync.SynchronizedCount,
+                        TargetOnlyExclusionsRemoved = exclusionSync.RemovedTargetOnlyCount
+                    };
+
+                    await UpdateSchemaRunStatusAsync(
+                        targetConnection,
+                        tx,
+                        runGuid,
+                        SchemaMigrationCompared,
+                        compared: true,
+                        validated: false,
+                        reviewed: false,
+                        applied: false,
+                        summaryJson: JsonSerializer.Serialize(summary),
+                        cancellationToken: context.CancellationToken).ConfigureAwait(false);
+
+                    await AddSchemaExecutionLogAsync(
+                        targetConnection,
+                        tx,
+                        runGuid,
+                        "ComparePreDeployment",
+                        "Succeeded",
+                        sourceIsDevelopment
+                            ? "SCore.PreDeploymentScript completed on the target database. Source preparation was skipped because the source environment is DEV."
+                            : sourceAndTargetAreSameDatabase
+                                ? "SCore.PreDeploymentScript completed once because source and target resolve to the same SQL database."
+                                : "SCore.PreDeploymentScript completed on both source and target databases before comparison.",
+                        JsonSerializer.Serialize(new
+                        {
+                            run.SourceEnvironment,
+                            run.SourceServerName,
+                            run.SourceDatabaseName,
+                            run.TargetEnvironment,
+                            run.TargetServerName,
+                            run.TargetDatabaseName,
+                            SourcePreDeployment = sourcePreparation,
+                            TargetPreDeployment = "Applied",
+                            SourceAndTargetAreSameDatabase = sourceAndTargetAreSameDatabase
+                        }),
+                        context.CancellationToken).ConfigureAwait(false);
+
+                    await AddSchemaExecutionLogAsync(
+                        targetConnection,
+                        tx,
+                        runGuid,
+                        "ExclusionSync",
+                        "Succeeded",
+                        $"Source-authoritative schema exclusions were synchronized to the target before comparison. {exclusionSync.ActiveCount} active exclusion(s) were applied to this dataset.",
+                        JsonSerializer.Serialize(new
+                        {
+                            ActiveExcludedObjectCount = exclusionSync.ActiveCount,
+                            exclusionSync.SynchronizedCount,
+                            exclusionSync.RemovedTargetOnlyCount,
+                            SourceDatabase = sourceConnection.Database,
+                            TargetDatabase = targetConnection.Database,
+                            Scope = "AllDatabases"
+                        }),
+                        context.CancellationToken).ConfigureAwait(false);
+
+                    await AddSchemaExecutionLogAsync(
+                        targetConnection,
+                        tx,
+                        runGuid,
+                        "Compare",
+                        "Succeeded",
+                        $"Schema comparison completed. {summary.ComparedObjects} objects compared.",
+                        JsonSerializer.Serialize(summary),
+                        context.CancellationToken).ConfigureAwait(false);
+
+                    await tx.CommitAsync(context.CancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    await tx.RollbackAsync(context.CancellationToken).ConfigureAwait(false);
+                    throw;
+                }
+
+                return new SchemaMigrationDashboardResponse
+                {
+                    Dashboard = await ReadSchemaDashboardAsync(targetConnection, runGuid, context.CancellationToken).ConfigureAwait(false)
+                };
             }
-            catch
+            catch (Exception compareException)
             {
-                await tx.RollbackAsync(context.CancellationToken).ConfigureAwait(false);
+                var recoveryErrors = await RestoreSchemaComparePreparationAfterFailureAsync(
+                    sourceConnection,
+                    targetConnection,
+                    sourcePreDeploymentAttempted,
+                    targetPreDeploymentAttempted,
+                    sourceIsDevelopment,
+                    sourceAndTargetAreSameDatabase,
+                    CancellationToken.None).ConfigureAwait(false);
+
+                if (recoveryErrors.Count > 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Schema comparison failed after pre-deployment preparation. Post-deployment recovery also failed: {string.Join(" | ", recoveryErrors)}",
+                        compareException);
+                }
+
                 throw;
             }
-
-            return new SchemaMigrationDashboardResponse
-            {
-                Dashboard = await ReadSchemaDashboardAsync(targetConnection, runGuid, context.CancellationToken).ConfigureAwait(false)
-            };
         }
         catch (SqlException ex)
         {
@@ -321,11 +485,21 @@ ORDER BY r.ID DESC;", cn)
         try
         {
             await using var cn = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
-            var rows = await ReadSchemaComparisonRowsAsync(cn, runGuid, string.Empty, string.Empty, string.Empty, context.CancellationToken).ConfigureAwait(false);
+            var rows = await ReadSchemaComparisonRowsAsync(
+                cn,
+                runGuid,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                includeDefinitions: false,
+                comparisonGuid: null,
+                context.CancellationToken).ConfigureAwait(false);
             var hasExplicitSelection = rows.Any(x => x.HasExplicitSelection);
             var validationScopeRows = hasExplicitSelection
                 ? rows.Where(x => x.IsSelected).ToList()
-                : rows.Where(x => x.IsDeployable && !x.DifferenceType.Equals("Equal", StringComparison.OrdinalIgnoreCase)).ToList();
+                : rows.Where(x => x.IsDeployable
+                    && !x.IsDestructiveRisk
+                    && !x.DifferenceType.Equals("Equal", StringComparison.OrdinalIgnoreCase)).ToList();
             await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
 
             try
@@ -369,9 +543,11 @@ ORDER BY r.ID DESC;", cn)
                     runGuid,
                     "Validate",
                     validationFailCount > 0 ? "Failed" : "Succeeded",
-                    $"Schema validation completed with {validationFailCount} fail(s), {validationWarnCount} warning(s), and {validationInfoCount} information item(s).",
+                    $"Schema validation completed for {(hasExplicitSelection ? "the explicit saved selection" : "the default safe non-destructive deployable plan")} containing {validationScopeRows.Count} row(s), with {validationFailCount} fail(s), {validationWarnCount} warning(s), and {validationInfoCount} information item(s).",
                     JsonSerializer.Serialize(new
                     {
+                        ScopeMode = hasExplicitSelection ? "ExplicitSelection" : "DefaultSafeDeployable",
+                        ScopedRowCount = validationScopeRows.Count,
                         FailCount = validationFailCount,
                         WarnCount = validationWarnCount,
                         InfoCount = validationInfoCount
@@ -400,10 +576,254 @@ ORDER BY r.ID DESC;", cn)
     {
         var runGuid = ParseGuid(request.RunGuid, "runGuid");
         await using var cn = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
+        await EnsureSchemaExclusionInfrastructureAsync(
+            cn,
+            "TARGET",
+            request.TargetServerName,
+            request.TargetDatabaseName,
+            context.CancellationToken).ConfigureAwait(false);
         return new SchemaMigrationDashboardResponse
         {
             Dashboard = await ReadSchemaDashboardAsync(cn, runGuid, context.CancellationToken).ConfigureAwait(false)
         };
+    }
+
+    public override async Task<SchemaMigrationExcludedObjectsResponse> SchemaMigrationExcludedObjects(
+        SchemaMigrationExcludedObjectsRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var targetConnection = await OpenSchemaTargetSqlAsync(
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            var run = await ReadSchemaRunSummaryAsync(targetConnection, runGuid, context.CancellationToken).ConfigureAwait(false);
+
+            await using var sourceConnection = await OpenSqlForServerDatabaseAsync(
+                targetConnection.ConnectionString,
+                run.SourceServerName,
+                run.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+
+            await EnsureSchemaExclusionInfrastructureAsync(
+                sourceConnection,
+                "SOURCE",
+                run.SourceServerName,
+                run.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            await EnsureSchemaExclusionInfrastructureAsync(
+                targetConnection,
+                "TARGET",
+                run.TargetServerName,
+                run.TargetDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+
+            var sourceRecords = await ReadSchemaExcludedObjectRecordsAsync(
+                sourceConnection,
+                request.IncludeInactive,
+                context.CancellationToken).ConfigureAwait(false);
+            var targetRecords = AreSameSqlDatabase(sourceConnection, targetConnection)
+                ? sourceRecords
+                : await ReadSchemaExcludedObjectRecordsAsync(
+                    targetConnection,
+                    includeInactive: true,
+                    context.CancellationToken).ConfigureAwait(false);
+            var targetByKey = targetRecords
+                .GroupBy(x => x.StableObjectKey, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(x => x.Key, x => x.OrderByDescending(y => y.ID).First(), StringComparer.OrdinalIgnoreCase);
+
+            var response = new SchemaMigrationExcludedObjectsResponse
+            {
+                ExcludedCount = sourceRecords.Count(x => x.IsActive),
+                Message = "Schema exclusions are source-authoritative and are synchronized to the selected target during comparison."
+            };
+
+            foreach (var record in sourceRecords)
+            {
+                targetByKey.TryGetValue(record.StableObjectKey, out var targetRecord);
+                response.Records.Add(MapSchemaExcludedObject(record, targetRecord));
+            }
+
+            return response;
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Schema excluded objects SQL failed: {ex.Message}"));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Schema excluded objects failed: {ex.Message}"));
+        }
+    }
+
+    public override async Task<SchemaMigrationExclusionResponse> SchemaMigrationExclusionUpsert(
+        SchemaMigrationExclusionUpsertRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            await using var targetConnection = await OpenSchemaTargetSqlAsync(
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            var run = await ReadSchemaRunSummaryAsync(targetConnection, runGuid, context.CancellationToken).ConfigureAwait(false);
+
+            await using var sourceConnection = await OpenSqlForServerDatabaseAsync(
+                targetConnection.ConnectionString,
+                run.SourceServerName,
+                run.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+
+            await EnsureSchemaExclusionInfrastructureAsync(
+                sourceConnection,
+                "SOURCE",
+                run.SourceServerName,
+                run.SourceDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+            await EnsureSchemaExclusionInfrastructureAsync(
+                targetConnection,
+                "TARGET",
+                run.TargetServerName,
+                run.TargetDatabaseName,
+                context.CancellationToken).ConfigureAwait(false);
+
+            var objectIdentity = await ResolveSchemaExclusionObjectIdentityAsync(
+                targetConnection,
+                runGuid,
+                request,
+                context.CancellationToken).ConfigureAwait(false);
+            var reason = (request.Reason ?? string.Empty).Trim();
+            if (request.IsExcluded && string.IsNullOrWhiteSpace(reason))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "An exclusion reason is required."));
+            }
+
+            var actorUserId = await ReadSchemaCurrentUserIdAsync(targetConnection, context.CancellationToken).ConfigureAwait(false);
+            var sourceRecords = await ReadSchemaExcludedObjectRecordsAsync(
+                sourceConnection,
+                includeInactive: true,
+                context.CancellationToken).ConfigureAwait(false);
+            var stableObjectKey = BuildSchemaStableObjectKey(
+                objectIdentity.ObjectType,
+                objectIdentity.SchemaName,
+                objectIdentity.ObjectName,
+                objectIdentity.ParentObjectName);
+            var existingSourceRecord = sourceRecords.FirstOrDefault(x =>
+                x.StableObjectKey.Equals(stableObjectKey, StringComparison.OrdinalIgnoreCase));
+            var exclusionGuid = existingSourceRecord?.Guid ?? Guid.NewGuid();
+
+            exclusionGuid = await ApplySchemaExcludedObjectAsync(
+                sourceConnection,
+                null,
+                exclusionGuid,
+                objectIdentity,
+                reason,
+                request.IsExcluded,
+                sourceConnection.DataSource,
+                sourceConnection.Database,
+                actorUserId,
+                runGuid,
+                context.CancellationToken).ConfigureAwait(false);
+
+            await using var targetTx = (SqlTransaction)await targetConnection.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (!AreSameSqlDatabase(sourceConnection, targetConnection))
+                {
+                    await ApplySchemaExcludedObjectAsync(
+                        targetConnection,
+                        targetTx,
+                        exclusionGuid,
+                        objectIdentity,
+                        reason,
+                        request.IsExcluded,
+                        sourceConnection.DataSource,
+                        sourceConnection.Database,
+                        actorUserId,
+                        runGuid,
+                        context.CancellationToken).ConfigureAwait(false);
+                }
+
+                await DeactivateSchemaSelectionForObjectAsync(
+                    targetConnection,
+                    targetTx,
+                    runGuid,
+                    objectIdentity,
+                    context.CancellationToken).ConfigureAwait(false);
+                await InvalidateSchemaValidationAndReviewAsync(
+                    targetConnection,
+                    targetTx,
+                    runGuid,
+                    context.CancellationToken).ConfigureAwait(false);
+
+                await AddSchemaExecutionLogAsync(
+                    targetConnection,
+                    targetTx,
+                    runGuid,
+                    "Exclusion",
+                    request.IsExcluded ? "Excluded" : "Unexcluded",
+                    request.IsExcluded
+                        ? $"Schema object {objectIdentity.DisplayName} was excluded globally from the source-authoritative comparison policy and synchronized to the target."
+                        : $"Schema object {objectIdentity.DisplayName} was removed from the source-authoritative exclusion policy and synchronized to the target.",
+                    JsonSerializer.Serialize(new
+                    {
+                        exclusionGuid,
+                        objectIdentity.ObjectType,
+                        objectIdentity.SchemaName,
+                        objectIdentity.ObjectName,
+                        objectIdentity.ParentObjectName,
+                        Reason = reason,
+                        request.IsExcluded,
+                        SourceServerName = sourceConnection.DataSource,
+                        SourceDatabaseName = sourceConnection.Database,
+                        TargetServerName = targetConnection.DataSource,
+                        TargetDatabaseName = targetConnection.Database,
+                        Scope = "AllDatabases"
+                    }),
+                    context.CancellationToken).ConfigureAwait(false);
+
+                await targetTx.CommitAsync(context.CancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await targetTx.RollbackAsync(context.CancellationToken).ConfigureAwait(false);
+                throw;
+            }
+
+            var activeCount = (await ReadSchemaExcludedObjectRecordsAsync(
+                sourceConnection,
+                includeInactive: false,
+                context.CancellationToken).ConfigureAwait(false)).Count;
+
+            return new SchemaMigrationExclusionResponse
+            {
+                ExcludedCount = activeCount,
+                Message = request.IsExcluded
+                    ? $"{objectIdentity.DisplayName} is excluded for all future schema datasets. The source policy was synchronized to {targetConnection.Database}; rerun compare to refresh the current run."
+                    : $"{objectIdentity.DisplayName} is no longer excluded. The source policy was synchronized to {targetConnection.Database}; rerun compare to include it again."
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Schema exclusion SQL failed: {ex.Message}"));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Schema exclusion failed: {ex.Message}"));
+        }
     }
 
     public override async Task<SchemaMigrationObjectsResponse> SchemaMigrationObjects(
@@ -411,6 +831,12 @@ ORDER BY r.ID DESC;", cn)
         ServerCallContext context)
     {
         var runGuid = ParseGuid(request.RunGuid, "runGuid");
+        Guid? comparisonGuid = null;
+        if (!string.IsNullOrWhiteSpace(request.ComparisonGuid))
+        {
+            comparisonGuid = ParseGuid(request.ComparisonGuid, "comparisonGuid");
+        }
+
         await using var cn = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
         var response = new SchemaMigrationObjectsResponse();
         response.Rows.AddRange(await ReadSchemaComparisonRowsAsync(
@@ -419,6 +845,8 @@ ORDER BY r.ID DESC;", cn)
             request.ObjectType,
             request.DifferenceType,
             request.SearchText,
+            request.IncludeDefinitions,
+            comparisonGuid,
             context.CancellationToken).ConfigureAwait(false));
         return response;
     }
@@ -441,6 +869,7 @@ ORDER BY r.ID DESC;", cn)
                     "SMigration.Schema_RunSelections",
                     runGuid,
                     context.CancellationToken).ConfigureAwait(false);
+                await InvalidateSchemaValidationAndReviewAsync(cn, tx, runGuid, context.CancellationToken).ConfigureAwait(false);
 
                 await AddSchemaExecutionLogAsync(
                     cn,
@@ -448,7 +877,7 @@ ORDER BY r.ID DESC;", cn)
                     runGuid,
                     "Selection",
                     "Cleared",
-                    "Schema deployment selection cleared. Pipeline selection has returned to the default: all deployable differences.",
+                    "Schema deployment selection cleared. The plan returned to the default safe non-destructive scope; validation and deployment acceptance were reset.",
                     JsonSerializer.Serialize(new { request.Notes }),
                     context.CancellationToken).ConfigureAwait(false);
 
@@ -464,7 +893,7 @@ ORDER BY r.ID DESC;", cn)
             return new SchemaMigrationSelectionResponse
             {
                 Success = true,
-                Message = "Selection cleared. All deployable schema differences will be included by default.",
+                Message = "Selection cleared. All non-destructive deployable schema differences will be included by default; destructive-risk rows require an explicit saved selection. Revalidate and accept the updated plan before deployment.",
                 SelectedCount = counts.SelectedCount,
                 DeployableCount = counts.DeployableCount,
                 ExplicitSelectionCount = counts.ExplicitSelectionCount
@@ -485,40 +914,71 @@ ORDER BY r.ID DESC;", cn)
         try
         {
             await using var cn = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
-            var currentRows = await ReadSchemaComparisonRowsAsync(cn, runGuid, string.Empty, string.Empty, string.Empty, context.CancellationToken).ConfigureAwait(false);
+            var currentRows = await ReadSchemaComparisonRowsAsync(
+                cn,
+                runGuid,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                includeDefinitions: false,
+                comparisonGuid: null,
+                context.CancellationToken).ConfigureAwait(false);
             var deployableRows = currentRows
                 .Where(x => x.IsDeployable && !x.DifferenceType.Equals("Equal", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            var selectionByKey = request.Selections
+            var selectedComparisonGuids = request.Selections
+                .Where(x => x.IsSelected && Guid.TryParse(x.ComparisonGuid, out _))
+                .Select(x => Guid.Parse(x.ComparisonGuid))
+                .ToHashSet();
+
+            // Backward compatibility for pre-R22 clients that supplied full object keys.
+            var legacySelectionByKey = request.Selections
+                .Where(x => !string.IsNullOrWhiteSpace(x.ObjectType))
                 .GroupBy(x => BuildSchemaSelectionKey(x), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(x => x.Key, x => x.Last().IsSelected, StringComparer.OrdinalIgnoreCase);
 
+            var usesGuidOnlySelection = request.Selections.Count == 0 || request.Selections.All(x => string.IsNullOrWhiteSpace(x.ObjectType));
             var selections = deployableRows
-                .Select(row => new SchemaSelectionDraft
+                .Select(row =>
                 {
-                    ComparisonGuid = Guid.TryParse(row.ComparisonGuid, out var comparisonGuid) ? comparisonGuid : Guid.Empty,
-                    ObjectType = row.ObjectType,
-                    SchemaName = row.SchemaName,
-                    ObjectName = row.ObjectName,
-                    ParentObjectName = row.ParentObjectName,
-                    IsSelected = selectionByKey.TryGetValue(BuildSchemaSelectionKey(row), out var isSelected) ? isSelected : row.IsSelected
+                    var comparisonGuid = Guid.TryParse(row.ComparisonGuid, out var parsedComparisonGuid)
+                        ? parsedComparisonGuid
+                        : Guid.Empty;
+                    var isSelected = usesGuidOnlySelection
+                        ? selectedComparisonGuids.Contains(comparisonGuid)
+                        : legacySelectionByKey.TryGetValue(BuildSchemaSelectionKey(row), out var legacySelected) && legacySelected;
+
+                    return new SchemaSelectionDraft
+                    {
+                        ComparisonGuid = comparisonGuid,
+                        ObjectType = row.ObjectType,
+                        SchemaName = row.SchemaName,
+                        ObjectName = row.ObjectName,
+                        ParentObjectName = row.ParentObjectName,
+                        IsSelected = isSelected,
+                        IsDestructiveRisk = row.IsDestructiveRisk
+                    };
                 })
                 .ToList();
 
-            if (selections.Count == 0 || selections.All(x => x.IsSelected))
+            var matchesDefaultSafePlan = selections.Count == 0
+                || selections.All(x => x.IsDestructiveRisk ? !x.IsSelected : x.IsSelected);
+
+            if (matchesDefaultSafePlan)
             {
                 await using var clearTx = (SqlTransaction)await cn.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
                 try
                 {
                     await DeactivateSchemaRowsAsync(cn, clearTx, "SMigration.Schema_RunSelections", runGuid, context.CancellationToken).ConfigureAwait(false);
+                    await InvalidateSchemaValidationAndReviewAsync(cn, clearTx, runGuid, context.CancellationToken).ConfigureAwait(false);
                     await AddSchemaExecutionLogAsync(
                         cn,
                         clearTx,
                         runGuid,
                         "Selection",
-                        "DefaultAll",
-                        "Schema deployment selection saved as default-all. No explicit rows are required because every deployable difference is selected.",
+                        "DefaultSafe",
+                        "Schema deployment selection saved as the default safe non-destructive plan. Validation and deployment acceptance were reset because the plan changed.",
                         JsonSerializer.Serialize(new { request.Notes, DeployableCount = selections.Count }),
                         context.CancellationToken).ConfigureAwait(false);
                     await clearTx.CommitAsync(context.CancellationToken).ConfigureAwait(false);
@@ -533,7 +993,7 @@ ORDER BY r.ID DESC;", cn)
                 return new SchemaMigrationSelectionResponse
                 {
                     Success = true,
-                    Message = "All deployable schema differences are selected, so the persisted configuration remains default-all.",
+                    Message = "The saved choices match the default safe non-destructive plan, so no explicit selection rows are required. Destructive-risk rows remain excluded until explicitly selected. Revalidate and accept the updated plan before deployment.",
                     SelectedCount = defaultCounts.SelectedCount,
                     DeployableCount = defaultCounts.DeployableCount,
                     ExplicitSelectionCount = defaultCounts.ExplicitSelectionCount
@@ -544,6 +1004,7 @@ ORDER BY r.ID DESC;", cn)
             try
             {
                 await DeactivateSchemaRowsAsync(cn, tx, "SMigration.Schema_RunSelections", runGuid, context.CancellationToken).ConfigureAwait(false);
+                await InvalidateSchemaValidationAndReviewAsync(cn, tx, runGuid, context.CancellationToken).ConfigureAwait(false);
 
                 foreach (var selection in selections)
                 {
@@ -556,7 +1017,7 @@ ORDER BY r.ID DESC;", cn)
                     runGuid,
                     "Selection",
                     "Saved",
-                    "Schema deployment selection saved. The approved pipeline can consume SMigration.SchemaDeploymentPlan_Get for this run.",
+                    "Schema deployment selection saved. Validation and deployment acceptance were reset because the plan changed.",
                     JsonSerializer.Serialize(new
                     {
                         request.Notes,
@@ -578,7 +1039,7 @@ ORDER BY r.ID DESC;", cn)
             return new SchemaMigrationSelectionResponse
             {
                 Success = true,
-                Message = $"Schema deployment selection saved. {counts.SelectedCount:N0} of {counts.DeployableCount:N0} deployable differences are selected for pipeline deployment.",
+                Message = $"Schema deployment selection saved. {counts.SelectedCount:N0} of {counts.DeployableCount:N0} deployable differences are selected. Revalidate and accept the updated plan before deployment.",
                 SelectedCount = counts.SelectedCount,
                 DeployableCount = counts.DeployableCount,
                 ExplicitSelectionCount = counts.ExplicitSelectionCount
@@ -618,6 +1079,30 @@ ORDER BY r.ID DESC;", cn)
         try
         {
             await using var cn = await OpenSchemaTargetSqlAsync(request.TargetServerName, request.TargetDatabaseName, context.CancellationToken).ConfigureAwait(false);
+            var run = await ReadSchemaRunSummaryAsync(cn, runGuid, context.CancellationToken).ConfigureAwait(false);
+            var isInitialAcceptance = run.RunStatus.Equals(SchemaMigrationValidated, StringComparison.OrdinalIgnoreCase);
+            var isAcceptanceUpdate = run.IsReviewed
+                && run.RunStatus.Equals(SchemaMigrationReviewed, StringComparison.OrdinalIgnoreCase);
+            var reviewedByNote = (request.ReviewedByNote ?? string.Empty).Trim();
+
+            if (!isInitialAcceptance && !isAcceptanceUpdate)
+            {
+                return new SchemaMigrationOperationResponse
+                {
+                    Success = false,
+                    Message = "Schema acceptance can only be recorded after validation or updated while the unchanged plan remains in Reviewed status."
+                };
+            }
+
+            if (isAcceptanceUpdate && string.IsNullOrWhiteSpace(reviewedByNote))
+            {
+                return new SchemaMigrationOperationResponse
+                {
+                    Success = false,
+                    Message = "Enter an additional acceptance note before updating an already accepted schema run."
+                };
+            }
+
             var validation = await ReadSchemaValidationResponseAsync(cn, runGuid, context.CancellationToken).ConfigureAwait(false);
             if (validation.FailCount > 0)
             {
@@ -640,7 +1125,8 @@ SET
     RunStatus = @RunStatus,
     Notes = CASE WHEN LEN(@ReviewedByNote) > 0 THEN CONCAT(Notes, CHAR(10), @ReviewedByNote) ELSE Notes END
 WHERE Guid = @RunGuid
-  AND RowStatus NOT IN (0,254);", cn, tx)
+  AND RowStatus <> 0
+  AND RowStatus <> 254;", cn, tx)
                 {
                     CommandType = CommandType.Text,
                     CommandTimeout = 300
@@ -648,7 +1134,7 @@ WHERE Guid = @RunGuid
                 {
                     cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
                     cmd.Parameters.Add(new SqlParameter("@RunStatus", SqlDbType.NVarChar, 30) { Value = SchemaMigrationReviewed });
-                    cmd.Parameters.Add(new SqlParameter("@ReviewedByNote", SqlDbType.NVarChar, 2000) { Value = request.ReviewedByNote ?? string.Empty });
+                    cmd.Parameters.Add(new SqlParameter("@ReviewedByNote", SqlDbType.NVarChar, 2000) { Value = reviewedByNote });
                     await cmd.ExecuteNonQueryAsync(context.CancellationToken).ConfigureAwait(false);
                 }
 
@@ -656,10 +1142,17 @@ WHERE Guid = @RunGuid
                     cn,
                     tx,
                     runGuid,
-                    "Review",
+                    isAcceptanceUpdate ? "AcceptanceUpdate" : "Review",
                     "Succeeded",
-                    "Schema comparison and validation have been reviewed.",
-                    JsonSerializer.Serialize(new { request.ReviewedByNote }),
+                    isAcceptanceUpdate
+                        ? "Schema deployment acceptance note updated for the unchanged validated plan."
+                        : "Schema comparison and validation have been reviewed and accepted for deployment.",
+                    JsonSerializer.Serialize(new
+                    {
+                        AcceptanceMode = isAcceptanceUpdate ? "Update" : "Initial",
+                        ReviewedByNote = reviewedByNote,
+                        PreviousReviewedOnUtc = run.ReviewedOnUtc
+                    }),
                     context.CancellationToken).ConfigureAwait(false);
 
                 await tx.CommitAsync(context.CancellationToken).ConfigureAwait(false);
@@ -673,7 +1166,9 @@ WHERE Guid = @RunGuid
             return new SchemaMigrationOperationResponse
             {
                 Success = true,
-                Message = "Schema review completed. Deployment must still be performed through the approved source-controlled schema deployment process."
+                Message = isAcceptanceUpdate
+                    ? "Schema deployment acceptance note updated. The accepted plan is unchanged and remains ready for the controlled runner or worker."
+                    : "Schema review completed and accepted for deployment. Deployment must still be performed through the approved source-controlled schema deployment process."
             };
         }
         catch (SqlException ex)
@@ -713,40 +1208,6 @@ WHERE Guid = @RunGuid
                 };
             }
 
-            var shouldRunPostDeployment = IsSuccessfulSchemaDeploymentOutcome(outcome)
-                && !IsCymBuildDevelopmentDatabase(run.TargetDatabaseName);
-
-            if (shouldRunPostDeployment)
-            {
-                var postDeploymentResult = await RunSchemaPostDeploymentMaintenanceAsync(
-                    cn,
-                    runGuid,
-                    run,
-                    outcome,
-                    context.CancellationToken).ConfigureAwait(false);
-
-                if (!postDeploymentResult.Success)
-                {
-                    return postDeploymentResult;
-                }
-            }
-            else if (IsSuccessfulSchemaDeploymentOutcome(outcome))
-            {
-                await AddSchemaExecutionLogWithoutTransactionAsync(
-                    cn,
-                    runGuid,
-                    "PostDeployment",
-                    "Skipped",
-                    "SCore.PostDeploymentScript skipped because the target database is CymBuild_Dev.",
-                    JsonSerializer.Serialize(new
-                    {
-                        run.TargetServerName,
-                        run.TargetDatabaseName,
-                        DeploymentOutcome = outcome
-                    }),
-                    context.CancellationToken).ConfigureAwait(false);
-            }
-
             await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(context.CancellationToken).ConfigureAwait(false);
             try
             {
@@ -758,7 +1219,8 @@ SET
     DeploymentReference = @DeploymentReference,
     Notes = CASE WHEN LEN(@Notes) > 0 THEN CONCAT(Notes, CHAR(10), @Notes) ELSE Notes END
 WHERE Guid = @RunGuid
-  AND RowStatus NOT IN (0,254);", cn, tx)
+  AND RowStatus <> 0
+  AND RowStatus <> 254;", cn, tx)
                 {
                     CommandType = CommandType.Text,
                     CommandTimeout = 300
@@ -778,7 +1240,7 @@ WHERE Guid = @RunGuid
                     runGuid,
                     "DeploymentOutcome",
                     outcome,
-                    "Schema deployment outcome recorded. No ad-hoc SQL was executed by the UI workbench.",
+                    "Schema deployment outcome recorded for audit only. No schema or maintenance SQL was executed by the UI workbench.",
                     JsonSerializer.Serialize(new
                     {
                         request.DeploymentOutcome,
@@ -795,16 +1257,10 @@ WHERE Guid = @RunGuid
                 throw;
             }
 
-            var completionMessage = shouldRunPostDeployment
-                ? "Deployment outcome recorded for audit. SCore.PostDeploymentScript completed on the target database. Schema changes remain source-controlled and promoted through the approved deployment pipeline."
-                : IsSuccessfulSchemaDeploymentOutcome(outcome)
-                    ? "Deployment outcome recorded for audit. SCore.PostDeploymentScript was skipped because the target database is CymBuild_Dev. Schema changes remain source-controlled and promoted through the approved deployment pipeline."
-                    : "Deployment outcome recorded for audit. Schema changes must remain source-controlled and promoted through the approved deployment pipeline.";
-
             return new SchemaMigrationOperationResponse
             {
                 Success = true,
-                Message = completionMessage
+                Message = "Deployment outcome recorded for audit only. No schema or maintenance SQL was executed by the workbench; the controlled runner or external deployment process remains responsible for pre/post deployment maintenance."
             };
         }
         catch (SqlException ex)
@@ -812,6 +1268,473 @@ WHERE Guid = @RunGuid
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Schema deployment audit SQL failed: {ex.Message}"));
         }
     }
+
+    private enum SchemaMaintenanceProcedure
+    {
+        PreDeployment,
+        PostDeployment
+    }
+
+    private static bool IsDevelopmentSchemaSource(string sourceEnvironment, string sourceDatabaseName)
+    {
+        if (!string.IsNullOrWhiteSpace(sourceEnvironment))
+        {
+            return sourceEnvironment.Trim().Equals("DEV", StringComparison.OrdinalIgnoreCase)
+                || sourceEnvironment.Trim().Equals("DEVELOPMENT", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var databaseName = sourceDatabaseName?.Trim() ?? string.Empty;
+        return databaseName.Equals("CymBuild_Dev", StringComparison.OrdinalIgnoreCase)
+            || databaseName.Equals("Concursus_Dev", StringComparison.OrdinalIgnoreCase)
+            || databaseName.EndsWith("_Dev", StringComparison.OrdinalIgnoreCase)
+            || databaseName.EndsWith("-Dev", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool AreSameSqlDatabase(SqlConnection sourceConnection, SqlConnection targetConnection) =>
+        sourceConnection.DataSource.Trim().Equals(targetConnection.DataSource.Trim(), StringComparison.OrdinalIgnoreCase)
+        && sourceConnection.Database.Trim().Equals(targetConnection.Database.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static async Task ExecuteSchemaMaintenanceProcedureAsync(
+        SqlConnection connection,
+        SchemaMaintenanceProcedure procedure,
+        CancellationToken cancellationToken)
+    {
+        var (objectName, executionSql) = procedure switch
+        {
+            SchemaMaintenanceProcedure.PreDeployment =>
+                ("[SCore].[PreDeploymentScript]", "EXEC [SCore].[PreDeploymentScript];"),
+            SchemaMaintenanceProcedure.PostDeployment =>
+                ("[SCore].[PostDeploymentScript]", "EXEC [SCore].[PostDeploymentScript];"),
+            _ => throw new ArgumentOutOfRangeException(nameof(procedure), procedure, "Unsupported schema maintenance procedure.")
+        };
+
+        await using var command = new SqlCommand($@"
+IF OBJECT_ID(N'{objectName}', N'P') IS NULL
+BEGIN
+    THROW 60380, N'Required schema maintenance procedure {objectName} is not installed in the selected database.', 1;
+END;
+
+{executionSql}", connection)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 1800
+        };
+
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<List<string>> RestoreSchemaComparePreparationAfterFailureAsync(
+        SqlConnection sourceConnection,
+        SqlConnection targetConnection,
+        bool sourcePreDeploymentAttempted,
+        bool targetPreDeploymentAttempted,
+        bool sourceIsDevelopment,
+        bool sourceAndTargetAreSameDatabase,
+        CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+
+        if (targetPreDeploymentAttempted && targetConnection.State == ConnectionState.Open)
+        {
+            try
+            {
+                await ExecuteSchemaMaintenanceProcedureAsync(
+                    targetConnection,
+                    SchemaMaintenanceProcedure.PostDeployment,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception recoveryException)
+            {
+                errors.Add($"Target recovery failed: {recoveryException.Message}");
+            }
+        }
+
+        if (sourcePreDeploymentAttempted
+            && !sourceIsDevelopment
+            && !sourceAndTargetAreSameDatabase
+            && sourceConnection.State == ConnectionState.Open)
+        {
+            try
+            {
+                await ExecuteSchemaMaintenanceProcedureAsync(
+                    sourceConnection,
+                    SchemaMaintenanceProcedure.PostDeployment,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception recoveryException)
+            {
+                errors.Add($"Source recovery failed: {recoveryException.Message}");
+            }
+        }
+
+        return errors;
+    }
+
+    private static async Task EnsureSchemaExclusionInfrastructureAsync(
+        SqlConnection cn,
+        string location,
+        string configuredServerName,
+        string configuredDatabaseName,
+        CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand(@"
+SELECT
+    CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_ExcludedObjects]', N'U') IS NULL THEN 0 ELSE 1 END) AS TableExists,
+    CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaExcludedObject_Apply]', N'P') IS NULL THEN 0 ELSE 1 END) AS ApplyProcedureExists,
+    CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaExcludedObjects_List]', N'P') IS NULL THEN 0 ELSE 1 END) AS ListProcedureExists;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            && reader.GetBoolean(0)
+            && reader.GetBoolean(1)
+            && reader.GetBoolean(2))
+        {
+            return;
+        }
+
+        var marker = location.Equals("SOURCE", StringComparison.OrdinalIgnoreCase)
+            ? "SCHEMA_MIGRATION_SOURCE_BOOTSTRAP_REQUIRED|"
+            : "SCHEMA_MIGRATION_BOOTSTRAP_REQUIRED|";
+        var serverName = string.IsNullOrWhiteSpace(configuredServerName) ? cn.DataSource : configuredServerName.Trim();
+        var databaseName = string.IsNullOrWhiteSpace(configuredDatabaseName) ? cn.Database : configuredDatabaseName.Trim();
+        throw new RpcException(new Status(
+            StatusCode.FailedPrecondition,
+            $"{marker}Schema exclusion infrastructure is not initialised in {location.ToLowerInvariant()} '{serverName} / {databaseName}'. Run tools/SchemaDeployment/Initialize-CymBuildSchemaMigration.ps1 for this database from a controlled deployment account, then retry."));
+    }
+
+    private static async Task<int> ReadSchemaCurrentUserIdAsync(SqlConnection cn, CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand("SELECT ISNULL([SCore].[GetCurrentUserId](), -1);", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+        var value = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return value is null || value == DBNull.Value ? -1 : Convert.ToInt32(value);
+    }
+
+    private static async Task<List<SchemaExcludedObjectRecord>> ReadSchemaExcludedObjectRecordsAsync(
+        SqlConnection cn,
+        bool includeInactive,
+        CancellationToken cancellationToken)
+    {
+        var records = new List<SchemaExcludedObjectRecord>();
+        await using var cmd = new SqlCommand("SMigration.SchemaExcludedObjects_List", cn)
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = 300
+        };
+        cmd.Parameters.Add(new SqlParameter("@IncludeInactive", SqlDbType.Bit) { Value = includeInactive });
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            records.Add(new SchemaExcludedObjectRecord
+            {
+                ID = 0,
+                Guid = reader.GetGuid(0),
+                ObjectType = reader.GetString(1),
+                SchemaName = reader.GetString(2),
+                ObjectName = reader.GetString(3),
+                ParentObjectName = reader.GetString(4),
+                StableObjectKey = reader.GetString(5),
+                Reason = reader.GetString(6),
+                ExclusionScope = reader.GetString(7),
+                OriginServerName = reader.GetString(8),
+                OriginDatabaseName = reader.GetString(9),
+                ExcludedByUserId = reader.GetInt32(10),
+                ExcludedOnUtc = reader.GetString(11),
+                UnexcludedOnUtc = reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
+                LastSeenRunGuid = reader.IsDBNull(13) ? Guid.Empty : reader.GetGuid(13),
+                LastSeenOnUtc = reader.IsDBNull(14) ? string.Empty : reader.GetString(14),
+                RowStatus = reader.GetByte(15)
+            });
+        }
+
+        return records;
+    }
+
+    private static SchemaMigrationExcludedObject MapSchemaExcludedObject(
+        SchemaExcludedObjectRecord sourceRecord,
+        SchemaExcludedObjectRecord? targetRecord)
+    {
+        var sourceActive = sourceRecord.IsActive;
+        var targetMatches = !sourceActive && targetRecord is null
+            || targetRecord is not null
+               && targetRecord.IsActive == sourceActive
+               && (!sourceActive || targetRecord.Reason.Equals(sourceRecord.Reason, StringComparison.Ordinal))
+               && targetRecord.StableObjectKey.Equals(sourceRecord.StableObjectKey, StringComparison.OrdinalIgnoreCase);
+
+        return new SchemaMigrationExcludedObject
+        {
+            Guid = sourceRecord.Guid.ToString(),
+            ObjectType = sourceRecord.ObjectType,
+            SchemaName = sourceRecord.SchemaName,
+            ObjectName = sourceRecord.ObjectName,
+            ParentObjectName = sourceRecord.ParentObjectName,
+            StableObjectKey = sourceRecord.StableObjectKey,
+            Reason = sourceRecord.Reason,
+            ExclusionScope = sourceRecord.ExclusionScope,
+            OriginServerName = sourceRecord.OriginServerName,
+            OriginDatabaseName = sourceRecord.OriginDatabaseName,
+            ExcludedByUserId = sourceRecord.ExcludedByUserId,
+            ExcludedOnUtc = sourceRecord.ExcludedOnUtc,
+            UnexcludedOnUtc = sourceRecord.UnexcludedOnUtc,
+            LastSeenRunGuid = sourceRecord.LastSeenRunGuid == Guid.Empty ? string.Empty : sourceRecord.LastSeenRunGuid.ToString(),
+            LastSeenOnUtc = sourceRecord.LastSeenOnUtc,
+            RowStatus = sourceRecord.RowStatus,
+            IsSynchronizedToTarget = targetMatches
+        };
+    }
+
+    private static async Task<SchemaObjectIdentity> ResolveSchemaExclusionObjectIdentityAsync(
+        SqlConnection targetConnection,
+        Guid runGuid,
+        SchemaMigrationExclusionUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ComparisonGuid))
+        {
+            var comparisonGuid = ParseGuid(request.ComparisonGuid, "comparisonGuid");
+            var rows = await ReadSchemaComparisonRowsAsync(
+                targetConnection,
+                runGuid,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                includeDefinitions: false,
+                comparisonGuid,
+                cancellationToken).ConfigureAwait(false);
+            var comparison = rows.FirstOrDefault();
+            if (comparison is null)
+            {
+                throw new RpcException(new Status(StatusCode.NotFound, "The selected schema comparison row was not found or is already excluded."));
+            }
+
+            return new SchemaObjectIdentity(
+                comparison.ObjectType,
+                comparison.SchemaName,
+                comparison.ObjectName,
+                comparison.ParentObjectName);
+        }
+
+        var identity = new SchemaObjectIdentity(
+            request.ObjectType ?? string.Empty,
+            request.SchemaName ?? string.Empty,
+            request.ObjectName ?? string.Empty,
+            request.ParentObjectName ?? string.Empty);
+        if (!identity.IsValid)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Schema exclusion object identity is incomplete."));
+        }
+
+        return identity;
+    }
+
+    private static async Task<Guid> ApplySchemaExcludedObjectAsync(
+        SqlConnection cn,
+        SqlTransaction? transaction,
+        Guid exclusionGuid,
+        SchemaObjectIdentity objectIdentity,
+        string reason,
+        bool isExcluded,
+        string originServerName,
+        string originDatabaseName,
+        int actorUserId,
+        Guid lastSeenRunGuid,
+        CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand("SMigration.SchemaExcludedObject_Apply", cn, transaction)
+        {
+            CommandType = CommandType.StoredProcedure,
+            CommandTimeout = 300
+        };
+        var guidParameter = new SqlParameter("@Guid", SqlDbType.UniqueIdentifier)
+        {
+            Direction = ParameterDirection.InputOutput,
+            Value = exclusionGuid == Guid.Empty ? Guid.NewGuid() : exclusionGuid
+        };
+        cmd.Parameters.Add(guidParameter);
+        cmd.Parameters.Add(new SqlParameter("@ObjectType", SqlDbType.NVarChar, 50) { Value = objectIdentity.ObjectType });
+        cmd.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = objectIdentity.SchemaName });
+        cmd.Parameters.Add(new SqlParameter("@ObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ObjectName });
+        cmd.Parameters.Add(new SqlParameter("@ParentObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ParentObjectName });
+        cmd.Parameters.Add(new SqlParameter("@Reason", SqlDbType.NVarChar, 2000) { Value = reason ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@IsExcluded", SqlDbType.Bit) { Value = isExcluded });
+        cmd.Parameters.Add(new SqlParameter("@OriginServerName", SqlDbType.NVarChar, 255) { Value = originServerName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@OriginDatabaseName", SqlDbType.NVarChar, 255) { Value = originDatabaseName ?? string.Empty });
+        cmd.Parameters.Add(new SqlParameter("@ActorUserId", SqlDbType.Int) { Value = actorUserId });
+        cmd.Parameters.Add(new SqlParameter("@LastSeenRunGuid", SqlDbType.UniqueIdentifier) { Value = lastSeenRunGuid });
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        return guidParameter.Value is Guid guid ? guid : exclusionGuid;
+    }
+
+    private static async Task DeactivateSchemaSelectionForObjectAsync(
+        SqlConnection cn,
+        SqlTransaction tx,
+        Guid runGuid,
+        SchemaObjectIdentity objectIdentity,
+        CancellationToken cancellationToken)
+    {
+        var selectionGuids = new List<Guid>();
+        await using (var readCommand = new SqlCommand(@"
+SELECT
+    selection.[Guid]
+FROM [SMigration].[Schema_RunSelections] AS selection
+WHERE selection.[RunGuid] = @RunGuid
+  AND selection.[ObjectType] = @ObjectType
+  AND selection.[SchemaName] = @SchemaName
+  AND selection.[ObjectName] = @ObjectName
+  AND selection.[ParentObjectName] = @ParentObjectName
+  AND selection.[RowStatus] <> 0
+  AND selection.[RowStatus] <> 254;", cn, tx)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        })
+        {
+            readCommand.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            readCommand.Parameters.Add(new SqlParameter("@ObjectType", SqlDbType.NVarChar, 50) { Value = objectIdentity.ObjectType });
+            readCommand.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = objectIdentity.SchemaName });
+            readCommand.Parameters.Add(new SqlParameter("@ObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ObjectName });
+            readCommand.Parameters.Add(new SqlParameter("@ParentObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ParentObjectName });
+            await using var reader = await readCommand.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                selectionGuids.Add(reader.GetGuid(0));
+            }
+        }
+
+        foreach (var selectionGuid in selectionGuids)
+        {
+            await using var deleteCommand = new SqlCommand("SCore.DeleteDataObject", cn, tx)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 300
+            };
+            deleteCommand.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = selectionGuid });
+            await deleteCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using var updateCommand = new SqlCommand(@"
+UPDATE [SMigration].[Schema_RunSelections]
+SET [RowStatus] = 254
+WHERE [RunGuid] = @RunGuid
+  AND [ObjectType] = @ObjectType
+  AND [SchemaName] = @SchemaName
+  AND [ObjectName] = @ObjectName
+  AND [ParentObjectName] = @ParentObjectName
+  AND [RowStatus] <> 0
+  AND [RowStatus] <> 254;", cn, tx)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+        updateCommand.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        updateCommand.Parameters.Add(new SqlParameter("@ObjectType", SqlDbType.NVarChar, 50) { Value = objectIdentity.ObjectType });
+        updateCommand.Parameters.Add(new SqlParameter("@SchemaName", SqlDbType.NVarChar, 128) { Value = objectIdentity.SchemaName });
+        updateCommand.Parameters.Add(new SqlParameter("@ObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ObjectName });
+        updateCommand.Parameters.Add(new SqlParameter("@ParentObjectName", SqlDbType.NVarChar, 512) { Value = objectIdentity.ParentObjectName });
+        await updateCommand.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<SchemaExclusionSyncResult> SynchronizeSchemaExclusionsAsync(
+        SqlConnection sourceConnection,
+        SqlConnection targetConnection,
+        Guid runGuid,
+        CancellationToken cancellationToken)
+    {
+        var sourceRecords = await ReadSchemaExcludedObjectRecordsAsync(
+            sourceConnection,
+            includeInactive: true,
+            cancellationToken).ConfigureAwait(false);
+        if (AreSameSqlDatabase(sourceConnection, targetConnection))
+        {
+            return new SchemaExclusionSyncResult(sourceRecords, sourceRecords.Count, 0);
+        }
+
+        var targetRecords = await ReadSchemaExcludedObjectRecordsAsync(
+            targetConnection,
+            includeInactive: true,
+            cancellationToken).ConfigureAwait(false);
+        var sourceKeys = sourceRecords
+            .Select(x => x.StableObjectKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var synchronizedCount = 0;
+        var removedTargetOnlyCount = 0;
+
+        await using var tx = (SqlTransaction)await targetConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            foreach (var sourceRecord in sourceRecords)
+            {
+                await ApplySchemaExcludedObjectAsync(
+                    targetConnection,
+                    tx,
+                    sourceRecord.Guid,
+                    new SchemaObjectIdentity(
+                        sourceRecord.ObjectType,
+                        sourceRecord.SchemaName,
+                        sourceRecord.ObjectName,
+                        sourceRecord.ParentObjectName),
+                    sourceRecord.Reason,
+                    sourceRecord.IsActive,
+                    sourceRecord.OriginServerName,
+                    sourceRecord.OriginDatabaseName,
+                    sourceRecord.ExcludedByUserId,
+                    runGuid,
+                    cancellationToken).ConfigureAwait(false);
+                synchronizedCount++;
+            }
+
+            foreach (var targetOnlyRecord in targetRecords.Where(x =>
+                         x.IsActive && !sourceKeys.Contains(x.StableObjectKey)))
+            {
+                await ApplySchemaExcludedObjectAsync(
+                    targetConnection,
+                    tx,
+                    targetOnlyRecord.Guid,
+                    new SchemaObjectIdentity(
+                        targetOnlyRecord.ObjectType,
+                        targetOnlyRecord.SchemaName,
+                        targetOnlyRecord.ObjectName,
+                        targetOnlyRecord.ParentObjectName),
+                    string.Empty,
+                    false,
+                    sourceConnection.DataSource,
+                    sourceConnection.Database,
+                    -1,
+                    runGuid,
+                    cancellationToken).ConfigureAwait(false);
+                removedTargetOnlyCount++;
+            }
+
+            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+
+        return new SchemaExclusionSyncResult(sourceRecords, synchronizedCount, removedTargetOnlyCount);
+    }
+
+    private static string BuildSchemaStableObjectKey(
+        string objectType,
+        string schemaName,
+        string objectName,
+        string parentObjectName) =>
+        string.Join(
+            "|",
+            (objectType ?? string.Empty).Trim().ToUpperInvariant(),
+            (schemaName ?? string.Empty).Trim().ToUpperInvariant(),
+            (objectName ?? string.Empty).Trim().ToUpperInvariant(),
+            (parentObjectName ?? string.Empty).Trim().ToUpperInvariant());
 
     private async Task<SqlConnection> OpenSchemaTargetSqlAsync(string targetServerName, string targetDatabaseName, CancellationToken cancellationToken)
     {
@@ -822,278 +1745,6 @@ WHERE Guid = @RunGuid
             targetDatabaseName,
             cancellationToken).ConfigureAwait(false);
     }
-
-    private static async Task RunSchemaPreCompareMaintenanceAsync(
-        SqlConnection targetConnection,
-        SqlConnection sourceConnection,
-        Guid runGuid,
-        SchemaMigrationRunSummary run,
-        CancellationToken cancellationToken)
-    {
-        await AddSchemaExecutionLogWithoutTransactionAsync(
-            targetConnection,
-            runGuid,
-            "PreCompare",
-            "Started",
-            "Running SCore.PreDeploymentScript on source and target before schema snapshot comparison.",
-            JsonSerializer.Serialize(new
-            {
-                Source = new
-                {
-                    run.SourceServerName,
-                    run.SourceDatabaseName
-                },
-                Target = new
-                {
-                    run.TargetServerName,
-                    run.TargetDatabaseName
-                }
-            }),
-            cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            await ExecuteSchemaMaintenanceProcedureAsync(
-                sourceConnection,
-                "PreDeploymentScript",
-                cancellationToken).ConfigureAwait(false);
-
-            await ExecuteSchemaMaintenanceProcedureAsync(
-                targetConnection,
-                "PreDeploymentScript",
-                cancellationToken).ConfigureAwait(false);
-
-            await AddSchemaExecutionLogWithoutTransactionAsync(
-                targetConnection,
-                runGuid,
-                "PreCompare",
-                "Succeeded",
-                "SCore.PreDeploymentScript completed on source and target before schema snapshot comparison.",
-                JsonSerializer.Serialize(new
-                {
-                    Source = new
-                    {
-                        sourceConnection.DataSource,
-                        sourceConnection.Database
-                    },
-                    Target = new
-                    {
-                        targetConnection.DataSource,
-                        targetConnection.Database
-                    }
-                }),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not RpcException)
-        {
-            await TryAddSchemaExecutionLogWithoutTransactionAsync(
-                targetConnection,
-                runGuid,
-                "PreCompare",
-                "Failed",
-                "SCore.PreDeploymentScript failed on source or target. Schema comparison did not proceed.",
-                JsonSerializer.Serialize(new
-                {
-                    Error = GetExceptionMessage(ex),
-                    Source = new
-                    {
-                        sourceConnection.DataSource,
-                        sourceConnection.Database
-                    },
-                    Target = new
-                    {
-                        targetConnection.DataSource,
-                        targetConnection.Database
-                    }
-                }),
-                cancellationToken).ConfigureAwait(false);
-
-            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Schema pre-compare maintenance failed: {GetExceptionMessage(ex)}"));
-        }
-    }
-
-    private static async Task<SchemaMigrationOperationResponse> RunSchemaPostDeploymentMaintenanceAsync(
-        SqlConnection targetConnection,
-        Guid runGuid,
-        SchemaMigrationRunSummary run,
-        string outcome,
-        CancellationToken cancellationToken)
-    {
-        await AddSchemaExecutionLogWithoutTransactionAsync(
-            targetConnection,
-            runGuid,
-            "PostDeployment",
-            "Started",
-            "Running SCore.PostDeploymentScript on the target database after the successful schema deployment outcome.",
-            JsonSerializer.Serialize(new
-            {
-                run.TargetServerName,
-                run.TargetDatabaseName,
-                DeploymentOutcome = outcome
-            }),
-            cancellationToken).ConfigureAwait(false);
-
-        try
-        {
-            await ExecuteSchemaMaintenanceProcedureAsync(
-                targetConnection,
-                "PostDeploymentScript",
-                cancellationToken).ConfigureAwait(false);
-
-            await AddSchemaExecutionLogWithoutTransactionAsync(
-                targetConnection,
-                runGuid,
-                "PostDeployment",
-                "Succeeded",
-                "SCore.PostDeploymentScript completed on the target database.",
-                JsonSerializer.Serialize(new
-                {
-                    targetConnection.DataSource,
-                    targetConnection.Database,
-                    DeploymentOutcome = outcome
-                }),
-                cancellationToken).ConfigureAwait(false);
-
-            return new SchemaMigrationOperationResponse
-            {
-                Success = true,
-                Message = "SCore.PostDeploymentScript completed on the target database."
-            };
-        }
-        catch (Exception ex) when (ex is not RpcException)
-        {
-            await TryAddSchemaExecutionLogWithoutTransactionAsync(
-                targetConnection,
-                runGuid,
-                "PostDeployment",
-                "Failed",
-                "SCore.PostDeploymentScript failed on the target database. Deployment outcome was not recorded as completed.",
-                JsonSerializer.Serialize(new
-                {
-                    Error = GetExceptionMessage(ex),
-                    targetConnection.DataSource,
-                    targetConnection.Database,
-                    DeploymentOutcome = outcome
-                }),
-                cancellationToken).ConfigureAwait(false);
-
-            return new SchemaMigrationOperationResponse
-            {
-                Success = false,
-                Message = $"SCore.PostDeploymentScript failed on the target database. Deployment outcome was not recorded as completed. {GetExceptionMessage(ex)}"
-            };
-        }
-    }
-
-    private static async Task ExecuteSchemaMaintenanceProcedureAsync(
-        SqlConnection cn,
-        string procedureName,
-        CancellationToken cancellationToken)
-    {
-        if (procedureName is not ("PreDeploymentScript" or "PostDeploymentScript"))
-        {
-            throw new InvalidOperationException("Unsupported schema maintenance procedure.");
-        }
-
-        await using (var existsCommand = new SqlCommand(@"
-SELECT
-    CASE
-        WHEN OBJECT_ID(@ProcedureName, N'P') IS NULL THEN CONVERT(BIT, 0)
-        ELSE CONVERT(BIT, 1)
-    END AS ProcedureExists;", cn)
-        {
-            CommandType = CommandType.Text,
-            CommandTimeout = 120
-        })
-        {
-            existsCommand.Parameters.Add(new SqlParameter("@ProcedureName", SqlDbType.NVarChar, 300)
-            {
-                Value = "SCore." + procedureName
-            });
-
-            var exists = await existsCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            if (exists is not bool procedureExists || !procedureExists)
-            {
-                throw new InvalidOperationException($"SCore.{procedureName} was not found in {cn.DataSource}/{cn.Database}.");
-            }
-        }
-
-        await using var cmd = new SqlCommand($"EXEC [SCore].[{procedureName}];", cn)
-        {
-            CommandType = CommandType.Text,
-            CommandTimeout = 1800
-        };
-
-        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool IsSuccessfulSchemaDeploymentOutcome(string outcome) =>
-        outcome.Equals("Succeeded", StringComparison.OrdinalIgnoreCase)
-        || outcome.Equals("Applied", StringComparison.OrdinalIgnoreCase)
-        || outcome.Equals("Deployed", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsCymBuildDevelopmentDatabase(string databaseName) =>
-        databaseName.Equals("CymBuild_Dev", StringComparison.OrdinalIgnoreCase);
-
-    private static async Task AddSchemaExecutionLogWithoutTransactionAsync(
-        SqlConnection cn,
-        Guid runGuid,
-        string stepName,
-        string stepStatus,
-        string message,
-        string detailsJson,
-        CancellationToken cancellationToken)
-    {
-        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await AddSchemaExecutionLogAsync(
-                cn,
-                tx,
-                runGuid,
-                stepName,
-                stepStatus,
-                message,
-                detailsJson,
-                cancellationToken).ConfigureAwait(false);
-
-            await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            await tx.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            throw;
-        }
-    }
-
-    private static async Task TryAddSchemaExecutionLogWithoutTransactionAsync(
-        SqlConnection cn,
-        Guid runGuid,
-        string stepName,
-        string stepStatus,
-        string message,
-        string detailsJson,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await AddSchemaExecutionLogWithoutTransactionAsync(
-                cn,
-                runGuid,
-                stepName,
-                stepStatus,
-                message,
-                detailsJson,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Best-effort failure logging only. Preserve the original schema maintenance failure.
-        }
-    }
-
-    private static string GetExceptionMessage(Exception ex) =>
-        ex.InnerException is null ? ex.Message : $"{ex.Message} Inner: {ex.InnerException.Message}";
 
     private static async Task<List<SchemaObjectSnapshot>> ReadSchemaSnapshotAsync(SqlConnection cn, CancellationToken cancellationToken)
     {
@@ -1144,7 +1795,8 @@ SELECT
 
     private static List<SchemaComparisonDraft> BuildSchemaComparisonRows(
         IEnumerable<SchemaObjectSnapshot> sourceObjects,
-        IEnumerable<SchemaObjectSnapshot> targetObjects)
+        IEnumerable<SchemaObjectSnapshot> targetObjects,
+        ISet<string>? excludedStableObjectKeys = null)
     {
         static Dictionary<string, SchemaObjectSnapshot> BuildLookup(IEnumerable<SchemaObjectSnapshot> rows) =>
             rows.GroupBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
@@ -1157,6 +1809,11 @@ SELECT
 
         foreach (var key in keys)
         {
+            if (excludedStableObjectKeys is not null && excludedStableObjectKeys.Contains(key.ToUpperInvariant()))
+            {
+                continue;
+            }
+
             source.TryGetValue(key, out var sourceRow);
             target.TryGetValue(key, out var targetRow);
             var selected = sourceRow ?? targetRow;
@@ -1174,6 +1831,8 @@ SELECT
                         : "Different";
 
             var objectType = selected.ObjectType;
+            var isConstraintRemoval = differenceType.Equals("MissingInSource", StringComparison.OrdinalIgnoreCase)
+                && objectType.Equals("Constraint", StringComparison.OrdinalIgnoreCase);
             var isDestructiveRisk = differenceType == "MissingInSource"
                 || (differenceType == "Different" && objectType.Equals("Table", StringComparison.OrdinalIgnoreCase));
 
@@ -1189,7 +1848,7 @@ SELECT
                 TargetHash = targetRow?.Hash ?? string.Empty,
                 SourceDefinition = sourceRow?.Definition ?? string.Empty,
                 TargetDefinition = targetRow?.Definition ?? string.Empty,
-                IsDeployable = differenceType is "MissingInTarget" or "Different",
+                IsDeployable = (differenceType is "MissingInTarget" or "Different") || isConstraintRemoval,
                 IsDestructiveRisk = isDestructiveRisk,
                 Notes = BuildSchemaComparisonNote(differenceType, objectType, isDestructiveRisk)
             });
@@ -1217,10 +1876,39 @@ SELECT
 
         foreach (var row in rowList.Where(x => !x.DifferenceType.Equals("Equal", StringComparison.OrdinalIgnoreCase)))
         {
+            var unsupportedStandaloneType = row.ObjectType is "Index";
+            var requiresDedicatedMigration = row.DifferenceType.Equals("Different", StringComparison.OrdinalIgnoreCase)
+                && (row.ObjectType is "Table" or "TableType" or "Sequence");
+            var hasRunnerObjectTypeMapping = row.ObjectType is
+                "Schema" or
+                "Table" or
+                "TableType" or
+                "Sequence" or
+                "Function" or
+                "View" or
+                "StoredProcedure" or
+                "Trigger" or
+                "Constraint" or
+                "Index";
+            var unsupportedObjectType = !hasRunnerObjectTypeMapping;
+            var constraintDefinition = row.DifferenceType.Equals("MissingInSource", StringComparison.OrdinalIgnoreCase)
+                ? row.TargetDefinition
+                : row.SourceDefinition;
+            var constraintSnapshotRequiresRefresh = row.ObjectType.Equals("Constraint", StringComparison.OrdinalIgnoreCase)
+                && !constraintDefinition.StartsWith("CYB_CONSTRAINT_V2|", StringComparison.Ordinal);
+            var isConstraintRemoval = row.ObjectType.Equals("Constraint", StringComparison.OrdinalIgnoreCase)
+                && row.DifferenceType.Equals("MissingInSource", StringComparison.OrdinalIgnoreCase);
+
+            // Deterministic runner blockers remain failures. Constraint rows are first-class deployment
+            // objects from R40, but they must come from the V2 declarative snapshot so the runner can
+            // create reviewed source-controlled prepare/preflight/apply artefacts without executing
+            // captured database DDL directly.
             var severity = row.DifferenceType switch
             {
+                _ when constraintSnapshotRequiresRefresh => "Fail",
+                _ when unsupportedStandaloneType || requiresDedicatedMigration || unsupportedObjectType => "Fail",
+                _ when isConstraintRemoval => "Warn",
                 "MissingInSource" => "Warn",
-                "Different" when row.ObjectType.Equals("Table", StringComparison.OrdinalIgnoreCase) => "Warn",
                 "Different" => "Info",
                 "MissingInTarget" => "Info",
                 _ => "Info"
@@ -1228,19 +1916,33 @@ SELECT
 
             var code = row.DifferenceType switch
             {
+                _ when constraintSnapshotRequiresRefresh => "CONSTRAINT_SNAPSHOT_REQUIRES_REFRESH",
+                _ when unsupportedStandaloneType => "MANUAL_RUNNER_UNSUPPORTED_OBJECT",
+                _ when requiresDedicatedMigration => "MANUAL_RUNNER_REQUIRES_MIGRATION_SCRIPT",
+                _ when unsupportedObjectType => "MANUAL_RUNNER_UNMAPPED_OBJECT_TYPE",
+                _ when isConstraintRemoval => "CONSTRAINT_REMOVAL_SELECTED",
                 "MissingInSource" => "TARGET_ONLY_OBJECT",
+                "MissingInTarget" when row.ObjectType == "Constraint" => "CONSTRAINT_CREATE_SELECTED",
+                "Different" when row.ObjectType == "Constraint" => "CONSTRAINT_REPLACE_SELECTED",
                 "MissingInTarget" => "SOURCE_ONLY_OBJECT",
-                "Different" when row.ObjectType.Equals("Table", StringComparison.OrdinalIgnoreCase) => "TABLE_DEFINITION_DIFFERS",
                 "Different" => "OBJECT_DEFINITION_DIFFERS",
                 _ => "SCHEMA_DIFFERENCE"
             };
 
             var message = row.DifferenceType switch
             {
+                _ when constraintSnapshotRequiresRefresh => "This constraint comparison was created before the R40 declarative constraint snapshot. Run Stage & Compare again before validating or accepting the plan.",
+                _ when unsupportedStandaloneType => $"The controlled runner does not yet deploy standalone {row.ObjectType} rows. If this row is mechanically handled by a selected dedicated parent-object migration, remove the standalone row from the saved selection. Otherwise add an explicit source-controlled idempotent migration; captured database DDL will not be executed.",
+                _ when requiresDedicatedMigration => $"Existing {row.ObjectType} definition differs. The controlled runner will not recreate it; provide a dedicated source-controlled, non-destructive migration script.",
+                _ when unsupportedObjectType => $"The controlled runner has no source-controlled SQL mapping for object type {row.ObjectType}. Narrow the saved selection or add an approved runner mapping and idempotent schema artefact.",
+                _ when isConstraintRemoval => "The constraint exists only in the target and has been explicitly selected for removal. Target-only constraint removal is destructive and is never included in the default deployment plan; confirm the saved explicit selection and acceptance note before deployment.",
                 "MissingInSource" => "Object exists in target but not source. Treat as target drift or destructive change risk; resolve through source-controlled SQL before promotion.",
-                "MissingInTarget" => "Object exists in source but not target. Deployment script should add it idempotently.",
-                "Different" when row.ObjectType.Equals("Table", StringComparison.OrdinalIgnoreCase) => "Table definition differs. Review for nullable, type, default, identity, constraint and data-preservation impact before deployment.",
-                "Different" => "Object definition differs. Review source-controlled SQL artefact and deployment order.",
+                "MissingInTarget" when row.ObjectType == "Constraint" => "The source constraint will be materialized into reviewed source-controlled preflight/apply SQL. Foreign-key and check constraints are added WITH NOCHECK so existing rows are not validated, then enabled for future changes unless the source constraint is disabled.",
+                "Different" when row.ObjectType == "Constraint" => "The target constraint will be dropped and recreated from the reviewed source declarative definition. Foreign-key and check constraints are recreated WITH NOCHECK so existing rows are not validated, then enabled for future changes unless the source constraint is disabled.",
+                "MissingInTarget" when row.ObjectType is "Function" or "View" or "StoredProcedure" or "Trigger" => "Object exists in the source database but not the target. The controlled runner dry-run will resolve the canonical repository file or materialize an idempotent CREATE OR ALTER source file from this accepted source-definition snapshot when the file is missing. The generated file must be reviewed and committed through the normal source-control process before later-environment promotion.",
+                "MissingInTarget" => "Object exists in the source database but not the target. A dedicated source-controlled migration is required for this object type; data-bearing or structural objects are not generated or recreated automatically.",
+                "Different" when row.ObjectType is "Function" or "View" or "StoredProcedure" or "Trigger" => "Object definition differs. The controlled runner uses the canonical repository file and can materialize it from the accepted source-definition snapshot when missing. Review deployment order and commit newly generated source files before later-environment promotion.",
+                "Different" => "Object definition differs. Review source-controlled SQL artefact and deployment order. The external runner dry-run remains authoritative for repository file resolution.",
                 _ => "Schema difference requires review."
             };
 
@@ -1270,8 +1972,11 @@ SELECT
         differenceType switch
         {
             "Equal" => "No schema definition difference detected.",
+            "MissingInTarget" when objectType == "Constraint" => "Source constraint is missing from the target. The controlled runner can materialize and add it without validating existing rows.",
             "MissingInTarget" => "Source-controlled deployment should create this target object idempotently.",
+            "MissingInSource" when objectType == "Constraint" => "Target-only constraint. It can be removed only through an explicit saved selection and accepted destructive-risk plan.",
             "MissingInSource" => "Target-only object. Investigate drift; do not remove without approval.",
+            "Different" when objectType == "Constraint" => "Constraint definition differs. The controlled runner can replace it from the source declarative snapshot using source-controlled SQL.",
             "Different" when isDestructiveRisk => $"{objectType} differs and may require data-preserving migration planning.",
             "Different" => "Definition differs. Review source-controlled SQL and deployment ordering.",
             _ => "Schema difference requires review."
@@ -1422,13 +2127,48 @@ VALUES
 UPDATE {tableName}
 SET RowStatus = 254
 WHERE RunGuid = @RunGuid
-  AND RowStatus NOT IN (0,254);", cn, tx)
+  AND RowStatus <> 0
+  AND RowStatus <> 254;", cn, tx)
         {
             CommandType = CommandType.Text,
             CommandTimeout = 300
         };
 
         cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task InvalidateSchemaValidationAndReviewAsync(
+        SqlConnection cn,
+        SqlTransaction tx,
+        Guid runGuid,
+        CancellationToken cancellationToken)
+    {
+        await DeactivateSchemaRowsAsync(
+            cn,
+            tx,
+            "SMigration.Schema_ValidationIssues",
+            runGuid,
+            cancellationToken).ConfigureAwait(false);
+
+        await using var cmd = new SqlCommand(@"
+UPDATE SMigration.Schema_Run
+SET
+    RunStatus = @RunStatus,
+    ValidatedOnUtc = NULL,
+    ReviewedOnUtc = NULL,
+    ReviewedByUserId = -1,
+    IsReviewed = 0
+WHERE Guid = @RunGuid
+  AND RowStatus <> 0
+  AND RowStatus <> 254;", cn, tx)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+        cmd.Parameters.Add(new SqlParameter("@RunStatus", SqlDbType.NVarChar, 30) { Value = SchemaMigrationCompared });
         await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -1449,13 +2189,15 @@ UPDATE SMigration.Schema_Run
 SET
     RunStatus = @RunStatus,
     ComparedOnUtc = CASE WHEN @Compared = 1 THEN SYSUTCDATETIME() ELSE ComparedOnUtc END,
-    ValidatedOnUtc = CASE WHEN @Validated = 1 THEN SYSUTCDATETIME() ELSE ValidatedOnUtc END,
-    ReviewedOnUtc = CASE WHEN @Reviewed = 1 THEN SYSUTCDATETIME() ELSE ReviewedOnUtc END,
+    ValidatedOnUtc = CASE WHEN @Validated = 1 THEN SYSUTCDATETIME() WHEN @Compared = 1 THEN NULL ELSE ValidatedOnUtc END,
+    ReviewedOnUtc = CASE WHEN @Reviewed = 1 THEN SYSUTCDATETIME() WHEN @Validated = 1 OR @Compared = 1 THEN NULL ELSE ReviewedOnUtc END,
     AppliedOnUtc = CASE WHEN @Applied = 1 THEN SYSUTCDATETIME() ELSE AppliedOnUtc END,
+    ReviewedByUserId = CASE WHEN @Validated = 1 OR @Compared = 1 THEN -1 ELSE ReviewedByUserId END,
     IsReviewed = CASE WHEN @Reviewed = 1 THEN 1 WHEN @Validated = 1 OR @Compared = 1 THEN 0 ELSE IsReviewed END,
     SummaryJson = COALESCE(@SummaryJson, SummaryJson)
 WHERE Guid = @RunGuid
-  AND RowStatus NOT IN (0,254);", cn, tx)
+  AND RowStatus <> 0
+  AND RowStatus <> 254;", cn, tx)
         {
             CommandType = CommandType.Text,
             CommandTimeout = 300
@@ -1469,6 +2211,50 @@ WHERE Guid = @RunGuid
         cmd.Parameters.Add(new SqlParameter("@Applied", SqlDbType.Bit) { Value = applied });
         cmd.Parameters.Add(new SqlParameter("@SummaryJson", SqlDbType.NVarChar, -1) { Value = (object?)summaryJson ?? DBNull.Value });
         await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<string>> ReadSchemaMigrationBootstrapMissingObjectsAsync(
+        SqlConnection cn,
+        CancellationToken cancellationToken)
+    {
+        await using var cmd = new SqlCommand(@"
+SELECT
+    required.RequiredObject
+FROM
+(
+    VALUES
+        (10, N'Schema [SMigration]', CONVERT(BIT, CASE WHEN SCHEMA_ID(N'SMigration') IS NULL THEN 0 ELSE 1 END)),
+        (20, N'Table [SMigration].[Schema_Run]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_Run]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (30, N'Table [SMigration].[Schema_ObjectComparisons]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_ObjectComparisons]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (40, N'Table [SMigration].[Schema_ValidationIssues]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_ValidationIssues]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (50, N'Table [SMigration].[Schema_ExecutionLog]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_ExecutionLog]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (60, N'Table [SMigration].[Schema_RunSelections]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_RunSelections]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (70, N'Table [SMigration].[Schema_ExcludedObjects]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[Schema_ExcludedObjects]', N'U') IS NULL THEN 0 ELSE 1 END)),
+        (80, N'Procedure [SMigration].[SchemaDataObject_Ensure]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaDataObject_Ensure]', N'P') IS NULL THEN 0 ELSE 1 END)),
+        (90, N'Procedure [SMigration].[SchemaDeploymentPlan_Get]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaDeploymentPlan_Get]', N'P') IS NULL THEN 0 ELSE 1 END)),
+        (100, N'Procedure [SMigration].[SchemaExcludedObject_Apply]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaExcludedObject_Apply]', N'P') IS NULL THEN 0 ELSE 1 END)),
+        (110, N'Procedure [SMigration].[SchemaExcludedObjects_List]', CONVERT(BIT, CASE WHEN OBJECT_ID(N'[SMigration].[SchemaExcludedObjects_List]', N'P') IS NULL THEN 0 ELSE 1 END))
+) AS required
+(
+    SortOrder,
+    RequiredObject,
+    IsPresent
+)
+WHERE required.IsPresent = 0
+ORDER BY required.SortOrder;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        var missingObjects = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            missingObjects.Add(reader.GetString(0));
+        }
+
+        return missingObjects;
     }
 
     private static async Task EnsureSchemaDataObjectAsync(
@@ -1563,7 +2349,8 @@ SELECT TOP (1)
     r.SummaryJson
 FROM SMigration.Schema_Run AS r
 WHERE r.Guid = @RunGuid
-  AND r.RowStatus NOT IN (0,254)
+  AND r.RowStatus <> 0
+  AND r.RowStatus <> 254
 ORDER BY r.ID DESC;", cn)
         {
             CommandType = CommandType.Text,
@@ -1593,7 +2380,19 @@ SELECT
     COUNT_BIG(1) AS [RowCount]
 FROM SMigration.Schema_ObjectComparisons AS c
 WHERE c.RunGuid = @RunGuid
-  AND c.RowStatus NOT IN (0,254)
+  AND c.RowStatus <> 0
+  AND c.RowStatus <> 254
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SMigration.Schema_ExcludedObjects AS excluded
+      WHERE excluded.ObjectType = c.ObjectType
+        AND excluded.SchemaName = c.SchemaName
+        AND excluded.ObjectName = c.ObjectName
+        AND excluded.ParentObjectName = c.ParentObjectName
+        AND excluded.RowStatus <> 0
+        AND excluded.RowStatus <> 254
+  )
 GROUP BY c.DifferenceType;", cn)
         {
             CommandType = CommandType.Text,
@@ -1623,7 +2422,19 @@ SELECT
     COUNT_BIG(1) AS [RowCount]
 FROM SMigration.Schema_ObjectComparisons AS c
 WHERE c.RunGuid = @RunGuid
-  AND c.RowStatus NOT IN (0,254)
+  AND c.RowStatus <> 0
+  AND c.RowStatus <> 254
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SMigration.Schema_ExcludedObjects AS excluded
+      WHERE excluded.ObjectType = c.ObjectType
+        AND excluded.SchemaName = c.SchemaName
+        AND excluded.ObjectName = c.ObjectName
+        AND excluded.ParentObjectName = c.ParentObjectName
+        AND excluded.RowStatus <> 0
+        AND excluded.RowStatus <> 254
+  )
 GROUP BY c.ObjectType,
          c.DifferenceType
 ORDER BY c.ObjectType,
@@ -1644,6 +2455,20 @@ ORDER BY c.ObjectType,
                     Count = Convert.ToInt32(reader.GetInt64(2))
                 });
             }
+        }
+
+        await using (var excludedCountCommand = new SqlCommand(@"
+SELECT COUNT_BIG(1)
+FROM SMigration.Schema_ExcludedObjects AS excluded
+WHERE excluded.RowStatus <> 0
+  AND excluded.RowStatus <> 254;", cn)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        })
+        {
+            dashboard.ExcludedCount = Convert.ToInt32(
+                await excludedCountCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) ?? 0L);
         }
 
         var validation = await ReadSchemaValidationResponseAsync(cn, runGuid, cancellationToken).ConfigureAwait(false);
@@ -1672,7 +2497,8 @@ SELECT
     i.DetailsJson
 FROM SMigration.Schema_ValidationIssues AS i
 WHERE i.RunGuid = @RunGuid
-  AND i.RowStatus NOT IN (0,254)
+  AND i.RowStatus <> 0
+  AND i.RowStatus <> 254
 ORDER BY
     CASE i.Severity WHEN N'Fail' THEN 1 WHEN N'Warn' THEN 2 ELSE 3 END,
     i.ObjectType,
@@ -1720,7 +2546,8 @@ SELECT TOP (100)
     l.CreatedOnUtc
 FROM SMigration.Schema_ExecutionLog AS l
 WHERE l.RunGuid = @RunGuid
-  AND l.RowStatus NOT IN (0,254)
+  AND l.RowStatus <> 0
+  AND l.RowStatus <> 254
 ORDER BY l.ID DESC;", cn)
         {
             CommandType = CommandType.Text,
@@ -1750,6 +2577,8 @@ ORDER BY l.ID DESC;", cn)
         string objectType,
         string differenceType,
         string searchText,
+        bool includeDefinitions,
+        Guid? comparisonGuid,
         CancellationToken cancellationToken)
     {
         var rows = new List<SchemaMigrationObjectComparisonRow>();
@@ -1781,12 +2610,12 @@ SELECT TOP (5000)
     c.IsDestructiveRisk,
     c.SourceHash,
     c.TargetHash,
-    c.SourceDefinition,
-    c.TargetDefinition,
+    CASE WHEN @IncludeDefinitions = 1 THEN c.SourceDefinition ELSE N'' END AS SourceDefinition,
+    CASE WHEN @IncludeDefinitions = 1 THEN c.TargetDefinition ELSE N'' END AS TargetDefinition,
     c.Notes,
     CASE
         WHEN c.IsDeployable = 0 THEN CONVERT(BIT, 0)
-        WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, 1)
+        WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, CASE WHEN c.IsDestructiveRisk = 1 THEN 0 ELSE 1 END)
         ELSE ISNULL(sel.IsSelected, CONVERT(BIT, 0))
     END AS IsSelected,
     CASE WHEN sel.Guid IS NULL THEN CONVERT(BIT, 0) ELSE CONVERT(BIT, 1) END AS HasExplicitSelection
@@ -1809,6 +2638,18 @@ OUTER APPLY
 WHERE c.RunGuid = @RunGuid
   AND c.RowStatus <> 0
   AND c.RowStatus <> 254
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SMigration.Schema_ExcludedObjects AS excluded
+      WHERE excluded.ObjectType = c.ObjectType
+        AND excluded.SchemaName = c.SchemaName
+        AND excluded.ObjectName = c.ObjectName
+        AND excluded.ParentObjectName = c.ParentObjectName
+        AND excluded.RowStatus <> 0
+        AND excluded.RowStatus <> 254
+  )
+  AND (@ComparisonGuid IS NULL OR c.Guid = @ComparisonGuid)
   AND (@ObjectType = N'' OR c.ObjectType = @ObjectType)
   AND (@DifferenceType = N'' OR c.DifferenceType = @DifferenceType)
   AND
@@ -1832,6 +2673,8 @@ ORDER BY
         cmd.Parameters.Add(new SqlParameter("@DifferenceType", SqlDbType.NVarChar, 30) { Value = differenceType ?? string.Empty });
         cmd.Parameters.Add(new SqlParameter("@SearchText", SqlDbType.NVarChar, 200) { Value = searchText ?? string.Empty });
         cmd.Parameters.Add(new SqlParameter("@SearchPattern", SqlDbType.NVarChar, 260) { Value = $"%{EscapeLikeValue(searchText ?? string.Empty)}%" });
+        cmd.Parameters.Add(new SqlParameter("@IncludeDefinitions", SqlDbType.Bit) { Value = includeDefinitions });
+        cmd.Parameters.Add(new SqlParameter("@ComparisonGuid", SqlDbType.UniqueIdentifier) { Value = (object?)comparisonGuid ?? DBNull.Value });
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -1930,6 +2773,17 @@ DECLARE @ExplicitSelectionCount INT =
     WHERE rs.RunGuid = @RunGuid
       AND rs.RowStatus <> 0
       AND rs.RowStatus <> 254
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Schema_ExcludedObjects AS excluded
+          WHERE excluded.ObjectType = rs.ObjectType
+            AND excluded.SchemaName = rs.SchemaName
+            AND excluded.ObjectName = rs.ObjectName
+            AND excluded.ParentObjectName = rs.ParentObjectName
+            AND excluded.RowStatus <> 0
+            AND excluded.RowStatus <> 254
+      )
 );
 
 DECLARE @DeployableCount INT =
@@ -1941,12 +2795,46 @@ DECLARE @DeployableCount INT =
       AND c.RowStatus <> 254
       AND c.IsDeployable = 1
       AND c.DifferenceType <> N'Equal'
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Schema_ExcludedObjects AS excluded
+          WHERE excluded.ObjectType = c.ObjectType
+            AND excluded.SchemaName = c.SchemaName
+            AND excluded.ObjectName = c.ObjectName
+            AND excluded.ParentObjectName = c.ParentObjectName
+            AND excluded.RowStatus <> 0
+            AND excluded.RowStatus <> 254
+      )
+);
+
+DECLARE @DefaultSafeDeployableCount INT =
+(
+    SELECT COUNT(1)
+    FROM SMigration.Schema_ObjectComparisons AS c
+    WHERE c.RunGuid = @RunGuid
+      AND c.RowStatus <> 0
+      AND c.RowStatus <> 254
+      AND c.IsDeployable = 1
+      AND c.IsDestructiveRisk = 0
+      AND c.DifferenceType <> N'Equal'
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Schema_ExcludedObjects AS excluded
+          WHERE excluded.ObjectType = c.ObjectType
+            AND excluded.SchemaName = c.SchemaName
+            AND excluded.ObjectName = c.ObjectName
+            AND excluded.ParentObjectName = c.ParentObjectName
+            AND excluded.RowStatus <> 0
+            AND excluded.RowStatus <> 254
+      )
 );
 
 SELECT
     @DeployableCount AS DeployableCount,
     CASE
-        WHEN @ExplicitSelectionCount = 0 THEN @DeployableCount
+        WHEN @ExplicitSelectionCount = 0 THEN @DefaultSafeDeployableCount
         ELSE
         (
             SELECT COUNT(1)
@@ -1970,6 +2858,17 @@ SELECT
               AND c.RowStatus <> 254
               AND c.IsDeployable = 1
               AND c.DifferenceType <> N'Equal'
+              AND NOT EXISTS
+              (
+                  SELECT 1
+                  FROM SMigration.Schema_ExcludedObjects AS excluded
+                  WHERE excluded.ObjectType = c.ObjectType
+                    AND excluded.SchemaName = c.SchemaName
+                    AND excluded.ObjectName = c.ObjectName
+                    AND excluded.ParentObjectName = c.ParentObjectName
+                    AND excluded.RowStatus <> 0
+                    AND excluded.RowStatus <> 254
+              )
               AND ISNULL(sel.IsSelected, CONVERT(BIT, 0)) = 1
         )
     END AS SelectedCount,
@@ -2026,8 +2925,8 @@ SELECT TOP (5000)
     c.IsDestructiveRisk,
     c.SourceHash,
     c.TargetHash,
-    c.SourceDefinition,
-    c.TargetDefinition,
+    CONVERT(NVARCHAR(MAX), N'') AS SourceDefinition,
+    CONVERT(NVARCHAR(MAX), N'') AS TargetDefinition,
     c.Notes,
     CONVERT(BIT, 1) AS IsSelected,
     CASE WHEN sel.Guid IS NULL THEN CONVERT(BIT, 0) ELSE CONVERT(BIT, 1) END AS HasExplicitSelection
@@ -2052,6 +2951,18 @@ WHERE c.RunGuid = @RunGuid
   AND c.RowStatus <> 254
   AND c.IsDeployable = 1
   AND c.DifferenceType <> N'Equal'
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SMigration.Schema_ExcludedObjects AS excluded
+      WHERE excluded.ObjectType = c.ObjectType
+        AND excluded.SchemaName = c.SchemaName
+        AND excluded.ObjectName = c.ObjectName
+        AND excluded.ParentObjectName = c.ParentObjectName
+        AND excluded.RowStatus <> 0
+        AND excluded.RowStatus <> 254
+  )
+  AND (@HasExplicitSelection = 1 OR c.IsDestructiveRisk = 0)
   AND (@HasExplicitSelection = 0 OR ISNULL(sel.IsSelected, CONVERT(BIT, 0)) = 1)
 ORDER BY
     CASE c.ObjectType
@@ -2230,6 +3141,56 @@ ORDER BY
         public string Key => $"{ObjectType}|{SchemaName}|{ObjectName}|{ParentObjectName}";
     }
 
+    private sealed class SchemaExcludedObjectRecord
+    {
+        public long ID { get; init; }
+        public Guid Guid { get; init; }
+        public string ObjectType { get; init; } = string.Empty;
+        public string SchemaName { get; init; } = string.Empty;
+        public string ObjectName { get; init; } = string.Empty;
+        public string ParentObjectName { get; init; } = string.Empty;
+        public string StableObjectKey { get; init; } = string.Empty;
+        public string Reason { get; init; } = string.Empty;
+        public string ExclusionScope { get; init; } = string.Empty;
+        public string OriginServerName { get; init; } = string.Empty;
+        public string OriginDatabaseName { get; init; } = string.Empty;
+        public int ExcludedByUserId { get; init; }
+        public string ExcludedOnUtc { get; init; } = string.Empty;
+        public string UnexcludedOnUtc { get; init; } = string.Empty;
+        public Guid LastSeenRunGuid { get; init; }
+        public string LastSeenOnUtc { get; init; } = string.Empty;
+        public int RowStatus { get; init; }
+        public bool IsActive => RowStatus != 0 && RowStatus != 254;
+    }
+
+    private sealed record SchemaObjectIdentity(
+        string ObjectType,
+        string SchemaName,
+        string ObjectName,
+        string ParentObjectName)
+    {
+        public bool IsValid =>
+            !string.IsNullOrWhiteSpace(ObjectType)
+            && !string.IsNullOrWhiteSpace(SchemaName)
+            && !string.IsNullOrWhiteSpace(ObjectName);
+
+        public string DisplayName => string.IsNullOrWhiteSpace(ParentObjectName)
+            ? $"{SchemaName}.{ObjectName}"
+            : $"{SchemaName}.{ParentObjectName}.{ObjectName}";
+    }
+
+    private sealed record SchemaExclusionSyncResult(
+        IReadOnlyList<SchemaExcludedObjectRecord> SourceRecords,
+        int SynchronizedCount,
+        int RemovedTargetOnlyCount)
+    {
+        public int ActiveCount => SourceRecords.Count(x => x.IsActive);
+        public HashSet<string> ActiveStableObjectKeys => SourceRecords
+            .Where(x => x.IsActive)
+            .Select(x => x.StableObjectKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private sealed class SchemaComparisonDraft
     {
         public Guid ComparisonGuid { get; init; }
@@ -2257,6 +3218,7 @@ ORDER BY
         public string ObjectName { get; init; } = string.Empty;
         public string ParentObjectName { get; init; } = string.Empty;
         public bool IsSelected { get; init; }
+        public bool IsDestructiveRisk { get; init; }
         public string SelectionNote { get; init; } = string.Empty;
     }
 
@@ -2441,24 +3403,44 @@ SELECT
     CONVERT(NVARCHAR(256), OBJECT_NAME(k.parent_object_id)) COLLATE DATABASE_DEFAULT AS ParentObjectName,
     CONCAT
     (
-        CONVERT(NVARCHAR(MAX), k.type_desc) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N';') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), ISNULL((
+        CONVERT(NVARCHAR(MAX), N'CYB_CONSTRAINT_V2|') COLLATE DATABASE_DEFAULT,
+        CONVERT(NVARCHAR(MAX),
+        (
             SELECT
-                c.name COLLATE DATABASE_DEFAULT AS ColumnName,
-                ic.key_ordinal AS KeyOrdinal,
-                ic.is_descending_key AS IsDescending
-            FROM sys.index_columns AS ic
-            INNER JOIN sys.columns AS c
-                ON c.object_id = ic.object_id
-               AND c.column_id = ic.column_id
-            WHERE ic.object_id = k.parent_object_id
-              AND ic.index_id = k.unique_index_id
-            ORDER BY ic.key_ordinal
-            FOR JSON PATH
-        ), N'[]')) COLLATE DATABASE_DEFAULT
+                CASE k.type WHEN N'PK' THEN N'PRIMARY_KEY' ELSE N'UNIQUE' END AS ConstraintKind,
+                i.type_desc AS IndexType,
+                CONVERT(BIT, i.is_padded) AS IsPadded,
+                CONVERT(INT, i.fill_factor) AS FillFactor,
+                CONVERT(BIT, i.ignore_dup_key) AS IgnoreDuplicateKey,
+                CONVERT(BIT, i.allow_row_locks) AS AllowRowLocks,
+                CONVERT(BIT, i.allow_page_locks) AS AllowPageLocks,
+                CONVERT(BIT, i.is_disabled) AS IsDisabled,
+                ISNULL(ds.name, N'') AS DataSpaceName,
+                ISNULL(ds.type_desc, N'') AS DataSpaceType,
+                JSON_QUERY(ISNULL((
+                    SELECT
+                        c.name AS ColumnName,
+                        ic.key_ordinal AS KeyOrdinal,
+                        CONVERT(BIT, ic.is_descending_key) AS IsDescending
+                    FROM sys.index_columns AS ic
+                    INNER JOIN sys.columns AS c
+                        ON c.object_id = ic.object_id
+                       AND c.column_id = ic.column_id
+                    WHERE ic.object_id = k.parent_object_id
+                      AND ic.index_id = k.unique_index_id
+                      AND ic.key_ordinal > 0
+                    ORDER BY ic.key_ordinal
+                    FOR JSON PATH
+                ), N'[]')) AS Columns
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) COLLATE DATABASE_DEFAULT
     ) COLLATE DATABASE_DEFAULT AS Definition
 FROM sys.key_constraints AS k
+INNER JOIN sys.indexes AS i
+    ON i.object_id = k.parent_object_id
+   AND i.index_id = k.unique_index_id
+LEFT JOIN sys.data_spaces AS ds
+    ON ds.data_space_id = i.data_space_id
 WHERE OBJECT_SCHEMA_NAME(k.parent_object_id) NOT IN (N'guest', N'INFORMATION_SCHEMA', N'sys')
 ORDER BY SchemaName,
          ParentObjectName,
@@ -2472,32 +3454,35 @@ SELECT
     CONVERT(NVARCHAR(256), OBJECT_NAME(fk.parent_object_id)) COLLATE DATABASE_DEFAULT AS ParentObjectName,
     CONCAT
     (
-        CONVERT(NVARCHAR(MAX), N'FOREIGN_KEY;') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N'DELETE=') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), fk.delete_referential_action_desc) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N';UPDATE=') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), fk.update_referential_action_desc) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N';REF=') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), OBJECT_SCHEMA_NAME(fk.referenced_object_id)) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N'.') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), OBJECT_NAME(fk.referenced_object_id)) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N';') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), ISNULL((
+        CONVERT(NVARCHAR(MAX), N'CYB_CONSTRAINT_V2|') COLLATE DATABASE_DEFAULT,
+        CONVERT(NVARCHAR(MAX),
+        (
             SELECT
-                pc.name COLLATE DATABASE_DEFAULT AS ParentColumn,
-                rc.name COLLATE DATABASE_DEFAULT AS ReferencedColumn,
-                fkc.constraint_column_id AS ColumnOrder
-            FROM sys.foreign_key_columns AS fkc
-            INNER JOIN sys.columns AS pc
-                ON pc.object_id = fkc.parent_object_id
-               AND pc.column_id = fkc.parent_column_id
-            INNER JOIN sys.columns AS rc
-                ON rc.object_id = fkc.referenced_object_id
-               AND rc.column_id = fkc.referenced_column_id
-            WHERE fkc.constraint_object_id = fk.object_id
-            ORDER BY fkc.constraint_column_id
-            FOR JSON PATH
-        ), N'[]')) COLLATE DATABASE_DEFAULT
+                N'FOREIGN_KEY' AS ConstraintKind,
+                CONVERT(BIT, fk.is_not_for_replication) AS IsNotForReplication,
+                CONVERT(BIT, fk.is_disabled) AS IsDisabled,
+                fk.delete_referential_action_desc AS DeleteAction,
+                fk.update_referential_action_desc AS UpdateAction,
+                OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS ReferencedSchemaName,
+                OBJECT_NAME(fk.referenced_object_id) AS ReferencedTableName,
+                JSON_QUERY(ISNULL((
+                    SELECT
+                        pc.name AS ParentColumn,
+                        rc.name AS ReferencedColumn,
+                        fkc.constraint_column_id AS ColumnOrder
+                    FROM sys.foreign_key_columns AS fkc
+                    INNER JOIN sys.columns AS pc
+                        ON pc.object_id = fkc.parent_object_id
+                       AND pc.column_id = fkc.parent_column_id
+                    INNER JOIN sys.columns AS rc
+                        ON rc.object_id = fkc.referenced_object_id
+                       AND rc.column_id = fkc.referenced_column_id
+                    WHERE fkc.constraint_object_id = fk.object_id
+                    ORDER BY fkc.constraint_column_id
+                    FOR JSON PATH
+                ), N'[]')) AS Columns
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) COLLATE DATABASE_DEFAULT
     ) COLLATE DATABASE_DEFAULT AS Definition
 FROM sys.foreign_keys AS fk
 WHERE OBJECT_SCHEMA_NAME(fk.parent_object_id) NOT IN (N'guest', N'INFORMATION_SCHEMA', N'sys')
@@ -2513,8 +3498,18 @@ SELECT
     CONVERT(NVARCHAR(256), OBJECT_NAME(cc.parent_object_id)) COLLATE DATABASE_DEFAULT AS ParentObjectName,
     CONCAT
     (
-        CONVERT(NVARCHAR(MAX), N'CHECK;') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), ISNULL(cc.definition, N'')) COLLATE DATABASE_DEFAULT
+        CONVERT(NVARCHAR(MAX), N'CYB_CONSTRAINT_V2|') COLLATE DATABASE_DEFAULT,
+        CONVERT(NVARCHAR(MAX),
+        (
+            SELECT
+                N'CHECK' AS ConstraintKind,
+                ISNULL(COL_NAME(cc.parent_object_id, cc.parent_column_id), N'') AS ParentColumnName,
+                ISNULL(cc.definition, N'') AS CheckDefinition,
+                CONVERT(BIT, cc.is_not_for_replication) AS IsNotForReplication,
+                CONVERT(BIT, cc.is_disabled) AS IsDisabled,
+                CONVERT(BIT, cc.uses_database_collation) AS UsesDatabaseCollation
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) COLLATE DATABASE_DEFAULT
     ) COLLATE DATABASE_DEFAULT AS Definition
 FROM sys.check_constraints AS cc
 WHERE OBJECT_SCHEMA_NAME(cc.parent_object_id) NOT IN (N'guest', N'INFORMATION_SCHEMA', N'sys')
@@ -2530,10 +3525,15 @@ SELECT
     CONVERT(NVARCHAR(256), OBJECT_NAME(dc.parent_object_id)) COLLATE DATABASE_DEFAULT AS ParentObjectName,
     CONCAT
     (
-        CONVERT(NVARCHAR(MAX), N'DEFAULT;') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), COL_NAME(dc.parent_object_id, dc.parent_column_id)) COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), N';') COLLATE DATABASE_DEFAULT,
-        CONVERT(NVARCHAR(MAX), ISNULL(dc.definition, N'')) COLLATE DATABASE_DEFAULT
+        CONVERT(NVARCHAR(MAX), N'CYB_CONSTRAINT_V2|') COLLATE DATABASE_DEFAULT,
+        CONVERT(NVARCHAR(MAX),
+        (
+            SELECT
+                N'DEFAULT' AS ConstraintKind,
+                COL_NAME(dc.parent_object_id, dc.parent_column_id) AS ParentColumnName,
+                ISNULL(dc.definition, N'') AS DefaultDefinition
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+        )) COLLATE DATABASE_DEFAULT
     ) COLLATE DATABASE_DEFAULT AS Definition
 FROM sys.default_constraints AS dc
 WHERE OBJECT_SCHEMA_NAME(dc.parent_object_id) NOT IN (N'guest', N'INFORMATION_SCHEMA', N'sys')

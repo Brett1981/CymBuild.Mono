@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"0f414f98-b9cb-4404-8371-ec5dd74c213b","View","SCore","UsersGet_Advanced","","MissingInTarget","True","False","True","True"

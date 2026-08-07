@@ -5,7 +5,6 @@ using Concursus.PWA.Shared;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.JSInterop;
 using Moq;
 using Xunit;
 using static Concursus.PWA.Shared.MessageDisplay;
@@ -96,7 +95,7 @@ namespace Concursus.PWA.Tests
         [InlineData("https://example.com/https://last.com", "https://last.com")]
         [InlineData("https://example.com/path", "https://example.com/path")]
         [InlineData("http://no-https.com", "http://no-https.com")]
-        [InlineData("https://example.com/https", "https")]
+        [InlineData("https://example.com/https", "https://example.com/https")] // The trailing token is not a complete "https://" occurrence.
         public void ExtractLastHttps_ShouldReturnCorrectSubstring(string input, string expected)
         {
             // Act
@@ -107,18 +106,32 @@ namespace Concursus.PWA.Tests
         }
 
         [Fact]
-        public void NavigateToCorrectPage_ShouldConstructUrlAndNavigateCorrectly()
+        public void NavigateToCorrectPage_ShouldUseReturnUrlAsSourceOfTruth()
         {
             // Arrange
             var navManager = new TestNavigationManager();
             var dataObjectReference = new DataObjectReference(Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
-            string returnUrl = "https://return.url";
-            bool isWindowed = false;
+            const string returnUrl = "https://return.url/path";
 
             // Act
-            PWAFunctions.NavigateToCorrectPage(navManager, dataObjectReference, returnUrl, isWindowed);
+            PWAFunctions.NavigateToCorrectPage(navManager, dataObjectReference, returnUrl, IsWindowed: false);
 
             // Assert
+            Assert.Equal(returnUrl, navManager.NavigatedUri);
+        }
+
+        [Fact]
+        public void NavigateToCorrectPage_ShouldBuildFallbackUrlWhenReturnUrlIsEmpty()
+        {
+            // Arrange
+            var navManager = new TestNavigationManager("http://localhost/JobDetail/existing-record");
+            var dataObjectReference = new DataObjectReference(Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
+
+            // Act
+            PWAFunctions.NavigateToCorrectPage(navManager, dataObjectReference, string.Empty, IsWindowed: false);
+
+            // Assert
+            Assert.Contains("JobDetail/", navManager.NavigatedUri);
             Assert.Contains(dataObjectReference.DataObjectGuid.ToString(), navManager.NavigatedUri);
         }
 
@@ -126,27 +139,18 @@ namespace Concursus.PWA.Tests
         public async Task StartDownload_ShouldInvokeJavaScriptWithCorrectParameters()
         {
             // Arrange
-            var jsRuntimeMock = new Mock<IJSRuntime>();
-            string downloadUrl = "data:text/csv;base64,SGVhZGVyMSxIZWFkZXIyClJvdzEsUm93Mg==";
-            string fileName = "Export.csv";
-
-            // Use InvokeAsync<object> instead of InvokeVoidAsync for mocking
-            jsRuntimeMock
-                .Setup(js => js.InvokeAsync<object>("triggerFileDownload", It.Is<object[]>(args =>
-                    args.Length == 2 &&
-                    args[0].Equals(fileName) &&
-                    args[1].ToString() == downloadUrl)))
-                .Returns(ValueTask.FromResult<object>(null))
-                .Verifiable();
+            var jsRuntime = new RecordingJsRuntime();
+            const string downloadUrl = "data:text/csv;base64,SGVhZGVyMSxIZWFkZXIyClJvdzEsUm93Mg==";
+            const string fileName = "Export.csv";
 
             // Act
-            await PWAFunctions.StartDownload(jsRuntimeMock.Object, downloadUrl, fileName);
+            await PWAFunctions.StartDownload(jsRuntime, downloadUrl, fileName);
 
             // Assert
-            jsRuntimeMock.Verify(js => js.InvokeAsync<object>("triggerFileDownload", It.Is<object[]>(args =>
-                args.Length == 2 &&
-                args[0].Equals(fileName) &&
-                args[1].ToString() == downloadUrl)), Times.Once);
+            var invocation = Assert.Single(jsRuntime.Invocations);
+            Assert.Equal("triggerFileDownload", invocation.Identifier);
+            Assert.Equal(fileName, invocation.Arguments[0]);
+            Assert.Equal(downloadUrl, invocation.Arguments[1]);
         }
 
         [Fact]
@@ -179,28 +183,18 @@ namespace Concursus.PWA.Tests
         public async Task GenerateCsvDownload_ShouldCallJsRuntimeWithCorrectParameters()
         {
             // Arrange
-            var jsRuntimeMock = new Mock<IJSRuntime>();
-            string csvContent = "Header1,Header2\nRow1,Row2";
-            string fileName = "Export.csv";
-            string expectedDataUrl = "data:text/csv;base64,SGVhZGVyMSxIZWFkZXIyClJvdzEsUm93Mg==";
-
-            // Set up the mock to expect InvokeAsync<object>
-            jsRuntimeMock
-                .Setup(js => js.InvokeAsync<object>("triggerFileDownload", It.Is<object[]>(args =>
-                    args.Length == 2 &&
-                    args[0].Equals(fileName) &&
-                    args[1].ToString().StartsWith("data:text/csv;base64,"))))
-                .Returns(ValueTask.FromResult<object>(null))
-                .Verifiable();
+            var jsRuntime = new RecordingJsRuntime();
+            const string csvContent = "Header1,Header2\nRow1,Row2";
+            const string fileName = "Export.csv";
 
             // Act
-            await PWAFunctions.GenerateCsvDownload(csvContent, jsRuntimeMock.Object, fileName);
+            await PWAFunctions.GenerateCsvDownload(csvContent, jsRuntime, fileName);
 
             // Assert
-            jsRuntimeMock.Verify(js => js.InvokeAsync<object>("triggerFileDownload", It.Is<object[]>(args =>
-                args.Length == 2 &&
-                args[0].Equals(fileName) &&
-                args[1].ToString().StartsWith("data:text/csv;base64,"))), Times.Once);
+            var invocation = Assert.Single(jsRuntime.Invocations);
+            Assert.Equal("triggerFileDownload", invocation.Identifier);
+            Assert.Equal(fileName, invocation.Arguments[0]);
+            Assert.True(Assert.IsType<string>(invocation.Arguments[1]).StartsWith("data:text/csv;base64,", StringComparison.Ordinal));
         }
 
         [Fact]

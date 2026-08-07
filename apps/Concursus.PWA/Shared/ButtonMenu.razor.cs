@@ -336,7 +336,7 @@ public partial class ButtonMenu
     {
         try
         {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+            formHelper = new FormHelper(coreClient, EntityTypeGuid, userService);
             ClickedItem = item;
             if (item.Text == "Cancel")
             {
@@ -915,7 +915,7 @@ public partial class ButtonMenu
         }
 
         if (formHelper is null)
-            formHelper = new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+            formHelper = new FormHelper(coreClient, EntityTypeGuid, userService);
 
        var IsDeletablePropertyValue = await formHelper.GetEntityType();
            IsDeletable = IsDeletablePropertyValue.IsDeletable;
@@ -1090,7 +1090,7 @@ public partial class ButtonMenu
 
         try
         {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+            formHelper = new FormHelper(coreClient, EntityTypeGuid, userService);
             _ = buttonIsLoading(true);
 
             if (formHelper != null)

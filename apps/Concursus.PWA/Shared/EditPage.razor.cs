@@ -1646,7 +1646,7 @@ public partial class EditPage
                 isHubConnected = true;
             }
             await EnsureCorrectParentGuid();
-            _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+            _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
             await _formHelper.LoadMetaDataAsync(IsInformationPage);
 
@@ -2242,7 +2242,7 @@ public partial class EditPage
             {
                 isPreparingStorageUrl = true; // Start loading indicator
                 StateHasChanged(); // Force UI to update
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl);
                 Console.WriteLine($"Storage URL - {storageUrl}");
@@ -2289,7 +2289,7 @@ public partial class EditPage
             {
                 isPreparingStorageUrl = true; // Start loading indicator
                 StateHasChanged(); // Force UI to update
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl);
                 Console.WriteLine($"Storage URL - {storageUrl}");
@@ -2392,7 +2392,7 @@ public partial class EditPage
                 isPreparingStorageUrl = true; // Start loading indicator
                 StateHasChanged(); // Force UI to update
 
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl);
                 Console.WriteLine($"Storage URL - {storageUrl}");
@@ -2557,7 +2557,7 @@ public partial class EditPage
 
                     if (originalDataObject != null && originalDataObject.HasDocuments)
                     {
-                        _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                        _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                         await _formHelper.LoadMetaDataAsync(IsInformationPage);
 
                         storageUrl = await PWAFunctions.GetStorageUrlAsync(originalDataObject, _formHelper, storageUrl, false, UpdateSharePoint);
@@ -2578,7 +2578,7 @@ public partial class EditPage
                      dataObject.HasDocuments &&
                      (string.IsNullOrEmpty(dataObject.SharePointUrl) || UpdateSharePoint))
             {
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
 
                 storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl, false, UpdateSharePoint);

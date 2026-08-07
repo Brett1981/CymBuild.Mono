@@ -18,8 +18,6 @@
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 <PageTitle>Address Detail V2 (Experimental)</PageTitle>
 
 <div class="container-fluid mt-3">
@@ -131,7 +129,7 @@
             _isLoading = true;
             _loadError = null;
 
-            _formHelper = new FormHelper(coreClient, sageIntegrationService, AddressEntityTypeGuid, userService);
+            _formHelper = new FormHelper(coreClient, AddressEntityTypeGuid, userService);
 
             await _formHelper.LoadMetaDataAsync(isInformationPage: false);
 

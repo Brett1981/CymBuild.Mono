@@ -1,0 +1,3 @@
+"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"5ffbc011-6717-4dc8-abe9-31cce01212ab","Function","SCrm","tvf_AccountsCheckForDuplicate","","MissingInTarget","True","False","True","True"
+"d5be4b11-df53-4c35-9147-2e9ae5dad899","Function","SJob","tvf_AssetsCheckForDuplicate","","Different","True","False","True","True"

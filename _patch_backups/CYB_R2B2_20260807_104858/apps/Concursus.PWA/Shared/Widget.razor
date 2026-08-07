@@ -1,0 +1,1797 @@
+@inject Core.CoreClient CoreClient
+@inject NavigationManager Navigation;
+@inject Concursus.API.Client.Models.UserService UserService //To get the UserId.
+@inject IJSRuntime JS
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject IConfiguration Config
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@using Concursus.API.Client.Classes;
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Dashbaord
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+@using Newtonsoft.Json
+@using System.Collections
+@using Concursus.PWA.Shared
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Routing
+
+@using Telerik.DataSource;
+@using Telerik.DataSource.Extensions;
+@using static Concursus.PWA.Shared.MessageDisplay
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+<NavigationLock OnBeforeInternalNavigation=this.OnNavigation />
+
+<div class="@DialogCss" tabindex="-1" z-index="10">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Exit Page</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @onclick=this.Cancel></button>
+            </div>
+            <div class="modal-body">
+                <p>Changes have been made, Are you sure you want to exit without saving?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" @onclick=this.Navigate>Yes</button>
+                <button type="button" class="btn btn-primary" @onclick=this.Cancel>Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <div class="d-flex flex-column justify-content-center align-items-center vh-100">
+        <div class="spinner-border text-secondary" role="status" aria-hidden="true"></div>
+        <h1 class="mt-2">Loading...</h1>
+    </div>
+}
+else
+{
+    <div class="WidgetContainer d-flex flex-column cb-native-dashboard-shell">
+        @if (!IsEditMode)
+        {
+            <div class="d-flex flex-row justify-content-end mb-3">
+                <button type="button" class="btn btn-secondary editButton" @onclick="ToggleEditMode">Edit</button>
+            </div>
+        }
+
+        @if (IsEditMode)
+        {
+            <div class="WidgetOptions d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
+                <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+                    <label class="form-label mb-0 fw-semibold" for="dashboardWidgetPicker">Add widget</label>
+                    <select id="dashboardWidgetPicker" class="form-select cb-dashboard-widget-picker" @onchange="AddWidgetFromSelect">
+                        <option value="">Select a widget...</option>
+                        @foreach (var item in AvailableWidgetSelections)
+                        {
+                            <option value="@item.Id">@item.Text</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                    <button type="button" class="btn btn-outline-secondary" title="Decrease Widgets Size" @onclick="@(async () => await ChangeWidgetAreaSize(-1))">
+                        <i class="bi bi-dash-circle-fill"></i> Smaller
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" title="Increase Widgets Size" @onclick="@(async () => await ChangeWidgetAreaSize(1))">
+                        <i class="bi bi-plus-circle-fill"></i> Larger
+                    </button>
+                    <button class="btn btn-success" type="button" @onclick="@(() => this.SaveStateToDB())">
+                        <i class="bi bi-save-fill"></i> Save
+                    </button>
+                    <button class="btn btn-warning" type="button" @onclick="@(() => this.CancelEditMode())">
+                        <i class="bi bi-x-square"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        }
+
+        <div class="WidgetArea">
+            @if (BoardIsEmpty)
+            {
+                <div class="emptyBoard d-flex flex-column justify-content-center text-center" style="background-color: #ffffff">
+                    <i class="bi bi-folder" style="font-size: 60px; color: lightblue;"></i>
+                    <h1 style="font-size: 40px; color: lightblue;">Start a new dashboard by clicking "Edit".</h1>
+                </div>
+            }
+            else
+            {
+                <div class="cb-dashboard-grid @(isFullScreen ? "cb-dashboard-grid-fullscreen-active" : "")">
+                    @foreach (var Widget in DashboardWidgets)
+                    {
+                        <section class="@GetWidgetCardClass(Widget)" style="@GetWidgetCardStyle(Widget)" @key="@Widget.Id">
+                            <header class="cb-widget-header" style="background-color: @Widget.Color">
+                                <div class="d-flex flex-row justify-content-between align-items-center gap-2 w-100">
+                                    <strong class="cb-widget-title">@Widget.Title</strong>
+
+                                    <div class="WidgetButtons d-flex flex-row flex-wrap gap-1 justify-content-end align-items-center">
+                                        @if (!IsEditMode)
+                                        {
+                                            var MyInvoicingId = "41291bdc-7fac-47f0-8517-e2afe51e9ec3";
+
+                                            @if (Widget.Id == MyInvoicingId)
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        title="Grey arrow: previous month gross/1000. Blue arrow: current month gross/1000. Green bar: currently no specific function.">
+                                                    <i class="bi bi-info-circle"></i>
+                                                </button>
+                                            }
+
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary"
+                                                    title="Toggle full screen"
+                                                    @onclick="() => ToggleFullScreen(Widget)"
+                                                    disabled="@(isFullScreen && !Widget.IsFullScreen)">
+                                                <i class="bi bi-arrows-angle-expand"></i>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" title="Move widget left/up" @onclick="@(() => MoveWidget(Widget, -1))">
+                                                <i class="bi bi-arrow-left"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Move widget right/down" @onclick="@(() => MoveWidget(Widget, 1))">
+                                                <i class="bi bi-arrow-right"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Decrease width" @onclick="@(() => ChangeWidgetSpan(Widget, -1, 0))">
+                                                <i class="bi bi-arrows-collapse-vertical"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Increase width" @onclick="@(() => ChangeWidgetSpan(Widget, 1, 0))">
+                                                <i class="bi bi-arrows-expand-vertical"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Decrease height" @onclick="@(() => ChangeWidgetSpan(Widget, 0, -1))">
+                                                <i class="bi bi-dash-lg"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="Increase height" @onclick="@(() => ChangeWidgetSpan(Widget, 0, 1))">
+                                                <i class="bi bi-plus-lg"></i>
+                                            </button>
+                                            <input type="color"
+                                                   class="form-control form-control-color cb-widget-colour-input"
+                                                   title="Widget colour"
+                                                   value="@(NormaliseColour(Widget.Color))"
+                                                   @oninput="@(args => SetWidgetColor(Widget, args.Value?.ToString()))" />
+                                            <button class="btn btn-sm btn-danger" title="Delete Widget" @onclick="@(async () => await RemoveWidget(Widget.Title, Widget.WidgetType))">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </header>
+
+                            <div class="cb-widget-content">
+                                @Widget.Content
+                            </div>
+                        </section>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .sticky {
+        position: static !important;
+    }
+
+    h5.view-name {
+        display: none;
+    }
+
+    .WidgetOptions {
+        background-color: white;
+        padding: 10px;
+        border-radius: 20px;
+    }
+
+    .WidgetBoard,
+    .cb-dashboard-grid {
+        background-color: white;
+        border-radius: 20px;
+    }
+
+    .cb-dashboard-widget-picker {
+        min-width: 260px;
+    }
+
+    .show-dialog {
+        display: block;
+    }
+
+    .editModeOff {
+        background-color: red;
+        color: white;
+    }
+
+    .editModeOn {
+        background-color: green;
+        color: white;
+    }
+
+    .card-title .mb-0 {
+        display: none;
+    }
+
+    .card-title {
+        justify-content: center !important;
+    }
+
+    .allowNewButtonSection {
+        display: none !important;
+    }
+
+    .fitGridToMobile {
+        max-height: 500px;
+        height: 100%;
+        overflow: auto;
+    }
+
+    .tileBorder,
+    .cb-widget-card {
+        border: 1px solid black;
+    }
+
+    .hideZoomLevelButtons {
+        display: none !important;
+    }
+
+    .widget,
+    .cb-widget-card {
+        transition: transform 0.3s ease, width 0.3s ease, height 0.3s ease;
+        transform-origin: center;
+        overflow: auto;
+    }
+
+    .widget.fullscreen,
+    .cb-widget-card.cb-widget-fullscreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999;
+        transform: scale(1.0);
+        padding: 20px;
+        background-color: #ffffff;
+    }
+
+    .exit-fullscreen {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 5px 10px;
+        background-color: #f44336;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+
+    .editButton {
+        background-color: #565e64 !important;
+        color: #ffffff !important;
+    }
+
+    .fullscreen-tile {
+        position: absolute;
+        width: 100vw;
+        height: 100vh;
+        top: 0;
+        left: 0;
+        z-index: 1000;
+    }
+
+    .emptyBoard {
+        height: 90vh;
+    }
+
+    .hideBoard {
+        visibility: hidden;
+    }
+
+    .cb-dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+        grid-auto-flow: dense;
+        grid-auto-rows: minmax(190px, auto);
+        gap: 1rem;
+        padding: 1rem;
+        min-height: 70vh;
+    }
+
+    .cb-widget-card {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: var(--cb-widget-min-height, 260px);
+        background-color: #ffffff;
+        border-radius: 0.5rem;
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+
+    .cb-widget-header {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+        border-top-left-radius: 0.5rem;
+        border-top-right-radius: 0.5rem;
+    }
+
+    .cb-widget-title {
+        color: #000000;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cb-widget-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 0.5rem;
+    }
+
+    .cb-widget-colour-input {
+        width: 38px;
+        height: 32px;
+        padding: 2px;
+    }
+
+    .cb-dashboard-grid-fullscreen-active .cb-widget-card:not(.cb-widget-fullscreen) {
+        opacity: 0.25;
+        pointer-events: none;
+    }
+
+    @@media (max-width: 768px) {
+        .k-table-td {
+            max-width: 120px !important;
+            width: 100% !important;
+        }
+
+        .cb-dashboard-grid {
+            grid-template-columns: 1fr;
+            padding: 0.5rem;
+        }
+
+        .cb-widget-card {
+            grid-column: 1 / -1 !important;
+            min-height: 320px;
+        }
+
+        .WidgetButtons {
+            max-width: 100%;
+        }
+    }
+
+    /* 09F dashboard action button contrast */
+    .cb-widget-header .WidgetButtons .btn:not(.btn-danger),
+    .WidgetOptions .btn-outline-secondary {
+        background-color: rgba(255, 255, 255, 0.94) !important;
+        color: #0f1f37 !important;
+        border: 1px solid rgba(15, 31, 55, 0.35) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+
+    .cb-widget-header .WidgetButtons .btn:not(.btn-danger):hover,
+    .WidgetOptions .btn-outline-secondary:hover {
+        background-color: #ffffff !important;
+        color: #061327 !important;
+        border-color: rgba(15, 31, 55, 0.65) !important;
+    }
+
+    .cb-widget-header .WidgetButtons .btn-danger {
+        border: 1px solid rgba(255, 255, 255, 0.65) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+
+    .cb-widget-colour-input {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(15, 31, 55, 0.45) !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+    }
+</style>
+
+@code {
+
+
+    //TODO: Add this variable "nicely" - and clean this mess up, way too many variables.
+    SavedTileState boardConfigFromDB { get; set; } = new();
+
+    private List<CellColouring> MyWorkCSS { get; set; }
+    private string MyWorkCSSAsJSON { get; set; }
+
+    private FilterAndSortSetting MyWorkFilters { get; set; }
+    private string MyWorkFiltersAsJSON { get; set; }
+
+    #region Edit Mode
+    private bool IsEditMode { get; set; } = false;
+    private string IsEditModeClass { get; set; } = "editModeOff";
+    #endregion Edit Mode
+
+
+    #region FullScreen Tile
+    private bool isFullScreen = false;
+    #endregion FullScreen Tile
+
+
+    #region Responsive Tile
+    private string MediaQuery { get; set; } = "(max-width: 767px)";
+    private bool isSmallScreen { get; set; }
+    private string MobileScreenClass { get; set; } = "";
+
+    private string MobileFlexColumn { get; set; } = "d-flex flex-column justify-content-center";
+    private string DesktopFlexRow { get; set; } = "d-flex flex-row justify-content-between";
+
+    private string mobileTileLayout { get; set; } = "WidgetBoard";
+    private string MobileXGap { get; set; } = "d-flex mb-2 justify-content-center";
+    private DataObjectReference DashboardParentDataObjectReference { get; set; } = new("", "");
+    #endregion Responsive Tile
+
+    #region Database
+    private int UserId { get; set; }
+    private API.Client.FormHelper? _formHelper;
+    private API.Client.Models.UserService userService;
+    #endregion Database
+
+
+    #region Base Parameters
+    /* Base parameters. */
+    [Parameter] public int NumberOfColumns { get; set; } = 10;
+    [Parameter] public int RowHeight { get; set; } = 500;
+    [Parameter] public int ColumnWidth { get; set; } = 500;
+    [Parameter] public string DrawerGuid { get; set; } = "00000000-0000-0000-0000-000000000000";
+
+    #endregion Base Parameters
+
+
+    #region TileLayout Variables
+    //TileLayout + Widgets added.
+    private List<DashBoardWidget> DashboardWidgets { get; set; } = new List<DashBoardWidget>();
+    private bool BoardIsEmpty { get; set; } = false;
+
+    //For keeping track of the states across desktop and mobile.
+    private string DashBoardStateAsJSON { get; set; } = "";
+
+    private List<DashboardMetric> Metrics { get; set; } = new();
+    private string[] WidgetTypes = ["GA", "GR"];
+
+    //Checking for loading status.
+    private bool isLoading { get; set; } = true;
+    #endregion TileLayout Variables
+
+
+    #region Widget Sizes
+    //Default space grids and gauges take up
+    private int GridColSpan { get; set; } = 6;
+    private int GridRowSpan { get; set; } = 1;
+    private int GaugeColSpan { get; set; } = 2;
+    private int GaugeRowSpan { get; set; } = 1;
+    #endregion Widget Sizes
+
+
+    #region Dropdown Button Variables
+    /* Button variables. */
+    private IEnumerable<ButtonSelection> ButtonItems { get; set; } = Enumerable.Empty<ButtonSelection>();
+    private List<ButtonSelection> Data { get; set; } = new List<ButtonSelection>();
+    private string selectedWidget { get; set; }
+    #endregion Dropdown Button Variales
+
+
+    #region Error Message Variables
+    /* Error message handling. */
+    protected string ErrorMessage { get; set; } = "";
+    protected MessageDisplay.ShowMessageType MessageType { get; set; } = MessageDisplay.ShowMessageType.Error;
+    protected MessageDisplay? _messageDisplay;
+    protected string PageMethod { get; set; } = "Not Set";
+    #endregion Error Message Variables
+
+
+    #region Saving functionality
+    private bool HasChanges { get; set; } = false;
+    public bool _showDialog;
+    private string DialogCss => _showDialog ? "modal show-dialog" : "modal";
+    private TaskCompletionSource<bool> _taskCompletionSource = new();
+    #endregion Saving functionality
+
+
+    #region Custom Classes
+    private class ButtonSelection
+    {
+        public string Text { get; set; } = "";
+        public string WidgetType { get; set; } = "";
+        public string Id { get; set; } = "";
+        //To be seperated into its own class.
+
+        public string GridCode { get; set; } = "";
+        public string GridViewCode { get; set; } = "";
+        public GridViewDefinition gvd { get; set; } = new();
+
+        public string MetricType { get; set; } = "";
+        public DashboardMetric Metric { get; set; } = new();
+
+    }
+
+
+    private class DashBoardWidget
+    {
+        public string Title { get; set; } = "";
+        public string WidgetType { get; set; } = "";
+        public RenderFragment Content { get; set; } = builder => { };
+        public int ColSpan { get; set; }
+        public int RowSpan { get; set; }
+        public string Id { get; set; } = "";
+        public string navigateTo { get; set;} = "";
+        public bool IsFullScreen { get; set; } = false; // Track full-screen state
+        public string Color { get; set; } = "#f8f9fa";
+    }
+
+    //Stores the filter settings applied to the grid.
+    public class FilterAndSortSetting
+    {
+        public string code { get; set; }
+        public ICollection<IFilterDescriptor> filterDescriptor { get; set; }
+        public string gridCode { get; set; }
+        public ICollection<SortDescriptor> sortDescriptor { get; set; }
+        public int pageNumber { get; set; }
+    }
+
+
+    /*
+    * Class used to store the conf. saved in the database.
+    */
+    public class SavedTileState
+    {
+        public class ItemState
+        {
+            public int RowSpan  { get; set; }
+            public int ColSpan  { get; set; }
+            public int Order    { get; set; }
+            public string Id    { get; set; }
+            public string Color { get; set; } = "#f8f9fa";
+        }
+
+        //Holds the CSS for the "My Work" cells.
+        public List<CellColouring> MyWorkCSS { get; set; }
+        //Holds the filters applied to the
+        //public FilterAndSortSetting MyWorkFilters { get; set; }
+        public List<ItemState> ItemStates { get; set; } = new List<ItemState>();
+    }
+
+
+    public class CellColouring
+    {
+        public string ClassName { get; set; }
+        public string Colour { get; set; }
+    }
+#endregion Custom Classes
+
+    private Task SetWidgetColor(DashBoardWidget widget, string? newColor)
+    {
+        if (string.IsNullOrWhiteSpace(newColor))
+        {
+            return Task.CompletedTask;
+        }
+
+        widget.Color = NormaliseColour(newColor);
+        HasChanges = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private string NormaliseColour(string? colour)
+    {
+        return string.IsNullOrWhiteSpace(colour) ? "#f8f9fa" : colour;
+    }
+
+    private string GetWidgetCardClass(DashBoardWidget widget)
+    {
+        return $"cb-widget-card widget tileBorder {(widget.IsFullScreen ? "cb-widget-fullscreen fullscreen" : string.Empty)}";
+    }
+
+    private string GetWidgetCardStyle(DashBoardWidget widget)
+    {
+        var colSpan = Math.Clamp(widget.ColSpan <= 0 ? 1 : widget.ColSpan, 1, NumberOfColumns);
+        var rowSpan = Math.Clamp(widget.RowSpan <= 0 ? 1 : widget.RowSpan, 1, 4);
+        var minHeight = Math.Max(220, rowSpan * 240);
+        return $"grid-column: span {colSpan}; --cb-widget-min-height: {minHeight}px;";
+    }
+
+    private IEnumerable<ButtonSelection> AvailableWidgetSelections =>
+        Data.Where(item => DashboardWidgets.All(widget => widget.Id != item.Id && widget.Title != item.Text))
+            .OrderBy(item => item.WidgetType)
+            .ThenBy(item => item.Text);
+
+    // ====== [CBLD-611] ======
+    // Meant to handle the "The render handle is not yet assigned" error
+    //Saves the state (so that the JSON is up to date with the CSS bits) + performs a refresh.
+    private void HandleRenderHandleError(Exception ex)
+    {
+        if (ex.Message.Contains("The render handle is not yet assigned"))
+        {
+            SaveStateToDB(false);
+            Toast.ShowInfo("Page will be refreshed to prevent update related error - please, ensure all your widgets are present on the board after the page has reloaded.");
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                await InvokeAsync(() => Navigation.Refresh());
+            });
+        }
+    }
+
+
+
+
+    [JSInvokable]
+    private Task SetWidgetHeaderColor(string headerID, string colour)
+    {
+        // 09D removes Telerik TileLayout header DOM manipulation.
+        return Task.CompletedTask;
+    }
+
+
+
+    public Task AdaptToScreenSize(bool toAdapt)
+    {
+        isSmallScreen = toAdapt;
+        MobileScreenClass = isSmallScreen ? "fitGridToMobile" : string.Empty;
+        mobileTileLayout = "WidgetBoard";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+
+
+    public async void GetUserId()
+    {
+        try
+        {
+            _formHelper = new API.Client.FormHelper(CoreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            //Get the current user ID.
+            UserId = UserService?.UserId ?? -1;
+
+            if(UserId == -1)
+                throw new Exception("The current user could not be detected");
+        }
+        catch(Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "The user ID could not be detected.");
+            ex.Data.Add("PageMethod", "Dashboard/GetUserId()");
+            OnError(ex);
+        }
+    }
+
+
+    /*
+    * Here, we load the options into the buttons while we are waiting
+    * for the page to load.
+    */
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            GetUserId();
+
+            boardConfigFromDB = System.Text.Json.JsonSerializer.Deserialize<SavedTileState>(await LoadDashboardLayout()) ?? new SavedTileState();
+
+            if (boardConfigFromDB.MyWorkCSS != null)
+            {
+                MyWorkCSS = boardConfigFromDB.MyWorkCSS;
+                MyWorkCSSAsJSON = System.Text.Json.JsonSerializer.Serialize(MyWorkCSS);
+            }
+
+            await AddWidgetsFromConfigAsync();
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error loading the dashboard.");
+            ex.Data.Add("PageMethod", "Dashboard/OnInitializedAsync()");
+            await OnError(ex);
+            isLoading = false;
+        }
+
+        await base.OnInitializedAsync();
+    }
+
+
+
+    private string IsWidgetFullScreen(DashBoardWidget tileItem)
+    {
+        return tileItem.IsFullScreen ? "widget fullscreen tileBorder" : "widget tileBorder";
+    }
+
+
+    async void ToggleFullScreen(DashBoardWidget tile)
+    {
+        try
+        {
+
+            bool ToHandleGagueShrink = (tile.WidgetType == "GA" && tile.IsFullScreen);
+            bool ToHandleGaugeExpand = (tile.WidgetType == "GA" && !tile.IsFullScreen);
+
+
+            //Expanding the widget.
+            if(ToHandleGaugeExpand)
+            {
+
+                isFullScreen = true;
+
+                string GridGuid = tile.Id;
+
+                if(GridGuid != "")
+                {
+                    var GridCode = ButtonItems.Where(x => x.Id == tile.Id).FirstOrDefault().GridCode;
+                    var GridViewDef = ButtonItems.Where(y => y.Id == tile.Id).FirstOrDefault().GridViewCode;
+
+                    var gridDefinitionListReply = await CoreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
+                        {
+                            Code  = GridCode,
+                            ForUi = true
+                        });
+
+                    var gd = gridDefinitionListReply.Grids[0];
+                    var gvd = gd.Views.Where(view => view.Code == GridViewDef).FirstOrDefault();
+
+                    tile.IsFullScreen = true;
+                    tile.Content = @<CymBuildDashboardGrid
+                            GridCode="@GridCode"
+                            FullGrid="true"
+                            ViewDefinition="@gvd"
+                            ParentDataObjectReference="@DashboardParentDataObjectReference" />;
+
+                }
+            }
+            else if(ToHandleGagueShrink)
+            {
+                isFullScreen = false;
+
+                var Gauge = ButtonItems.Where(x => x.Id == tile.Id).FirstOrDefault();
+
+                var MetricType = Gauge.MetricType;
+                var Metric = Gauge.Metric;
+
+
+                if (MetricType == "NumberValue")
+                    tile.Content = @<NumberValue Metric="@Metric" />;
+                else if (MetricType == "ArcGauge")
+                    tile.Content = @<ArcGauge Metric="@Metric" />;
+                else
+                    tile.Content =@<RadialGauge Metric="@Metric" />;
+
+                tile.IsFullScreen = false;
+            }
+            else
+            {
+                tile.IsFullScreen = !tile.IsFullScreen;
+            }
+
+            StateHasChanged();
+        }
+        catch(Exception ex)
+        {
+            HandleRenderHandleError(ex);
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error toggling full screen.");
+            ex.Data.Add("PageMethod", "Dashboard/ToggleFullScreen()");
+            OnError(ex);
+        }
+
+    }
+
+
+    string GetWidgetClass()
+    {
+        return isFullScreen ? "widget fullscreen" : "widget";
+    }
+
+
+    private async void ResetDashboard()
+    {
+        DashboardWidgets.Clear();
+        await AddWidgetsFromConfigAsync();
+        StateHasChanged();
+    }
+
+
+
+    /*
+    * This function returns three things:
+    *      [1] The saved board configuration for the user - if there is one.
+    *      [2] Grid definitions that can be used as widgets.
+    *      [3] Gauge definitions that can be used as widgets.
+    *
+    * If no board definition is present in the database, it will return a default (empty) configuration.
+    *
+    * TODO:Probably would be a good idea to seperate the two mechanism into their own functions.
+    */
+    private async Task<string> LoadDashboardLayout()
+    {
+        try
+        {
+            string emptyLayout = "{\"ItemStates\": []}";
+            string layoutToLoad = "";
+
+            var userBoardConfiguration = await CoreClient.WidgetLayoutGetAsync(new WidgetLayoutGetRequest()) ?? null;
+
+
+            if(userBoardConfiguration != null)
+            {
+
+                //Extract the grid & gauge definitions -> We will add these to the buttons which the user can pick widgets from.
+                var GridViewDefinitions  = userBoardConfiguration.GridViewDefinitions;
+                var _Metrics             = userBoardConfiguration.DashboardMetrics;
+
+                //Assign the layout we will display.
+                layoutToLoad             = userBoardConfiguration.WidgetLayout ?? emptyLayout;
+
+                //Now, we populate the buttons, starting with the grids.
+                foreach(var grid in GridViewDefinitions)
+                    Data.Add(new ButtonSelection {
+                        Id = grid.Guid,
+                        Text = grid.Name,
+                        WidgetType = "GR",
+                        GridCode = grid.GridViewCode,
+                        GridViewCode = grid.Code
+
+                    });
+
+
+                //Seperately, add the "Recent" + "Scheduled" grids
+                Data.Add(new ButtonSelection
+                        {
+                            Text = "Recent",
+                            WidgetType = "GR",
+                            Id = "RECENT",
+                        });
+
+                Data.Add(new ButtonSelection
+                        {
+                            Text = "Scheduled",
+                            WidgetType = "GR",
+                            Id = "SCHEDULE"
+                        });
+                // Check if AI error service is enabled Add "Jira Tickets" button if it is enabled.
+                if (Config.GetValue<bool>("AiErrorService:Enabled"))
+                {
+                    Data.Add(new ButtonSelection
+                        {
+                            Text = "Jira Tickets",
+                            WidgetType = "GR",
+                            Id = "JIRATICKETS"
+                        });
+                }
+
+                //Next, populate the button for the gauges.
+                foreach(var metric in _Metrics)
+                {
+                    DashboardMetric DashBoardM = new DashboardMetric()
+                    {
+                        Label               = metric.Label,
+                        DisplayOrder        = metric.DisplayOrder,
+                        DisplayGroupName    = metric.DisplayGroupName,
+                        Min                 = metric.Min,
+                        Max                 = metric.Max,
+                        MinorUnit           = metric.MinorUnit,
+                        MajorUnit           = metric.MajorUnit,
+                        StartAngle          = metric.StartAngle,
+                        EndAngle            = metric.EndAngle,
+                        Reverse             = metric.Reverse,
+                        MetricTypeName      = metric.MetricTypeName,
+                        MetricSqlQuery      = metric.MetricSqlQuery,
+                        PageUri             = metric.PageUri,
+                        Guid                = metric.Guid,
+                    };
+
+                    //Add the ranges & values to the gauges.
+                    foreach(var range in metric.Ranges)
+                    {
+                        DashBoardM.Ranges.Add(range);
+                    }
+
+                    foreach(var value in metric.Values)
+                    {
+                        DashBoardM.Values.Add(value);
+                    }
+
+                    Data.Add(new ButtonSelection {
+                        Text = metric.Label,
+                        MetricType = metric.MetricTypeName,
+                        WidgetType = "GA",
+                        Id = metric.Guid,
+                        Metric = DashBoardM,
+                        GridCode = metric.Code,
+                        GridViewCode = metric.GridViewCode
+                    });
+
+                }
+            }
+
+            //Assign the populated data to the buttons.
+            ButtonItems = Data;
+
+            //Finally, return the layout which we will load.
+            return layoutToLoad;
+
+        }
+        catch(Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error loading the dashboard layout.");
+            ex.Data.Add("PageMethod", "Dashboard/LoadDashBoardLayout()");
+            OnError(ex);
+
+            //Return empty configuration on exception.
+            return "{\"ItemStates\": []}";
+        }
+
+    }
+
+
+    private Task ChangeWidgetAreaSize(int val)
+    {
+        if (!DashboardWidgets.Any())
+            return Task.CompletedTask;
+
+        foreach (var item in DashboardWidgets)
+        {
+            ChangeWidgetSpan(item, val, 0, refresh: false);
+        }
+
+        HasChanges = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void ChangeWidgetSpan(DashBoardWidget item, int colDelta, int rowDelta, bool refresh = true)
+    {
+        var minColSpan = item.WidgetType == "GR" ? 3 : 2;
+        var maxColSpan = item.WidgetType == "GR" ? NumberOfColumns : 3;
+        item.ColSpan = Math.Clamp(item.ColSpan + colDelta, minColSpan, maxColSpan);
+        item.RowSpan = Math.Clamp(item.RowSpan + rowDelta, 1, 4);
+
+        if (item.WidgetType == "GR")
+        {
+            GridColSpan = item.ColSpan;
+        }
+        else
+        {
+            GaugeColSpan = item.ColSpan;
+        }
+
+        HasChanges = true;
+
+        if (refresh)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void MoveWidget(DashBoardWidget widget, int direction)
+    {
+        var currentIndex = DashboardWidgets.IndexOf(widget);
+        if (currentIndex < 0)
+            return;
+
+        var targetIndex = Math.Clamp(currentIndex + direction, 0, DashboardWidgets.Count - 1);
+        if (targetIndex == currentIndex)
+            return;
+
+        DashboardWidgets.RemoveAt(currentIndex);
+        DashboardWidgets.Insert(targetIndex, widget);
+        HasChanges = true;
+        StateHasChanged();
+    }
+
+
+    /*
+    * Removes widget from the board.
+    */
+    private async Task RemoveWidget(string title, string type)
+    {
+        try
+        {
+            bool isConfirmed = await JS.InvokeAsync<bool>("confirm", $"Are you sure you would like to delete the \"{title}\" widget?");
+
+            if (isConfirmed)
+            {
+                var widgetToDelete = DashboardWidgets.FirstOrDefault(m => m.Title == title && m.WidgetType == type);
+                if (widgetToDelete is not null)
+                {
+                    DashboardWidgets.Remove(widgetToDelete);
+                }
+
+                HasChanges = true;
+
+                if (!DashboardWidgets.Any())
+                {
+                    BoardIsEmpty = true;
+                }
+
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+            ex.Data.Add("AdditionalInfo", "Error deleting the widget.");
+            ex.Data.Add("PageMethod", "RemoveWidget()");
+            await OnError(ex);
+        }
+    }
+
+
+    /*
+    * Main function for adding widgets to the board.
+    */
+    private async Task AddWidget(ButtonSelection item, bool deferRender = false)
+    {
+        try
+        {
+            if (item is null)
+                return;
+
+            if (BoardIsEmpty)
+                BoardIsEmpty = false;
+
+            DashBoardWidget widget = item.WidgetType switch
+            {
+                "GA" => await AddGaugeToBoard(item),
+                "GR" => await AddGridToBoard(item),
+                _ => new DashBoardWidget()
+            };
+
+            if (string.IsNullOrWhiteSpace(widget.Id))
+                return;
+
+            if (DashboardWidgets.Any(existing => existing.Id == widget.Id))
+                return;
+
+            DashboardWidgets.Add(widget);
+
+            if (IsEditMode)
+                HasChanges = true;
+
+            if (!deferRender)
+            {
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Warning);
+            ex.Data.Add("AdditionalInfo", "Error adding the widget to the dashboard.");
+            ex.Data.Add("PageMethod", "Dashboard/AddWidget()");
+            await OnError(ex);
+        }
+    }
+
+    private async Task AddWidgetFromSelect(ChangeEventArgs args)
+    {
+        var selectedId = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(selectedId))
+            return;
+
+        var selection = Data.FirstOrDefault(x => x.Id == selectedId);
+        if (selection is not null)
+        {
+            await AddWidget(selection);
+        }
+    }
+
+
+    private async Task<DashBoardWidget> AddGridToBoard(ButtonSelection item)
+    {
+
+
+
+        var widget = boardConfigFromDB.ItemStates?.FirstOrDefault(x => item.Id == x.Id);
+
+        DashBoardWidget Widget = new DashBoardWidget();
+        var WidgetName = item.Text;
+
+        string Title    = item.Text;
+        string Type     = item.WidgetType;
+        string ID       = item.Id;
+        string Color = boardConfigFromDB.ItemStates?.FirstOrDefault(x => item.Id == x.Id)?.Color ?? "#f8f9fa";
+
+        //Default width + height.
+        var colSpan = GridColSpan;
+        var RowSpan = GridRowSpan;
+
+        //If the widget is present in the config, apply the saved values.
+        if(widget != null)
+        {
+            colSpan = widget.ColSpan;
+            RowSpan = widget.RowSpan;
+        }
+
+        switch(WidgetName)
+        {
+
+            case "My Invoicing":
+
+                var MyInvocingGridDefinitionListReply = await CoreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
+                {
+                    Code = "FINANCE",
+                    ForUi = true
+                });
+
+                var MyInvocing = MyInvocingGridDefinitionListReply.Grids[0];
+                var MyInvoicingGvd = MyInvocing.Views.Where(v => v.Code == "MYINVOICING").FirstOrDefault();
+
+                Widget = new()
+                {
+                    Content =  @<DynamicTreeListGridView FullGrid="true" GridCode="FINANCE" ViewDefinition="@MyInvoicingGvd" />,
+                    Title = Title,
+                    ColSpan = colSpan,
+                    RowSpan = RowSpan,
+                    WidgetType = Type,
+                    Id = ID,
+                    Color = Color
+                };
+                break;
+
+            case "Team Invoicing":
+
+                var TeamInvocinggridDefinitionListReply = await CoreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
+                {
+                    Code = "FINANCE",
+                    ForUi = true
+                });
+
+                var TeamInvocing = TeamInvocinggridDefinitionListReply.Grids[0];
+                var TeamInvoicingGvd = TeamInvocing.Views.Where(v => v.Code == "TEAMSINVOICING").FirstOrDefault();
+
+                Widget = new()
+                {
+                    Content = @<WidgetTeamInvoicing GridCode="FINANCE" ViewDefinition="@TeamInvoicingGvd" ParentDataObjectReference="@DashboardParentDataObjectReference" FetchSize="1500" LoadDelayMs="600" @key="@($"TeamInvoicing-{TeamInvoicingGvd?.Code}")" />,
+                    Title = Title,
+                    ColSpan = colSpan,
+                    RowSpan = RowSpan,
+                    WidgetType = Type,
+                    Id = ID,
+                    Color = Color
+                };
+                break;
+
+            case "Recent":
+                Widget = new()
+                {
+                    Content     = @<WidgetRecentItems />,
+                    Title       = Title,
+                    ColSpan     = colSpan,
+                    RowSpan     = RowSpan,
+                    WidgetType  = Type,
+                    Id          = ID,
+                    Color       = Color
+                };
+                break;
+
+            case "Scheduled":
+                Widget = new()
+                {
+                    Content     = @<WidgetScheduledItems />,
+                    Title = Title,
+                    ColSpan = colSpan,
+                    RowSpan = RowSpan,
+                    WidgetType = Type,
+                    Id = ID,
+                    Color = Color
+                };
+                break;
+
+            case "Jira Tickets":
+                Widget = new()
+                        {
+                    Content = @<JiraTickets />,
+                    Title = Title,
+                    ColSpan = colSpan,
+                    RowSpan = RowSpan,
+                    WidgetType = Type,
+                    Id = ID,
+                    Color = Color
+                };
+                break;
+
+            case "My CDM Work":
+
+                RenderFragment Content;
+                int WidgetRowSpan;
+
+                var MyWorkgridDefinitionListReply = await CoreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
+                    {
+                        Code = "MYWORKV2",
+                        ForUi = true
+                  });
+
+                var MyWorkGd         = MyWorkgridDefinitionListReply.Grids[0];
+                var MyWorkGvd        = MyWorkGd.Views.Where(v => v.Code == "MYCDMPROJECTSV2").FirstOrDefault();
+                var orderedMyWorkGvd = MyWorkGvd.Columns.Where(x => !x.IsHidden).OrderBy(c => c.ColumnOrder).ToList();
+
+
+                //Extract top level headers.
+                List<string> TopColumnHeaders = new();
+                foreach (var col in orderedMyWorkGvd)
+                {
+                    //Handle where there is no category
+                    // if (col.TopHeaderCategory == " " && TopColumnHeaders.Contains(" "))
+                    //     TopColumnHeaders.Add(" ");
+
+                    if (!TopColumnHeaders.Contains(col.TopHeaderCategory))
+                        TopColumnHeaders.Add(col.TopHeaderCategory);
+                }
+
+                Content =@<MultiColumnDynamicGridView
+                            @key="@($"Tree-{MyWorkGd.Code}-{MyWorkGvd?.Code}")"
+                            GridCode="@item.GridCode"
+                            CSSFromDB="@MyWorkCSSAsJSON"
+                            MyWorkFiltersFromDB="@MyWorkFiltersAsJSON"
+                            TopColumnHeaders="@TopColumnHeaders"
+                            SendFilterAndSortCallback="@((fs) => GetGridSettingsFromMyWork(fs))"
+                            SendJSONToWidgetCallback="@((val) => {GetCSSForMyWork(val);})"
+                            FullGrid="true"
+                            ViewDefinition="@MyWorkGvd"/>;
+
+                //Should always be the max for "My Work" since it's a wide grid view.
+                WidgetRowSpan = GridRowSpan;
+
+                Widget = new()
+                {
+                    Content = Content,
+                    Title = MyWorkGvd.Name,
+                    ColSpan = colSpan,
+                    RowSpan = RowSpan,
+                    WidgetType = item.WidgetType,
+                    Id = MyWorkGvd.Guid,
+                    Color = Color
+                };
+
+
+                break;
+
+            default:
+
+                var gridDefinitionListReply = await CoreClient.GridDefinitionListAsync(new GridDefinitionListRequest()
+                    {
+                        Code = item.GridCode,
+                        ForUi = true
+                    });
+
+                var gd = gridDefinitionListReply.Grids[0];
+                var gvd = gd.Views.Where(v => v.Code == item.GridViewCode).FirstOrDefault();
+
+
+                if (Widget is not null)
+                {
+
+                    Content = @<CymBuildDashboardGrid
+                        GridCode="@item.GridCode"
+                        FullGrid="true"
+                        ViewDefinition="@gvd"
+                        ParentDataObjectReference="@DashboardParentDataObjectReference"
+                        @key="@($"DashboardGrid-{item.GridCode}-{gvd.Code}")" />;
+                    WidgetRowSpan = GridRowSpan;
+
+
+                    Widget = new()
+                    {
+                            Content = Content,
+                            Title = gvd.Name,
+                            ColSpan = colSpan,
+                            RowSpan = RowSpan,
+                            WidgetType = item.WidgetType,
+                            Id = gvd.Guid,
+                            Color = Color
+                        };
+                }
+                else
+                {
+                    throw new Exception($"Widget {Widget.Title} could not be added. ");
+                }
+
+                break;
+        }
+
+        return Widget;
+    }
+
+    private async Task<DashBoardWidget> AddGaugeToBoard(ButtonSelection item)
+    {
+        DashBoardWidget Widget = new DashBoardWidget();
+
+        switch (item.MetricType)
+        {
+            case "NumberValue":
+                Widget.Content = @<NumberValue Metric="@item.Metric" />;
+                break;
+
+            case "ArcGauge":
+                Widget.Content = @<ArcGauge Metric="@item.Metric" />;
+                break;
+
+            default:
+                Widget.Content =@<RadialGauge Metric="@item.Metric" />;
+                break;
+
+        };
+
+        var savedWidget = boardConfigFromDB.ItemStates?.FirstOrDefault(x => item.Id == x.Id);
+
+        Widget.Title        = item.Text;
+        Widget.ColSpan      = savedWidget is not null && savedWidget.ColSpan > 0 ? savedWidget.ColSpan : GaugeColSpan;
+        Widget.RowSpan      = savedWidget is not null && savedWidget.RowSpan > 0 ? savedWidget.RowSpan : GaugeRowSpan;
+        Widget.WidgetType   = item.WidgetType;
+        Widget.Id           = item.Id;
+        Widget.navigateTo   = (item.Metric?.PageUri + '/' + ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(item.Metric?.Guid).ToString());
+        Widget.Color        = savedWidget?.Color ?? "#FFFFFF";
+
+
+        return Widget;
+    }
+
+    #region widgetData
+
+
+    /*
+    * Applies the layout (which is saved by the user to the database).
+    */
+    private async Task AddWidgetsFromConfigAsync()
+    {
+        try
+        {
+            DashboardWidgets.Clear();
+
+            if (boardConfigFromDB?.ItemStates?.Any() == true)
+            {
+                var oldMyWorkID = "e61688d5-1acb-4551-9482-cc8bad0d0d48";
+                BoardIsEmpty = false;
+
+                foreach (var widget in boardConfigFromDB.ItemStates.OrderBy(x => x.Order))
+                {
+                    if (widget.Id == oldMyWorkID)
+                        continue;
+
+                    var selection = ButtonItems?.FirstOrDefault(x => x.Id == widget.Id);
+                    if (selection is not null)
+                    {
+                        await AddWidget(selection, deferRender: true);
+                    }
+                }
+
+                StateHasChanged();
+                return;
+            }
+
+            BoardIsEmpty = true;
+        }
+        catch(Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error applying the dashboard layout.");
+            ex.Data.Add("PageMethod", "Dashboard/ApplyDashBoardLayout()");
+            await OnError(ex);
+        }
+    }
+
+
+    //Returns the current layout of the board - aka, the widgets present.
+    private string GetCurrentDashBoardLayout()
+    {
+        try
+        {
+            SavedTileState stateToBeSaved = new SavedTileState();
+
+            for (int index = 0; index < DashboardWidgets.Count; index++)
+            {
+                var widget = DashboardWidgets[index];
+
+                SavedTileState.ItemState newState = new()
+                {
+                    ColSpan = widget.ColSpan,
+                    RowSpan = widget.RowSpan,
+                    Id = widget.Id,
+                    Order = index,
+                    Color = widget.Color
+                };
+
+                stateToBeSaved.ItemStates.Add(newState);
+            }
+
+            if (MyWorkCSS is not null)
+            {
+                stateToBeSaved.MyWorkCSS = MyWorkCSS;
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(stateToBeSaved, new System.Text.Json.JsonSerializerOptions() { WriteIndented = true });
+        }
+        catch(Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", ex.Message);
+            ex.Data.Add("PageMethod", "Dashboard/GetCurrentDashBoardState()");
+            _ = OnError(ex);
+        }
+
+        return "{\"ItemStates\": []}";
+    }
+
+
+
+    private  void SaveStateToDB(bool showMsg = true)
+    {
+        try
+        {
+            //Ensure formhelper is instantiated.
+            if(_formHelper == null)
+                _formHelper = new API.Client.FormHelper(CoreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+
+            Task.Delay(500);
+
+            if (UserId == -1)
+                UserId = UserService?.UserId ?? throw new Exception($"Error saving layout - UserId = {UserId}");
+
+
+            string TileStateAsJson = this.GetCurrentDashBoardLayout();
+            _formHelper.SaveWidgetLayoutToDb(UserId, TileStateAsJson);
+
+            HasChanges = false; //Only after save should the HasChange variable become false.
+
+            if(showMsg){
+                ShowDatabaseSaveNotification(showMsg);
+                ToggleEditMode();
+            }
+        }
+        catch(Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "Error saving the dashboard layout.");
+            ex.Data.Add("PageMethod", "Dashboard/SaveStateToDB()");
+            OnError(ex);
+        }
+    }
+
+    private void CancelEditMode()
+    {
+        IsEditMode = !IsEditMode;
+
+        //If nothing has been added & cancelled, display no item present.
+        if (!DashboardWidgets.Any())
+            BoardIsEmpty = true;
+
+        HasChanges = false;
+
+        ResetDashboard();
+    }
+
+    //Serves as feedback from the DB - success/failure
+    private void ShowDatabaseSaveNotification(bool IsSavedInDB, string Message = "")
+    {
+        string successText = (IsSavedInDB && Message == "") ? "Dashboard layout has been successfully saved." : Message;
+
+        if (IsSavedInDB)
+        {
+            Toast.ShowSuccess((Message != "") ? Message : successText);
+        }
+        else
+        {
+            Toast.ShowError((Message != "") ? Message : "Dashboard layout could not be saved.");
+        }
+    }
+
+    #endregion widgetData
+
+
+    //Should also capture the current state of the tile
+    private void ToggleEditMode()
+    {
+
+        if (BoardIsEmpty)
+        {
+            DashBoardStateAsJSON = "{ \"ItemStates\": [] }";
+            BoardIsEmpty = false;
+        }
+        else
+        {
+            //This is to reset the state if the edit mode is cancelled.
+            DashBoardStateAsJSON =  GetCurrentDashBoardLayout();
+        }
+
+
+        IsEditMode = !IsEditMode;
+
+        if (IsEditMode)
+            IsEditModeClass = "editModeOn";
+        else
+            IsEditModeClass = "editModeOff";
+
+        //Check if the user is saving an empty board.
+        if (!DashboardWidgets.Any())
+            BoardIsEmpty = true;
+
+        StateHasChanged();
+    }
+
+
+    protected void HandleClickOnMetric(string id)
+    {
+        try
+        {
+            //Loop through the metrics and find the one that was clicked and open its relevent blazor page. i.e. if the metric is "_schedule" then Navigate to the Schedule.razor page.
+            switch (id)
+            {
+                case "_schedule":
+                    Navigation.NavigateTo("/schedule");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleRenderHandleError(ex);
+
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("PageMethod", "Dashboard/HandleClickOnMetric()");
+            //OnError(ex);
+        }
+    }
+
+
+    // public void OnError(Exception error)
+    // {
+    //     if (string.IsNullOrEmpty(error.Message)) return;
+
+    //     ErrorMessage = error.Message;
+    //     PageMethod = (error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() : "Not Set") ?? string.Empty;
+
+    //     if (error.Data.Contains("MessageType"))
+    //     {
+    //         MessageType = (MessageDisplay.ShowMessageType)(error.Data["MessageType"] ?? MessageDisplay.ShowMessageType.Information);
+    //     }
+    //     else
+    //     {
+    //         MessageType = MessageDisplay.ShowMessageType.Error;
+    //     }
+
+    //     // Extract all exception data and pass it to the MessageDisplay component
+    //     if (messageDisplay != null)
+    //     {
+    //         // Pass Exception Data using the new method
+    //         messageDisplay?.UpdateExceptionData(
+    //             error.Data.Count > 0
+    //             ? error.Data.Cast<DictionaryEntry>()
+    //                         .ToDictionary(
+    //                             de => de.Key?.ToString() ?? "UnknownKey",
+    //                             de => de.Value!)
+    //             : null
+    //         );
+
+    //         // Update the stack trace dynamically
+    //         messageDisplay?.UpdateStackTrace(error.StackTrace);
+
+    //         messageDisplay?.ShowError(true);
+    //     }
+
+    //     // Recover from error (if using a custom boundary)
+    //     // customErrorBoundary.Recover();
+
+    //     StateHasChanged();
+    // }
+    public async Task OnError(Exception error)
+    {
+
+        if (string.IsNullOrEmpty(error.Message))
+        {
+            Console.WriteLine("Widget: Error message is empty. Aborting.");
+            return;
+        }
+
+        ErrorMessage = error.Message;
+        PageMethod = error.Data.Contains("PageMethod")
+            ? error.Data["PageMethod"]?.ToString() ?? "Not Set"
+            : "Not Set";
+        Console.WriteLine($"Widget: PageMethod = {PageMethod}");
+
+        if (error.Data.Contains("MessageType"))
+        {
+            MessageType = (ShowMessageType)(error.Data["MessageType"] ?? ShowMessageType.Information);
+        }
+        else
+        {
+            MessageType = ShowMessageType.Error;
+            Console.WriteLine("Widget: MessageType not found in error.Data. Defaulted to Error.");
+        }
+
+        // Extract all exception data
+        var exceptionData = error.Data.Count > 0
+            ? error.Data.Cast<DictionaryEntry>().ToDictionary(
+                de => de.Key?.ToString() ?? "UnknownKey",
+                de => de.Value!)
+            : null;
+
+        if (exceptionData != null)
+        {
+            foreach (var kvp in exceptionData)
+                Console.WriteLine($"    {kvp.Key} = {kvp.Value}");
+        }
+
+        _messageDisplay.UpdateExceptionData(exceptionData);
+        _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
+        _messageDisplay.ShowError(true);
+
+        Console.WriteLine("Widget: MessageDisplay updated and error shown.");
+
+        // AI Error Reporting (only for actual errors)
+        if (MessageType == ShowMessageType.Error)
+        {
+            try
+            {
+                var context = new
+                {
+                    ErrorMessage = error.Message,
+                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
+                    StackTrace = error.StackTrace ?? "No stack trace",
+                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
+                    Data = error.Data.Cast<DictionaryEntry>()
+                        .ToDictionary(
+                            de => de.Key?.ToString() ?? "UnknownKey",
+                            de => de.Value?.ToString() ?? "null"
+                        )
+                };
+
+                var log = InteractionTracker.GetAllLogs();
+                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
+                error.Data["UserInteractionLog"] = description;
+                Console.WriteLine($"Widget: UserInteractionLog = {description}");
+
+                var result = await AiErrorReporter.ReportAsync(error, context);
+
+                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
+                {
+                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
+                    _messageDisplay.ShowError(true);
+                }
+                else
+                {
+                    Console.WriteLine("Widget: AI Error Reporter returned no UI message.");
+                }
+            }
+            catch (Exception aiEx)
+            {
+                Console.WriteLine($"Widget: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
+            }
+        }
+
+        StateHasChanged();
+    }
+
+    /*
+    * Gets the CSS formatting for the "My Work" board, which then can be
+    * saved to the database.
+    */
+    public void GetCSSForMyWork(string CSS)
+    {
+        MyWorkCSS = JsonConvert.DeserializeObject<List<CellColouring>>(CSS);
+        //Ensure to set it to true to prevent the user from navigating without save.
+        HasChanges = true;
+    }
+
+    /*
+    * Gets the Grid filters from the My Work grid as a JSON.
+    */
+    public void GetGridSettingsFromMyWork(string gridSettingsAsJSON){
+        try
+        {
+            MyWorkFilters = System.Text.Json.JsonSerializer.Deserialize<FilterAndSortSetting>(gridSettingsAsJSON);
+            //Do not show message on save.
+            SaveStateToDB(false);
+        }
+        catch(Exception ex)
+        {
+            Console.WriteLine("Exception in GetGridSettingsFromMyWork => " + ex.Message);
+        }
+
+    }
+
+
+    private void OnCSSChanged(string newCSS)
+    {
+        StateHasChanged();
+    }
+
+
+    /*
+     * Used when trying to navigate to a different page.
+     * Shows a confirmation dialog if there are changes
+     */
+    private async Task OnNavigation(LocationChangingContext context)
+{
+    if (HasChanges)
+    {
+        if (!await ShowDialogAsync())
+        {
+            context.PreventNavigation();
+            return;
+        }
+    }
+
+    await RemoveAdjustFunctionSafelyAsync();
+}
+
+    private async Task<Task> Navigate()
+{
+    await CloseDialogAsync(true);
+    await RemoveAdjustFunctionSafelyAsync();
+    return Task.CompletedTask;
+}
+
+     private Task Cancel()
+        => CloseDialogAsync(false);
+
+
+
+    private Task CloseDialogAsync(bool navigate)
+    {
+        _showDialog = false;
+
+            // Sets the Task to completed.
+         _taskCompletionSource.SetResult(navigate);
+
+
+        // Queue a Render Request
+        StateHasChanged();
+
+        return Task.CompletedTask;
+    }
+
+
+    private Task<bool> ShowDialogAsync()
+    {
+        _showDialog = true;
+        _taskCompletionSource = new();
+        // Queue a Render Request
+        StateHasChanged();
+        // returns the Task associated with the TaskCompletionSource instance
+        // this is a running Task that the caller can await
+        return _taskCompletionSource.Task;
+    }
+
+    private async Task RemoveAdjustFunctionSafelyAsync()
+{
+    try
+    {
+        await JS.InvokeVoidAsync("removeAdjustFunction");
+    }
+    catch (JSException)
+    {
+        // Do NOT block navigation or rendering for optional UI cleanup.
+    }
+    catch (TaskCanceledException)
+    {
+        // Ignore cancellation during navigation / disposal.
+    }
+}
+
+}

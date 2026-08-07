@@ -9,8 +9,6 @@
 @inject UserService userService
 @inject NavigationManager NavManager
 @inject RefreshService refreshService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 @attribute [Authorize]
 
 <EditPage @ref="@editPage"
@@ -90,7 +88,7 @@
 
             if (ParentDataObjectReference != null && ParentDataObjectReference.DataObjectGuid != Guid.Empty)
             {
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
 

@@ -1,0 +1,71 @@
+﻿@page "/DocumentTaskView/{RecordGuid}/{ReturnUrl}"
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Services
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject IJSRuntime JS
+@inject AiErrorReporter AiErrorReporter
+@inject UserInteractionTrackerService InteractionTracker
+@inject IToastService Toast
+
+@inherits EditPageBase
+@attribute [Authorize]
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+@if (ShowOutPutType)
+{
+    <SelectOutputTypeModal OnTypeSelected="SetOutputType" CloseWindow="CloseOutputTypeModal" />
+}
+
+<div class="d-flex justify-content-around">
+    <div class="card shadow-sm m-1 flex-grow-1 flexpropertygroup cb-document-tasks">
+        <div class="card-body">
+            <h5 class="card-title">Filter by Name</h5>
+            <div class="product-actions d-flex align-items-center gap-2 flex-wrap mb-3">
+                <input type="search" class="form-control cb-document-task-filter" @bind="FilterText" @bind:event="oninput" placeholder="Search document templates..." aria-label="Filter document templates" />
+                <button type="button" class="btn btn-primary btn-sm" @onclick="Filter">Filter</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ClearFilter">Clear</button>
+            </div>
+            <h5 class="card-title">Document Selection</h5>
+            <div class="multi-select cb-document-task-selection" role="group" aria-label="Document templates">
+                @if (Data is null || Data.Count == 0)
+                {
+                    <div class="cb-v2-empty-state compact"><i class="bi bi-file-earmark-x" aria-hidden="true"></i><span>No documents available</span></div>
+                }
+                else
+                {
+                    @foreach (var item in Data)
+                    {
+                        var documentId = item.DocumentId ?? string.Empty;
+                        var iconCss = item.Icon?.ToString();
+                        <label class="cb-document-task-option">
+                            <input type="checkbox" class="form-check-input" checked="@SelectedItems.Contains(documentId)" @onchange="args => ToggleDocumentSelection(documentId, args)" />
+                            <i class="@(string.IsNullOrWhiteSpace(iconCss) ? "bi bi-file-earmark-text" : iconCss)" aria-hidden="true"></i>
+                            <span>@item.Text</span>
+                        </label>
+                    }
+                }
+                <div class="cb-document-task-count">Total selected: @SelectedItems.Count</div>
+                <div class="p-2 form-buttons">
+                    <button class="btn btn-success btn-sm mb-1" type="button" @onclick="ShowOutPutTypeModal" disabled="@(LoaderVisible || SelectedItems.Count == 0)">
+                        @if (LoaderVisible) { <span class="spinner-border spinner-border-sm" aria-hidden="true"></span> }
+                        <i class="bi bi-file-earmark-arrow-down" aria-hidden="true"></i> Generate Documents
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .cb-document-tasks { width: min(100%, 790px); }
+    .cb-document-task-filter { flex: 1 1 18rem; min-width: 0; }
+    .cb-document-task-selection { width: 100%; margin-top: .625rem; }
+    .cb-document-task-option { display: flex; align-items: center; gap: .65rem; width: 100%; padding: .65rem .75rem; border-bottom: 1px solid var(--cb-v2-border-soft, #e2e8f0); cursor: pointer; }
+    .cb-document-task-option:hover { background: var(--cb-v2-bg-soft, #f8fafc); }
+    .cb-document-task-option span { min-width: 0; overflow-wrap: anywhere; }
+    .cb-document-task-count { padding: .75rem; color: var(--cb-v2-text-muted, #64748b); font-weight: 600; }
+</style>

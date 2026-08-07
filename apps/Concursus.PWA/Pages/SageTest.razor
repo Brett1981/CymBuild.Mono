@@ -5,8 +5,6 @@
 @inject IToastService toastService
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 <div class="card shadow-sm border-0 p-4">
     <div class="card-header bg-white px-0 pt-0 pb-3 border-bottom">
         <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
@@ -108,7 +106,7 @@
 
     private async Task ExecuteCall()
     {
-        var formHelper = new FormHelper(coreClient, sageIntegrationService, "00000000-0000-0000-0000-000000000000", userService);
+        var formHelper = new FormHelper(coreClient, "00000000-0000-0000-0000-000000000000", userService);
         try
         {
             IsProcessing = true;

@@ -1722,7 +1722,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                     $"User Double Clicked Row in Grid - '{ViewDefinition.Name}' New Page Opened: '{PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid)}'");
             }
 
-            formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            formHelper = new FormHelper(coreClient, Guid.Empty.ToString(), userService);
             _ = formHelper.LogUsageAsync(
                 PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid),
                 PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());

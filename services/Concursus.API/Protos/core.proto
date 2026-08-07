@@ -84,6 +84,7 @@ service Core {
   rpc GetTeamMembers (TeamRequest) returns (TeamMemberListResponse);
   rpc GetThresholdsForOrgUnit(GetQuoteThresholdReq) returns (GetQuoteThresholdRes);
   rpc GetUsageReport (UsageReportRequest) returns (UsageReportResponse);
+  rpc GetUserUsageLast7Days (google.protobuf.Empty) returns (UserUsageLast7DaysResponse);
   rpc GetWaitStatsDashboard (GetWaitStatsDashboardRequest) returns (GetWaitStatsDashboardResponse);
   rpc GridDataList (GridDataListRequest) returns (GridDataListReply);
   rpc GridDefinitionList (GridDefinitionListRequest) returns (GridDefinitionListReply);
@@ -138,6 +139,8 @@ service Core {
   rpc SchemaMigrationCompare (SchemaMigrationRunRequest) returns (SchemaMigrationDashboardResponse);
   rpc SchemaMigrationDashboard (SchemaMigrationRunRequest) returns (SchemaMigrationDashboardResponse);
   rpc SchemaMigrationDeploymentOutcome (SchemaMigrationDeploymentOutcomeRequest) returns (SchemaMigrationOperationResponse);
+  rpc SchemaMigrationExcludedObjects (SchemaMigrationExcludedObjectsRequest) returns (SchemaMigrationExcludedObjectsResponse);
+  rpc SchemaMigrationExclusionUpsert (SchemaMigrationExclusionUpsertRequest) returns (SchemaMigrationExclusionResponse);
   rpc SchemaMigrationObjects (SchemaMigrationObjectsRequest) returns (SchemaMigrationObjectsResponse);
   rpc SchemaMigrationSelectionClear (SchemaMigrationSelectionClearRequest) returns (SchemaMigrationSelectionResponse);
   rpc SchemaMigrationSelectionSave (SchemaMigrationSelectionSaveRequest) returns (SchemaMigrationSelectionResponse);
@@ -2625,6 +2628,7 @@ message SchemaMigrationDashboardMessage {
   repeated SchemaMigrationObjectTypeCount objectTypeCounts = 9;
   repeated SchemaMigrationValidationIssue validationIssues = 10;
   repeated SchemaMigrationExecutionLogItem executionLog = 11;
+  int32 excludedCount = 12;
 }
 
 message SchemaMigrationDashboardResponse {
@@ -2646,6 +2650,57 @@ message SchemaMigrationExecutionLogItem {
   string message = 3;
   string detailsJson = 4;
   string createdOnUtc = 5;
+}
+
+message SchemaMigrationExcludedObject {
+  string guid = 1;
+  string objectType = 2;
+  string schemaName = 3;
+  string objectName = 4;
+  string parentObjectName = 5;
+  string stableObjectKey = 6;
+  string reason = 7;
+  string exclusionScope = 8;
+  string originServerName = 9;
+  string originDatabaseName = 10;
+  int32 excludedByUserId = 11;
+  string excludedOnUtc = 12;
+  string unexcludedOnUtc = 13;
+  string lastSeenRunGuid = 14;
+  string lastSeenOnUtc = 15;
+  int32 rowStatus = 16;
+  bool isSynchronizedToTarget = 17;
+}
+
+message SchemaMigrationExcludedObjectsRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  bool includeInactive = 4;
+}
+
+message SchemaMigrationExcludedObjectsResponse {
+  repeated SchemaMigrationExcludedObject records = 1;
+  int32 excludedCount = 2;
+  string message = 3;
+}
+
+message SchemaMigrationExclusionUpsertRequest {
+  string runGuid = 1;
+  string comparisonGuid = 2;
+  string objectType = 3;
+  string schemaName = 4;
+  string objectName = 5;
+  string parentObjectName = 6;
+  bool isExcluded = 7;
+  string reason = 8;
+  string targetServerName = 9;
+  string targetDatabaseName = 10;
+}
+
+message SchemaMigrationExclusionResponse {
+  int32 excludedCount = 1;
+  string message = 2;
 }
 
 message SchemaMigrationObjectComparisonRow {
@@ -4116,6 +4171,21 @@ message UsageReportRequest {
 
 message UsageReportResponse {
   repeated UsageData usage_data = 1;
+}
+
+message UserUsageLast7DaysData {
+  string username = 1;
+  string user_guid = 2;
+  int32 usage_count_last_7_days = 3;
+  int32 usage_count_previous_7_days = 4;
+  int32 active_days_last_7_days = 5;
+  int32 features_used_last_7_days = 6;
+  google.protobuf.Timestamp last_accessed_last_7_days = 7;
+  string usage_trend = 8;
+}
+
+message UserUsageLast7DaysResponse {
+  repeated UserUsageLast7DaysData users = 1;
 }
 
 message UsageRequest {

@@ -1,0 +1,200 @@
+@using Concursus.API.Client;
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+
+@inject NavigationManager NavManager
+@inject Core.CoreClient coreClient
+@inject IJSRuntime JSRuntime
+@inject UserService userService
+@inject ModalService modalService
+@inject AppConfiguration appConfiguration
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+
+@attribute [Authorize]
+
+<div class="button-menu-container d-flex flex-row align-items-center">
+    <span class="d-flex flex-row align-items-center cb-task-menu-loading">
+        <span class="@isButtonLoading" aria-hidden="true"></span>
+        @if (!string.IsNullOrWhiteSpace(buttonLoadingText))
+        {
+            <span class="ms-1">@buttonLoadingText</span>
+        }
+    </span>
+
+    @if (MenuItems is not null)
+    {
+        @foreach (var rootItem in GetVisibleMenuItems(MenuItems))
+        {
+            var hasChildren = HasChildMenuItems(rootItem);
+
+            <div class="dropdown cb-task-menu">
+                <button type="button"
+                        class="btn btn-primary btn-sm dropdown-toggle cb-task-menu-toggle"
+                        disabled="@(rootItem.IsReadOnly == true)"
+                        aria-haspopup="true"
+                        aria-expanded="@(IsTaskMenuOpen && hasChildren)"
+                        @onclick="() => OnRootMenuClicked(rootItem)">
+                    <i class="@GetMenuItemIconCss(rootItem)" aria-hidden="true"></i>
+                    <span>@GetMenuItemText(rootItem, "Tasks")</span>
+                </button>
+
+                @if (hasChildren)
+                {
+                    <ul class="dropdown-menu dropdown-menu-end cb-task-menu-list @(IsTaskMenuOpen ? "show" : string.Empty)" role="menu">
+                        @foreach (var childItem in GetVisibleMenuItems(rootItem.Items))
+                        {
+                            if (childItem.IsSeparator == true)
+                            {
+                                <li><hr class="dropdown-divider" /></li>
+                            }
+                            else if (HasChildMenuItems(childItem))
+                            {
+                                <li class="dropend cb-task-menu-submenu">
+                                    <button type="button"
+                                            class="dropdown-item cb-task-menu-item cb-task-menu-has-children"
+                                            disabled="@(childItem.IsReadOnly == true)">
+                                        <span class="cb-task-menu-item-main">
+                                            <i class="@GetMenuItemIconCss(childItem)" aria-hidden="true"></i>
+                                            <span>@GetMenuItemText(childItem)</span>
+                                        </span>
+                                        <i class="bi bi-chevron-right cb-task-menu-chevron" aria-hidden="true"></i>
+                                    </button>
+
+                                    <ul class="dropdown-menu cb-task-submenu-menu" role="menu">
+                                        @foreach (var nestedItem in GetVisibleMenuItems(childItem.Items))
+                                        {
+                                            if (nestedItem.IsSeparator == true)
+                                            {
+                                                <li><hr class="dropdown-divider" /></li>
+                                            }
+                                            else
+                                            {
+                                                <li>
+                                                    <button type="button"
+                                                            class="dropdown-item cb-task-menu-item"
+                                                            disabled="@(nestedItem.IsReadOnly == true)"
+                                                            title="@GetReadOnlyTitle(nestedItem)"
+                                                            @onclick="() => OnNativeMenuItemClicked(nestedItem)">
+                                                        <i class="@GetMenuItemIconCss(nestedItem)" aria-hidden="true"></i>
+                                                        <span>@GetMenuItemText(nestedItem)</span>
+                                                    </button>
+                                                </li>
+                                            }
+                                        }
+                                    </ul>
+                                </li>
+                            }
+                            else
+                            {
+                                <li>
+                                    <button type="button"
+                                            class="dropdown-item cb-task-menu-item"
+                                            disabled="@(childItem.IsReadOnly == true)"
+                                            title="@GetReadOnlyTitle(childItem)"
+                                            @onclick="() => OnNativeMenuItemClicked(childItem)">
+                                        <i class="@GetMenuItemIconCss(childItem)" aria-hidden="true"></i>
+                                        <span>@GetMenuItemText(childItem)</span>
+                                    </button>
+                                </li>
+                            }
+                        }
+                    </ul>
+                }
+            </div>
+        }
+    }
+</div>
+
+@if (IsTaskMenuOpen)
+{
+    <button type="button"
+            class="cb-task-menu-dismiss"
+            aria-label="Close task menu"
+            @onclick="CloseTaskMenu"></button>
+}
+
+@if (ModalWindowIsVisible)
+{
+    <div class="cb-task-modal-root"
+         role="presentation"
+         style="position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; display: flex !important; align-items: flex-start !important; justify-content: center !important; padding: 3vh 3vw !important; overflow: auto !important; box-sizing: border-box !important;">
+        <button type="button"
+                class="cb-task-modal-backdrop"
+                aria-label="Close modal backdrop"
+                @onclick="CloseWindowCross"
+                style="position: fixed !important; inset: 0 !important; z-index: 0 !important; display: block !important; width: 100vw !important; height: 100vh !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: rgba(15, 23, 42, .55) !important; backdrop-filter: blur(2px) !important; cursor: default !important;"></button>
+
+        <section class="@NativeModalCardCss"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="button-menu-modal-title"
+                 @onclick:stopPropagation="true"
+                 style="position: relative !important; z-index: 1 !important; width: @(NativeModalIsMaximized ? "calc(100vw - 1.5rem)" : "min(1180px, 96vw)") !important; max-height: @(NativeModalIsMaximized ? "calc(100vh - 1.5rem)" : "94vh") !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; background: #ffffff !important; border: 1px solid var(--cb-v2-border, #e5eaf3) !important; border-radius: var(--cb-v2-radius-lg, 18px) !important; box-shadow: var(--cb-v2-shadow-modal, 0 28px 80px rgba(15, 23, 42, .30)) !important; color: var(--cb-v2-text, #172033) !important;">
+            <header class="cb-task-modal-header"
+                    style="display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 1rem !important; padding: .95rem 1.15rem !important; border-bottom: 1px solid var(--cb-v2-border, #e5eaf3) !important; background: linear-gradient(90deg, rgba(37, 99, 235, .10), rgba(255, 255, 255, .96) 48%, #ffffff 100%) !important;">
+                <div class="cb-task-modal-title-group" style="min-width: 0 !important;">
+                    <h5 id="button-menu-modal-title"
+                        class="cb-task-modal-title"
+                        style="display: flex !important; align-items: center !important; gap: .55rem !important; margin: 0 !important; color: var(--cb-v2-text-strong, #0f172a) !important; font-size: 1rem !important; font-weight: 800 !important;">
+                        @if (!string.IsNullOrWhiteSpace(HeaderCssIcon))
+                        {
+                            <i class="@HeaderCssIcon" aria-hidden="true"></i>
+                        }
+                        <span>@(!string.IsNullOrWhiteSpace(HeaderText) ? HeaderText : WindowTitle)</span>
+                    </h5>
+                    @if (!string.IsNullOrWhiteSpace(WindowTitle) &&
+                                        !string.Equals(WindowTitle, HeaderText, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="cb-task-modal-subtitle" style="margin-top: .2rem !important; color: var(--cb-v2-text-muted, #64748b) !important; font-size: .85rem !important;">
+                            @WindowTitle
+                        </div>
+                    }
+                </div>
+
+                <div class="cb-task-modal-actions" style="display: inline-flex !important; align-items: center !important; gap: .45rem !important; flex-shrink: 0 !important;">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary cb-task-modal-action"
+                            title="@(NativeModalIsMaximized ? "Restore" : "Maximise")"
+                            aria-label="@(NativeModalIsMaximized ? "Restore" : "Maximise")"
+                            @onclick="ToggleNativeModalMaximized">
+                        <i class="@(NativeModalIsMaximized ? "bi bi-fullscreen-exit" : "bi bi-arrows-fullscreen")" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary cb-task-modal-action"
+                            title="Close"
+                            aria-label="Close"
+                            @onclick="CloseWindowCross">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="cb-task-modal-body"
+                 style="min-height: 16rem !important; max-height: @(NativeModalIsMaximized ? "calc(100vh - 5.75rem)" : "calc(94vh - 4.25rem)") !important; overflow: auto !important; padding: 1rem !important; background: #ffffff !important;">
+                @if (!string.IsNullOrWhiteSpace(GridCodeSelection))
+                {
+                    <DynamicGrid GridCode="@GridCodeSelection"
+                                 ParentGuid="@GetParentGuid()"
+                                 FormHelper="@formHelper" />
+                }
+
+                @if (!string.IsNullOrWhiteSpace(LoadPageUrl))
+                {
+                    var componentType = ResolveLoadPageType(LoadPageUrl);
+
+                    if (componentType is not null)
+                    {
+                        <DynamicComponent Type="@componentType" Parameters="@DetailPageParameters" />
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mb-0" role="alert">
+                            Unable to load @LoadPageUrl.Trim().
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+    </div>
+}

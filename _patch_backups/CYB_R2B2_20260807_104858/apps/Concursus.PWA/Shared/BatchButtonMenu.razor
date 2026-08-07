@@ -1,0 +1,344 @@
+@attribute [Authorize]
+
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Shared
+
+@inject NavigationManager NavManager
+@inject Core.CoreClient coreClient
+@inject IJSRuntime JSRuntime
+@inject UserService userService
+@inject ModalService modalService
+@inject AppConfiguration appConfiguration
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<style>
+    .TActionBtn {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: inherit !important;
+        color: #ffffff !important;
+    }
+
+    span.k-menu-link-text:first-child,
+    .k-menu-expand-arrow {
+        color: white !important;
+    }
+
+    .invoice-preview-host {
+        height: 100%;
+        overflow: auto;
+        background: #eef1f4;
+        padding: 12px;
+    }
+</style>
+
+<div class="batch-action-menu dropdown">
+    @foreach (var rootItem in GetVisibleBatchMenuItems(MenuItems))
+    {
+        var hasChildren = HasChildBatchMenuItems(rootItem);
+
+        <button type="button"
+                class="btn btn-primary batch-action-menu-toggle dropdown-toggle"
+                disabled="@(!hasChildren && string.IsNullOrWhiteSpace(rootItem.Text))"
+                aria-haspopup="true"
+                aria-expanded="@(_batchActionMenuOpen && hasChildren)"
+                @onclick="() => ToggleBatchActionMenu(rootItem)">
+            <i class="@(string.IsNullOrWhiteSpace(rootItem.Icon) ? "bi bi-lightning-charge" : rootItem.Icon)" aria-hidden="true"></i>
+            <span>@(string.IsNullOrWhiteSpace(rootItem.Text) ? "Actions" : rootItem.Text)</span>
+        </button>
+
+        @if (_batchActionMenuOpen && hasChildren)
+        {
+            <ul class="dropdown-menu dropdown-menu-end batch-action-menu-list show" role="menu">
+                @foreach (var childItem in GetVisibleBatchMenuItems(rootItem.Items))
+                {
+                    <li>
+                        <button type="button"
+                                class="dropdown-item batch-action-menu-item"
+                                disabled="@string.IsNullOrWhiteSpace(childItem.Text)"
+                                @onclick="() => OnNativeBatchActionMenuItemClicked(childItem)">
+                            <i class="@(string.IsNullOrWhiteSpace(childItem.Icon) ? "bi bi-lightning-charge" : childItem.Icon)" aria-hidden="true"></i>
+                            <span>@childItem.Text</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</div>
+
+@if (_batchActionMenuOpen)
+{
+    <button type="button"
+            class="batch-action-menu-dismiss"
+            aria-label="Close action menu"
+            @onclick="CloseBatchActionMenu"></button>
+}
+
+@* Existing general-purpose modal *@
+@if (ModalWindowIsVisible)
+{
+    var loadedPageType = !string.IsNullOrWhiteSpace(LoadPageUrl)
+        ? Type.GetType(LoadPageUrl)
+        : null;
+    var assignmentPageType = Type.GetType("Concursus.PWA.Pages.QuoteSelfAssignDetail");
+
+    <div class="batch-native-modal-backdrop" aria-hidden="true"></div>
+    <div class="batch-native-modal-shell" role="dialog" aria-modal="true" aria-labelledby="batch-native-modal-title">
+        <section class="@GeneralBatchModalCss">
+            <header class="batch-native-modal-header">
+                <div class="batch-native-modal-title-wrap">
+                    <h5 id="batch-native-modal-title" class="batch-native-modal-title">
+                        @if (!string.IsNullOrWhiteSpace(HeaderCssIcon))
+                        {
+                            <i class="@HeaderCssIcon" aria-hidden="true"></i>
+                        }
+                        <span>@(!string.IsNullOrWhiteSpace(HeaderText) ? HeaderText : WindowTitle)</span>
+                    </h5>
+                    @if (!string.IsNullOrWhiteSpace(WindowTitle) &&
+                                        !string.Equals(WindowTitle, HeaderText, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="batch-native-modal-subtitle">@WindowTitle</div>
+                    }
+                </div>
+
+                <div class="batch-native-modal-actions">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            title="@(_batchModalIsMaximized ? "Restore" : "Maximise")"
+                            aria-label="@(_batchModalIsMaximized ? "Restore" : "Maximise")"
+                            @onclick="ToggleBatchNativeModalMaximized">
+                        <i class="@(_batchModalIsMaximized ? "bi bi-fullscreen-exit" : "bi bi-arrows-fullscreen")" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            title="Close"
+                            aria-label="Close"
+                            @onclick="CloseWindowCross">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="batch-native-modal-body">
+                @if (!string.IsNullOrEmpty(GridCodeSelection))
+                {
+                    <DynamicGrid GridCode="@GridCodeSelection" ParentGuid="@GetParentGuid()" />
+                }
+
+                @if (!string.IsNullOrEmpty(LoadPageUrl))
+                {
+                    if (loadedPageType is not null)
+                    {
+                        <DynamicComponent Type="@loadedPageType" Parameters="@DetailPageParameters" />
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mb-0" role="alert">
+                            Unable to load @LoadPageUrl.
+                        </div>
+                    }
+                }
+
+                @if (GridRef?.Code == "AUTHASSIGN")
+                {
+                    if (assignmentPageType is not null)
+                    {
+                        <DynamicComponent Type="@assignmentPageType" Parameters="@DetailPageParameters" />
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mb-0" role="alert">
+                            Unable to load Quote Self Assignment.
+                        </div>
+                    }
+                }
+            </div>
+        </section>
+    </div>
+}
+@* New invoice preview modal *@
+@if (_showInvoicePreviewModal && _currentInvoicePreviewModel is not null)
+{
+    <div class="batch-native-modal-backdrop" aria-hidden="true"></div>
+    <div class="batch-native-modal-shell invoice-preview-native-shell" role="dialog" aria-modal="true" aria-labelledby="batch-invoice-preview-title">
+        <section class="@InvoicePreviewModalCss">
+            <header class="batch-native-modal-header">
+                <div class="batch-native-modal-title-wrap">
+                    <h5 id="batch-invoice-preview-title" class="batch-native-modal-title">
+                        <i class="bi bi-receipt" aria-hidden="true"></i>
+                        <span>Invoice Preview</span>
+                        @if (_invoicePreviewModels.Count > 1)
+                        {
+                            <span class="invoice-preview-counter">
+                                (@(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count)
+                            </span>
+                        }
+                    </h5>
+                    <div class="batch-native-modal-subtitle">
+                        Invoice @(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count
+                    </div>
+                </div>
+
+                <div class="batch-native-modal-actions">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            title="@(_invoicePreviewModalIsMaximized ? "Restore" : "Maximise")"
+                            aria-label="@(_invoicePreviewModalIsMaximized ? "Restore" : "Maximise")"
+                            @onclick="ToggleInvoicePreviewNativeModalMaximized">
+                        <i class="@(_invoicePreviewModalIsMaximized ? "bi bi-fullscreen-exit" : "bi bi-arrows-fullscreen")" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            title="Close"
+                            aria-label="Close"
+                            @onclick="CloseInvoicePreviewWindow">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </header>
+
+            <div class="batch-native-modal-body invoice-preview-native-body">
+                <div class="invoice-preview-shell">
+                    <div class="invoice-preview-toolbar">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="ShowPreviousInvoicePreview"
+                                disabled="@(_currentInvoicePreviewIndex <= 0)">
+                            â€¹ Previous
+                        </button>
+
+                        <div class="invoice-preview-toolbar__status">
+                            Invoice @(_currentInvoicePreviewIndex + 1) of @_invoicePreviewModels.Count
+                        </div>
+
+                        <div class="invoice-preview-toolbar__actions">
+                            <button type="button"
+                                    class="btn btn-sm btn-danger"
+                                    @onclick="ExportCurrentInvoiceToPdfAsync"
+                                    disabled="@_isBusy">
+                                PDF
+                            </button>
+
+                            @if (_invoicePreviewModels.Count > 1)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-danger"
+                                        @onclick="ExportAllInvoicesToPdfAsync"
+                                        disabled="@_isBusy">
+                                    PDF (All)
+                                </button>
+                            }
+                        </div>
+
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="ShowNextInvoicePreview"
+                                disabled="@(_currentInvoicePreviewIndex >= _invoicePreviewModels.Count - 1)">
+                            Next â€º
+                        </button>
+                    </div>
+
+                    <div class="invoice-preview-host">
+                        <div id="invoice-preview-current-export">
+                            <InvoicePrintTemplate Model="@_currentInvoicePreviewModel" />
+                        </div>
+
+                        @if (_invoicePreviewModels.Count > 1)
+                        {
+                            <div class="invoice-preview-all-export">
+                                @for (var i = 0; i < _invoicePreviewModels.Count; i++)
+                                {
+                                    <div id="@GetInvoiceExportElementId(i)" class="invoice-preview-export-item">
+                                        <InvoicePrintTemplate Model="@_invoicePreviewModels[i]" />
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+}
+<style>
+    .TActionBtn {
+        margin: 0 !important;
+        padding: 0 !important;
+        background-color: inherit !important;
+        color: #ffffff !important;
+    }
+
+    span.k-menu-link-text:first-child,
+    .k-menu-expand-arrow {
+        color: white !important;
+    }
+
+    .invoice-preview-window {
+        max-width: 98vw;
+        max-height: 98vh;
+    }
+
+        .invoice-preview-window .k-window-content {
+            padding: 0;
+            overflow: hidden;
+        }
+
+    .invoice-preview-shell {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: #eef1f4;
+    }
+
+    .invoice-preview-toolbar {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid #d9dde3;
+        background: #ffffff;
+        flex: 0 0 auto;
+    }
+
+    .invoice-preview-toolbar__status {
+        text-align: center;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .invoice-preview-toolbar__actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .invoice-preview-counter {
+        font-weight: 500;
+        margin-left: 6px;
+    }
+
+    .invoice-preview-host {
+        flex: 1 1 auto;
+        overflow: auto;
+        background: #eef1f4;
+        padding: 12px;
+    }
+
+    .invoice-preview-all-export {
+        position: absolute;
+        left: -200vw;
+        top: 0;
+        width: 210mm;
+        pointer-events: none;
+        opacity: 0;
+    }
+
+    .invoice-preview-export-item {
+        width: 210mm;
+        background: #ffffff;
+    }
+</style>

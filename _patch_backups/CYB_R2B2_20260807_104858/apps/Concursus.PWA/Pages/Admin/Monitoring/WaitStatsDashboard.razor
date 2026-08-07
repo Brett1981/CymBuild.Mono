@@ -1,0 +1,913 @@
+﻿@page "/admin/monitoring/wait-stats"
+@using Concursus.API.Client
+@using Concursus.API.Client.Classes
+@using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.Monitoring
+@using System.Globalization
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject NavigationManager NavManager
+@inject RefreshService refreshService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@implements IDisposable
+
+<PageTitle>CymBuild Wait Statistics Dashboard</PageTitle>
+
+<div class="wait-dashboard-shell">
+    <div class="wait-dashboard-header">
+        <div>
+            <div class="eyebrow">CymBuild Monitoring</div>
+            <h1>SQL Server Wait Statistics</h1>
+            <div class="subtitle">
+                Live wait analysis from <code>sys.dm_os_wait_stats</code> and <code>sys.dm_exec_requests</code>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn btn-secondary" @onclick="RefreshAsync" disabled="@_isLoading">Refresh now</button>
+
+            <label class="toggle-wrap">
+                <input type="checkbox" @bind="_autoRefreshEnabled" />
+                <span>Auto refresh</span>
+            </label>
+
+            <select class="refresh-select" @bind="_refreshSeconds" @bind:after="RestartTimerAsync">
+                <option value="3">3s</option>
+                <option value="5">5s</option>
+                <option value="10">10s</option>
+                <option value="15">15s</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="dashboard-tabs">
+
+        <button class="tab-btn @(_selectedTab == "overview" ? "active" : "")"
+                @onclick='() => _selectedTab = "overview"'>
+            Overview
+        </button>
+
+        <button class="tab-btn @(_selectedTab == "technical" ? "active" : "")"
+                @onclick='() => _selectedTab = "technical"'>
+            Technical
+        </button>
+
+        <button class="tab-btn @(_selectedTab == "active" ? "active" : "")"
+                @onclick='() => _selectedTab = "active"'>
+            Active Requests
+        </button>
+
+        <button class="tab-btn @(_selectedTab == "schema" ? "active" : "")"
+                @onclick='() => _selectedTab = "schema"'>
+            CymBuild Schema
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <div class="error-banner">
+            <strong>Load failed:</strong> @_loadError
+        </div>
+    }
+
+    @if (_response is null)
+    {
+        <div class="loading-panel">
+            <div class="spinner"></div>
+            <div>Loading wait statistics...</div>
+        </div>
+    }
+    else
+    {
+        <div class="kpi-grid">
+            <div class="kpi-card @GetCpuPressureCardCss()">
+                <div class="kpi-label" title="Highlights CPU scheduler pressure when signal waits exceed the configured threshold.">CPU Pressure</div>
+                <div class="kpi-value">@(_response.Summary.IsCpuPressureHighlighted ? "High" : "Normal")</div>
+                <div class="kpi-meta">Signal waits: @FormatPct(_response.Summary.SignalWaitPct)</div>
+                <div class="kpi-foot">@_response.Summary.CpuPressureMessage</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">Total Wait Time</div>
+                <div class="kpi-value">@FormatSeconds(_response.Summary.TotalWaitTimeSeconds)</div>
+                <div class="kpi-meta" title="These figures are cumulative since the SQL Server service last started.">Since last restart</div>
+                <div class="kpi-foot">Restarted: @FormatDateTime(_response.Summary.SqlServerStartTime)</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label" title="Signal waits are time spent waiting to get CPU on a scheduler.">Signal Wait %</div>
+                <div class="kpi-value">@FormatPct(_response.Summary.SignalWaitPct)</div>
+                <div class="kpi-meta">Scheduler / CPU side</div>
+                <div class="kpi-foot">Threshold: @FormatPct(_cpuSignalThresholdPct)</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label" title="Resource waits are waits on I/O, locking, memory and other non-CPU resources.">Resource Wait %</div>
+                <div class="kpi-value">@FormatPct(_response.Summary.ResourceWaitPct)</div>
+                <div class="kpi-meta">I/O, locking, memory and resource pressure</div>
+                <div class="kpi-foot">Signal vs resource split</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">SQL Uptime</div>
+                <div class="kpi-value">@FormatUptime(_response.Summary.SecondsSinceRestart)</div>
+                <div class="kpi-meta">Server: @_response.Summary.ServerName</div>
+                <div class="kpi-foot">Database: @_response.Summary.DatabaseName</div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-label">Last Refresh</div>
+                <div class="kpi-value small">@FormatDateTime(_response.Summary.SnapshotUtc)</div>
+                <div class="kpi-meta">Auto refresh: @(_autoRefreshEnabled ? "On" : "Off")</div>
+                <div class="kpi-foot">Every @_refreshSeconds second(s)</div>
+            </div>
+        </div>
+
+        @if (_selectedTab == "overview")
+        {
+            var overviewCards = BuildOverviewCards();
+
+            <section class="panel full-width">
+                <div class="panel-header">
+                    <h2>Plain-English Overview</h2>
+                    <span>Interpretation for developers and non-DBA users</span>
+                </div>
+
+                <div class="overview-grid">
+                    @foreach (var card in overviewCards)
+                    {
+                        <article class="overview-card @card.CssClass">
+                            <div class="overview-title">@card.Title</div>
+                            <div class="overview-status">@card.Status</div>
+                            <div class="overview-message">@card.Message</div>
+                            <div class="overview-detail">@card.Detail</div>
+                        </article>
+                    }
+                </div>
+            </section>
+
+            <div class="dashboard-grid two-col">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>What the main waits usually mean</h2>
+                        <span>Quick reference</span>
+                    </div>
+
+                    <table class="mini-table">
+                        <thead>
+                            <tr>
+                                <th>Wait Type</th>
+                                <th>Usually Means</th>
+                                <th>Typical Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="mono">SOS_WORK_DISPATCHER</td>
+                                <td>Usually benign idle worker wait</td>
+                                <td>No action needed</td>
+                            </tr>
+                            <tr>
+                                <td class="mono">SOS_SCHEDULER_YIELD</td>
+                                <td>CPU-heavy query activity</td>
+                                <td>Review queries, scans, sorts, and indexes</td>
+                            </tr>
+                            <tr>
+                                <td class="mono">WRITELOG</td>
+                                <td>Transaction log flush activity</td>
+                                <td>Review log disk, batching, growth settings</td>
+                            </tr>
+                            <tr>
+                                <td class="mono">PAGEIOLATCH_*</td>
+                                <td>Storage/page read-write latency</td>
+                                <td>Review storage and indexing</td>
+                            </tr>
+                            <tr>
+                                <td class="mono">LCK_M_*</td>
+                                <td>Blocking / lock waits</td>
+                                <td>Review transactions and lock footprint</td>
+                            </tr>
+                            <tr>
+                                <td class="mono">RESOURCE_SEMAPHORE*</td>
+                                <td>Query memory pressure</td>
+                                <td>Review large grants, spills, reporting queries</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Top Wait Snapshot</h2>
+                        <span>Current dominant wait from returned dataset</span>
+                    </div>
+
+                    @if (_response.TopWaits.Any())
+                    {
+                        var topWait = _response.TopWaits.First();
+
+                        <div class="recommendation-item">
+                            <div class="recommendation-top">
+                                <span class="priority-pill">@topWait.WaitCategory</span>
+                                <h3 class="mono">@topWait.WaitType</h3>
+                            </div>
+                            <p>@InterpretTopWait(topWait.WaitType, topWait.WaitCategory, topWait.PctOfTotalWaitTime)</p>
+                            <div class="supporting-metric">
+                                Share of total: @FormatPct(topWait.PctOfTotalWaitTime) |
+                                Avg / task: @topWait.AvgWaitMsPerTask.ToString("N2", CultureInfo.InvariantCulture) ms |
+                                Tasks: @topWait.WaitingTasksCount.ToString("N0", CultureInfo.InvariantCulture)
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="empty-state">No top wait data returned.</div>
+                    }
+                </section>
+            </div>
+        }
+
+        @if (_selectedTab == "technical")
+        {
+            <div class="dashboard-grid two-col">
+                <section class="panel chart-panel">
+                    <div class="panel-header">
+                        <h2>Wait Distribution by Category</h2>
+                        <span>CPU / I/O / Memory / Other</span>
+                    </div>
+
+                    <div class="category-bars">
+                        @foreach (var item in _response.Categories.OrderByDescending(x => x.WaitTimeMs))
+                        {
+                            <div class="bar-row">
+                                <div class="bar-label">@item.WaitCategory</div>
+                                <div class="bar-track">
+                                    <div class="bar-fill" style="width:@Math.Max(item.PctOfTotalWaitTime, 2m)%;"></div>
+                                </div>
+                                <div class="bar-value">@FormatPct(item.PctOfTotalWaitTime)</div>
+                            </div>
+                        }
+                    </div>
+
+                    <table class="mini-table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Wait Seconds</th>
+                                <th>% Total</th>
+                                <th>Tasks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in _response.Categories.OrderByDescending(x => x.WaitTimeMs))
+                            {
+                                <tr>
+                                    <td>@item.WaitCategory</td>
+                                    <td>@item.WaitTimeSeconds.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                    <td>@FormatPct(item.PctOfTotalWaitTime)</td>
+                                    <td>@item.WaitingTasksCount.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="panel chart-panel">
+                    <div class="panel-header">
+                        <h2>Signal vs Resource Waits</h2>
+                        <span>Scheduler pressure compared with resource pressure</span>
+                    </div>
+
+                    <div class="stack-bar-wrap">
+                        <div class="stack-bar">
+                            <div class="stack-signal" style="width:@_response.SignalResourceSummary.SignalWaitPct%;"></div>
+                            <div class="stack-resource" style="width:@_response.SignalResourceSummary.ResourceWaitPct%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="signal-cards">
+                        <div class="signal-card @GetSignalCss(_response.SignalResourceSummary.SignalWaitPct)">
+                            <div class="label">Signal Wait</div>
+                            <div class="value">@FormatPct(_response.SignalResourceSummary.SignalWaitPct)</div>
+                        </div>
+                        <div class="signal-card">
+                            <div class="label">Resource Wait</div>
+                            <div class="value">@FormatPct(_response.SignalResourceSummary.ResourceWaitPct)</div>
+                        </div>
+                    </div>
+
+                    <div class="assessment">
+                        @_response.SignalResourceSummary.SignalWaitAssessment
+                    </div>
+                </section>
+            </div>
+
+            <div class="dashboard-grid two-col">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Top Wait Types</h2>
+                        <span>Top @_topCount by cumulative wait time</span>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Wait Type</th>
+                                    <th>Category</th>
+                                    <th>Wait Seconds</th>
+                                    <th>Avg / Task (ms)</th>
+                                    <th>% Total</th>
+                                    <th>% Signal</th>
+                                    <th>Tasks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _response.TopWaits)
+                                {
+                                    <tr>
+                                        <td class="mono"
+                                            title="@InterpretTopWait(item.WaitType, item.WaitCategory, item.PctOfTotalWaitTime)">
+                                            @item.WaitType
+                                        </td>
+                                        <td>@item.WaitCategory</td>
+                                        <td>@item.WaitTimeSeconds.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                        <td title="Average wait time per waiting task.">@item.AvgWaitMsPerTask.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                        <td>@FormatPct(item.PctOfTotalWaitTime)</td>
+                                        <td class="@(item.PctSignalWithinWait >= _cpuSignalThresholdPct ? "warn-text" : string.Empty)">
+                                            @FormatPct(item.PctSignalWithinWait)
+                                        </td>
+                                        <td>@item.WaitingTasksCount.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>Recommendations</h2>
+                        <span>Interpreted from current wait patterns</span>
+                    </div>
+
+                    <div class="recommendations-list">
+                        @foreach (var item in _response.Recommendations.OrderBy(x => x.Priority))
+                        {
+                            <article class="recommendation-item">
+                                <div class="recommendation-top">
+                                    <span class="priority-pill">P@(item.Priority)</span>
+                                    <h3>@item.Pattern</h3>
+                                </div>
+                                <p>@item.Recommendation</p>
+                                <div class="supporting-metric">@item.SupportingMetric</div>
+                            </article>
+                        }
+                    </div>
+                </section>
+            </div>
+        }
+
+        @if (_selectedTab == "schema")
+        {
+            @if (_schemaResponse is null)
+            {
+                <section class="panel full-width">
+                    <div class="empty-state">Schema dashboard data has not loaded yet.</div>
+                </section>
+            }
+            else
+            {
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Schemas Monitored</div>
+                        <div class="kpi-value">@_schemaResponse.Summary.SchemasMonitored</div>
+                        <div class="kpi-foot">SCore, SJob, SFin, SSop</div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Objects</div>
+                        <div class="kpi-value">@_schemaResponse.Summary.TotalObjectsMonitored</div>
+                        <div class="kpi-foot">Tables, views, procedures, functions</div>
+                    </div>
+
+                    <div class="kpi-card @(_schemaResponse.Summary.NonSchemaBoundObjectCount > 0 ? "danger" : "success")">
+                        <div class="kpi-label">Non-Schema-Bound Objects</div>
+                        <div class="kpi-value">@_schemaResponse.Summary.NonSchemaBoundObjectCount</div>
+                        <div class="kpi-foot">Views/functions needing review</div>
+                    </div>
+
+                    <div class="kpi-card">
+                        <div class="kpi-label">Largest Table</div>
+                        <div class="kpi-value small">@_schemaResponse.Summary.LargestTableName</div>
+                        <div class="kpi-meta">@_schemaResponse.Summary.LargestTableRowCount.ToString("N0", CultureInfo.InvariantCulture) rows</div>
+                        <div class="kpi-foot">@_schemaResponse.Summary.LargestTableReservedMB.ToString("N2", CultureInfo.InvariantCulture) MB reserved</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid two-col">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2>Object Counts by Schema</h2>
+                            <span>Platform structure overview</span>
+                        </div>
+
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Schema</th>
+                                    <th>Tables</th>
+                                    <th>Views</th>
+                                    <th>Procedures</th>
+                                    <th>Functions</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _schemaResponse.ObjectCounts.OrderBy(x => x.SchemaName))
+                                {
+                                    <tr>
+                                        <td>@item.SchemaName</td>
+                                        <td>@item.TableCount</td>
+                                        <td>@item.ViewCount</td>
+                                        <td>@item.ProcedureCount</td>
+                                        <td>@item.FunctionCount</td>
+                                        <td>@item.TotalObjectCount</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2>Core Integrity Checks</h2>
+                            <span>Key CymBuild platform objects</span>
+                        </div>
+
+                        <div class="recommendations-list">
+                            @foreach (var item in _schemaResponse.IntegrityChecks.OrderBy(x => x.CheckName))
+                            {
+                                <article class="recommendation-item">
+                                    <div class="recommendation-top">
+                                        <span class="priority-pill @(item.IsOk ? "" : "warn-text")">@item.StatusText</span>
+                                        <h3>@item.CheckName</h3>
+                                    </div>
+                                    <div class="supporting-metric">@item.Detail</div>
+                                </article>
+                            }
+                        </div>
+                    </section>
+                </div>
+
+                <div class="dashboard-grid two-col">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2>Largest Tables</h2>
+                            <span>Top 25 by reserved size</span>
+                        </div>
+
+                        <div class="table-wrap tall">
+                            <table class="data-table compact">
+                                <thead>
+                                    <tr>
+                                        <th>Schema</th>
+                                        <th>Table</th>
+                                        <th>Rows</th>
+                                        <th>Reserved MB</th>
+                                        <th>Used MB</th>
+                                        <th>Data MB</th>
+                                        <th>Index MB</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in _schemaResponse.LargestTables)
+                                    {
+                                        <tr>
+                                            <td>@item.SchemaName</td>
+                                            <td>@item.TableName</td>
+                                            <td>@item.RowCount.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                            <td>@item.ReservedMB.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                            <td>@item.UsedMB.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                            <td>@item.DataMB.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                            <td>@item.IndexMB.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="panel">
+                        <div class="panel-header">
+                            <h2>Schema-Bound Status</h2>
+                            <span>Views and functions in monitored schemas</span>
+                        </div>
+
+                        <div class="table-wrap tall">
+                            <table class="data-table compact">
+                                <thead>
+                                    <tr>
+                                        <th>Schema</th>
+                                        <th>Object</th>
+                                        <th>Type</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in _schemaResponse.SchemaBoundObjects)
+                                    {
+                                        <tr>
+                                            <td>@item.SchemaName</td>
+                                            <td>@item.ObjectName</td>
+                                            <td>@item.ObjectTypeDesc</td>
+                                            <td class="@(item.IsSchemaBound ? string.Empty : "warn-text")">@item.StatusText</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            }
+        }
+
+        @if (_selectedTab == "active")
+        {
+            <section class="panel full-width">
+                <div class="panel-header">
+                    <h2>Active Waits / Requests</h2>
+                    <span>Live requests from <code>sys.dm_exec_requests</code></span>
+                </div>
+
+                <div class="table-wrap tall">
+                    <table class="data-table compact">
+                        <thead>
+                            <tr>
+                                <th>Session</th>
+                                <th>Status</th>
+                                <th>Wait Type</th>
+                                <th>Wait ms</th>
+                                <th>Blocking</th>
+                                <th>CPU ms</th>
+                                <th>Elapsed ms</th>
+                                <th>Reads</th>
+                                <th>Writes</th>
+                                <th>Program</th>
+                                <th>Login</th>
+                                <th>Statement</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_response.ActiveWaits.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="12" class="empty-state">No active waits currently returned for this database.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var item in _response.ActiveWaits)
+                                {
+                                    <tr>
+                                        <td>@item.SessionId</td>
+                                        <td>@item.Status</td>
+                                        <td class="mono" title="@InterpretTopWait(item.WaitType, "Other", 0)">
+                                            @item.WaitType
+                                        </td>
+                                        <td>@item.CurrentWaitMs.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                        <td>@FormatBlockingSession(item.BlockingSessionId)</td>
+                                        <td>@item.CpuTimeMs.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                        <td>@item.TotalElapsedTimeMs.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                        <td>@item.Reads.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                        <td>@item.Writes.ToString("N0", CultureInfo.InvariantCulture)</td>
+                                        <td title="@item.ProgramName">@Truncate(item.ProgramName, 24)</td>
+                                        <td title="@item.LoginName">@Truncate(item.LoginName, 24)</td>
+                                        <td class="statement-cell" title="@item.RunningStatement">@Truncate(item.RunningStatement, 140)</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private readonly decimal _cpuSignalThresholdPct = 25.00m;
+    private int _topCount = 15;
+    private int _refreshSeconds = 5;
+    private bool _autoRefreshEnabled = true;
+    private bool _isLoading;
+    private bool _disposed;
+    private string? _loadError;
+    private PeriodicTimer? _timer;
+    private CancellationTokenSource? _timerCts;
+    private WaitStatsDashboardResponseModel? _response;
+    private API.Client.FormHelper? formHelper;
+    private string _selectedTab = "overview";
+    private CymBuildSchemaDashboardResponseModel? _schemaResponse;
+    private bool _schemaLoaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        formHelper = new FormHelper(
+            coreClient,
+            sageIntegrationService,
+            ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(Guid.Empty.ToString()).ToString(),
+            userService);
+
+        await RefreshAsync();
+        StartAutoRefreshLoop();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        if (formHelper is null)
+        {
+            _loadError = "FormHelper has not been initialised.";
+            return;
+        }
+
+        try
+        {
+            _isLoading = true;
+            _loadError = null;
+
+            _response = await formHelper.GetWaitStatsDashboardAsync(new WaitStatsDashboardRequestModel
+            {
+                TopCount = _topCount,
+                CpuPressureSignalThresholdPct = _cpuSignalThresholdPct
+            });
+
+            if (_selectedTab == "schema" || !_schemaLoaded)
+            {
+                _schemaResponse = await formHelper.GetCymBuildSchemaDashboardAsync();
+                _schemaLoaded = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StartAutoRefreshLoop()
+    {
+        _timerCts?.Cancel();
+        _timerCts?.Dispose();
+        _timer?.Dispose();
+
+        _timerCts = new CancellationTokenSource();
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(_refreshSeconds));
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!_disposed && _timer is not null && await _timer.WaitForNextTickAsync(_timerCts.Token))
+                {
+                    if (!_autoRefreshEnabled)
+                    {
+                        continue;
+                    }
+
+                    await RefreshAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+    }
+
+    private Task RestartTimerAsync()
+    {
+        StartAutoRefreshLoop();
+        return Task.CompletedTask;
+    }
+
+    private string GetCpuPressureCardCss()
+        => _response?.Summary.IsCpuPressureHighlighted == true ? "danger" : "success";
+
+    private string GetSignalCss(decimal signalPct)
+        => signalPct >= _cpuSignalThresholdPct ? "danger" : string.Empty;
+
+    private static string FormatPct(decimal value)
+        => string.Format(CultureInfo.InvariantCulture, "{0:N2}%", value);
+
+    private static string FormatSeconds(decimal value)
+        => string.Format(CultureInfo.InvariantCulture, "{0:N2}s", value);
+
+    private static string FormatDateTime(DateTime value)
+        => value.ToLocalTime().ToString("dd MMM yyyy HH:mm:ss", CultureInfo.InvariantCulture);
+
+    private static string FormatUptime(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m";
+    }
+
+    private static string FormatBlockingSession(int? sessionId)
+        => sessionId.GetValueOrDefault() <= 0 ? "-" : sessionId.Value.ToString(CultureInfo.InvariantCulture);
+
+    private static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        return value.Length <= maxLength
+            ? value
+            : value.Substring(0, maxLength - 3) + "...";
+    }
+
+    private sealed class OverviewCard
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string Detail { get; set; } = string.Empty;
+        public string CssClass { get; set; } = string.Empty;
+    }
+
+    private List<OverviewCard> BuildOverviewCards()
+    {
+        var cards = new List<OverviewCard>();
+
+        if (_response is null)
+        {
+            return cards;
+        }
+
+        var topWait = _response.TopWaits.FirstOrDefault();
+        var activeWaitCount = _response.ActiveWaits.Count;
+        var signalPct = _response.SignalResourceSummary.SignalWaitPct;
+
+        var healthStatus = "Healthy";
+        var healthMessage = "SQL Server appears mostly stable.";
+        var healthCss = "success";
+
+        if (_response.Summary.IsCpuPressureHighlighted)
+        {
+            healthStatus = "Attention";
+            healthMessage = "CPU scheduler pressure may be present.";
+            healthCss = "danger";
+        }
+        else if (activeWaitCount > 10)
+        {
+            healthStatus = "Watch";
+            healthMessage = "There are multiple active requests waiting right now.";
+            healthCss = "warn";
+        }
+
+        cards.Add(new OverviewCard
+        {
+            Title = "Overall Health",
+            Status = healthStatus,
+            Message = healthMessage,
+            Detail = $"Signal waits are {signalPct:N2}% of total wait time. Active waits: {activeWaitCount}.",
+            CssClass = healthCss
+        });
+
+        if (topWait is not null)
+        {
+            var interpretation = InterpretTopWait(topWait.WaitType, topWait.WaitCategory, topWait.PctOfTotalWaitTime);
+
+            cards.Add(new OverviewCard
+            {
+                Title = "Biggest Story",
+                Status = topWait.WaitType,
+                Message = interpretation,
+                Detail = $"Category: {topWait.WaitCategory}. Share of total: {topWait.PctOfTotalWaitTime:N2}%. Avg/task: {topWait.AvgWaitMsPerTask:N2} ms.",
+                CssClass = GetOverviewCssFromCategory(topWait.WaitCategory)
+            });
+        }
+
+        cards.Add(new OverviewCard
+        {
+            Title = "Recommended Action",
+            Status = BuildActionHeading(),
+            Message = BuildActionMessage(),
+            Detail = "Use the Technical tab for full wait breakdown and Active Requests for live sessions.",
+            CssClass = "info"
+        });
+
+        cards.Add(new OverviewCard
+        {
+            Title = "Context",
+            Status = "Since Restart",
+            Message = "These figures are cumulative, not a live 5-second sample.",
+            Detail = $"SQL Server start time: {_response.Summary.SqlServerStartTime.ToLocalTime():dd MMM yyyy HH:mm:ss}.",
+            CssClass = "neutral"
+        });
+
+        return cards;
+    }
+
+    private string InterpretTopWait(string? waitType, string? category, decimal pctOfTotal)
+    {
+        if (string.IsNullOrWhiteSpace(waitType))
+        {
+            return "No dominant wait was returned.";
+        }
+
+        return waitType switch
+        {
+            "SOS_WORK_DISPATCHER" => "This usually means SQL Server is idle and waiting for work. It is normally benign.",
+            "SOS_SCHEDULER_YIELD" => "This often points to CPU-heavy queries, scans, sorts, or missing indexes.",
+            "WRITELOG" => "This points to transaction log flushing. Heavy save activity or slow log storage can contribute.",
+            "PAGEIOLATCH_SH" or "PAGEIOLATCH_EX" or "PAGEIOLATCH_UP" => "This suggests data pages are waiting on storage reads or writes.",
+            "LCK_M_X" or "LCK_M_S" or "LCK_M_U" => "This suggests blocking between transactions.",
+            "RESOURCE_SEMAPHORE" or "RESOURCE_SEMAPHORE_QUERY_COMPILE" => "This suggests query memory pressure.",
+            "CXPACKET" or "CXCONSUMER" => "This suggests parallel query activity. Often normal unless dominant.",
+            _ when string.Equals(category, "CPU", StringComparison.OrdinalIgnoreCase)
+                => "This wait is CPU-related and may indicate expensive queries or concurrency pressure.",
+            _ when string.Equals(category, "I/O", StringComparison.OrdinalIgnoreCase)
+                => "This wait is I/O-related and may indicate storage latency or large scans.",
+            _ when string.Equals(category, "Memory", StringComparison.OrdinalIgnoreCase)
+                => "This wait is memory-related and may indicate large grants or compilation pressure.",
+            _ => "This wait needs interpretation in context with active requests and overall percentages."
+        };
+    }
+
+    private string BuildActionHeading()
+    {
+        if (_response is null)
+        {
+            return "Unavailable";
+        }
+
+        if (_response.Summary.IsCpuPressureHighlighted)
+        {
+            return "Review CPU-heavy queries";
+        }
+
+        var topWait = _response.TopWaits.FirstOrDefault()?.WaitType;
+
+        return topWait switch
+        {
+            "SOS_WORK_DISPATCHER" => "No immediate action needed",
+            "WRITELOG" => "Check log disk and save patterns",
+            "PAGEIOLATCH_SH" or "PAGEIOLATCH_EX" or "PAGEIOLATCH_UP" => "Check storage and indexing",
+            "LCK_M_X" or "LCK_M_S" or "LCK_M_U" => "Check blocking transactions",
+            _ => "Review top waits in context"
+        };
+    }
+
+    private string BuildActionMessage()
+    {
+        if (_response is null)
+        {
+            return "No data loaded.";
+        }
+
+        if (_response.Summary.IsCpuPressureHighlighted)
+        {
+            return "Look at expensive queries, scans, sorts, and index coverage first.";
+        }
+
+        var topWait = _response.TopWaits.FirstOrDefault()?.WaitType;
+
+        return topWait switch
+        {
+            "SOS_WORK_DISPATCHER" => "The server looks mostly idle. Focus on live waits before making tuning changes.",
+            "WRITELOG" => "Review transaction size, log growth settings, and log disk latency.",
+            "PAGEIOLATCH_SH" or "PAGEIOLATCH_EX" or "PAGEIOLATCH_UP" => "Review I/O latency, large scans, and missing indexes.",
+            "LCK_M_X" or "LCK_M_S" or "LCK_M_U" => "Look for long-running transactions and large lock footprints.",
+            _ => "Use the technical tables to confirm whether the dominant waits are significant or merely present."
+        };
+    }
+
+    private static string GetOverviewCssFromCategory(string? category)
+    {
+        return category switch
+        {
+            "CPU" => "danger",
+            "I/O" => "warn",
+            "Memory" => "warn",
+            _ => "neutral"
+        };
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _timerCts?.Cancel();
+        _timer?.Dispose();
+        _timerCts?.Dispose();
+    }
+}

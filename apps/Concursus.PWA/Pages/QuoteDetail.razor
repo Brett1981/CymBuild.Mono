@@ -10,7 +10,6 @@
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject IOptions<ClientConfiguration> Config
 
 @attribute [Authorize]
@@ -218,7 +217,6 @@
 
         _formHelper = new API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             "1c4794c1-f956-4c32-b886-5500ac778a56",
             userService);
     }

@@ -3,6 +3,10 @@ using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
 using Xunit;
 
+// These legacy characterization tests instantiate the component directly.
+// R2 will migrate them to bUnit parameter rendering; keep BL0005 suppression local to this file.
+#pragma warning disable BL0005
+
 namespace Concursus.PWA.Tests
 {
     public class ShoreInputTests
@@ -109,12 +113,13 @@ namespace Concursus.PWA.Tests
             };
 
             // Act
-            var newDateTime = new DateTime(2023, 2, 2);
+            var newDateTime = new DateTime(2023, 2, 2, 10, 15, 0, DateTimeKind.Unspecified);
+            var expectedUtcDateTime = DateTime.SpecifyKind(newDateTime, DateTimeKind.Local).ToUniversalTime();
             component.DateTimeValueBinding = newDateTime;
 
             // Assert
             Assert.Equal(newDateTime, component.DateTimeValueBinding);
-            Assert.Equal(newDateTime, dataProperty.Value.Unpack<Timestamp>().ToDateTime());
+            Assert.Equal(expectedUtcDateTime, dataProperty.Value.Unpack<Timestamp>().ToDateTime());
         }
 
         [Fact]
@@ -201,3 +206,5 @@ namespace Concursus.PWA.Tests
         }
     }
 }
+
+#pragma warning restore BL0005

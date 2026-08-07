@@ -1,0 +1,634 @@
+@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Services
+@using Concursus.Components.Shared.Services
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshservice
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+
+@attribute [Authorize]
+
+@* CBLD-540 *@
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+
+<MessageDisplay @ref="_messageDisplay"
+                ErrorMessage="@ErrorMessage"
+                PageMethod="@PageMethod"
+                MessageType="MessageType" />
+
+<ErrorBoundary>
+    <ChildContent>
+
+        @if (ViewDefinition is not null)
+        {
+            @* =============================================================
+                KPI + filters (NOT shown on closure queue)
+            ============================================================== *@
+            @if (IsClosureReviewQueueGrid)
+            {
+                <div class="auth-dashboard">
+                    <div class="kpi-summary">
+                        <div class="kpi-card">
+                            <div class="kpi-title">Total Pending</div>
+                            <div class="kpi-value">@AuthorisationTotalPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Jobs</div>
+                            <div class="kpi-value">@AuthorisationJobsPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Quotes</div>
+                            <div class="kpi-value">@AuthorisationQuotesPending</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-title">Enquiries</div>
+                            <div class="kpi-value">@AuthorisationEnquiriesPending</div>
+                        </div>
+                    </div>
+
+                    <div class="filter-control auth-toolbar">
+                        <div class="quick-filter-toolbar">
+                            <div class="d-flex flex-column gap-2">
+                                <div class="d-flex gap-2 flex-wrap align-items-center">
+                                    <button type="button"
+                                            class="@AuthorisationAllCss"
+                                            @onclick="async () => await SetAuthorisationTypeAsync(null)">
+                                        All (@AuthorisationTotalPending)
+                                    </button>
+
+                                    <button type="button"
+                                            class="@AuthorisationEnquiriesCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Enquiries")'>
+                                        Enquiries (@AuthorisationEnquiriesPending)
+                                    </button>
+
+                                    <button type="button"
+                                            class="@AuthorisationQuotesCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Quotes")'>
+                                        Quotes (@AuthorisationQuotesPending)
+                                    </button>
+
+                                    <button type="button"
+                                            class="@AuthorisationJobsCss"
+                                            @onclick='async () => await SetAuthorisationTypeAsync("Jobs")'>
+                                        Jobs (@AuthorisationJobsPending)
+                                    </button>
+
+                                    <div class="auth-toggle form-check form-switch">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               role="switch"
+                                               id="auth-my-items-only"
+                                               checked="@AuthorisationMyItemsOnly"
+                                               @onchange="async e => await ToggleAuthorisationMyItemsAsync(e.Value is bool b && b)" />
+                                        <label class="auth-toggle-label form-check-label" for="auth-my-items-only">My Items</label>
+                                    </div>
+
+                                    @if (_authorisationIsUpdating)
+                                    {
+                                        <span class="auth-updating-pill" role="status" aria-live="polite">
+                                            <span class="auth-spinner" aria-hidden="true"></span>
+                                            Updating…
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            }
+            @if (!IsClosureReviewQueueGrid)
+            {
+                <!-- KPI Section -->
+                <div class="kpi-summary">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Total Invoicing Value</div>
+                        <div class="kpi-value">@TotalQuoteValue.ToString("C", CultureInfo.CreateSpecificCulture("en-GB"))</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Average Invoicing Value</div>
+                        <div class="kpi-value">@AverageQuoteValue.ToString("C", CultureInfo.CreateSpecificCulture("en-GB"))</div>
+                    </div>
+                </div>
+
+                <div class="kpi-summary">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Paid Invoices</div>
+                        <div class="kpi-value">@NmbrOfPaidInvoices</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Pending Invoices</div>
+                        <div class="kpi-value">@NmbrOfPendingInvoices</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-title">Overdue Invoices</div>
+                        <div class="kpi-value">@NmbrOfOverdueInvoices</div>
+                    </div>
+                </div>
+
+                <div class="filter-control">
+                    <div class="status-explanation">
+                        <ul>
+                            @if (RedIndicator != "")
+                            {
+                                <li><span class="dot red"></span> @RedIndicator</li>
+                            }
+                            else if (OrangeIndicator != "")
+                            {
+                                <li><span class="dot yellow"></span> @OrangeIndicator</li>
+                            }
+                            else if (GreenIndicator != "")
+                            {
+                                <li><span class="dot green"></span> @GreenIndicator</li>
+                            }
+                        </ul>
+                    </div>
+
+                    <div class="quick-filter-toolbar">
+                        @if (CreatedOnColumn != "")
+                        {
+                            <div class="d-flex gap-2 flex-wrap align-items-center">
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilter7DaysCSS"
+                                        @onclick="() => ShowRecordsFromXDay(-7)">
+                                    Last 7 Days
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilter90DaysCSS"
+                                        @onclick="() => ShowRecordsFromXDay(-90)">
+                                    Last 90 Days
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        @onclick="ToggleCustomRange">
+                                    Custom Range...
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-primary @QuickFilterGroupByCSS"
+                                        @onclick="GroupByButton">
+                                    Group by @GroupByColumTranslation
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    @if (showCustomRange)
+                    {
+                        <div class="custom-range-panel align-items-end flex-wrap">
+                            <div>
+                                <label for="StartDate" class="form-label">From:</label>
+                                <input id="StartDate"
+                                       type="date"
+                                       class="form-control form-control-sm"
+                                       value="@DateOnlyToInputValue(customStartDate)"
+                                       @onchange="OnCustomStartDateChanged" />
+                            </div>
+
+                            <div>
+                                <label for="EndDate" class="form-label">To:</label>
+                                <input id="EndDate"
+                                       type="date"
+                                       class="form-control form-control-sm"
+                                       value="@DateOnlyToInputValue(customEndDate)"
+                                       @onchange="OnCustomEndDateChanged" />
+                            </div>
+
+                            <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyCustomRange">Apply</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ToggleCustomRange">Cancel</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* =============================================================
+               Native search, filters and grid wrapper
+            ============================================================== *@
+            <div class="cb-dynamic-grid-view filtered-dynamic-grid-view-v2-shell @(Disabled ? "is-disabled" : string.Empty)">
+                <div class="cb-v2-card filtered-grid-v2-toolbar-card">
+                    <div class="cb-v2-toolbar dynamic-grid-view-v2-toolbar filtered-grid-v2-toolbar">
+                        <div class="cb-v2-toolbar-left dynamic-grid-view-v2-toolbar-left">
+                            <input class="cb-v2-input dynamic-grid-view-v2-search filtered-grid-v2-search"
+                                   placeholder="@NativeSearchPlaceholder"
+                                   value="@NativeSearchText"
+                                   @oninput="OnNativeSearchChanged"
+                                   @onkeydown="OnNativeSearchKeyDown"
+                                   disabled="@NativeIsLoading" />
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ApplyNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Search
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Clear
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary dynamic-grid-view-v2-filter-toggle @(NativeFilterPanelOpen ? "is-active" : string.Empty)"
+                                    @onclick="ToggleNativeFilterPanel"
+                                    disabled="@NativeIsLoading">
+                                <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+                                Filters
+                                @if (NativeActiveFilterCount > 0)
+                                {
+                                    <span class="dynamic-grid-view-v2-filter-count">@NativeActiveFilterCount</span>
+                                }
+                            </button>
+                        </div>
+
+                        <div class="cb-v2-toolbar-right dynamic-grid-view-v2-toolbar-right">
+                            @if (HasActiveNativeSearch)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Search</span>
+                                    <span class="cb-v2-pill-value">Active</span>
+                                </div>
+                            }
+
+                            @if (HasActiveNativeColumnFilters)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filters</span>
+                                    <span class="cb-v2-pill-value">@NativeActiveFilterCount</span>
+                                </div>
+                            }
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@NativeTotalRows</span>
+                            </div>
+
+                            <label class="dynamic-grid-view-v2-page-size-label" for="filtered-dynamic-grid-view-page-size-@ViewDefinition.Code">
+                                Rows per page
+                            </label>
+                            <select id="filtered-dynamic-grid-view-page-size-@ViewDefinition.Code"
+                                    class="cb-v2-input dynamic-grid-view-v2-page-size-select"
+                                    value="@NativePageSize"
+                                    @onchange="ChangeNativePageSizeAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (NativeFilterPanelOpen)
+                    {
+                        <div class="dynamic-grid-view-v2-filter-panel filtered-grid-v2-filter-panel cb-v2-card shadow-sm">
+                            <div class="dynamic-grid-view-v2-filter-panel-header">
+                                <div class="dynamic-grid-view-v2-filter-panel-title">
+                                    <span class="dynamic-grid-view-v2-filter-panel-icon">
+                                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="dynamic-grid-view-v2-filter-panel-heading">Column filters</div>
+                                        <div class="dynamic-grid-view-v2-filter-panel-subtitle">Refine the current grid view, then apply when ready.</div>
+                                    </div>
+                                </div>
+
+                                <div class="dynamic-grid-view-v2-filter-panel-summary">
+                                    @NativeActiveFilterCount active
+                                </div>
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-grid filtered-grid-v2-filter-grid">
+                                @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
+                                {
+                                    <div class="dynamic-grid-view-v2-filter-field filtered-grid-v2-filter-field">
+                                        <label class="form-label" for="filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                        <div class="dynamic-grid-view-v2-filter-input-shell input-group">
+                                            <i class="bi bi-search" aria-hidden="true"></i>
+                                            <input id="filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                   class="form-control cb-v2-input dynamic-grid-view-v2-filter"
+                                                   placeholder="Filter @column.Title..."
+                                                   value="@GetNativeFilterValue(column.Name)"
+                                                   aria-label="Filter @column.Title"
+                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                   @onkeydown="OnNativeFilterKeyDown"
+                                                   disabled="@NativeIsLoading" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-actions">
+                                <button type="button"
+                                        class="btn btn-primary cb-v2-btn-primary d-inline-flex align-items-center gap-2"
+                                        @onclick="ApplyNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                    Apply Filters
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary cb-v2-btn-secondary d-inline-flex align-items-center gap-2"
+                                        @onclick="ClearAllNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="grid-container native-grid-container cb-v2-card dynamic-grid-view-v2-grid-card @(IsClosureReviewQueueGrid ? "auth-queue-grid" : "")">
+                    <div class="native-grid-shell">
+                    @if (NativeIsLoading)
+                    {
+                        <div class="native-grid-loading" role="status" aria-live="polite">
+                            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                            <span>Loading…</span>
+                        </div>
+                    }
+
+                    <div class="native-grid-scroll">
+                        <table class="cb-v2-table dynamic-grid-view-v2-grid-table native-grid-table">
+                            <thead>
+                                <tr>
+                                    @if (IsClosureReviewQueueGrid)
+                                    {
+                                        <th class="actions-col native-grid-actions-header">Actions</th>
+                                    }
+
+                                    @foreach (var gvcd in VisibleGridColumns)
+                                    {
+                                        <th style="@GetColumnWidthStyle(gvcd.Width)">
+                                            <button type="button"
+                                                    class="native-grid-sort-button @GetNativeSortCss(gvcd.Name)"
+                                                    title="Sort by @gvcd.Title"
+                                                    @onclick="async () => await SortNativeGridAsync(gvcd.Name)">
+                                                <span>@gvcd.Title</span>
+                                                <span class="native-grid-sort-indicator">@GetNativeSortIndicator(gvcd.Name)</span>
+                                            </button>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!NativeGridItems.Any())
+                                {
+                                    <tr>
+                                        <td colspan="@NativeGridColumnCount" class="text-muted text-center py-4">
+                                            No records found.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var row in NativeGridItems)
+                                    {
+                                        var rowDict = (IDictionary<string, object>)row;
+                                        <tr class="@GetNativeRowCssClass(row)" @ondblclick="() => OnRowDoubleClickHandler(row)">
+                                            @if (IsClosureReviewQueueGrid)
+                                            {
+                                                var recordGuid = TryGetGuidFromRow(rowDict, "Guid");
+                                                var hasGuid = recordGuid != Guid.Empty;
+
+                                                var entityTypeName =
+                                                    rowDict.TryGetValue("EntityTypeName", out var et) ? et?.ToString() :
+                                                    rowDict.TryGetValue("Type", out var t) ? t?.ToString() :
+                                                    "";
+
+                                                var isActionableEntity =
+                                                    string.Equals(entityTypeName, "Jobs", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(entityTypeName, "Quotes", StringComparison.OrdinalIgnoreCase) ||
+                                                    string.Equals(entityTypeName, "Enquiries", StringComparison.OrdinalIgnoreCase);
+
+                                                var canApproveReject = hasGuid && isActionableEntity && TryGetBoolFromRow(rowDict, "CanActionForUser");
+
+                                                <td class="native-grid-actions-cell">
+                                                    <div class="d-flex gap-2 actions-cell">
+                                                        <button type="button"
+                                                                class="btn btn-outline-primary btn-sm"
+                                                                disabled="@(!hasGuid)"
+                                                                @onclick="() => OpenClosureReviewModal(rowDict)">
+                                                            Review
+                                                        </button>
+
+                                                        <button type="button"
+                                                                class="btn btn-success btn-sm"
+                                                                disabled="@(!canApproveReject)"
+                                                                @onclick="() => OpenClosureApproveModal(rowDict)">
+                                                            Approve
+                                                        </button>
+
+                                                        <button type="button"
+                                                                class="btn btn-danger btn-sm"
+                                                                disabled="@(!canApproveReject)"
+                                                                @onclick="() => OpenClosureRejectModal(rowDict)">
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            }
+
+                                            @foreach (var gvcd in VisibleGridColumns)
+                                            {
+                                                <td style="@GetColumnWidthStyle(gvcd.Width)">
+                                                    @if (string.Equals(gvcd.Name, "ID", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        var indicator = GetInvoicePaymentStatusDot(row);
+                                                        <div class="custom-ellipsis">
+                                                            @if (!string.IsNullOrWhiteSpace(indicator))
+                                                            {
+                                                                <span class="@indicator"></span>
+                                                            }
+                                                            @GetNativeCellValue(row, gvcd.Name)
+                                                        </div>
+                                                    }
+                                                    else if (string.Equals(gvcd.Name, "Date", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        var chaseIndicator = GetDateChaseDot(row);
+                                                        <div class="custom-ellipsis">
+                                                            @if (!string.IsNullOrWhiteSpace(chaseIndicator))
+                                                            {
+                                                                <span class="@chaseIndicator"></span>
+                                                            }
+                                                            @GetNativeCellValue(row, gvcd.Name)
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="custom-ellipsis">@GetNativeCellValue(row, gvcd.Name)</div>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="native-grid-pager">
+                    <div class="native-grid-pager-left">
+                        <span>Page @NativePage of @NativeTotalPages</span>
+                        <span class="text-muted">@NativeGridSummaryText</span>
+                    </div>
+                    <div class="native-grid-pager-right dynamic-grid-view-v2-pager">
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn"
+                                disabled="@(!CanGoPreviousPage)"
+                                @onclick="GoToPreviousNativePageAsync">
+                            Previous
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn"
+                                disabled="@(!CanGoNextPage)"
+                                @onclick="GoToNextNativePageAsync">
+                            Next
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            </div>
+
+            <div class="back-to-top-button">
+                <button class="btn btn-secondary" @onclick="ScrollToTop">
+                    <i class="bi bi-arrow-up-circle"></i> Back To Top
+                </button>
+            </div>
+        }
+
+        @* =============================================================
+           Closure Review Modal (queue ONLY)
+        ============================================================== *@
+        @if (IsClosureReviewQueueGrid && _closureModalVisible)
+        {
+            <div class="cb-native-modal-backdrop closure-review-backdrop" role="presentation">
+                <div class="cb-native-modal closure-review-window" role="dialog" aria-modal="true" aria-labelledby="closure-review-title">
+                    <div class="cb-native-modal-header">
+                        <h5 id="closure-review-title" class="m-0">@_closureModalTitle</h5>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseClosureModal" aria-label="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="cb-native-modal-body">
+                        <div class="mb-2">
+                            <div><strong>Type:</strong> @_closureEntityTypeName</div>
+                            <div><strong>#.:</strong> @_closureNumber</div>
+                            <div><strong>Status:</strong> @_closureStatus</div>
+                            <div><strong>Discipline:</strong> @_closureDiscipline</div>
+                            <div><strong>Last Updated:</strong> @_closureLastUpdated</div>
+
+                            <hr />
+
+                            <div><strong>Reference:</strong> @_closureDisplayRef</div>
+                            <div><strong>Client:</strong> @_closureClient</div>
+                            <div><strong>Agent:</strong> @_closureAgent</div>
+                            <div><strong>Address:</strong> @_closureAddress</div>
+
+                            @if (_closureEntityTypeName == "Jobs")
+                            {
+                                <hr />
+                                <div><strong>Description:</strong> @_closureJobDescription</div>
+                                <div><strong>Job Type:</strong> @_closureJobType</div>
+                            }
+                            else if (_closureEntityTypeName == "Quotes")
+                            {
+                                <hr />
+                                <div><strong>Agreed Fee:</strong> @_closureQuoteAgreedFee</div>
+                                <div><strong>Net:</strong> @_closureQuoteNet</div>
+                                <div><strong>Date Accepted:</strong> @_closureQuoteDateAccepted</div>
+                            }
+                            else if (_closureEntityTypeName == "Enquiries")
+                            {
+                                <hr />
+                                <div><strong>Total Fee:</strong> @_closureEnquiryTotalFee</div>
+                            }
+                        </div>
+
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenFullRecord">
+                                Open Full Record
+                            </button>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label"><strong>Comment</strong></label>
+                            <textarea class="form-control" rows="4" @bind="_closureComment"></textarea>
+
+                            @if (!string.IsNullOrWhiteSpace(_closureValidationMessage))
+                            {
+                                <div class="text-danger mt-1">@_closureValidationMessage</div>
+                            }
+
+                            <div class="text-muted mt-1" style="font-size:0.9rem;">
+                                Reject: comment required. Approve: optional (defaults to “Closure Approved by {USER}”).
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cb-native-modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseClosureModal">
+                            Cancel
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-success"
+                                disabled="@_closureBusy"
+                                @onclick="SubmitClosureApprove">
+                            @(_closureEntityTypeName == "Enquiries" ? "Approve Inquiry" : "Approve Closure")
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-danger"
+                                disabled="@_closureBusy"
+                                @onclick="SubmitClosureReject">
+                            @(_closureEntityTypeName == "Enquiries" ? "Reject Inquiry" : "Reject Closure")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (ViewDefinition?.IsDetailWindowed == true && WindowIsVisible)
+        {
+            <div class="cb-native-modal-backdrop detail-window-backdrop" role="presentation">
+                <div class="cb-native-modal responsive-window detail-window-modal" role="dialog" aria-modal="true" aria-labelledby="detail-window-title">
+                    <div class="cb-native-modal-header">
+                        <h5 id="detail-window-title" class="m-0">@WindowTitle</h5>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseWindow" aria-label="Close">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                    <div class="cb-native-modal-body detail-window-body">
+                        <DynamicComponent Type="@Type.GetType($"Concursus.PWA.Pages.{_detailPageTypeName}")"
+                                          Parameters="@_detailPageParameters" />
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

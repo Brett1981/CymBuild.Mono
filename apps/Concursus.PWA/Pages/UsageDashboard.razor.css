@@ -8,6 +8,17 @@
 .usage-panel p { margin: .25rem 0 0; color: var(--cb-v2-text-muted); }
 .usage-dashboard-eyebrow { color: var(--cb-v2-primary) !important; }
 
+.usage-report-switcher { display: inline-flex; align-self: flex-start; padding: .25rem; gap: .25rem; }
+.usage-report-switcher button { padding: .5rem .9rem; border: 0; border-radius: 7px; background: transparent; color: var(--cb-v2-text-muted); font-weight: 650; }
+.usage-report-switcher button:hover,
+.usage-report-switcher button:focus-visible { background: #f1f5f9; outline: none; }
+.usage-report-switcher button.active { background: var(--cb-v2-primary); color: #fff; }
+
+.usage-trend { display: inline-flex; padding: .2rem .55rem; border-radius: 999px; background: #eef2f7; color: #475569; font-size: .78rem; font-weight: 700; }
+.usage-trend.increased,
+.usage-trend.new-usage { background: #dcfce7; color: #166534; }
+.usage-trend.decreased { background: #fee2e2; color: #991b1b; }
+
 .usage-filter-panel {
     display: grid;
     grid-template-columns: minmax(150px, .8fr) minmax(150px, .8fr) minmax(220px, 1.5fr) auto;

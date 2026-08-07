@@ -7,8 +7,6 @@
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 @if (IsWindowOpen)
 {
     <section class="sharepoint-browser cb-v2-card m-1 flex-grow-1" aria-labelledby="sharepoint-browser-title">
@@ -137,7 +135,7 @@
     {
         try
         {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+            formHelper = new FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
             siteId = SharePointSiteId;
             await LoadDriveListItems();
         }

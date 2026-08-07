@@ -1,0 +1,647 @@
+schema_version: '26.3'
+release_baseline:
+  release: '26.3'
+  validated_on: '2026-08-04'
+  schema_runner: CYB361_R27
+  verified_qa_status: DeploymentApplied
+  metadata_model: SMigration run-based with manifest ValidateOnly/governance support
+purpose: >
+  Companion navigation map for AI-assisted code analysis in the CymBuild monorepo. Focused on locating likely source files,
+  metadata definitions, integration code, dynamic UI components, and CymBuild platform flows quickly and safely.
+
+  CymBuild is a metadata-driven platform. Release 26.3 uses SMigration run-based schema/metadata workbenches; metadata manifests
+  are ValidateOnly/governance support. Navigation should always respect the mandatory application flow:
+
+    UI → FormHelper → gRPC API → EF → SQL
+
+  The UI must not bypass FormHelper or contain business logic that belongs in the API, EF/repository, or SQL layer.
+repository:
+  root: .
+  solution_hint:
+  - CymBuild.Monorepo.sln
+architecture_rules:
+  mandatory_flow:
+  - apps/Concursus.PWA UI component/page
+  - libs/Concursus.API.Client FormHelper/client wrapper
+  - services/Concursus.API gRPC/API service
+  - libs/Concursus.EF repository/query/domain model
+  - SQL schema/procedure/function/view
+  do_not:
+  - Do not call gRPC/API directly from Razor components when FormHelper/client wrappers exist.
+  - Do not put business logic in the PWA/UI.
+  - Do not hard-code fields, grids, dropdowns, labels, actions, or layouts where metadata exists.
+  - Do not update entity status directly; use SCore.DataObjectTransitionUpsert.
+  - Do not create platform-managed business entities without SCore.DataObjects rows.
+  - Do not create non-idempotent SQL deployment scripts.
+  - Do not use SELECT * in production SQL.
+  - Do not manually edit metadata in controlled environments.
+  - Do not use Telerik for new UI unless explicitly requested.
+  - Do not describe metadata migration as purely manifest-driven.
+  - Do not execute schema DDL from the Blazor workbench/browser.
+  - Do not call Sage directly; use the controlled Sage microservice boundary.
+  - Do not use insert-then-update identity patterns.
+  dataobject_rules:
+  - Every inserted CymBuild entity must have a matching SCore.DataObjects row.
+  - SCore.DataObjects must include the correct EntityTypeId.
+  - Latest SCore.DataObjectTransition row is the current state.
+  - Status transitions must go through SCore.DataObjectTransitionUpsert.
+  sql_rules:
+  - Use explicit columns.
+  - Use RowStatus <> 0 AND RowStatus <> 254 for active records unless intentionally different.
+  - Use idempotent scripts.
+  - Prefer CREATE OR ALTER for procedures/functions/views where appropriate.
+  - Use stable GUIDs for metadata and cross-environment matching.
+  - Avoid environment-specific numeric IDs in deployment scripts.
+  metadata_rules:
+    source_of_truth:
+    - Schema = source-controlled SQL.
+    - Metadata migration = SMigration run-based code/SQL; manifests = ValidateOnly/governance support.
+    - Database = deployment target only.
+    deployment_order:
+    - Schema deploy
+    - Metadata validate
+    - Metadata apply
+    - Runtime verification
+    apply_order:
+    - Grid
+    - View
+    - Columns
+    constraints:
+    - No duplicate metadata rows.
+    - No manual metadata DB edits.
+    - Apply idempotently by Guid.
+  required_patterns:
+  - 'Metadata migration: Create Run → Stage → Validate → Identity Map → Review/Ignore/Override → Selection → Apply Preview
+    → Apply → Audit.'
+  - 'Schema deployment: accepted SMigration plan → external R27 runner/controlled worker → source-controlled SQL → audit.'
+  - Every major entity insert creates its DataObjects row atomically.
+projects:
+- key: PWA
+  path: apps/Concursus.PWA
+  stack: Blazor WebAssembly / Razor Components
+  role: >
+    Dynamic front-end renderer. Renders forms, grids, dashboards, widgets, modals, and metadata-driven UI. Should call FormHelper/client
+    wrappers, not API/gRPC directly.
+  entry_points:
+  - Program.cs
+  - App.razor
+  high_value_dirs:
+  - path: Pages
+    role: Route-level UI pages (.razor)
+    lookup_hints:
+    - Start here when user mentions a screen/page name.
+    - Search for @page directives.
+    - Check for .razor, .razor.cs, and .razor.css companions.
+    - For Telerik removal, compare existing page with V2/non-Telerik reference patterns.
+  - path: Shared
+    role: Reusable UI components, shared layout, dynamic widgets, modals, grids
+    lookup_hints:
+    - Search here for shared dynamic UI building blocks.
+    - Look for non-Telerik replacement controls and modal hosts.
+  - path: Services
+    role: Front-end service abstractions and API integration helpers
+    lookup_hints:
+    - Check whether calls are routed through FormHelper/client services.
+  - path: Helpers
+    role: Browser/client utility helpers such as storage, formatting, IndexedDB, UI formatting
+  - path: Classes
+    role: Front-end models and helper classes
+  - path: wwwroot
+    role: Static assets such as CSS, JS, images, vendor files
+    note: Large folder; avoid broad scans unless investigating static resources or styling.
+    lookup_hints:
+    - Search for cymbuild-v2.css when investigating new UI styling.
+    - Search for legacy Telerik CSS references when removing Telerik.
+  common_tasks:
+  - intent: Find page implementation
+    start_with:
+    - Pages/<Name>.razor
+    - Pages/<Name>.razor.cs
+    - Pages/<Name>.razor.css
+    - rg '@page' apps/Concursus.PWA/Pages
+  - intent: Find shared UI component
+    start_with:
+    - Shared/**/*.razor
+    - Shared/**/*.razor.cs
+    - Shared/**/*.razor.css
+  - intent: Find non-Telerik / V2 UI examples
+    start_with:
+    - rg --files apps/Concursus.PWA | rg 'V2|DynamicBatchGridView|SageInboundDiagnostics|Modal|Windowed'
+    - rg 'Telerik|Grid|Modal|Dialog|DropDown|Filter|Search' apps/Concursus.PWA/Pages apps/Concursus.PWA/Shared
+  - intent: Find client-side app bootstrap or DI
+    start_with:
+    - Program.cs
+    - App.razor
+  - intent: Find UI formatting/date/time behaviour
+    start_with:
+    - Helpers
+    - Shared
+    - rg 'UiFormattingHelper|DateTime|Timestamp' apps/Concursus.PWA
+- key: API_CLIENT
+  path: libs/Concursus.API.Client
+  stack: Shared .NET client library consumed by front-end and other services
+  role: >
+    Client-side abstraction over API/gRPC calls. This is the expected handoff point from the PWA into backend services. FormHelper
+    and related services belong here.
+  entry_points:
+  - Concursus.API.Client.csproj
+  high_value_dirs:
+  - path: Services
+    role: Client-facing wrappers/services for API access
+    lookup_hints:
+    - Search here before adding API calls to PWA.
+    - FormHelper/client wrappers should be extended here rather than bypassed.
+  - path: Models
+    role: Client DTOs and service state models
+  - path: Classes
+    role: Client helper implementations
+  common_tasks:
+  - intent: Find FormHelper method used by UI
+    start_with:
+    - rg 'class FormHelper|partial class FormHelper|FormHelper' libs/Concursus.API.Client
+  - intent: Find typed response/request model used by UI
+    start_with:
+    - Models/**/*.cs
+    - rg 'class |record ' libs/Concursus.API.Client/Models
+  - intent: Find wrapper around API or translation/file services
+    start_with:
+    - Services/*.cs
+    - Classes/*.cs
+- key: API
+  path: services/Concursus.API
+  stack: ASP.NET Core Web API + gRPC/proto integrations
+  role: >
+    Backend service layer. Owns orchestration, validation, security context, business rule coordination, gRPC endpoints, HTTP
+    endpoints where present, background workers, and integration coordination.
+  entry_points:
+  - Program.cs
+  high_value_dirs:
+  - path: Controllers
+    role: HTTP endpoints / routing layer
+  - path: Services
+    role: Domain/business logic, workers, integration orchestration, application services
+    lookup_hints:
+    - Search here for workflow, invoice automation, Sage, outbox, SharePoint, Outlook, AI and background workers.
+  - path: EntityFramework
+    role: EF-facing data models/repositories grouped by domain area
+  - path: Interfaces
+    role: Service contracts
+  - path: Protos
+    role: gRPC/protobuf contracts
+    lookup_hints:
+    - Search proto definitions when adding/changing gRPC contracts.
+  - path: Sage
+    role: Sage API/SOAP integrations and Sage-specific helpers
+    lookup_hints:
+    - Start here for Sage inbound/outbound API integration issues.
+  - path: Infrastructure
+    role: Infrastructure-level concerns such as SQL session context, middleware, logging helpers
+  - path: Classes
+    role: Utility/service helper classes
+  - path: Types
+    role: API DTOs / request-response types where present
+  - path: Models
+    role: API models where present
+  common_tasks:
+  - intent: Trace API endpoint to implementation
+    start_with:
+    - Controllers/*.cs
+    - Services/*.cs
+    - Protos/*.proto
+  - intent: Find gRPC service implementation
+    start_with:
+    - rg 'CoreService|UiService|override.*Async|Grpc' services/Concursus.API
+    - services/Concursus.API/Protos
+  - intent: Find scheduled/background processing
+    start_with:
+    - Services/**/**Worker*.cs
+    - Services/Outbox/*.cs
+    - rg 'BackgroundService|IHostedService|Worker|Schedule|Automation' services/Concursus.API
+  - intent: Find Sage integration
+    start_with:
+    - Sage
+    - Services
+    - rg 'Sage|Inbound|Outbound|IntegrationOutbox|Outbox|Idempot' services/Concursus.API
+  - intent: Find SharePoint/Outlook filing
+    start_with:
+    - rg 'SharePoint|Graph|Outlook|Email|Filing|Folder' services/Concursus.API
+  - intent: Find request/response contracts
+    start_with:
+    - Types/*.cs
+    - Models/*.cs
+    - Protos/*.proto
+- key: EF
+  path: libs/Concursus.EF
+  stack: EF/domain data-access and query/repository layer
+  role: >
+    Data access, query construction, repository logic, metadata model assembly, and domain persistence support. EF bridges
+    API services to SQL schema, stored procedures, functions, views, and metadata tables.
+  entry_points:
+  - Concursus.EF.csproj
+  - Core.cs
+  - UserInterface.cs
+  - QueryBuilder.cs
+  high_value_dirs:
+  - path: Types
+    role: Data/domain transfer types and query payload models
+  - path: Finance
+    role: Finance repositories and data access, including invoice/transaction-related logic
+  - path: Services
+    role: EF-backed synchronization and domain services
+  - path: Monitoring
+    role: Monitoring repositories
+  - path: MetadataManifests
+    role: Metadata validation/manifests tooling
+    lookup_hints:
+    - Start here for metadata CI/CD, manifest validation, and metadata apply logic.
+  - path: Helpers
+    role: EF/domain helper utilities
+  - path: Interfaces
+    role: Data/service contracts
+  common_tasks:
+  - intent: Find metadata model assembly
+    start_with:
+    - Core.cs
+    - UserInterface.cs
+    - MetadataManifests
+    - rg 'EntityType|EntityProperty|GridViewDefinition|DropDownListDefinition|Widget' libs/Concursus.EF
+  - intent: Find query construction logic
+    start_with:
+    - QueryBuilder.cs
+    - QueryBuilderTiming.cs
+  - intent: Find repository for a domain
+    start_with:
+    - '*Repository.cs'
+    - Finance/*Repository.cs
+    - rg 'Repository' libs/Concursus.EF
+  - intent: Find finance/invoice automation data logic
+    start_with:
+    - Finance
+    - rg 'InvoiceSchedule|InvoiceRequest|Transaction|RibaStage|FeeDrawdown|Automation' libs/Concursus.EF
+  - intent: Find shared domain types used across API/PWA
+    start_with:
+    - Types/*.cs
+- key: COMPONENTS_SHARED
+  path: libs/Concursus.Components.Shared
+  stack: Razor component library / shared UI controls
+  role: >
+    Reusable UI building blocks shared across CymBuild client surfaces. Important for non-Telerik replacement work and reusable
+    CymBuild-native controls.
+  entry_points:
+  - Concursus.Components.Shared.csproj
+  high_value_dirs:
+  - path: .
+    role: Shared controls, dialogs, inputs, display components, reusable UI helpers
+  common_tasks:
+  - intent: Find reusable non-Telerik control
+    start_with:
+    - rg --files libs/Concursus.Components.Shared | rg 'razor|cs|css'
+    - rg 'Modal|Dialog|DropDown|Grid|Input|Button|Toast|Signature' libs/Concursus.Components.Shared
+  - intent: Find modal/dialog component
+    start_with:
+    - rg 'Modal|Dialog|Window|Host' libs/Concursus.Components.Shared apps/Concursus.PWA/Shared
+- key: OUTLOOK_ADDIN
+  path: apps
+  stack: Outlook add-in / Blazor / Office JS / API integration
+  role: >
+    Outlook add-in and related client surface for filing emails into CymBuild and SharePoint-backed project folders.
+  note: >
+    Exact path may vary. Search by Outlook, Office, Graph, EmailFiling, or manifest names.
+  common_tasks:
+  - intent: Find Outlook add-in manifest
+    start_with:
+    - rg --files . | rg 'Outlook|Development.xml|manifest'
+  - intent: Find email filing UI
+    start_with:
+    - rg 'EmailFiling|SaveToSharePoint|Graph|Office|selectedFolderPath|Publish' apps services libs
+  - intent: Find publish prompt work
+    start_with:
+    - rg 'Publish Prompt|Enable Publish|compose|forward|send' apps services libs
+- key: SQL
+  path: database
+  stack: SQL Server schema, stored procedures, functions, views, metadata deployment scripts
+  role: >
+    Source-controlled SQL schema and deployment scripts. SQL is the deployment target for business data structures, metadata
+    tables, functions, procedures, views, and reference data. Actual folder names may vary by repo layout.
+  note: >
+    If no /database folder exists, search repo for .sql files. Do not assume schema; inspect source-controlled SQL before
+    making SQL changes.
+  common_tasks:
+  - intent: Find SQL object
+    start_with:
+    - rg --files . | rg '\.sql$'
+    - rg 'CREATE OR ALTER.*<ObjectName>|ALTER.*<ObjectName>|CREATE.*<ObjectName>' . -g '*.sql'
+  - intent: Find entity query SQL
+    start_with:
+    - rg 'EntityQueries|EntityQuery|QueryName|GridView|DropDownList' . -g '*.sql'
+  - intent: Find workflow/status SQL
+    start_with:
+    - rg 'DataObjectTransition|Workflow|WorkflowStatus|WorkflowTransition|WorkflowGetNextStatus' . -g '*.sql'
+  - intent: Find classification SQL
+    start_with:
+    - rg 'DataClassification|SecurityClassification|Classifications' . -g '*.sql'
+  - intent: Find invoice/RIBA SQL
+    start_with:
+    - rg 'InvoiceSchedule|InvoiceRequest|RibaStage|FeeDrawdown|JobRibaStageFees' . -g '*.sql'
+  - intent: Find Sage/integration SQL
+    start_with:
+    - rg 'Sage|IntegrationOutbox|Inbound|Outbound|Idempot' . -g '*.sql'
+- name: Schema deployment runner
+  path: tools/SchemaDeployment
+  role: External controlled R27 runner; consumes accepted SMigration plans and never runs from browser UI.
+  high_value_files:
+  - Invoke-CymBuildSchemaDeployment.ps1
+  - README.md
+  search_intents:
+  - schema deployment
+  - accepted run
+  - WhatIf
+  - RetryFailedDeployment
+  - AllowPartial
+  - PreDeploymentScript
+  - PostDeploymentScript
+cross_project_navigation:
+  typical_flow:
+  - PWA page/user action begins in apps/Concursus.PWA/Pages or Shared.
+  - PWA should call FormHelper/client wrapper in libs/Concursus.API.Client.
+  - API service/proto/controller continues in services/Concursus.API.
+  - Persistence/query work is implemented in libs/Concursus.EF.
+  - SQL procedure/function/view/table/metadata completes the operation.
+  formhelper_flow:
+  - Find UI event handler in PWA.
+  - Find FormHelper/client method used by the UI.
+  - Find matching gRPC/proto/API service method.
+  - Find EF repository/query/domain method.
+  - Find SQL object or metadata definition.
+  handoff_markers:
+  - Method names ending with Service/Repository patterns.
+  - DTO names shared between API_CLIENT Models and EF Types.
+  - Controller/action names mirrored by client service methods.
+  - Proto rpc names mirrored by API service overrides.
+  - Entity query names mirrored in metadata and SQL.
+  - Guid fields used to map metadata across environments.
+locate_by_intent_index:
+  routing_or_endpoint:
+  - services/Concursus.API/Controllers
+  - services/Concursus.API/Protos
+  - services/Concursus.API/Services
+  - apps/Concursus.PWA/Pages
+  business_logic:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF/*Repository.cs
+  - libs/Concursus.EF/Finance
+  - services/Concursus.API/EntityFramework
+  data_contracts:
+  - libs/Concursus.API.Client/Models
+  - libs/Concursus.EF/Types
+  - services/Concursus.API/Types
+  - services/Concursus.API/Models
+  - services/Concursus.API/Protos
+  storage_or_db_query:
+  - libs/Concursus.EF
+  - services/Concursus.API/EntityFramework
+  - database
+  - '**/*.sql'
+  ui_components:
+  - apps/Concursus.PWA/Shared
+  - apps/Concursus.PWA/Pages
+  - libs/Concursus.Components.Shared
+  metadata:
+  - libs/Concursus.EF/MetadataManifests
+  - libs/Concursus.EF/UserInterface.cs
+  - '**/*Metadata*'
+  - '**/*.sql'
+  non_telerik_ui:
+  - apps/Concursus.PWA/Pages
+  - apps/Concursus.PWA/Shared
+  - libs/Concursus.Components.Shared
+  - apps/Concursus.PWA/wwwroot
+  - 'Search terms: V2, Telerik, DynamicBatchGridView, SageInboundDiagnostics, cymbuild-v2.css'
+  sage_integration:
+  - services/Concursus.API/Sage
+  - services/Concursus.API/Services
+  - services/Concursus.API/Infrastructure
+  - libs/Concursus.EF/Finance
+  - '**/*.sql'
+  - 'Search terms: Sage, Inbound, Outbound, IntegrationOutbox, Idempotency, Retry'
+  classifications:
+  - apps/Concursus.PWA/Pages
+  - libs/Concursus.API.Client
+  - services/Concursus.API
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: DataClassification, SecurityClassification, Defcon, Official, Official Sensitive'
+  invoice_automation:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF/Finance
+  - '**/*.sql'
+  - 'Search terms: InvoiceSchedule, InvoiceRequest, InvoiceRequestItem, Automation, MonthConfiguration, PercentageConfiguration,
+    TriggerInstances'
+  riba_stage_fee_tracking:
+  - libs/Concursus.EF/Finance
+  - services/Concursus.API/Services
+  - apps/Concursus.PWA/Pages
+  - '**/*.sql'
+  - 'Search terms: RibaStage, JobRibaStageFees, FeeDrawdown, QuoteItems, Stage, Invoiced, Paid, Remaining'
+  workflow_status:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: DataObjectTransition, DataObjectTransitionUpsert, WorkflowGetNextStatus, WorkflowStatus, WorkflowTransition'
+  outlook_sharepoint:
+  - apps
+  - services/Concursus.API/Services
+  - services/Concursus.API/Controllers
+  - 'Search terms: Outlook, Office, Graph, EmailFiling, SharePoint, SaveToSharePoint, selectedFolderPath'
+  ai_assistant:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: AssistantKnowledge, SAi, AI, Search, Knowledge'
+  schema_migration_workbench:
+    start:
+    - apps/Concursus.PWA/Pages/Admin/SchemaMigration.razor
+    - libs/Concursus.API.Client/FormHelper.SchemaMigration.cs
+    - services/Concursus.API/Services/CoreService.SchemaMigration.cs
+    sql:
+    - Database/CymBuild_DB/Schema/Tables/SMigration.Schema_Run.sql
+    - Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.SchemaDeploymentPlan_Get.sql
+    deployment:
+    - tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1
+    - tools/SchemaDeployment/README.md
+  metadata_migration_workbench:
+    start:
+    - apps/Concursus.PWA/Pages/Admin/MetadataMigration.razor
+    - libs/Concursus.API.Client/FormHelper.MetadataMigration.cs
+    - services/Concursus.API/Services/CoreService.MetadataMigration.cs
+    sql:
+    - SQL_CI_Packs_Metadata/database/smigration/SMigration.Metadata.Schema.sql
+    - SQL_CI_Packs_Metadata/database/metadata
+    governance:
+    - metadata-manifests/v1
+    - libs/Concursus.EF/MetadataManifests/ValidateOnly
+recommended_search_patterns:
+  general:
+  - rg --files apps/Concursus.PWA | rg 'Pages|Shared|Services'
+  - rg --files services/Concursus.API | rg 'Controllers|Services|EntityFramework|Protos|Sage|Infrastructure'
+  - rg --files libs/Concursus.API.Client | rg 'Models|Services|Classes|FormHelper'
+  - rg --files libs/Concursus.EF | rg 'Types|Repository|Finance|QueryBuilder|MetadataManifests'
+  - rg --files libs/Concursus.Components.Shared | rg 'razor|cs|css'
+  - rg 'class |interface |record ' <project_path>
+  formhelper:
+  - rg 'FormHelper' apps/Concursus.PWA libs/Concursus.API.Client
+  - rg 'LoadDataObjectAsync|SaveDataObjectAsync|GetGridViewDefinitionAsync|GetGridDataAsync' apps libs services
+  telerik_removal:
+  - rg 'Telerik' apps/Concursus.PWA libs/Concursus.Components.Shared
+  - rg 'V2|DynamicBatchGridView|SageInboundDiagnostics|cymbuild-v2.css' apps/Concursus.PWA libs/Concursus.Components.Shared
+  - rg 'Modal|Dialog|Window|DropDown|Grid|Filter|Search|Button' apps/Concursus.PWA/Pages apps/Concursus.PWA/Shared libs/Concursus.Components.Shared
+  metadata:
+  - rg 'GridDefinitions|GridViewDefinitions|GridViewColumnDefinitions|DropDownListDefinitions|EntityProperties|EntityQueries'
+    .
+  - rg 'MetadataManifests|MetadataValidate|MetadataApply|Manifest' libs services .
+  sql:
+  - rg --files . | rg '\.sql$'
+  - rg 'CREATE OR ALTER|DataObjects|DataObjectTransitionUpsert|IntegrationOutbox|RowStatus <> 0' . -g '*.sql'
+  sage:
+  - rg 'Sage|Inbound|Outbound|IntegrationOutbox|Idempot|Retry|Batch' services libs apps . -g '!**/bin/**' -g '!**/obj/**'
+  classification:
+  - rg 'DataClassification|SecurityClassification|Official Sensitive|Defcon' apps services libs .
+  invoice_riba:
+  - rg 'InvoiceSchedule|InvoiceRequest|InvoiceRequestItem|RibaStage|FeeDrawdown|JobRibaStageFees|MonthConfiguration|PercentageConfiguration'
+    apps services libs .
+  workflow:
+  - rg 'WorkflowGetNextStatus|DataObjectTransition|DataObjectTransitionUpsert|WorkflowStatus|WorkflowTransition|AuthorisationQueue'
+    apps services libs .
+  schema_migration:
+  - rg 'SchemaMigration|SchemaDeploymentPlan_Get|Schema_RunSelections|DeploymentApplied' apps services libs Database tools
+  - rg 'PreDeploymentScript|PostDeploymentScript|RetryFailedDeployment|AllowPartial' tools/SchemaDeployment Database/CymBuild_DB/Schema
+  metadata_migration:
+  - rg 'MetadataMigration|MetadataStage_Run|MetadataValidate_Run|MetadataApply_Run' apps services libs Database SQL_CI_Packs_Metadata
+  - rg 'MetadataManifests|ValidateOnly|allowlist.grids|grids.json' metadata-manifests apps libs
+module_keywords:
+  dynamic_ui:
+  - EntityType
+  - EntityProperty
+  - EntityPropertyGroup
+  - GridDefinition
+  - GridViewDefinition
+  - GridViewColumnDefinition
+  - DropDownListDefinition
+  - Widget
+  - UserPreferences
+  - EditPage
+  - DynamicGridView
+  - ShoreInput
+  - FlexPropertyGroups
+  non_telerik:
+  - V2
+  - Telerik
+  - DynamicBatchGridViewV2
+  - SageInboundDiagnosticsV2
+  - CymBuildModalService
+  - CymBuildModalHost
+  - CymBuildWindowedModal
+  - cymbuild-v2.css
+  workflow:
+  - DataObjects
+  - DataObjectTransition
+  - DataObjectTransitionUpsert
+  - Workflow
+  - WorkflowStatus
+  - WorkflowTransition
+  - WorkflowGetNextStatus
+  - AuthorisationQueue
+  sage:
+  - Sage
+  - SageInbound
+  - SageOutbound
+  - IntegrationOutbox
+  - Idempotency
+  - Retry
+  - Batch
+  - Transaction
+  - InvoiceRequest
+  classifications:
+  - DataClassifications
+  - SecurityClassifications
+  - DataClassificationGuid
+  - SecurityClassificationGuid
+  - Official
+  - OfficialSensitive
+  - Defcon
+  invoice_and_riba:
+  - InvoiceSchedules
+  - InvoiceScheduleMonthConfiguration
+  - InvoiceSchedulePercentageConfiguration
+  - InvoiceRequests
+  - InvoiceRequestItems
+  - RibaStage
+  - RibaStageGuid
+  - JobRibaStageFees
+  - FeeDrawdown
+  - Paid
+  - Remaining
+  - TriggerInstances
+  outlook_sharepoint:
+  - Outlook
+  - Office
+  - Graph
+  - EmailFiling
+  - SharePoint
+  - SaveToSharePoint
+  - SelectedFolderPath
+  - PublishPrompt
+  ai:
+  - SAi
+  - AssistantKnowledge
+  - KnowledgeSearch
+  - AI
+  - Search
+debugging_guidance:
+  when_user_reports_ui_issue:
+    steps:
+    - Find the page/component in PWA.
+    - Check whether the UI uses FormHelper.
+    - Find the FormHelper/client method.
+    - Trace to API service/proto/controller.
+    - Trace to EF repository/query.
+    - Check SQL metadata/entity query/view/function.
+    - Confirm metadata is not stale or duplicated.
+    - Confirm no direct UI business logic is being introduced.
+  when_user_reports_grid_issue:
+    steps:
+    - Find GridDefinition/GridViewDefinition metadata.
+    - Find GridViewColumnDefinition metadata.
+    - Find entity query/view/function used by the grid.
+    - Check RowStatus filtering.
+    - Check formatting and column aliases.
+    - Check non-Telerik replacement if grid is being converted.
+    - Preserve search/filter/sort/paging/actions.
+  when_user_reports_status_or_workflow_issue:
+    steps:
+    - Check SCore.DataObjects row exists for the entity.
+    - Check latest SCore.DataObjectTransition.
+    - Check workflow/entity type mapping.
+    - Check SCore.WorkflowGetNextStatus or equivalent.
+    - Do not directly update status.
+    - Use SCore.DataObjectTransitionUpsert for correction/fix logic.
+  when_user_reports_integration_issue:
+    steps:
+    - Check source business record.
+    - Check SCore.DataObjects row.
+    - Check IntegrationOutbox or relevant integration table.
+    - Check idempotency keys/duplicate prevention.
+    - Check worker/service logs.
+    - Check diagnostics UI.
+    - Confirm whether existing failed messages require replay after code deployment.
+notes:
+- Prefer targeted directory scans over repository-wide searches for speed and relevance.
+- In PWA, many route pages have optional .razor.cs and .razor.css companions.
+- Treat this file as a companion index; it does not replace source-of-truth code.
+- If schema is missing or uncertain, ask for the relevant SQL/schema before proposing database changes.
+- Preserve behaviour when refactoring or removing Telerik.
+- For controlled environments, avoid manual database or metadata changes.
+- For new entities, always consider DataObjects, workflow/status, metadata, and integration side effects.
+- Release 26.3 verified schema runner baseline is CYB361_R27.
+- No explicit schema selection means all deployable rows; explicit selection means selected rows only.
+- The current metadata migration mechanism is SMigration run-based; manifests remain governance support.

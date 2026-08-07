@@ -10,8 +10,6 @@
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime JsRuntime
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 @attribute [Authorize]
 
 <EditPage @ref="@editPage"
@@ -147,7 +145,7 @@
         var UserToSetValue = editPage.dataObject.DataProperties.Where(x => x.EntityPropertyGuid == QuotingUserIdPropertyGuid).FirstOrDefault();
 
 
-        var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+        var formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
         // Display confirmation dialog
         bool isConfirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure you wish to perform the selected changes?");
@@ -268,7 +266,7 @@
         try
         {
             // Use FormHelper to get entity type properties
-            var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, "1c4794c1-f956-4c32-b886-5500ac778a56", userService);
+            var formHelper = new API.Client.FormHelper(coreClient, "1c4794c1-f956-4c32-b886-5500ac778a56", userService);
             EntityTypeProperties = await formHelper.GetEntityType();
 
             // List of property GUIDs that are allowed for bulk changes

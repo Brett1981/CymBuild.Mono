@@ -10,8 +10,6 @@
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime JsRuntime
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
-
 @attribute [Authorize]
 
 <EditPage @ref="@editPage"
@@ -113,7 +111,7 @@
     private async Task ConfirmChanges()
     {
         string userEmail = "";
-        var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+        var formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
         // Display confirmation dialog
         bool isConfirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure you wish to perform the selected changes?");
@@ -253,7 +251,7 @@
         try
         {
             // Use FormHelper to get entity type properties
-            var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, _EntityTypeGuid, userService);
+            var formHelper = new API.Client.FormHelper(coreClient, _EntityTypeGuid, userService);
             EntityTypeProperties = await formHelper.GetEntityType();
 
             // List of property GUIDs that are allowed for bulk changes

@@ -11,7 +11,6 @@
 @using AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
 @using TeamMember = Concursus.PWA.Shared.Scheduler.Classes.TeamMember
 @using Concursus.PWA.Helpers
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject UserService userService
 @inject Core.CoreClient CoreClient
 
@@ -254,7 +253,7 @@
     protected override void OnInitialized()
     {
         //Init the formHelper here.
-        formHelper = new FormHelper(coreClient, sageIntegrationService, "00000000-0000-0000-0000-000000000000", userService);
+        formHelper = new FormHelper(coreClient, "00000000-0000-0000-0000-000000000000", userService);
         GetNationalBankHolidays();
         base.OnInitialized();
     }

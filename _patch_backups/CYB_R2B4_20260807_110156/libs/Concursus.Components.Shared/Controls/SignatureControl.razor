@@ -1,0 +1,241 @@
+@using System.IO
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Google.Protobuf
+@using Microsoft.AspNetCore.Components.Forms
+@implements IAsyncDisposable
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime js
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+
+<section class="signature-control cb-v2-stack" aria-label="Signature">
+    <div class="signature-upload-row cb-v2-field">
+        <label for="@UploadId">Upload signature image</label>
+        <InputFile id="@UploadId" OnChange="OnImageUpload" accept="image/*,.tif,.tiff" class="form-control" />
+    </div>
+
+    <div class="signature-surface cb-v2-field">
+        @if (isImageDisplayed)
+        {
+            <img src="@imageSource" alt="Current signature" />
+        }
+        else
+        {
+            <canvas @ref="canvasRef"
+                    class="signature-canvas"
+                    width="800"
+                    height="400"
+                    aria-label="Draw signature"
+                    role="img"></canvas>
+            <span class="signature-hint cb-v2-muted">Draw your signature above using a mouse, pen, or touch.</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger py-2 mb-0" role="alert">@errorMessage</div>
+    }
+
+    <div class="signature-actions cb-v2-actions">
+        <button type="button" class="btn btn-primary" @onclick="SaveSignature" disabled="@isSaving">
+            @if (isSaving)
+            {
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            }
+            Save signature
+        </button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="ClearSignature" disabled="@isSaving">Clear</button>
+    </div>
+
+    @if (showConfirmation)
+    {
+        <div class="signature-confirmation cb-v2-success-message" role="status">
+            <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+            Saved successfully
+        </div>
+    }
+</section>
+
+@code {
+    private readonly string UploadId = $"signature-upload-{Guid.NewGuid():N}";
+    private ElementReference canvasRef;
+    private IJSObjectReference? signatureModule;
+    private byte[] signatureByteArray = Array.Empty<byte>();
+    private string? imageSource;
+    private string? errorMessage;
+    private bool isImageDisplayed;
+    private bool showConfirmation;
+    private bool isSaving;
+    private bool canvasRequiresInitialisation = true;
+    private CancellationTokenSource? confirmationCancellation;
+    protected FormHelper? formHelper;
+
+    [Parameter] public byte[] ExistingSignature { get; set; } = Array.Empty<byte>();
+    [Parameter] public EventCallback<byte[]> OnSignatureSaved { get; set; }
+    [Parameter] public EventCallback OnSignatureCleared { get; set; }
+    [Parameter] public API.Core.User user { get; set; } = new();
+
+    protected override void OnParametersSet()
+    {
+        if (ExistingSignature is { Length: > 0 } && signatureByteArray.Length == 0)
+        {
+            signatureByteArray = ExistingSignature.ToArray();
+            imageSource = $"data:image/png;base64,{Convert.ToBase64String(signatureByteArray)}";
+            isImageDisplayed = true;
+            canvasRequiresInitialisation = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!isImageDisplayed && canvasRequiresInitialisation)
+        {
+            signatureModule ??= await js.InvokeAsync<IJSObjectReference>("import", "./_content/Concursus.Components.Shared/signature-pad.js");
+            await signatureModule.InvokeVoidAsync("initialize", canvasRef);
+            canvasRequiresInitialisation = false;
+        }
+    }
+
+    private async Task OnImageUpload(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        showConfirmation = false;
+        try
+        {
+            var file = e.File;
+            await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var uploadedBytes = buffer.ToArray();
+
+            if (file.ContentType.Equals("image/tiff", StringComparison.OrdinalIgnoreCase)
+                || file.Name.EndsWith(".tif", StringComparison.OrdinalIgnoreCase)
+                || file.Name.EndsWith(".tiff", StringComparison.OrdinalIgnoreCase))
+            {
+                EnsureFormHelper();
+                var base64Png = await formHelper!.ConvertTiffToPngAsync(uploadedBytes);
+                signatureByteArray = Convert.FromBase64String(base64Png);
+                imageSource = $"data:image/png;base64,{base64Png}";
+            }
+            else
+            {
+                signatureByteArray = uploadedBytes;
+                var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+                imageSource = $"data:{contentType};base64,{Convert.ToBase64String(signatureByteArray)}";
+            }
+
+            isImageDisplayed = true;
+            canvasRequiresInitialisation = true;
+        }
+        catch (Exception ex)
+        {
+            signatureByteArray = Array.Empty<byte>();
+            imageSource = null;
+            isImageDisplayed = false;
+            canvasRequiresInitialisation = true;
+            errorMessage = $"The signature image could not be loaded: {ex.Message}";
+        }
+    }
+
+    private async Task SaveSignature()
+    {
+        if (isSaving) return;
+        isSaving = true;
+        errorMessage = null;
+        showConfirmation = false;
+
+        try
+        {
+            if (!isImageDisplayed)
+            {
+                signatureModule ??= await js.InvokeAsync<IJSObjectReference>("import", "./_content/Concursus.Components.Shared/signature-pad.js");
+                var dataUrl = await signatureModule.InvokeAsync<string?>("exportPng", canvasRef);
+                if (string.IsNullOrWhiteSpace(dataUrl))
+                {
+                    errorMessage = "Draw or upload a signature before saving.";
+                    return;
+                }
+                signatureByteArray = Convert.FromBase64String(dataUrl[(dataUrl.IndexOf(',') + 1)..]);
+            }
+
+            if (signatureByteArray.Length == 0)
+            {
+                errorMessage = "Draw or upload a signature before saving.";
+                return;
+            }
+
+            EnsureFormHelper();
+            user.Signature = ByteString.CopyFrom(signatureByteArray);
+            user = await formHelper!.UpdateUserSignature(user);
+            await OnSignatureSaved.InvokeAsync(signatureByteArray);
+            StartSavedConfirmation();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"The signature could not be saved: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ClearSignature()
+    {
+        confirmationCancellation?.Cancel();
+        showConfirmation = false;
+        errorMessage = null;
+        signatureByteArray = Array.Empty<byte>();
+        imageSource = null;
+        isImageDisplayed = false;
+        canvasRequiresInitialisation = true;
+        await OnSignatureCleared.InvokeAsync();
+    }
+
+    private void EnsureFormHelper()
+    {
+        formHelper ??= new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+    }
+
+    private void StartSavedConfirmation()
+    {
+        confirmationCancellation?.Cancel();
+        confirmationCancellation?.Dispose();
+        confirmationCancellation = new CancellationTokenSource();
+        showConfirmation = true;
+        _ = HideSavedConfirmationAsync(confirmationCancellation.Token);
+    }
+
+    private async Task HideSavedConfirmationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            showConfirmation = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer save or clear operation owns the message state.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        confirmationCancellation?.Cancel();
+        confirmationCancellation?.Dispose();
+        if (signatureModule is not null)
+        {
+            try
+            {
+                await signatureModule.InvokeVoidAsync("dispose", canvasRef);
+                await signatureModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The browser session has already ended.
+            }
+        }
+    }
+}

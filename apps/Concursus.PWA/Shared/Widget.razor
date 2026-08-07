@@ -2,7 +2,6 @@
 @inject NavigationManager Navigation;
 @inject Concursus.API.Client.Models.UserService UserService //To get the UserId.
 @inject IJSRuntime JS
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject IConfiguration Config
 @inject AiErrorReporter AiErrorReporter
 @inject UserInteractionTrackerService InteractionTracker
@@ -655,7 +654,7 @@ else
     {
         try
         {
-            _formHelper = new API.Client.FormHelper(CoreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            _formHelper = new API.Client.FormHelper(CoreClient, Guid.Empty.ToString(), userService);
             //Get the current user ID.
             UserId = UserService?.UserId ?? -1;
 
@@ -1447,7 +1446,7 @@ else
         {
             //Ensure formhelper is instantiated.
             if(_formHelper == null)
-                _formHelper = new API.Client.FormHelper(CoreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+                _formHelper = new API.Client.FormHelper(CoreClient, Guid.Empty.ToString(), userService);
 
             Task.Delay(500);
 

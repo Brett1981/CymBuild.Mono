@@ -91,7 +91,7 @@ public partial class DynamicBatchGridView
             StateHasChanged();
 
 
-            var formHelperForInvoiceReq = new FormHelper(coreClient, sageIntegrationService, "27a13441-73c4-425a-8b55-dc048dabe6bb", userService);
+            var formHelperForInvoiceReq = new FormHelper(coreClient, "27a13441-73c4-425a-8b55-dc048dabe6bb", userService);
             var entityType = await formHelperForInvoiceReq.GetEntityType();
 
             var notesList = new List<string>();
@@ -221,7 +221,7 @@ public partial class DynamicBatchGridView
 
 
 
-            var formHelperForInvoiceReqItems = new FormHelper(coreClient, sageIntegrationService, "ad87cd7f-7181-401a-9f63-8dfc8abec5f1", userService);
+            var formHelperForInvoiceReqItems = new FormHelper(coreClient, "ad87cd7f-7181-401a-9f63-8dfc8abec5f1", userService);
             await formHelperForInvoiceReqItems.GetEntityType();
 
             //Create the new invoice request.
@@ -279,7 +279,7 @@ public partial class DynamicBatchGridView
     private async Task<bool> MarkOriginalInvoiceRequestAsMerged(string InvoiceRequestGuid)
     {
        
-        var formHelperForInvoiceReq = new FormHelper(coreClient, sageIntegrationService, "27a13441-73c4-425a-8b55-dc048dabe6bb", userService);
+        var formHelperForInvoiceReq = new FormHelper(coreClient, "27a13441-73c4-425a-8b55-dc048dabe6bb", userService);
         var entityType = await formHelperForInvoiceReq.GetEntityType();
 
         bool IsDeleted = await formHelperForInvoiceReq.DeleteInvoiceRequestByGuid(InvoiceRequestGuid);

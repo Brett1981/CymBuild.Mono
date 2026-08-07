@@ -1,0 +1,673 @@
+@page "/team-availability"
+@using System.Collections.ObjectModel
+@using Google.Protobuf.WellKnownTypes
+@inject IToastService toastService
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject IJSRuntime JS
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.Components.Shared.Services
+@using AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
+@using TeamMember = Concursus.PWA.Shared.Scheduler.Classes.TeamMember
+@using Concursus.PWA.Helpers
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserService userService
+@inject Core.CoreClient CoreClient
+
+<PageTitle>Team Availability</PageTitle>
+
+<div class="cb-team-availability-page">
+    <SchedulerLegend />
+
+    <SchedulerTaskButton UserID="UserID"
+                         TeamID="UnitId"
+                         appointment="@availabilityEventForModal"
+                         _detailPageParameters="@_detailPageParameters"
+                         ModalShowing="@ShowModal"
+                         CloseModalCllback="@CloseEditHandlerModal" />
+
+    <AvailabilityEventModal appointment="@availabilityEventForReadOnlyModal"
+                            ModalShowing="@ShowReadOnlyEventModal"
+                            CloseModalCllback="@CloseReadOnlyEventModal" />
+
+    <div class="cb-team-toolbar">
+        <div class="cb-team-toolbar__section">
+            <label class="form-check cb-team-check" for="chk-work">
+                <input id="chk-work" class="form-check-input" type="checkbox" checked="@showWork" @onchange="OnShowWorkChangedAsync" />
+                <span>Show Work</span>
+            </label>
+
+            <label class="form-check cb-team-check" for="chk-absence">
+                <input id="chk-absence" class="form-check-input" type="checkbox" checked="@showAbsence" @onchange="OnShowAbsenceChangedAsync" />
+                <span>Show Absence</span>
+            </label>
+
+            <label class="form-check cb-team-check" for="chk-holiday">
+                <input id="chk-holiday" class="form-check-input" type="checkbox" checked="@showHolidays" @onchange="OnShowHolidaysChangedAsync" />
+                <span>Show Public Holidays</span>
+            </label>
+        </div>
+
+        <div class="cb-team-toolbar__section">
+            <input class="form-control cb-team-date"
+                   type="date"
+                   value="@firstOfMonth.ToString("yyyy-MM-dd")"
+                   @onchange="OnAvailabilityDateChangedAsync" />
+
+            <div class="btn-group" role="group" aria-label="Team availability view selector">
+                <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Day)" @onclick="() => ViewChangedHandler(NativeScheduleViewMode.Day)">Day</button>
+                <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Week)" @onclick="() => ViewChangedHandler(NativeScheduleViewMode.Week)">Week</button>
+                <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Month)" @onclick="() => ViewChangedHandler(NativeScheduleViewMode.Month)">Month</button>
+                <button type="button" class="@GetViewButtonClass(NativeScheduleViewMode.Timeline)" @onclick="() => ViewChangedHandler(NativeScheduleViewMode.Timeline)">Timeline</button>
+            </div>
+        </div>
+    </div>
+
+   
+        <div class="cb-team-filter-card">
+            <div class="cb-team-filter-field">
+                
+
+                <div class="cb-team-person-picker">
+                    <select id="Business-unit-filter"
+                            class="form-select cb-team-person-picker__select"
+                            @bind:after="GetDepartmentsForUser"
+                            @bind="_selectedBusinessUnit">
+                        <option value="">Select a business unit...</option>
+                        @foreach (var bu in _businessUnits)
+                        {
+                            <option value="@bu.Guid">@bu.Name</option>
+                        }
+                    </select>
+
+                    <select id="department-filter"
+                            class="form-select cb-tbueam-person-picker__select"
+                            @bind:after="LoadTeamMembersWithData"
+                            @bind="_selectedDepartment">
+                        <option value="">Select a department...</option>
+                        @foreach (var d in _departments)
+                        {
+                            <option value="@d.Id">@d.Name</option>
+                        }
+                    </select>
+
+                    <label for="team-member-filter">Filter by person</label>
+                    <select id="team-member-filter"
+                            class="form-select cb-team-person-picker__select"
+                            @bind="SelectedTeamMemberIdToAdd">
+                        <option value="">Select a person...</option>
+                        @foreach (var teamMember in AvailableTeamMembersToAdd)
+                        {
+                            <option value="@teamMember.Id">@teamMember.Name</option>
+                        }
+                    </select>
+
+                    <button type="button"
+                            class="btn btn-primary cb-team-person-picker__button"
+                            disabled="@string.IsNullOrWhiteSpace(SelectedTeamMemberIdToAdd)"
+                            @onclick="AddSelectedTeamMemberAsync">
+                        Add
+                    </button>
+                </div>
+
+                <div class="cb-team-selected-people" aria-live="polite">
+                    @if (!SelectedTeamMembers.Any())
+                    {
+                        <span class="cb-team-selected-people__empty">Everyone selected</span>
+                    }
+                    else
+                    {
+                        @foreach (var teamMember in SelectedTeamMembers)
+                        {
+                            <span class="cb-team-person-chip" @key="teamMember.Id">
+                                <span>@teamMember.Name</span>
+                                <button type="button"
+                                        class="cb-team-person-chip__remove"
+                                        title="Remove @teamMember.Name"
+                                        @onclick="() => RemoveSelectedTeamMemberAsync(teamMember.Id)">
+                                    ×
+                                </button>
+                            </span>
+                        }
+
+                        <button type="button"
+                                class="btn btn-link btn-sm cb-team-selected-people__clear"
+                                @onclick="ClearSelectedTeamMembersAsync">
+                            Clear
+                        </button>
+                    }
+                </div>
+
+                <small>Leave empty to show all team members. (After populating the dropdowns above)</small>
+            </div>
+        </div>
+
+        <NativeTeamAvailabilityBoard Events="@FilteredEvents.ToList()"
+                                     TeamMembers="@teamMembersForView.ToList()"
+                                     Holidays="@bankHolidays"
+                                     StartDate="@firstOfMonth"
+                                     View="@mainView"
+                                     ShowHolidays="@showHolidays"
+                                     OnEventSelected="@OpenEventAsync" />
+    
+
+    <DynamicGrid @ref="@gridRef" GridCode="SCHEDULING" FullGrid="true" />
+</div>
+
+@code {
+    DynamicGrid gridRef { get; set; }
+
+    private FormHelper formHelper { get; set; }
+    NativeScheduleViewMode mainView { get; set; } = NativeScheduleViewMode.Timeline;
+
+    private int UserID { get; set; }
+    private int UnitId { get; set; }
+
+    private ObservableCollection<AvailabilityEvent> availabilityEvents = new();
+    private List<AvailabilityEvent> ScheduledActivities = new();
+    private List<DateTime> bankHolidays { get; set; } = new();
+    private IEnumerable<AvailabilityEvent> FilteredEvents { get; set; } = Enumerable.Empty<AvailabilityEvent>();
+
+    private ObservableCollection<TeamMember> teamMembers { get; set; } = new();
+    private ObservableCollection<TeamMember> teamMembersForView { get; set; } = new();
+    private List<TeamMember> teamMemberForCombo { get; set; } = new();
+    private List<string> SelectedTeamMemberIds { get; set; } = new();
+    private string SelectedTeamMemberIdToAdd { get; set; } = string.Empty;
+
+    private IEnumerable<TeamMember> AvailableTeamMembersToAdd => teamMemberForCombo
+        .Where(teamMember => !SelectedTeamMemberIds.Contains(teamMember.Id.ToString()))
+        .OrderBy(teamMember => teamMember.Name);
+
+    private IEnumerable<TeamMember> SelectedTeamMembers => teamMemberForCombo
+        .Where(teamMember => SelectedTeamMemberIds.Contains(teamMember.Id.ToString()))
+        .OrderBy(teamMember => teamMember.Name);
+
+    private bool _hasLoaded;
+
+    public bool IsAllDay { get; set; } = false;
+
+    private DateTime firstOfMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    private bool showAbsence = true;
+    private bool showWork = true;
+    private bool showHolidays = true;
+    private bool printMode = false;
+
+    private DateTime today = DateTime.Now;
+    private DateTime DayStart => new DateTime(2000, 1, 1, 0, 0, 0);
+    private DateTime DayEnd => new DateTime(2000, 1, 1, 23, 59, 59);
+    private DateTime WorkDayStart => new DateTime(2000, 1, 1, 9, 0, 0);
+    private DateTime WorkDayEnd => new DateTime(2000, 1, 1, 17, 0, 0);
+
+    private DateTime Max = new DateTime(2050, 12, 31);
+    private DateTime Min = new DateTime(1950, 1, 1);
+    private int DebounceDelay { get; set; } = 200;
+
+    private bool ShowAbsence { get; set; } = false;
+    private DateTime StartDate { get; set; }
+    private DateTime EndDate { get; set; }
+
+    private AvailabilityEvent availabilityEventForModal { get; set; }
+    private AvailabilityEvent availabilityEventForReadOnlyModal { get; set; }
+    private bool ShowModal { get; set; } = false;
+    private bool ShowReadOnlyEventModal { get; set; } = false;
+    private IDictionary<string, object> _detailPageParameters { get; set; } = new Dictionary<string, object>();
+
+
+
+    List<BusinessUnit> _businessUnits = new();
+    private string? _selectedBusinessUnit;
+
+    List<Department> _departments = new();
+
+    private int? _selectedDepartment;
+
+
+
+
+    private async Task UpdateFilter()
+    {
+        await GetData();
+    }
+
+    public async Task GetUserId()
+    {
+        try
+        {
+            UserID = userService?.UserId ?? -1;
+
+            if (UserID == -1)
+                throw new Exception("The current user could not be detected");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"There was an error getting the user ID: {ex.Message} ");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    protected override void OnInitialized()
+    {
+        //Init the formHelper here.
+        formHelper = new FormHelper(coreClient, sageIntegrationService, "00000000-0000-0000-0000-000000000000", userService);
+        GetNationalBankHolidays();
+        base.OnInitialized();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetUserId();
+        await GetBusinessUnitsForUser();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        await LoadTeamMembersWithData();
+
+        await GetNationalBankHolidays();
+
+        await GetData();
+    }
+
+    private async Task GetBusinessUnitsForUser()
+    {
+        var organisationalUnitsGetResponse = await CoreClient.BusinessUnitsGetAsync(new BusinessUnitsGetRequest() { UserId = UserID });
+        _businessUnits = organisationalUnitsGetResponse.OrganisationalUnits.ToList();
+
+        var emptySelection = _businessUnits.Where(x => x.Guid == "00000000-0000-0000-0000-000000000000").FirstOrDefault();
+
+        if (emptySelection != null)
+            _businessUnits.Remove(emptySelection);
+
+        StateHasChanged();
+    }
+
+    private async Task GetDepartmentsForUser()
+    {
+        var UserID = userService?.UserId ?? -1;
+
+        var departments = await CoreClient.DepartmentsGetAsync(new DepartmentsGetRequest() { UserId = UserID, BusinessUnitGuid = _selectedBusinessUnit });
+
+        _departments = departments.Department.ToList();
+
+        StateHasChanged();
+    }
+
+
+    private async Task GetData()
+    {
+        try
+        {
+            availabilityEvents.Clear();
+
+            var endDate = mainView switch
+            {
+                NativeScheduleViewMode.Timeline => firstOfMonth.AddDays(40),
+                NativeScheduleViewMode.Month => firstOfMonth.AddDays(DateTime.DaysInMonth(firstOfMonth.Year, firstOfMonth.Month)),
+                NativeScheduleViewMode.Week => firstOfMonth.AddDays(7),
+                NativeScheduleViewMode.Day => firstOfMonth.AddDays(1),
+                _ => firstOfMonth.AddDays(7)
+            };
+
+            var membersToLoad = teamMembersForView.Any() ? teamMembersForView : teamMembers;
+
+            foreach (var usr in membersToLoad)
+            {
+                var userID = usr.Id;
+
+                if (showWork)
+                    await GetScheduledActivitiesPerUser(userID, firstOfMonth, endDate);
+
+                if (showAbsence)
+                    await GetScheduledAbsencesPerUser(userID, firstOfMonth, endDate);
+            }
+
+            FilteredEvents = availabilityEvents
+               .Where(e =>
+                   (showAbsence && e.IsAbsence) ||
+                   (showWork && !e.IsAbsence))
+               .ToList();
+
+
+            await InvokeAsync(() =>
+            {
+                StateHasChanged();
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private async Task OnAvailabilityDateChangedAsync(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), out var selectedDate))
+        {
+            await DateChangedHandler(selectedDate.Date);
+        }
+    }
+
+    private async Task DateChangedHandler(DateTime currDate)
+    {
+        firstOfMonth = currDate;
+        await GetData();
+        StateHasChanged();
+    }
+
+    private async Task LoadTeamMembersWithData()
+    {
+
+        //   UnitId = await formHelper.GetOrganisationalUnitForUser(UserID);
+
+        teamMembers.Clear();
+        teamMemberForCombo.Clear();
+
+        if (_selectedDepartment is null || _selectedDepartment.Value == null)
+        {
+            return;
+        }
+
+        UnitId = _selectedDepartment.Value;
+
+        var EfteamMembers = await formHelper.GetTeamMembersAsync(UnitId);
+
+
+
+        foreach (var tm in EfteamMembers)
+            if (int.TryParse(tm.Id, out int userID))
+                teamMembers.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+
+
+        teamMemberForCombo = EfteamMembers
+            .Where(tm => int.TryParse(tm.Id, out _))
+            .Select(tm => new TeamMember
+            {
+                Id = int.Parse(tm.Id),
+                Name = tm.Name,
+                Color = tm.Color
+            })
+            .ToList();
+
+        //Assign to view.
+        teamMembersForView = teamMembers;
+
+
+        Console.WriteLine("Combo for team members:" + teamMemberForCombo.Count);
+
+        await GetData();
+        StateHasChanged();
+
+    }
+
+    private Task OpenEventAsync(AvailabilityEvent item)
+    {
+        availabilityEventForModal = item;
+
+        if (availabilityEventForModal == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        availabilityEventForModal.TeamMemberNameAsString = teamMemberForCombo?.FirstOrDefault(usr => usr.Id == availabilityEventForModal.TeamMemberId)?.Name;
+
+        if (availabilityEventForModal.CssClass == "scheduled-work")
+        {
+            availabilityEventForReadOnlyModal = availabilityEventForModal;
+            ShowReadOnlyEventModal = true;
+            return Task.CompletedTask;
+        }
+
+        var parentDataObjectReference = new DataObjectReference(availabilityEventForModal.Guid, "8899e76e-31bd-492b-9739-eb100610e92d");
+
+        _detailPageParameters.Clear();
+        _detailPageParameters.Add("Windowed", true);
+        _detailPageParameters.Add("ModalId", Guid.NewGuid().ToString());
+        _detailPageParameters.Add("IsDetailWindowed", true);
+        _detailPageParameters.Add("UserID", availabilityEventForModal.TeamMemberId);
+        _detailPageParameters.Add("TeamID", UnitId);
+        _detailPageParameters.Add("ParentDataObjectReference", parentDataObjectReference);
+        _detailPageParameters.Add("appointment", availabilityEventForModal);
+        _detailPageParameters.Add("RecordGuid", availabilityEventForModal.Guid);
+        _detailPageParameters.Add("gridRef", gridRef);
+        _detailPageParameters.Add("reloadScheduler", EventCallback.Factory.Create(this, GetData));
+
+        ShowModal = true;
+        return Task.CompletedTask;
+    }
+
+    void CloseEditHandlerModal()
+    {
+        ShowModal = false;
+    }
+
+    void CloseReadOnlyEventModal()
+    {
+        ShowReadOnlyEventModal = false;
+    }
+
+    private async Task GetScheduledActivitiesPerUser(int userID, DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var scheduledActivitiesForUser = await formHelper.GetScheduledActivities(userID, startDate, endDate);
+            var id = 6000;
+
+            foreach (var act in scheduledActivitiesForUser)
+            {
+                availabilityEvents.Add(new AvailabilityEvent
+                    {
+                        Id = id++,
+                        Title = act.Title,
+                        TeamMemberId = act.UserId,
+                        Start = act.StartDate.ToDateTime(),
+                        End = act.EndDate.ToDateTime(),
+                        IsAbsence = false,
+                        CssClass = "scheduled-work",
+                        JobNumber = act.JobNumber,
+                        Note = act.Note
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private async Task GetScheduledAbsencesPerUser(int userID, DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var id = 0;
+
+            var absences = await formHelper.GetNonActivityEvents(userID, startDate, endDate);
+
+            foreach (var a in absences)
+            {
+                if (!showAbsence) continue;
+
+                var cssClass = GetAbsencePeriod(a.StartTime.ToDateTime(), a.EndTime.ToDateTime());
+
+                availabilityEvents.Add(new AvailabilityEvent
+                    {
+                        Id = id++,
+                        Title = a.EventName,
+                        TeamMemberId = a.MemberId,
+                        Start = a.StartTime.ToDateTime(),
+                        End = a.EndTime.ToDateTime(),
+                        IsAbsence = true,
+                        CssClass = cssClass,
+                        Guid = a.Guid,
+                        AbsenceTypeID = a.AbsenceTypeID,
+                        TeamMemberNameAsString = teamMemberForCombo.FirstOrDefault(usr => usr.Id == a.MemberId)?.Name
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private string GetAbsencePeriod(DateTime start, DateTime end)
+    {
+        string absencePeriodCSS = "";
+
+        try
+        {
+            TimeSpan duration = end - start;
+            double totalHours = Math.Round(duration.TotalHours);
+
+            if (totalHours <= 5)
+                if (start.Hour < 12)
+                    absencePeriodCSS = "absence-am";
+                else
+                    absencePeriodCSS = "absence-pm";
+            else
+                absencePeriodCSS = "absence-full";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+
+        return absencePeriodCSS;
+    }
+
+    private async Task GetNationalBankHolidays()
+    {
+        try
+        {
+            bankHolidays.Clear();
+            var holidays = await formHelper.GetHolidaysAsync();
+
+            foreach (var day in holidays)
+                bankHolidays.Add(day.Date.ToDateTime().Date);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private void ExportCsv()
+    {
+        toastService.ShowInfo("Export to CSV coming soon.");
+    }
+
+    private void ExportPdf()
+    {
+        toastService.ShowInfo("Export to PDF coming soon.");
+    }
+
+    private async Task AddSelectedTeamMemberAsync()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedTeamMemberIdToAdd))
+        {
+            return;
+        }
+
+        if (!SelectedTeamMemberIds.Contains(SelectedTeamMemberIdToAdd))
+        {
+            SelectedTeamMemberIds.Add(SelectedTeamMemberIdToAdd);
+        }
+
+        SelectedTeamMemberIdToAdd = string.Empty;
+        await FilterByUser(SelectedTeamMemberIds);
+    }
+
+    private async Task RemoveSelectedTeamMemberAsync(int teamMemberId)
+    {
+        if (SelectedTeamMemberIds.Remove(teamMemberId.ToString()))
+        {
+            await FilterByUser(SelectedTeamMemberIds);
+        }
+    }
+
+    private async Task ClearSelectedTeamMembersAsync()
+    {
+        if (SelectedTeamMemberIds.Count == 0)
+        {
+            return;
+        }
+
+        SelectedTeamMemberIds.Clear();
+        SelectedTeamMemberIdToAdd = string.Empty;
+        await FilterByUser(SelectedTeamMemberIds);
+    }
+
+    private async Task FilterByUser(List<string> selection)
+    {
+        if (selection == null || selection.Count == 0)
+        {
+            teamMembersForView = new ObservableCollection<TeamMember>(teamMembers);
+        }
+        else
+        {
+            teamMembersForView = new ObservableCollection<TeamMember>(teamMembers.Where(usr => selection.Contains(usr.Id.ToString())));
+        }
+
+        await GetData();
+    }
+
+    private async Task ViewChangedHandler(NativeScheduleViewMode view)
+    {
+        try
+        {
+            mainView = view;
+            await GetData();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private string GetViewButtonClass(NativeScheduleViewMode view)
+    {
+        return mainView == view ? "btn btn-primary" : "btn btn-outline-primary";
+    }
+
+    private async Task OnShowWorkChangedAsync(ChangeEventArgs args)
+    {
+        showWork = GetBooleanValue(args.Value);
+        await UpdateFilter();
+    }
+
+    private async Task OnShowAbsenceChangedAsync(ChangeEventArgs args)
+    {
+        showAbsence = GetBooleanValue(args.Value);
+        await UpdateFilter();
+    }
+
+    private async Task OnShowHolidaysChangedAsync(ChangeEventArgs args)
+    {
+        showHolidays = GetBooleanValue(args.Value);
+        await UpdateFilter();
+    }
+
+    private static bool GetBooleanValue(object? value)
+    {
+        return value is bool boolValue ? boolValue : bool.TryParse(value?.ToString(), out var parsed) && parsed;
+    }
+
+    private static List<string> ExtractSelectedStringValues(object? value)
+    {
+        return value switch
+        {
+            string[] selectedValues => selectedValues.Where(v => !string.IsNullOrWhiteSpace(v)).ToList(),
+            IEnumerable<string> selectedValues => selectedValues.Where(v => !string.IsNullOrWhiteSpace(v)).ToList(),
+            string selectedValue when !string.IsNullOrWhiteSpace(selectedValue) => new List<string> { selectedValue },
+            _ => new List<string>()
+        };
+    }
+
+    private void TogglePrint() => printMode = !printMode;
+}

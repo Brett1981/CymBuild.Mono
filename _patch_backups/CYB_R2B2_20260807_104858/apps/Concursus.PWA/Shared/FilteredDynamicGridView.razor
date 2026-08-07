@@ -1,0 +1,363 @@
+﻿@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Services
+@using Concursus.Components.Shared.Services
+@using Microsoft.AspNetCore.Components.Web
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject DeviceInfoService DeviceInfoService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+
+@attribute [Authorize]
+
+<MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+<ErrorBoundary>
+    <ChildContent>
+        @if (ViewDefinition is not null)
+        {
+            <div class="cb-filtered-grid-shell @(Disabled ? "is-disabled" : string.Empty)">
+                <div class="cb-v2-card cb-filtered-grid-toolbar-card">
+                    <div class="cb-v2-toolbar cb-filtered-grid-toolbar">
+                        <div class="cb-v2-toolbar-left">
+                            <input class="cb-v2-input cb-filtered-grid-search"
+                                   placeholder="@NativeSearchPlaceholder"
+                                   value="@NativeSearchText"
+                                   @oninput="OnNativeSearchChanged"
+                                   @onkeydown="OnNativeSearchKeyDown"
+                                   disabled="@NativeIsLoading" />
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ApplyNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Search
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearNativeSearchAsync"
+                                    disabled="@NativeIsLoading">
+                                Clear
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary cb-filtered-grid-filter-toggle @(NativeFilterPanelOpen ? "is-active" : string.Empty)"
+                                    @onclick="ToggleNativeFilterPanel"
+                                    disabled="@NativeIsLoading">
+                                <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+                                Filters
+                                @if (NativeActiveFilterCount > 0)
+                                {
+                                    <span class="cb-filtered-grid-filter-count">@NativeActiveFilterCount</span>
+                                }
+                            </button>
+
+                            @if (ViewDefinition.AllowBulkChange && CurrentGridItems is not null && CurrentGridItems.Any())
+                            {
+                                <GridButtonMenu ViewDefinition="@ViewDefinition"
+                                                OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                            }
+                        </div>
+
+                        <div class="cb-v2-toolbar-right">
+                            @if (HasActiveNativeSearch)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Search</span>
+                                    <span class="cb-v2-pill-value">Active</span>
+                                </div>
+                            }
+
+                            @if (HasActiveNativeColumnFilters)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filters</span>
+                                    <span class="cb-v2-pill-value">@NativeActiveFilterCount</span>
+                                </div>
+                            }
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@NativeTotalRows</span>
+                            </div>
+
+                            <label class="cb-filtered-grid-page-size-label" for="legacy-filtered-grid-page-size-@ViewDefinition.Code">
+                                Rows per page
+                            </label>
+                            <select id="legacy-filtered-grid-page-size-@ViewDefinition.Code"
+                                    class="cb-v2-input cb-filtered-grid-page-size-select"
+                                    value="@NativePageSize"
+                                    @onchange="ChangeNativePageSizeAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="cb-filtered-grid-quick-row">
+                        <div class="cb-filtered-grid-quick-left">
+                            <button type="button"
+                                    class="btn btn-outline-primary @QuickFilter7DaysCSS"
+                                    @onclick="() => ShowRecordsFromXDay(-7)"
+                                    disabled="@NativeIsLoading">
+                                Last 7 Days
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-primary @QuickFilter90DaysCSS"
+                                    @onclick="() => ShowRecordsFromXDay(-90)"
+                                    disabled="@NativeIsLoading">
+                                Last 90 Days
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary"
+                                    @onclick="ToggleCustomRange"
+                                    disabled="@NativeIsLoading">
+                                Custom Range...
+                            </button>
+                        </div>
+
+                        <div class="cb-filtered-grid-quick-right">
+                            <label class="form-label mb-0" for="legacy-filtered-grid-sort-@ViewDefinition.Code">Order by</label>
+                            <select id="legacy-filtered-grid-sort-@ViewDefinition.Code"
+                                    class="form-select form-select-sm cb-filtered-grid-order-select"
+                                    value="@SelectedSortBy"
+                                    @onchange="OnGroupDataChangedAsync"
+                                    disabled="@NativeIsLoading">
+                                <option value="">Default</option>
+                                @foreach (var option in GroupByOptions)
+                                {
+                                    <option value="@option.Id">@option.Text</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (showCustomRange)
+                    {
+                        <div class="cb-filtered-grid-range-panel">
+                            <label for="@($"legacy-filtered-grid-start-date-{ViewDefinition.Code}")" class="form-label">From</label>
+                            <InputDate id="@($"legacy-filtered-grid-start-date-{ViewDefinition.Code}")"
+                                       class="form-control form-control-sm"
+                                       @bind-Value="customStartDate" />
+
+                            <label for="@($"legacy-filtered-grid-end-date-{ViewDefinition.Code}")" class="form-label">To</label>
+                            <InputDate id="@($"legacy-filtered-grid-end-date-{ViewDefinition.Code}")"
+                                       class="form-control form-control-sm"
+                                       @bind-Value="customEndDate" />
+
+                            <button type="button" class="btn btn-primary btn-sm" @onclick="ApplyCustomRange">Apply</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ToggleCustomRange">Cancel</button>
+                        </div>
+                    }
+
+                    @if (NativeFilterPanelOpen)
+                    {
+                        <div class="cb-filtered-grid-filter-panel cb-v2-card shadow-sm">
+                            <div class="cb-filtered-grid-filter-panel-header">
+                                <div class="cb-filtered-grid-filter-panel-title">
+                                    <span class="cb-filtered-grid-filter-panel-icon">
+                                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="cb-filtered-grid-filter-panel-heading">Column filters</div>
+                                        <div class="cb-filtered-grid-filter-panel-subtitle">Refine the current grid view, then apply when ready.</div>
+                                    </div>
+                                </div>
+                                <div class="cb-filtered-grid-filter-panel-summary">@NativeActiveFilterCount active</div>
+                            </div>
+
+                            <div class="cb-filtered-grid-filter-grid">
+                                @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
+                                {
+                                    <div class="cb-filtered-grid-filter-field">
+                                        <label class="form-label" for="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                        <div class="cb-filtered-grid-filter-input-shell input-group">
+                                            <i class="bi bi-search" aria-hidden="true"></i>
+                                            <input id="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                   class="form-control cb-v2-input cb-filtered-grid-filter-input"
+                                                   placeholder="Filter @column.Title..."
+                                                   value="@GetNativeFilterValue(column.Name)"
+                                                   aria-label="Filter @column.Title"
+                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                   @onkeydown="OnNativeFilterKeyDown"
+                                                   disabled="@NativeIsLoading" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="cb-filtered-grid-filter-actions">
+                                <button type="button"
+                                        class="btn btn-primary cb-v2-btn-primary d-inline-flex align-items-center gap-2"
+                                        @onclick="ApplyNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                    Apply Filters
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary cb-v2-btn-secondary d-inline-flex align-items-center gap-2"
+                                        @onclick="ClearAllNativeColumnFiltersAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="cb-v2-card cb-filtered-grid-card">
+                    <div class="cb-filtered-grid-status-line">
+                        <span>@NativeGridSummaryText</span>
+                        @if (NativeIsLoading)
+                        {
+                            <span class="cb-filtered-grid-loading" role="status" aria-live="polite">
+                                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                                Loading…
+                            </span>
+                        }
+                    </div>
+
+                    <div class="cb-filtered-grid-scroll">
+                        <table class="cb-v2-table cb-filtered-grid-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var column in VisibleGridColumns)
+                                    {
+                                        <th style="@GetColumnWidthStyle(column.Width)">
+                                            <button type="button"
+                                                    class="cb-filtered-grid-sort-button @GetNativeSortCss(column.Name)"
+                                                    title="Sort by @column.Title"
+                                                    @onclick="async () => await SortNativeGridAsync(column.Name)">
+                                                <span>@column.Title</span>
+                                                <span class="cb-filtered-grid-sort-indicator">@GetNativeSortIndicator(column.Name)</span>
+                                            </button>
+                                        </th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!NativeGridItems.Any())
+                                {
+                                    <tr>
+                                        <td colspan="@NativeGridColumnCount" class="text-muted text-center py-4">No records found.</td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    @foreach (var row in NativeGridItems)
+                                    {
+                                        <tr class="@GetNativeRowCssClass(row)" @ondblclick="() => OnRowDoubleClickHandler(row)">
+                                            @foreach (var column in VisibleGridColumns)
+                                            {
+                                                <td style="@GetColumnWidthStyle(column.Width)">
+                                                    @if (IsSageStatusColumn(column.Name))
+                                                    {
+                                                        var sageStatus = GetSageStatusPresentation(row);
+                                                        <span class="@sageStatus.CssClass"
+                                                              title="Sage posting status: @sageStatus.DisplayText">
+                                                            @sageStatus.DisplayText
+                                                        </span>
+                                                    }
+                                                    else if (ShouldRenderSageStatusWithDate(column.Name, row))
+                                                    {
+                                                        var sageStatus = GetSageStatusPresentation(row);
+                                                        <div class="cb-transaction-date-status-cell">
+                                                            <span class="custom-ellipsis">
+                                                                @GetNativeCellValue(row, column.Name)
+                                                            </span>
+                                                            <span class="@sageStatus.CssClass"
+                                                                  title="Sage posting status: @sageStatus.DisplayText">
+                                                                @sageStatus.DisplayText
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="custom-ellipsis">
+                                                            @GetNativeCellValue(row, column.Name)
+                                                        </div>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="cb-filtered-grid-pager">
+                        <div class="cb-filtered-grid-pager-left">
+                            <span>Page @NativePage of @NativeTotalPages</span>
+                            <span class="text-muted">@NativeGridSummaryText</span>
+                        </div>
+                        <div class="cb-filtered-grid-pager-right">
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary"
+                                    @onclick="GoToPreviousNativePageAsync"
+                                    disabled="@(!CanGoPreviousPage)">
+                                Previous
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary"
+                                    @onclick="GoToNextNativePageAsync"
+                                    disabled="@(!CanGoNextPage)">
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="back-to-top-button">
+                    <button class="btn btn-secondary" @onclick="ScrollToTop">
+                        <i class="bi bi-arrow-up-circle"></i> Back To Top
+                    </button>
+                </div>
+            </div>
+
+            @if (BatchGridVisible)
+            {
+                <div class="cb-filtered-grid-modal-backdrop" role="presentation">
+                    <div class="cb-filtered-grid-modal" role="dialog" aria-modal="true" aria-label="Batch records">
+                        <div class="cb-filtered-grid-modal-header">
+                            <div>
+                                <h5 class="mb-0">Batch records</h5>
+                                <small class="text-muted">Review and update selected grid records.</small>
+                            </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CloseBatchGridModal">
+                                <i class="bi bi-x-lg" aria-hidden="true"></i> Close
+                            </button>
+                        </div>
+                        <div class="cb-filtered-grid-modal-body">
+                            <DynamicBatchGridView OnActionCompleted="HandleBatchActionCompletedAsync"
+                                                  ViewDefinition="@ViewDefinition"
+                                                  GridCode="@GridCode"
+                                                  ParentDataObjectReference="@ParentDataObjectReference"
+                                                  ParentGuid="@ParentGuid"
+                                                  FullGrid="@FullGrid" />
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>

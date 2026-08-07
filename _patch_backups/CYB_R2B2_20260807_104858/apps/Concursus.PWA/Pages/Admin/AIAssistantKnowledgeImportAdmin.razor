@@ -1,0 +1,149 @@
+@page "/ai-assistant/knowledge-import"
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.PWA.Classes
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@attribute [Authorize]
+
+<div class="cb-v2-card">
+    <div class="cb-v2-card-body">
+        <div class="cb-v2-panel-header">
+            <div>
+                <h3 class="cb-v2-title"><i class="bi bi-stars me-2"></i>AI Knowledge Import</h3>
+                <div class="cb-v2-description">
+                    Import approved CymBuild training material from SharePoint into the AI Assistant knowledge base.
+                </div>
+            </div>
+        </div>
+
+        <div class="cb-v2-panel mt-3">
+            <div class="form-check mb-2">
+                <input id="publishImmediately" class="form-check-input" type="checkbox" @bind="_publishImmediately" />
+                <label for="publishImmediately" class="form-check-label">Publish imported knowledge immediately</label>
+            </div>
+
+            <div class="form-check mb-3">
+                <input id="authoritative" class="form-check-input" type="checkbox" @bind="_authoritative" />
+                <label for="authoritative" class="form-check-label">Mark imported knowledge as authoritative</label>
+            </div>
+
+            <button type="button" class="cb-v2-btn-primary" disabled="@_isBusy" @onclick="RunImportAsync">
+                @if (_isBusy)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span>Importing...</span>
+                }
+                else
+                {
+                    <span><i class="bi bi-cloud-download me-2"></i>Run SharePoint Import</span>
+                }
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <div class="alert alert-danger mt-3">@_error</div>
+        }
+
+        @if (_result is not null)
+        {
+            <div class="cb-v2-panel mt-3">
+                <h4 class="cb-v2-subtitle">Import Results</h4>
+                <div class="row">
+                    <div class="col-md-3"><strong>Files found:</strong> @_result.FilesFound</div>
+                    <div class="col-md-3"><strong>Files skipped:</strong> @_result.FilesSkipped</div>
+                    <div class="col-md-3"><strong>Items upserted:</strong> @_result.ItemsUpserted</div>
+                    <div class="col-md-3"><strong>Failures:</strong> @_result.Failures</div>
+                </div>
+            </div>
+
+            <div class="cb-v2-panel mt-3">
+                <h4 class="cb-v2-subtitle">Run Log</h4>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Level</th>
+                                <th>File</th>
+                                <th>Message</th>
+                                <th>Knowledge Item</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in _result.Log)
+                            {
+                                <tr>
+                                    <td>@entry.Level</td>
+                                    <td>@entry.FileName</td>
+                                    <td>@entry.Message</td>
+                                    <td>@entry.KnowledgeItemGuid</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private FormHelper? _formHelper;
+    private bool _isBusy;
+    private bool _publishImmediately = true;
+    private bool _authoritative = true;
+    private string _error = string.Empty;
+    private AIAssistantKnowledgeImportRunResponse? _result;
+
+    private FormHelper FormHelper =>
+        _formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
+
+    protected override Task OnInitializedAsync()
+    {
+        _formHelper = new FormHelper(
+            coreClient,
+            sageIntegrationService,
+            Guid.Empty.ToString(),
+            userService);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task RunImportAsync()
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        _error = string.Empty;
+        _result = null;
+        _isBusy = true;
+
+        try
+        {
+            var userId = userService?.UserId ?? 0;
+            if (userId <= 0)
+            {
+                _error = "A valid user is required before running the import.";
+                return;
+            }
+
+            _result = await FormHelper.AIAssistantKnowledgeImportRunAsync(
+                userId,
+                _publishImmediately,
+                _authoritative);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+}

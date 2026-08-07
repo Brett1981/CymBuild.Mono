@@ -9,20 +9,37 @@
 <section class="usage-dashboard cb-v2-stack" aria-labelledby="usage-dashboard-title">
     <header class="usage-dashboard-header cb-v2-card cb-v2-panel-body cb-v2-header-row">
         <div>
-            <p class="usage-dashboard-eyebrow cb-v2-eyebrow">Developer diagnostics</p>
+            <p class="usage-dashboard-eyebrow cb-v2-eyebrow">@(ActiveReport == UsageReportMode.LastSevenDays ? "Management overview" : "Developer diagnostics")</p>
             <h3 id="usage-dashboard-title">System Usage Analytics</h3>
-            <p>Review feature adoption and activity for the selected reporting period.</p>
+            <p>@(ActiveReport == UsageReportMode.LastSevenDays ? "A concise view of CymBuild engagement by user." : "Review feature adoption and activity for the selected reporting period.")</p>
         </div>
         <div class="usage-dashboard-actions cb-v2-actions">
-            <button type="button" class="btn btn-outline-primary" @onclick="ExportToCSV" disabled="@(!UsageReport.Any())">
+            <button type="button" class="btn btn-outline-primary" @onclick="ExportToCSV" disabled="@(!CurrentReportHasData)">
                 <i class="bi bi-filetype-csv" aria-hidden="true"></i> Export CSV
             </button>
-            <button type="button" class="btn btn-outline-secondary" @onclick="ExportToPDF" disabled="@(!UsageReport.Any())">
+            <button type="button" class="btn btn-outline-secondary" @onclick="ExportToPDF" disabled="@(!CurrentReportHasData)">
                 <i class="bi bi-file-earmark-text" aria-hidden="true"></i> Export PDF
             </button>
         </div>
     </header>
 
+    <div class="usage-report-switcher cb-v2-card" role="group" aria-label="Usage report type">
+        <button type="button"
+                class="@(ActiveReport == UsageReportMode.LastSevenDays ? "active" : null)"
+                aria-pressed="@(ActiveReport == UsageReportMode.LastSevenDays)"
+                @onclick="ShowLastSevenDaysReport">
+            Last 7 days by user
+        </button>
+        <button type="button"
+                class="@(ActiveReport == UsageReportMode.Detailed ? "active" : null)"
+                aria-pressed="@(ActiveReport == UsageReportMode.Detailed)"
+                @onclick="ShowDetailedReport">
+            Detailed usage
+        </button>
+    </div>
+
+    @if (ActiveReport == UsageReportMode.Detailed)
+    {
     <div class="usage-filter-panel cb-v2-card cb-v2-panel-body">
         <div class="usage-filter-field cb-v2-field">
             <label for="usage-start-date">Start date</label>
@@ -47,6 +64,7 @@
             <button type="button" class="btn btn-outline-secondary" @onclick="ResetFilters" disabled="@IsLoading">Reset</button>
         </div>
     </div>
+    }
 
     @if (!string.IsNullOrWhiteSpace(ValidationMessage))
     {
@@ -63,6 +81,60 @@
             <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
             Loading usage analytics...
         </div>
+    }
+    else if (ActiveReport == UsageReportMode.LastSevenDays)
+    {
+        <div class="usage-summary-grid">
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Active users</span><strong class="cb-v2-stat-value">@UserUsageLast7Days.Count(x => x.UsageCountLast7Days > 0).ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Usage events</span><strong class="cb-v2-stat-value">@UserUsageLast7Days.Sum(x => x.UsageCountLast7Days).ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">Active accounts</span><strong class="cb-v2-stat-value">@UserUsageLast7Days.Count.ToString("N0")</strong></article>
+            <article class="cb-v2-stat-card"><span class="cb-v2-stat-label">No activity</span><strong class="cb-v2-stat-value">@UserUsageLast7Days.Count(x => x.UsageCountLast7Days == 0).ToString("N0")</strong></article>
+        </div>
+
+        @if (UserUsageLast7Days.Any())
+        {
+            <section class="usage-panel usage-table-panel cb-v2-card cb-v2-panel-body" aria-labelledby="user-usage-results-title">
+                <div class="usage-panel-heading cb-v2-panel-header">
+                    <div>
+                        <h4 id="user-usage-results-title">User engagement</h4>
+                        <p>High-level activity for today and the preceding six calendar days, in UTC.</p>
+                    </div>
+                </div>
+                <div class="table-responsive cb-v2-table-wrap">
+                    <table class="table table-hover align-middle usage-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th class="text-end">Events</th>
+                                <th class="text-end">Active days</th>
+                                <th class="text-end">Features used</th>
+                                <th>Last activity</th>
+                                <th>Compared with prior 7 days</th>
+                                <th><span class="visually-hidden">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in UserUsageLast7Days.OrderByDescending(x => x.UsageCountLast7Days).ThenBy(x => x.Username))
+                            {
+                                <tr>
+                                    <td>@item.Username</td>
+                                    <td class="text-end">@item.UsageCountLast7Days.ToString("N0")</td>
+                                    <td class="text-end">@item.ActiveDaysLast7Days of 7</td>
+                                    <td class="text-end">@item.FeaturesUsedLast7Days.ToString("N0")</td>
+                                    <td>@FormatLastActivity(item)</td>
+                                    <td><span class="usage-trend @GetTrendClass(item.UsageTrend)">@item.UsageTrend</span></td>
+                                    <td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ShowUserDetail(item.UserGuid)">View detail</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+        else
+        {
+            <div class="usage-empty-state cb-v2-empty-state cb-v2-card">No active users are available for this report.</div>
+        }
     }
     else
     {
@@ -197,6 +269,7 @@
     private static readonly string[] ChartColours = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#ea580c"];
     private List<UsageData> UsageReport = [];
     private List<UsageData> OriginalUsageReport = [];
+    private List<UserUsageLast7DaysData> UserUsageLast7Days = [];
     private List<UserItem> Users = [];
     private DateTime StartDate = DateTime.UtcNow.AddDays(-30).Date;
     private DateTime EndDate = DateTime.UtcNow.Date;
@@ -208,6 +281,14 @@
     private int PageSize = 20;
     private UsageSort ActiveSort = UsageSort.UsageCount;
     private bool SortDescending = true;
+    private UsageReportMode ActiveReport = UsageReportMode.LastSevenDays;
+    private API.Client.FormHelper? _formHelper;
+
+    private API.Client.FormHelper FormHelper =>
+        _formHelper ?? throw new InvalidOperationException("FormHelper has not been initialised.");
+    private bool CurrentReportHasData => ActiveReport == UsageReportMode.LastSevenDays
+        ? UserUsageLast7Days.Any()
+        : UsageReport.Any();
 
     private bool IsFeatureDrillDown => UsageReport.Count != OriginalUsageReport.Count;
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(SortedUsageReport.Count / (double)PageSize));
@@ -254,16 +335,17 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _formHelper = new API.Client.FormHelper(coreClient, Guid.Empty.ToString(), userService);
         await LoadUsers();
-        await FetchUsageReport();
+        await FetchUserUsageLast7Days();
     }
 
     private async Task LoadUsers()
     {
         try
         {
-            var response = await coreClient.UsersGetAsync(new UsersGetRequest());
-            Users = response?.Users.Select(x => new UserItem { UserGuid = x.Guid, Username = x.FullName }).OrderBy(x => x.Username).ToList() ?? [];
+            var response = await FormHelper.GetUsageReportUsersAsync();
+            Users = response.Select(x => new UserItem { UserGuid = x.Guid, Username = x.FullName }).OrderBy(x => x.Username).ToList();
         }
         catch (Exception ex)
         {
@@ -285,8 +367,7 @@
                 StartDateUtc = UiFormattingHelper.ToTimestamp(StartDate),
                 EndDateUtc = UiFormattingHelper.ToTimestamp(EndDate.AddDays(1).AddTicks(-1))
             };
-            var response = await coreClient.GetUsageReportAsync(request);
-            OriginalUsageReport = response.UsageData.ToList();
+            OriginalUsageReport = await FormHelper.GetUsageReportAsync(request);
             UsageReport = OriginalUsageReport.ToList();
             CurrentPage = 1;
         }
@@ -300,6 +381,44 @@
         {
             IsLoading = false;
         }
+    }
+
+    private async Task FetchUserUsageLast7Days()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        try
+        {
+            UserUsageLast7Days = await FormHelper.GetUserUsageLast7DaysAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"The seven-day user usage report could not be loaded: {ex.Message}";
+            UserUsageLast7Days = [];
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task ShowLastSevenDaysReport()
+    {
+        ActiveReport = UsageReportMode.LastSevenDays;
+        if (!UserUsageLast7Days.Any()) await FetchUserUsageLast7Days();
+    }
+
+    private async Task ShowDetailedReport()
+    {
+        ActiveReport = UsageReportMode.Detailed;
+        if (!UsageReport.Any()) await FetchUsageReport();
+    }
+
+    private async Task ShowUserDetail(string userGuid)
+    {
+        SelectedUserGuid = userGuid;
+        ActiveReport = UsageReportMode.Detailed;
+        await FetchUsageReport();
     }
 
     private bool ValidateDates()
@@ -365,6 +484,17 @@
 
     private async Task ExportToCSV()
     {
+        if (ActiveReport == UsageReportMode.LastSevenDays)
+        {
+            var summaryCsv = new StringBuilder("Username,UsageCountLast7Days,ActiveDaysLast7Days,FeaturesUsedLast7Days,LastAccessedLast7Days,UsageCountPrevious7Days,UsageTrend\r\n");
+            foreach (var item in UserUsageLast7Days.OrderByDescending(x => x.UsageCountLast7Days).ThenBy(x => x.Username))
+            {
+                summaryCsv.AppendLine(string.Join(',', Csv(item.Username), item.UsageCountLast7Days, item.ActiveDaysLast7Days, item.FeaturesUsedLast7Days, Csv(FormatLastActivity(item)), item.UsageCountPrevious7Days, Csv(item.UsageTrend)));
+            }
+            await JSRuntime.InvokeVoidAsync("downloadFile", "UserUsageLast7Days.csv", $"data:text/csv;charset=utf-8,{Uri.EscapeDataString(summaryCsv.ToString())}");
+            return;
+        }
+
         var csv = new StringBuilder("Username,FeatureName,UsageCount,WeeklyAverage,FirstAccessed,LastAccessed\r\n");
         foreach (var item in UsageReport)
         {
@@ -375,6 +505,13 @@
 
     private async Task ExportToPDF()
     {
+        if (ActiveReport == UsageReportMode.LastSevenDays)
+        {
+            var summary = "CymBuild user usage - last 7 days\n\n" + string.Join("\n", UserUsageLast7Days.OrderByDescending(x => x.UsageCountLast7Days).Select(x => $"{x.Username}: {x.UsageCountLast7Days:N0} events across {x.ActiveDaysLast7Days} days and {x.FeaturesUsedLast7Days} features; {x.UsageTrend}."));
+            await JSRuntime.InvokeVoidAsync("downloadFile", "UserUsageLast7Days.pdf", $"data:text/plain;charset=utf-8,{Uri.EscapeDataString(summary)}");
+            return;
+        }
+
         var content = "System Usage Report\n\n" + string.Join("\n", UsageReport.Select(x => $"{x.Username} - {x.FeatureName}: First Accessed: {x.FirstAccessed} - {x.UsageCount} times (Last Accessed: {x.LastAccessed}) - Weekly Average: {x.WeeklyAverage}"));
         await JSRuntime.InvokeVoidAsync("downloadFile", "UsageReport.pdf", $"data:text/plain;charset=utf-8,{Uri.EscapeDataString(content)}");
     }
@@ -384,7 +521,11 @@
     private static string FormatPercent(double value) => $"{FormatNumber(value)}%";
     private static string FormatNumber(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
     private static string FormatDashArray(double value) => $"{FormatNumber(value)} {FormatNumber(Math.Max(0, 100 - value))}";
+    private static string FormatLastActivity(UserUsageLast7DaysData item) =>
+        item.LastAccessedLast7Days is null ? "No activity" : item.LastAccessedLast7Days.ToDateTime().ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture);
+    private static string GetTrendClass(string trend) => trend.Replace(" ", "-").ToLowerInvariant();
 
+    private enum UsageReportMode { LastSevenDays, Detailed }
     private enum UsageSort { Username, FeatureName, UsageCount, WeeklyAverage, FirstAccessed, LastAccessed }
     private sealed record FeatureSummary(string FeatureName, int UsageCount, double BarPercent, double SharePercent, double OffsetPercent, string Colour);
     private sealed class UserItem { public string UserGuid { get; set; } = string.Empty; public string Username { get; set; } = string.Empty; }

@@ -177,7 +177,7 @@ public partial class BatchButtonMenu
     {
         try
         {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+            formHelper = new FormHelper(coreClient, EntityTypeGuid, userService);
 
             if (item.Text == "Create Invoice")
             {
@@ -289,7 +289,7 @@ public partial class BatchButtonMenu
                 return;
             }
 
-            formHelper ??= new FormHelper(coreClient, sageIntegrationService, EntityTypeGuid, userService);
+            formHelper ??= new FormHelper(coreClient, EntityTypeGuid, userService);
 
             _isBusy = true;
             ResetInvoicePreviewState();

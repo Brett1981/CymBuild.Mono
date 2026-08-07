@@ -6,7 +6,6 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject HttpClient httpClient
 @attribute [Authorize]
 
@@ -382,7 +381,6 @@
     {
         _formHelper = new API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             Guid.Empty.ToString(),
             userService);
 

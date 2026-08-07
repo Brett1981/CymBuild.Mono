@@ -1,0 +1,486 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Source-derived minimal SQL Server schema required by CymBuild.Database.IntegrationTests.",
+  "sourceRoot": "Database/CymBuild_DB/Schema",
+  "physicalStorageRewrite": {
+    "from": "[METADATA]",
+    "to": "[PRIMARY]",
+    "reason": "Dedicated LocalDB/test databases have only PRIMARY; this changes physical placement only."
+  },
+  "sources": [
+    {
+      "path": "Security/Schemas/SCore.sql",
+      "sha256": "509FBBF85A32E5727AC7778DC6E1FE2F77589BFB72F6F45BE3E7E06425624940",
+      "kind": "Schema",
+      "schema": "SCore",
+      "name": "SCore",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SCore\\]"
+        }
+      ]
+    },
+    {
+      "path": "Security/Schemas/SJob.sql",
+      "sha256": "B73A209307B489EF3D6CC2FA357932F8208BCD50EC1D0923AABF2D978B328CA3",
+      "kind": "Schema",
+      "schema": "SJob",
+      "name": "SJob",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SJob\\]"
+        }
+      ]
+    },
+    {
+      "path": "Security/Schemas/SSop.sql",
+      "sha256": "F60A1252EC0E7816E4BD3747DDF6418EA66D5379D33E478711DF8128C278922D",
+      "kind": "Schema",
+      "schema": "SSop",
+      "name": "SSop",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SSop\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.EntityTypes.sql",
+      "sha256": "14B8C5DC458ED403DE8C0C866E22E78FA86FBB956AD4E0971EE63AFD76E9EC44",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "EntityTypes",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[EntityTypes\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_EntityTypes\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_EntityTypes_Get",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_EntityTypes_Get\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_EntityTypes_Guid",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_EntityTypes_Guid\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_EntityTypes_Name",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_EntityTypes_Name\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.DataObjects.sql",
+      "sha256": "044E866CF578EC84782694425F435A0B4FFF6E6B198AF989EC7349DDE8685A3A",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "DataObjects",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[DataObjects\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_DataObjects\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjects_EntityTypes",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjects_EntityTypes\\]\\s+FOREIGN\\s+KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.EntityHobts.sql",
+      "sha256": "25D8DB820E856E6C8C178C99A7BFE197993459D0852220DA4650B9105AC1AAD6",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "EntityHobts",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[EntityHobts\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_EntityHoBTs\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_EntityHobts_EntityTypeID",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_EntityHobts_EntityTypeID\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_EntityTypeHobts",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_EntityTypeHobts\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_EntityHobts_SchemaName_ObjectName",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_EntityHobts_SchemaName_ObjectName\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_EntityHobts_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_EntityHobts_DataObjects\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "DisableConstraint",
+          "name": "FK_EntityHobts_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?NOCHECK\\s+CONSTRAINT\\s+\\[FK_EntityHobts_DataObjects\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_EntityHoBTs_EntityTypes",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_EntityHoBTs_EntityTypes\\]\\s+FOREIGN\\s+KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.Groups.sql",
+      "sha256": "283C893A18778012890485BD7F7FFB6115D79D2802ADB35285900AE6F152330E",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "Groups",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[Groups\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_Groups\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_DirectoryID",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_DirectoryID\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_Groups_Guid",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_Groups_Guid\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_Uq_Groups_Name",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_Uq_Groups_Name\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_Groups_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_Groups_DataObjects\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "DisableConstraint",
+          "name": "FK_Groups_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?NOCHECK\\s+CONSTRAINT\\s+\\[FK_Groups_DataObjects\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.Identities.sql",
+      "sha256": "BFCA685F321FE421587099D78638C7DC8D2EEAED4C008ACB258BAFD32FD6D829",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "Identities",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[Identities\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_Identities\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_Identities_List",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_Identities_List\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_Identities_LoweredEmailAddress",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_Identities_LoweredEmailAddress\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_Identities_Name",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_Identities_Name\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_Identities_EmailAddress",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_Identities_EmailAddress\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_UQ_Identities_Guid",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_Identities_Guid\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_Identities_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_Identities_DataObjects\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "DisableConstraint",
+          "name": "FK_Identities_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?NOCHECK\\s+CONSTRAINT\\s+\\[FK_Identities_DataObjects\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.WorkflowStatus.sql",
+      "sha256": "199C7C2EE8D7AC96638112FC8BF90CCCE47E2B8348A2CD75BA08B2179F8BF28A",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "WorkflowStatus",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[WorkflowStatus\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_SCore_WorkflowStatus\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "UniqueColumn",
+          "column": "Guid",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?ADD\\s+UNIQUE\\s*\\(\\s*\\[Guid\\]\\s*\\)"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_WorkflowStatus_Active_ID_Guid",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_WorkflowStatus_Active_ID_Guid\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_WorkflowStatus_Id_Guid",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_WorkflowStatus_Id_Guid\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.NonActivityTypes.sql",
+      "sha256": "4BCCF9F6980001485E92349D4ECF39BF792B2D1014D326C2772D5CDE4499A934",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "NonActivityTypes",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[NonActivityTypes\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?ADD\\ PRIMARY\\ KEY\\ CLUSTERED\\ \\(\\[ID\\]\\)"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.NonActivityEvents.sql",
+      "sha256": "935E1FFA474ADB031FF9886C38549CAC3EB066E7099D7F2AC62C82D8A29BFBCC",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "NonActivityEvents",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[NonActivityEvents\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_NonActivityEvents_AbsenceTypes",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_NonActivityEvents_AbsenceTypes\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_NonActivityEvents_Groups",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_NonActivityEvents_Groups\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_NonActivityEvents_Identities",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_NonActivityEvents_Identities\\]\\s+FOREIGN\\s+KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.DataObjectTransition.sql",
+      "sha256": "91EE6936212DF2F3E0E6E4FF0C59E1C389ABC7A5AB646C198ECFD99B13C479CC",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "DataObjectTransition",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[DataObjectTransition\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?ADD\\ PRIMARY\\ KEY\\ CLUSTERED\\ \\(\\[ID\\]\\)"
+        },
+        {
+          "kind": "UniqueColumn",
+          "column": "Guid",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?ADD\\s+UNIQUE\\s*\\(\\s*\\[Guid\\]\\s*\\)"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_DataObjectTransition_Active_DataObjectGuid_ID",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_DataObjectTransition_Active_DataObjectGuid_ID\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_DataObjectTransition_DataObjectGuid_IdDesc",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_DataObjectTransition_DataObjectGuid_IdDesc\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_DataObjectTransition_DataObjectGuid_Status_Date",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_DataObjectTransition_DataObjectGuid_Status_Date\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_1286463517",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_1286463517\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_1776779879",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_1776779879\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_177962981",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_177962981\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_271694617",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_271694617\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_876107671",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_876107671\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_SCore_DataObjectTransition_943282583",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_SCore_DataObjectTransition_943282583\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjectTransition_CreatedBy",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjectTransition_CreatedBy\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjectTransition_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjectTransition_DataObjects\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "DisableConstraint",
+          "name": "FK_DataObjectTransition_DataObjects",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?NOCHECK\\s+CONSTRAINT\\s+\\[FK_DataObjectTransition_DataObjects\\]"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjectTransition_OldStatus",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjectTransition_OldStatus\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjectTransition_Status",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjectTransition_Status\\]\\s+FOREIGN\\s+KEY"
+        },
+        {
+          "kind": "ForeignKey",
+          "name": "FK_DataObjectTransition_Surveyor",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[FK_DataObjectTransition_Surveyor\\]\\s+FOREIGN\\s+KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.IntegrationOutbox.sql",
+      "sha256": "E288D1731A39641642C0F323E9B696470E86EA213EA6DF9207C6E93688CC74BB",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "IntegrationOutbox",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[IntegrationOutbox\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_IntegrationOutbox\\]\\ PRIMARY\\ KEY"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_IntegrationOutbox_PublishClaim",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_IntegrationOutbox_PublishClaim\\]"
+        },
+        {
+          "kind": "Index",
+          "name": "IX_IntegrationOutbox_Unpublished",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_IntegrationOutbox_Unpublished\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.UpsertDataObject.sql",
+      "sha256": "C9A943F1CE0BC18E47E68D26F457FB4093DFCE9CD059C0DD72045BF653392376",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "UpsertDataObject",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SCore\\]\\.\\[UpsertDataObject\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.NonActivityEventsUpsert.sql",
+      "sha256": "C97FC4AB6AB774FA0EC5856D48453ED8FF0EA3296D6C41FFB399E3F25C4B7F03",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "NonActivityEventsUpsert",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SCore\\]\\.\\[NonActivityEventsUpsert\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.DataObjectTransitionUpsert.sql",
+      "sha256": "BDFAB4432CF955A724A7CE113F1376A19E1B9607C4448A046751AC787243C561",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "DataObjectTransitionUpsert",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SCore\\]\\.\\[DataObjectTransitionUpsert\\]"
+        }
+      ]
+    }
+  ]
+}

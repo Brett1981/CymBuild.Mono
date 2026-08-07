@@ -11,8 +11,6 @@
 @using Google.Protobuf.WellKnownTypes;
 
 @using _AvailabilityEvent = Concursus.PWA.Shared.Scheduler.Classes.AvailabilityEvent
-
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject UserService userService
 @inject Core.CoreClient coreClient
 @inherits EditPageBase
@@ -142,7 +140,7 @@
         {
             try
             {
-                formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 //Get the entity as object.
                 NonScheduledEntity = await formHelper.GetEntityType();
                 var parentDataObjectReference = new DataObjectReference(appointment.Guid, EntityTypeGuid);
@@ -283,7 +281,7 @@
 
 
 
-        var formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+        var formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
         StateHasChanged();
 

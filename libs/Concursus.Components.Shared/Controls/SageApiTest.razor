@@ -3,10 +3,8 @@
 @using Concursus.API.Client
 @using Concursus.API.Client.Models
 @using Concursus.API.Core
-@using Sage200Microservice.API.Protos.Invoice
 
 @inject Core.CoreClient coreClient
-@inject InvoiceService.InvoiceServiceClient sageClient
 @inject UserService userService
 
 <PageTitle>Sage API Test</PageTitle>
@@ -403,7 +401,6 @@
     {
         _formHelper = new FormHelper(
             coreClient,
-            sageClient,
             Guid.Empty.ToString(),
             userService);
     }

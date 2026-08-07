@@ -1,0 +1,3619 @@
+BlueGen CymBuild Knowledge Pack
+===============================
+Version: 26.3-r27
+Validated on: 2026-08-04
+Source baseline: CymBuild.Monorepo(8).zip + uploaded schema + CYB361_R22-R27
+Documents: 18
+
+====================================================================================================
+DOCUMENT 1: 00_BLUEGEN_SYSTEM_RULES.md
+Recommended upload filename: 00_BLUEGEN_SYSTEM_RULES.markdown
+====================================================================================================
+
+# BlueGen CymBuild System Rules
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+This file is the highest-priority behaviour layer for BlueGen when answering CymBuild developer, administrator, support, or user questions.
+
+## Mandatory architecture flow
+
+```text
+Blazor PWA → FormHelper/API client → gRPC API → EF/repository → SQL Server
+```
+
+The UI must not construct direct gRPC/API calls when a `FormHelper` wrapper exists, must not call SQL directly, and must not contain business logic that belongs in the API, EF, SQL, workflow, or worker layers.
+
+## Non-negotiable rules
+
+1. No direct API or SQL calls from UI components.
+2. No business logic in Razor/UI components.
+3. Use metadata-driven controls when metadata exists; prefer `V2FormRenderer`, `V2FieldEditor`, and `FilteredDynamicGridViewV2` for current non-Telerik work.
+4. Every platform-managed entity insert must create its matching `SCore.DataObjects` row atomically with the correct `Guid`, `EntityTypeId`, `RowStatus`, and `RowVersion` behavior.
+5. Insert-then-update identity patterns are not allowed.
+6. Never update workflow status directly on an entity table.
+7. Use `SCore.DataObjectTransitionUpsert`; the latest active `SCore.DataObjectTransition` row is the current state.
+8. Use `SCore.IntegrationOutbox` for integration events. External systems must be reached through controlled services/workers; CymBuild must never call Sage directly.
+9. Integrations must be idempotent, retry-safe, auditable, and diagnosable.
+10. SQL Server scripts must be source-controlled, idempotent, deployment-safe, explicit, and non-destructive unless an approved change requires otherwise.
+11. Do not use `SELECT *` in production or diagnostic SQL supplied as an approved CymBuild pattern.
+12. Active-row filters must use `RowStatus <> 0 AND RowStatus <> 254` unless the object intentionally defines a different rule.
+13. Schema is source-controlled SQL. The database is a deployment target, not the authoring source.
+14. Metadata migration is SMigration run-based. Manifests remain ValidateOnly/governance inputs, especially for grid metadata; do not describe the platform as purely manifest-driven.
+15. No manual metadata edits in QA, UAT, or LIVE. No manual database promotion or direct production fixes.
+16. DEV is flexible; QA/UAT are controlled; LIVE is restricted.
+17. No new Telerik UI unless explicitly requested. Preserve behavior and backward compatibility during conversion.
+18. The Schema Migration workbench configures, compares, selects, validates, and accepts plans. It does not execute DDL from the browser.
+19. Controlled schema deployment is performed outside the UI by `tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1` or a future controlled worker/service account.
+20. Preserve existing behavior. Do not make destructive changes unless explicitly authorized.
+21. Use `Concursus.Components.Shared.wwwroot.css.Cymbuild_ui.css` as the canonical shared stylesheet where present. The supplied 26.3 snapshot currently contains `libs/Concursus.Components.Shared/wwwroot/css/cymbuild-v2.css`; reconcile the naming in source control rather than inventing a parallel untracked file.
+
+## Metadata migration lifecycle
+
+```text
+Create Run → Stage → Validate → Build Identity Map
+→ Review / Ignore / Override → Select Records
+→ Apply Preview → Apply Selected or All Valid → Audit
+```
+
+## Schema migration lifecycle
+
+```text
+Create Run → Stage & Compare → Save Selection
+→ Validate Selected/Default Plan → Accept Run
+→ Controlled Runner/Worker → PreDeployment
+→ Source-Controlled SQL → PostDeployment → Audit
+```
+
+No explicit selection means all deployable differences. A saved selection means selected rows only.
+
+## BlueGen answer behaviour
+
+BlueGen should trace the full architecture flow, identify the correct layer, inspect current source/schema before proposing changes, reject shortcuts, preserve behavior, and state uncertainty where source evidence is incomplete. For schema or metadata work, distinguish workbench configuration from controlled deployment execution.
+
+## Rejection rules
+
+Reject or flag approaches that include direct status updates, missing `DataObjects`, UI bypass of `FormHelper`, business rules in Razor, hard-coded metadata-backed behavior, non-idempotent SQL, `SELECT *`, copied numeric IDs between environments, direct metadata edits, browser-executed DDL, direct Sage calls, unsafe partial deployment, new Telerik dependencies without approval, or destructive schema changes without explicit approval.
+
+
+====================================================================================================
+DOCUMENT 2: 01_CYMBUILD_ARCHITECTURE.md
+Recommended upload filename: 01_CYMBUILD_ARCHITECTURE.markdown
+====================================================================================================
+
+# **CymBuild — Metadata-Driven Application Platform**
+
+*A high-level architecture guide for new developers*
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+---
+
+## **1. The Big Picture**
+
+CymBuild is a **metadata-driven business application platform** built around a strict layered architecture.
+
+The platform supports Jobs, Enquiries, Quotes, Invoice Schedules, Finance, Sage integration, SharePoint/Outlook filing, workflow, dashboards, classifications, and dynamic metadata-driven UI.
+
+The core principle is:
+
+> **The UI does not own business logic.
+> The UI renders metadata and sends user actions through FormHelper.
+> Business rules and persistence flow through the API, EF, and SQL.**
+
+### **Mandatory Runtime Flow**
+
+All application behaviour must follow this flow:
+
+```text
+UI → FormHelper → gRPC API → EF → SQL
+```
+
+The Blazor UI must **not** call the API directly and must not contain business logic that belongs in the API, EF, or SQL layer.
+
+### **Metadata-Driven UI Flow**
+
+For metadata rendering, the platform uses this conceptual flow:
+
+```text
+SQL metadata → EF → gRPC API → FormHelper → Blazor PWA → Rendered UI
+```
+
+The database contains the metadata definitions. EF reads and builds rich metadata models. The API exposes those models through gRPC. The PWA renders forms, grids, tabs, dropdowns, actions, widgets, and layouts dynamically.
+
+### **What Lives Where?**
+
+#### **SQL**
+
+SQL is the deployment target for:
+
+* Business data:
+
+  * Jobs
+  * Enquiries
+  * Quotes
+  * Quote Items
+  * Invoice Schedules
+  * Invoice Requests
+  * Transactions
+  * RIBA Stages
+  * Data/Security Classifications
+  * Sage inbound/outbound integration records
+
+* Runtime platform data:
+
+  * `SCore.DataObjects`
+  * `SCore.DataObjectTransition`
+  * Workflow definitions
+  * Workflow statuses
+  * Workflow transitions
+
+* UI metadata:
+
+  * Entity types
+  * Entity properties
+  * Property groups
+  * Grid definitions
+  * Grid view definitions
+  * Grid view columns
+  * Dropdown definitions
+  * Labels
+  * Action menus
+  * Widget definitions
+
+SQL must always be written using explicit columns. Avoid `SELECT *`. Active-row filtering must normally use:
+
+```sql
+RowStatus <> 0 AND RowStatus <> 254
+```
+
+#### **Concursus.EF**
+
+Responsible for reading SQL and assembling runtime objects such as:
+
+* `EntityType`
+* `EntityProperty`
+* `EntityPropertyGroup`
+* `GridViewDefinition`
+* `GridViewColumnDefinition`
+* `DropDownListDefinition`
+* `DataObject`
+* Workflow and status-related models
+
+#### **Concursus.API**
+
+The gRPC API layer exposes EF-backed models and operations through services such as:
+
+* `CoreService`
+* `UiService`
+* Domain-specific services where required
+
+The API is responsible for mapping EF models to protobuf models, enforcing server-side rules, handling identity/security context, and coordinating persistence.
+
+#### **Concursus.API.Client**
+
+Contains the PWA’s API wrapper, primarily through `FormHelper`.
+
+The PWA must call `FormHelper`, not construct direct gRPC clients.
+
+#### **Concursus.PWA**
+
+The Blazor PWA dynamically renders the UI using metadata retrieved through `FormHelper`.
+
+It contains:
+
+* Dynamic edit pages
+* Dynamic grids
+* Dashboard/widget rendering
+* Shared layout handling
+* Client-side validation display
+* User interaction handling
+
+It should not hard-code behaviour where metadata already exists.
+
+#### **Concursus.Components.Shared**
+
+Contains reusable controls and shared UI building blocks used by the PWA and related client surfaces.
+
+This area is increasingly important as CymBuild moves away from Telerik controls.
+
+---
+
+## **2. Current Platform Direction**
+
+## **2.1 Non-Telerik UI Progression**
+
+CymBuild is progressing towards **non-Telerik UI controls** for new and modernised pages.
+
+The direction is:
+
+* Avoid Telerik for new work unless explicitly requested.
+* Preserve existing functionality during conversion.
+* Replace Telerik controls with CymBuild-native equivalents.
+* Use shared reusable controls where possible.
+* Preserve:
+
+  * Modals
+  * Buttons
+  * Search
+  * Filtering
+  * Dropdowns
+  * Formatting
+  * Paging
+  * Sorting
+  * Row actions
+  * Layout behaviour
+  * Empty states
+  * Loading states
+  * Error handling
+
+Current non-Telerik reference patterns include:
+
+* `DynamicBatchGridViewV2`
+* `SageInboundDiagnosticsV2`
+* CymBuild modal services and modal host components
+* CymBuild-native windowed modal patterns
+* `cymbuild-v2.css` styling direction
+
+For 26.3 implementation work, prefer `V2FormRenderer`, `V2FieldEditor`, `FilteredDynamicGridViewV2`, and established V2 grid/diagnostic patterns. Use a non-V2 route only when it remains the active production route and preserve full parity while migrating it.
+
+### **Non-Telerik Conversion Rules**
+
+When converting a page or grid:
+
+1. Do not remove existing functionality.
+2. Do not move business logic into the UI.
+3. Preserve the existing user journey.
+4. Replace Telerik controls with equivalent shared/native controls.
+5. Use metadata where metadata already exists.
+6. Do not hard-code dropdowns, labels, columns, or actions if they are metadata-driven.
+7. Keep the route:
+
+```text
+UI → FormHelper → gRPC API → EF → SQL
+```
+
+---
+
+## **2.2 Run-Based Metadata Migration and Manifest Governance**
+
+CymBuild 26.3 uses a hybrid, source-controlled metadata model. The main migration engine is SMigration run-based; manifests remain ValidateOnly/governance inputs.
+
+```text
+Schema authoring = source-controlled SQL
+Metadata migration = SMigration run-based code/SQL
+Metadata manifests = ValidateOnly/governance support
+Database = deployment target only
+```
+
+The active lifecycle is:
+
+```text
+Create Run → Stage → Validate → Build Identity Map
+→ Review / Ignore / Override → Select Records
+→ Apply Preview → Apply Selected or All Valid → Audit
+```
+
+Grid metadata remains ordered `Grid → View → Columns`. Identity is resolved by stable `Guid`, not copied environment-specific IDs. Every inserted metadata entity that requires platform identity must create its matching `SCore.DataObjects` row atomically.
+
+Relevant implementation paths include `MetadataMigration.razor`, `FormHelper.MetadataMigration.cs`, `CoreService.MetadataMigration.cs`, `SQL_CI_Packs_Metadata/database`, `metadata-manifests/v1`, and `libs/Concursus.EF/MetadataManifests/ValidateOnly`.
+
+## **2.3 Schema Migration Workbench and Controlled Deployment**
+
+The workbench is a Development configuration, review and approval surface. It persists source/target comparisons, lightweight selections, selected/default validation, acceptance and audit. It does not execute DDL from the browser.
+
+```text
+PWA → FormHelper → gRPC → SMigration persistent plan
+→ external controlled runner/worker → source-controlled SQL
+```
+
+No saved selection means all deployable rows; saved selection means selected rows only. The R27 runner under `tools/SchemaDeployment` reads `SMigration.SchemaDeploymentPlan_Get`, defaults to dry-run, runs `SCore.PreDeploymentScript`, applies only canonical SQL under `Database/CymBuild_DB/Schema`, runs `SCore.PostDeploymentScript`, and writes DataObjects-compliant audit.
+
+A future Run Deployment button must queue a controlled worker/service account through an outbox/deployment queue. It must not grant DDL permissions to a browser session.
+
+## **2.4 Environments**
+
+CymBuild follows controlled environment promotion.
+
+Typical flow:
+
+```text
+DEV → QA → UAT → LIVE
+```
+
+General rules:
+
+* DEV is flexible.
+* QA is controlled.
+* UAT is controlled and business-facing.
+* LIVE is restricted.
+* No manual changes should be made directly in LIVE.
+* Schema and metadata changes should be deployed through controlled scripts/pipelines.
+
+UAT/Test environments may be refreshed from LIVE. For some data areas, especially Products, LIVE can be the source of truth for existing business-maintained records.
+
+---
+
+## **3. Project Overview**
+
+---
+
+## **3.1 Concursus.EF**
+
+**Role:** Data access and metadata model builder.
+
+Concursus.EF reads the SQL-backed schema and metadata and constructs the object models used by the API.
+
+### **Key Components**
+
+#### **Core.cs**
+
+Contains core domain and runtime models, including:
+
+* Jobs
+* Enquiries
+* Quotes
+* DataObject assembly
+* DataProperty handling
+* Workflow/status-related runtime information
+
+#### **UserInterface.cs**
+
+Contains metadata models including:
+
+* `EntityType`
+* `EntityProperty`
+* `EntityPropertyGroup`
+* `GridDefinition`
+* `GridViewDefinition`
+* `GridViewColumnDefinition`
+* `DropDownListDefinition`
+* Action menu definitions
+* Widget definitions
+
+### **Common Schemas**
+
+EF maps or interacts with schemas including:
+
+* `SCore`
+* `SJob`
+* `SSop`
+* `SFin`
+* `SProd`
+* `SUserInterface`
+* `SIntegration`
+* `SAi`
+* Other module schemas as required
+
+EF transforms metadata such as:
+
+> “This field is required, belongs in group X, uses dropdown Y, and is visible on edit page Z”
+
+into strong models consumed by the gRPC API.
+
+---
+
+## **3.2 Concursus.API**
+
+**Role:** gRPC service layer between EF and the PWA.
+
+### **Key Services**
+
+#### **CoreService**
+
+Responsible for operations such as:
+
+* Loading `DataObject` records
+* Saving `DataObject` records
+* Executing entity queries
+* Running lookups
+* Handling workflow/status actions
+* Usage tracking
+* Integration-facing operations where applicable
+
+#### **UiService**
+
+Responsible for UI metadata such as:
+
+* Entity type definitions
+* Entity property definitions
+* Entity property groups
+* Grid definitions
+* Grid view definitions
+* Grid column definitions
+* Dropdown definitions
+* Widget definitions
+* Labels and UI metadata
+
+### **API Responsibilities**
+
+The API layer is responsible for:
+
+* Mapping EF models to protobuf models
+* Applying server-side validation
+* Applying security/identity context
+* Coordinating business rules
+* Calling EF/repositories
+* Logging and telemetry
+* Protecting the UI from direct SQL/API implementation detail
+
+Business rules should normally be here, in EF/repository logic, or SQL stored procedures/functions — not in Razor components.
+
+---
+
+## **3.3 Concursus.API.Client — FormHelper**
+
+**Role:** The PWA’s single entry point into gRPC/API functionality.
+
+The PWA must not create direct gRPC clients for application operations. It should use `FormHelper`.
+
+### **Examples**
+
+```csharp
+LoadDataObjectAsync(...)
+SaveDataObjectAsync(...)
+GetGridViewDefinitionAsync(...)
+GetGridDataAsync(...)
+GetEntityTypeDefinitionAsync(...)
+GetPropertyGroupsAsync(...)
+GetUsageReportAsync(...)
+```
+
+### **FormHelper Encapsulates**
+
+* gRPC channel usage
+* API client calls
+* Authentication headers
+* Error handling
+* Common metadata formatting
+* Shared request/response handling
+* Client-side consistency
+
+### **Rule**
+
+Do this:
+
+```text
+Blazor component → FormHelper → gRPC API
+```
+
+Do not do this:
+
+```text
+Blazor component → direct gRPC client
+```
+
+---
+
+## **3.4 Concursus.PWA**
+
+**Role:** Dynamic front-end renderer.
+
+The PWA should not need to know what a Job, Enquiry, Quote, Invoice Schedule, or Classification is in hard-coded form.
+
+It asks for metadata and renders the UI based on that metadata.
+
+### **Dynamic Forms**
+
+Common components include:
+
+* `EditPage.razor`
+* `FlexPropertyGroups.razor`
+* `ShoreInput.razor`
+* Shared/native input controls
+* Dynamic dropdown controls
+* Modal host components
+
+### **Dynamic Grids**
+
+Common components include:
+
+* `DynamicGrid.razor`
+* `DynamicGridView.razor`
+* Newer non-Telerik V2 grid patterns
+* Shared grid controls for search/filter/sort/actions
+
+Grid behaviour should be driven by `GridViewDefinition` and related metadata.
+
+### **Dashboards and Widgets**
+
+“My Dashboard” loads:
+
+* User preference JSON
+* Widget definitions
+* Widget layout metadata
+* User-specific saved state
+
+### **Helpers**
+
+The PWA also contains helpers/services for:
+
+* Date/time formatting
+* Toast notifications
+* Error handling
+* Offline queue behaviour
+* Modal handling
+* Layout and UI formatting
+
+---
+
+## **3.5 Concursus.Components.Shared**
+
+**Role:** Shared reusable UI controls.
+
+This library should be used for common controls and reusable UI patterns.
+
+Examples include:
+
+* Signature controls
+* Dialogs
+* Toasts
+* Common inputs
+* Modal/window components
+* Future trackable controls such as:
+
+  * `TrackableTextBox`
+  * `TrackableDropDown`
+  * `TrackableDatePicker`
+  * `TrackableCheckBox`
+
+As Telerik is removed, this shared library becomes the preferred location for reusable non-Telerik controls.
+
+---
+
+## **4. Core Runtime Concepts**
+
+---
+
+## **4.1 EntityType and EntityProperty**
+
+`EntityType` defines the type of business object.
+
+Examples:
+
+* Job
+* Enquiry
+* Quote
+* Quote Item
+* Invoice Schedule
+* Invoice Request
+* Transaction
+* Product
+* RIBA Stage
+* Data Classification
+* Security Classification
+
+`EntityProperty` defines fields for an entity.
+
+It includes metadata such as:
+
+* Field name
+* Data type
+* Required flag
+* Read-only flag
+* Hidden flag
+* Length
+* Precision
+* UI control type
+* Dropdown source
+* Lookup source
+* Sort order
+* Group placement
+* Validation hints
+
+---
+
+## **4.2 EntityPropertyGroup**
+
+`EntityPropertyGroup` controls form layout.
+
+Example groups:
+
+* Header
+* Client Details
+* Project Details
+* Property Details
+* Key Dates
+* Finance
+* Classification
+* Security
+* Workflow
+
+A group normally includes:
+
+* Label
+* Sort order
+* Layout rules
+* List of properties
+* Column/row placement
+
+Rendered dynamically by the PWA.
+
+---
+
+## **4.3 DataObject**
+
+`DataObject` is the core runtime record wrapper.
+
+It contains:
+
+* Entity type
+* Entity type ID
+* Entity GUID
+* Data properties
+* Runtime tracking state
+* Status/workflow context where applicable
+
+### **Critical Rule**
+
+Every entity record must have a corresponding `SCore.DataObjects` row at insert.
+
+That row must include the correct `EntityTypeId`.
+
+If a business entity is created without a `DataObjects` row, downstream behaviour can fail, including:
+
+* Workflow
+* Status transitions
+* Dynamic UI behaviour
+* Authorisation queues
+* Notifications
+* Integration processes
+* Diagnostics
+* Generic entity operations
+
+---
+
+## **4.4 DataObjectTransition and Current Status**
+
+CymBuild status must not be updated directly on the entity table.
+
+### **Rule**
+
+Do not update status directly.
+
+Use:
+
+```sql
+SCore.DataObjectTransitionUpsert
+```
+
+The current state is determined by the latest transition.
+
+```text
+Latest DataObjectTransition = Current State
+```
+
+This is important for:
+
+* Workflow correctness
+* Audit history
+* Approval queues
+* Authorisation logic
+* Notifications
+* UI status dropdowns
+* Status-dependent actions
+
+### **Do Not**
+
+```sql
+UPDATE SomeEntity
+SET StatusId = ...
+```
+
+### **Do**
+
+Use the platform workflow/status transition mechanism.
+
+---
+
+## **4.5 GridViewDefinition**
+
+`GridViewDefinition` controls dynamic grid behaviour.
+
+It includes:
+
+* Columns
+* Column order
+* Widths
+* Captions
+* Hidden/shown fields
+* Formatting
+* Sort behaviour
+* Filter behaviour
+* Action behaviour
+* Entity query source
+
+Grid definitions should be metadata-driven wherever possible.
+
+---
+
+## **4.6 Dropdown Definitions**
+
+Dropdowns should normally come from metadata, entity queries, or platform dropdown definitions.
+
+Avoid hard-coded dropdown values in Razor unless there is no metadata route and the exception is agreed.
+
+This applies to areas such as:
+
+* Workflow statuses
+* RIBA stages
+* Data classifications
+* Security classifications
+* Products
+* Organisation units
+* Business units
+* User groups
+* Finance statuses
+
+---
+
+## **4.7 Widgets and UserPreferences**
+
+The user dashboard layout is stored as JSON.
+
+Example:
+
+```json
+{
+  "MyWorkCSS": null,
+  "ItemStates": [
+    {
+      "RowSpan": 1,
+      "ColSpan": 6,
+      "Order": 1,
+      "Id": "..."
+    },
+    {
+      "RowSpan": 1,
+      "ColSpan": 6,
+      "Order": 2,
+      "Id": "..."
+    }
+  ]
+}
+```
+
+Each item state can define:
+
+* Widget ID
+* Row span
+* Column span
+* Order
+* Colour
+* Expanded/collapsed state
+* User-specific layout preferences
+
+Widgets may load:
+
+* Metadata-driven mini grids
+* KPIs
+* Analytics
+* User work queues
+* Workflow queues
+* Integration diagnostics
+
+---
+
+## **5. Business and Platform Modules**
+
+---
+
+## **5.1 Workflow and Status**
+
+Workflow is central to CymBuild.
+
+It supports:
+
+* Record status transitions
+* Approval routes
+* Authorisation queues
+* User/group-based actions
+* Workflow notifications
+* Status-specific UI behaviour
+
+### **Key Rules**
+
+* Use `SCore.DataObjectTransitionUpsert`.
+* Do not directly update status fields.
+* Current status comes from the latest transition.
+* Workflow actions must respect configured transitions.
+* User/group permissions must be applied through workflow/security rules.
+* “Super User” style overrides must be explicit and controlled.
+* Do not bypass workflow in UI code.
+
+---
+
+## **5.2 User Groups and Access Roles**
+
+User groups are used throughout CymBuild to support both security and user experience.
+
+Examples include:
+
+* Determining workflow actions a user can perform
+* Controlling approval and authorisation routes
+* Granting access to business functions
+* Controlling visibility of records
+* Controlling dashboards and reports
+* Showing/hiding screens, tabs, grids, buttons, and page components
+* Supporting business-specific operational processes
+
+User groups may be used by:
+
+* Workflow
+* Metadata visibility rules
+* Authorisation queues
+* Reports
+* Dashboards
+* Integration processes
+* UI actions
+
+Security decisions must not be made only in the UI. The API/SQL layer must enforce important security rules.
+
+---
+
+## **5.3 Data and Security Classifications**
+
+CymBuild now includes support for project-level classification metadata.
+
+The current classification direction includes:
+
+### **Data Classification**
+
+Examples:
+
+* Official
+* Official Sensitive
+
+### **Security Classification**
+
+Examples:
+
+* Defcon 660
+
+These fields are used on project-related records such as:
+
+* Quotes
+* Jobs
+* Client Projects
+
+The intended behaviour is:
+
+* Users select classification values on the appropriate project records.
+* Quote classification values can flow through to Job and Client Project records.
+* Classification fields are metadata-driven dropdowns.
+* Existing records should continue to work.
+* Future phases may use these classifications for access control, filtering, reporting, or integration behaviour.
+
+### **Implementation Notes**
+
+Classification records should be stored in controlled lookup/reference tables, such as:
+
+* `SCore.DataClassifications`
+* `SCore.SecurityClassifications`
+
+Metadata should expose these as dropdown fields on the relevant entities.
+
+---
+
+## **5.4 Invoice Schedules and RIBA Stage Support**
+
+CymBuild supports invoice schedules and automated invoice request generation.
+
+Supported schedule types include:
+
+* Monthly schedules
+* Percentage schedules
+* Activity/milestone-based schedules
+
+Recent platform direction includes optional RIBA stage support for invoice schedule items.
+
+### **RIBA Stage Behaviour**
+
+Monthly and percentage invoice schedule configuration can support optional RIBA stage selection.
+
+This allows:
+
+* Invoice requests to carry RIBA stage context
+* Invoice request items to be attributed to a RIBA stage
+* Fee drawdown to be tracked by RIBA stage
+* Reporting to show stage-level fee movement
+
+### **Rules**
+
+* RIBA stage is optional.
+* Existing schedules must continue working unchanged.
+* If no RIBA stage is selected, existing non-stage behaviour should remain.
+* New schedule-generated invoice request items should preserve stage attribution where configured.
+* Do not break milestone/activity invoice generation.
+
+---
+
+## **5.5 Job Fee Drawdown and RIBA Stage Fees**
+
+CymBuild supports RIBA/stage-level fee tracking for jobs.
+
+Key concepts include:
+
+* Job RIBA stage fees
+* Agreed fee
+* Invoiced value
+* Paid value
+* Remaining value
+* Quote item to job fee carry-through
+* User-created/custom RIBA stages
+
+The fee grid should show accurate stage-based movement and should only count transactions that are valid for fee drawdown.
+
+Important considerations:
+
+* Stage-level values must not rely on fixed hard-coded RIBA0–RIBA7 assumptions where user-created stages exist.
+* Invoiced values should respect transaction state.
+* Paid values should be based on valid allocations.
+* Non-stage records require explicit handling because they do not automatically roll up to a stage.
+
+---
+
+## **5.6 Sage Integration**
+
+CymBuild integrates with Sage for finance-related processing.
+
+The platform includes diagnostics and processing around:
+
+* Inbound Sage documents
+* Outbound finance events
+* Invoice requests
+* Transactions
+* Batch states
+* Retry/idempotency handling
+* Integration diagnostics screens
+
+### **Integration Rules**
+
+Integration work should use:
+
+```text
+SCore.IntegrationOutbox
+```
+
+or the relevant platform outbox/integration pattern.
+
+### **Important Integration Principles**
+
+* Integration messages must be idempotent.
+* Do not create duplicate external effects.
+* Failed messages should remain diagnosable.
+* Existing failed messages may remain failed until corrected code or replay handling is deployed.
+* Diagnostics pages should expose enough information to understand:
+
+  * Source record
+  * Target entity
+  * Current state
+  * Failure reason
+  * Retry status
+  * Related transition/status information
+
+### **Sage UI Direction**
+
+Sage diagnostic pages are part of the non-Telerik conversion direction.
+
+Reference patterns include:
+
+* `SageInboundDiagnosticsV2`
+* Non-Telerik grid rendering
+* CymBuild modal patterns
+* Search/filter/action equivalents
+
+---
+
+## **5.7 Outlook and SharePoint Integration**
+
+CymBuild includes Outlook add-in and SharePoint filing integration.
+
+The Outlook add-in supports filing emails to CymBuild-linked SharePoint locations.
+
+Key concepts include:
+
+* Office JS compose/read integration
+* Graph-based email access
+* CymBuild search/select target
+* Save to SharePoint through API
+* Folder selection
+* Incoming/outgoing email visibility
+* Filing confirmation UI
+* Optional publish prompts
+
+### **Rules**
+
+* Add-in UI should preserve existing filing behaviour.
+* Filing should go through the API.
+* SharePoint target resolution should remain server-controlled.
+* UI should not hard-code business rules around folder permissions.
+* Permissions are driven by business unit / group access and SharePoint configuration.
+
+---
+
+## **5.8 AI and Assistant Knowledge**
+
+CymBuild is progressing towards AI-assisted help and internal knowledge search.
+
+Potential and current AI-related areas include:
+
+* Assistant knowledge search
+* CymBuild help content
+* Developer diagnostics
+* User support guidance
+* Workflow explanations
+* Metadata-aware help
+* SQL/procedure diagnostics
+* Future contextual assistance in the PWA
+
+AI features should be treated as assistive, not authoritative unless backed by controlled CymBuild knowledge sources.
+
+AI-related SQL/API work should follow the same platform standards:
+
+```text
+UI → FormHelper → gRPC API → EF → SQL
+```
+
+No direct UI-to-database or UI-to-external-model shortcuts should be introduced.
+
+---
+
+## **6. Request Flow Examples**
+
+---
+
+## **6.1 Opening a Grid — Example: Jobs List**
+
+1. Blazor page loads.
+2. UI calls `FormHelper`.
+3. `FormHelper` calls the gRPC API.
+4. API loads grid metadata through EF.
+5. EF reads SQL metadata.
+6. API returns `GridViewDefinition`.
+7. PWA renders the dynamic grid.
+8. Grid requests data through `FormHelper`.
+9. API/EF executes the configured SQL entity query or view/function.
+10. Data appears with configured paging, sorting, filtering, and actions.
+
+```text
+UI → FormHelper → gRPC API → EF → SQL
+```
+
+---
+
+## **6.2 Opening a Record — Example: Enquiry Edit Page**
+
+1. User clicks a row or menu item.
+2. Edit page asks `FormHelper` for entity metadata.
+3. `FormHelper` calls gRPC API.
+4. API loads:
+
+   * Entity type
+   * Entity properties
+   * Property groups
+   * Dropdown definitions
+   * Related metadata
+5. API loads the underlying `DataObject`.
+6. PWA builds the edit context.
+7. User edits fields.
+8. UI displays validation feedback.
+9. Save goes through `FormHelper`.
+10. API applies validation/business rules.
+11. EF/SQL persists the record.
+12. SQL ensures correct entity/data object behaviour.
+13. Updated object/status returns to the PWA.
+
+---
+
+## **6.3 Saving a New Record**
+
+When a new business record is inserted:
+
+1. Business table row is inserted.
+2. A matching `SCore.DataObjects` row must be inserted.
+3. The correct `EntityTypeId` must be assigned.
+4. Initial workflow/status transition should be created where required.
+5. Any integration outbox records should be created idempotently.
+6. The saved object returns through EF/API/FormHelper to the UI.
+
+Never create a business entity without the corresponding platform runtime row.
+
+---
+
+## **6.4 Changing Status**
+
+Status changes must use workflow transition logic.
+
+Correct flow:
+
+```text
+UI action
+→ FormHelper
+→ gRPC API
+→ EF/repository
+→ SCore.DataObjectTransitionUpsert
+→ SQL transition history
+→ latest transition becomes current state
+```
+
+Incorrect flow:
+
+```text
+UI action
+→ direct status update
+```
+
+Do not update status directly on the entity table.
+
+---
+
+## **6.5 My Dashboard Load**
+
+1. User navigates to My Dashboard.
+2. PWA calls `FormHelper`.
+3. API loads user preferences and widget metadata.
+4. EF reads dashboard/widget metadata and saved JSON layout.
+5. PWA renders widgets according to:
+
+   * `RowSpan`
+   * `ColSpan`
+   * `Order`
+   * Widget ID
+   * User state
+
+---
+
+## **6.6 Sage Integration Processing**
+
+A typical integration flow should follow this pattern:
+
+1. CymBuild business action occurs.
+2. Server-side logic determines whether integration is required.
+3. An idempotent outbox/integration record is created.
+4. Worker/process sends or processes the integration message.
+5. Success/failure is logged.
+6. Diagnostics page shows current state.
+7. Retry/replay behaviour remains idempotent.
+
+Integration should not depend on UI-only actions or direct client-side external calls.
+
+---
+
+## **7. SQL Development Standards**
+
+SQL is a core part of CymBuild and must be production-ready.
+
+### **General Rules**
+
+* Use explicit columns.
+* Do not use `SELECT *`.
+* Use idempotent scripts.
+* Use `CREATE OR ALTER` where appropriate.
+* Use `RowStatus <> 0 AND RowStatus <> 254` for active rows unless there is a specific reason not to.
+* Avoid destructive changes.
+* Do not assume missing schema.
+* Ask for schema if it is not known.
+* Preserve existing behaviour.
+* Do not overwrite user-maintained data unless explicitly required.
+* Avoid environment-specific numeric IDs.
+* Prefer stable GUIDs for metadata and cross-environment deployment.
+
+### **Insert Rules**
+
+When inserting platform-managed business entities:
+
+* Create the business row and corresponding `SCore.DataObjects` row atomically in the same insert operation.
+* Use the correct `Guid`, `EntityTypeId`, `RowStatus`, and platform `RowVersion` behavior.
+* Do not use insert-then-update identity patterns.
+* Create required initial status transition if workflow applies.
+* Create integration outbox entries idempotently where required.
+
+### **Status Rules**
+
+* Never update status directly.
+* Use `SCore.DataObjectTransitionUpsert`.
+* Current state is latest transition.
+
+### **Metadata Rules**
+
+* No direct metadata DB edits in controlled environments.
+* No manual promotion.
+* Idempotent by `Guid`.
+* Validate before apply.
+* Apply in dependency order.
+
+---
+
+## **8. UI Development Standards**
+
+### **Core Rules**
+
+* No direct API calls from Razor components.
+* Use `FormHelper`.
+* No business logic in UI.
+* No hard-coding if metadata exists.
+* No Telerik for new UI unless specifically requested.
+* Preserve existing functionality during refactors.
+* Use shared controls and CymBuild-native components.
+* Keep behaviour consistent across dynamic forms and grids.
+
+### **Dynamic UI Rules**
+
+The UI should render based on:
+
+* Entity metadata
+* Property metadata
+* Grid metadata
+* Dropdown metadata
+* Label metadata
+* Action metadata
+* Widget metadata
+* User preferences
+
+### **Non-Telerik Replacement Checklist**
+
+When replacing Telerik controls, confirm equivalent support for:
+
+* Search
+* Filtering
+* Sorting
+* Paging
+* Buttons
+* Row actions
+* Dropdowns
+* Modals
+* Confirm dialogs
+* Validation messages
+* Loading states
+* Empty states
+* Formatting
+* Accessibility
+* Keyboard behaviour where applicable
+
+---
+
+## **9. Integration Development Standards**
+
+Integration features must be safe, replayable, and diagnosable.
+
+### **Rules**
+
+* Use `SCore.IntegrationOutbox` or the relevant platform outbox pattern.
+* CymBuild must never call Sage directly; use controlled workers/microservices.
+* Ensure idempotency.
+* Do not create duplicate external actions.
+* Store enough diagnostic information to investigate failures.
+* Preserve retry behaviour.
+* Do not hide failed messages.
+* Do not treat a UI success message as integration completion unless the server-side integration state confirms it.
+
+### **Examples**
+
+Integration standards apply to:
+
+* Sage inbound processing
+* Sage outbound processing
+* Invoice automation
+* SharePoint filing
+* Outlook publishing
+* Future AI/background processing
+* Workflow notifications
+* SignalR notifications
+
+---
+
+## **10. Deployment Standards**
+
+### **Deployment Order**
+
+Recommended order:
+
+```text
+1. Schema deploy
+2. Metadata validate
+3. Metadata apply
+4. Data/reference deployment where required
+5. Worker/API/PWA deployment
+6. Post-deploy diagnostics
+```
+
+### **Schema**
+
+* Source-controlled SQL
+* Idempotent
+* Explicit columns
+* Safe for target environment
+* No destructive changes without approval
+
+### **Metadata**
+
+* SMigration run-based staging, validation, identity mapping, selection, preview, apply and audit
+* Manifests retained for ValidateOnly/governance
+* Applied idempotently and matched by stable `Guid`
+* No duplicates and no manual target editing
+
+### **Environments**
+
+#### **DEV**
+
+* Flexible
+* Used for build and test
+* Safe for iterative changes
+
+#### **QA**
+
+* Controlled
+* Used for structured validation
+
+#### **UAT**
+
+* Controlled
+* Business-facing
+* No casual/manual metadata edits
+
+#### **LIVE**
+
+* Restricted
+* No manual DB fixes unless approved emergency process
+* Deployment only through controlled route
+
+---
+
+## **11. Common CymBuild Areas for New Developers**
+
+A new developer should become familiar with these areas:
+
+### **Core Platform**
+
+* `SCore.DataObjects`
+* `SCore.DataObjectTransition`
+* `SCore.EntityTypes`
+* `SCore.EntityProperties`
+* Workflow tables
+* User/group tables
+* Entity queries
+
+### **UI Metadata**
+
+* `SUserInterface.GridDefinitions`
+* `SUserInterface.GridViewDefinitions`
+* `SUserInterface.GridViewColumnDefinitions`
+* `SUserInterface.DropDownListDefinitions`
+* `SUserInterface.Labels`
+* Action menu metadata
+* Widget metadata
+
+### **Business Modules**
+
+* `SSop.Enquiries`
+* `SSop.Quotes`
+* `SSop.QuoteItems`
+* `SJob.Jobs`
+* `SJob.RibaStages`
+* `SFin.InvoiceSchedules`
+* `SFin.InvoiceRequests`
+* `SFin.InvoiceRequestItems`
+* `SFin.Transactions`
+* `SProd.Products`
+
+### **Integration**
+
+* Sage inbound/outbound processing
+* Integration outbox
+* Invoice automation worker
+* Outlook add-in
+* SharePoint filing
+* SignalR notifications
+
+### **Current Strategic Work**
+
+* Telerik removal / non-Telerik UI
+* Schema Migration Workbench and R27 controlled runner
+* Run-based Metadata Migration and manifest governance
+* Classification fields
+* RIBA stage fee tracking
+* Invoice schedule automation
+* Sage diagnostics and idempotency
+* AI-assisted knowledge/help tooling
+* SignalR expansion
+
+---
+
+## **12. Developer Checklist**
+
+Before making a change, ask:
+
+### **Architecture**
+
+* Does it follow `UI → FormHelper → gRPC API → EF → SQL`?
+* Is any business logic accidentally being placed in the UI?
+* Is the UI using metadata where metadata exists?
+
+### **Data**
+
+* Does the entity require a `SCore.DataObjects` row?
+* Is the correct `EntityTypeId` used?
+* Is status handled through `DataObjectTransitionUpsert`?
+* Is the current state derived from the latest transition?
+
+### **SQL**
+
+* Is the script idempotent?
+* Are columns explicit?
+* Is `RowStatus <> 0 AND RowStatus <> 254` used correctly?
+* Does it avoid destructive changes?
+* Does it avoid environment-specific IDs?
+
+### **Metadata**
+
+* Is metadata source-controlled?
+* Is it applied by `Guid`?
+* Are there duplicates?
+* Is the order correct: grid, view, columns?
+* Has validation been considered?
+
+### **UI**
+
+* Is Telerik avoided for new work?
+* Are non-Telerik equivalents complete?
+* Are modals, filters, buttons, dropdowns, and formatting preserved?
+* Does it avoid hard-coding?
+* Does it preserve existing behaviour?
+
+### **Integration**
+
+* Is the outbox pattern used?
+* Is it idempotent?
+* Can failures be diagnosed?
+* Is retry behaviour safe?
+
+### **Deployment**
+
+* Is the change safe for QA/UAT/LIVE?
+* Does it avoid manual DB promotion?
+* Does it fit the controlled deployment process?
+
+---
+
+## **13. Summary**
+
+CymBuild is a metadata-driven application platform built around dynamic UI rendering, controlled metadata, workflow, integration, and source-controlled deployment.
+
+The most important rule for developers is the runtime flow:
+
+```text
+UI → FormHelper → gRPC API → EF → SQL
+```
+
+The most important platform rules are:
+
+* Do not call the API directly from the UI.
+* Do not put business logic in the UI.
+* Use metadata instead of hard-coding.
+* Every inserted entity must have a `SCore.DataObjects` row with the correct `EntityTypeId`.
+* Never update status directly.
+* Use `SCore.DataObjectTransitionUpsert`.
+* Latest transition is the current state.
+* Schema is source-controlled SQL.
+* Metadata migration is SMigration run-based; manifests remain ValidateOnly/governance inputs.
+* Database is the deployment target only.
+* No manual metadata DB edits or manual promotion.
+* Use idempotent SQL and metadata apply.
+* Use outbox/idempotency for integrations.
+* Preserve behaviour during non-Telerik conversion.
+
+Understanding these principles allows developers to safely:
+
+* Diagnose metadata issues
+* Build and maintain dynamic forms
+* Build and maintain dynamic grids
+* Extend workflow/status behaviour
+* Add new entity types
+* Support Sage and SharePoint/Outlook integration
+* Implement classifications and RIBA-stage features
+* Progress CymBuild towards reusable non-Telerik UI
+* Deploy safely through DEV, QA, UAT, and LIVE
+
+
+====================================================================================================
+DOCUMENT 3: 02_NAVIGATION_SCHEMA.yaml
+Recommended upload filename: 02_NAVIGATION_SCHEMA.yml
+====================================================================================================
+
+schema_version: '26.3'
+release_baseline:
+  release: '26.3'
+  validated_on: '2026-08-04'
+  schema_runner: CYB361_R27
+  verified_qa_status: DeploymentApplied
+  metadata_model: SMigration run-based with manifest ValidateOnly/governance support
+purpose: >
+  Companion navigation map for AI-assisted code analysis in the CymBuild monorepo. Focused on locating likely source files,
+  metadata definitions, integration code, dynamic UI components, and CymBuild platform flows quickly and safely.
+
+  CymBuild is a metadata-driven platform. Release 26.3 uses SMigration run-based schema/metadata workbenches; metadata manifests
+  are ValidateOnly/governance support. Navigation should always respect the mandatory application flow:
+
+    UI → FormHelper → gRPC API → EF → SQL
+
+  The UI must not bypass FormHelper or contain business logic that belongs in the API, EF/repository, or SQL layer.
+repository:
+  root: .
+  solution_hint:
+  - CymBuild.Monorepo.sln
+architecture_rules:
+  mandatory_flow:
+  - apps/Concursus.PWA UI component/page
+  - libs/Concursus.API.Client FormHelper/client wrapper
+  - services/Concursus.API gRPC/API service
+  - libs/Concursus.EF repository/query/domain model
+  - SQL schema/procedure/function/view
+  do_not:
+  - Do not call gRPC/API directly from Razor components when FormHelper/client wrappers exist.
+  - Do not put business logic in the PWA/UI.
+  - Do not hard-code fields, grids, dropdowns, labels, actions, or layouts where metadata exists.
+  - Do not update entity status directly; use SCore.DataObjectTransitionUpsert.
+  - Do not create platform-managed business entities without SCore.DataObjects rows.
+  - Do not create non-idempotent SQL deployment scripts.
+  - Do not use SELECT * in production SQL.
+  - Do not manually edit metadata in controlled environments.
+  - Do not use Telerik for new UI unless explicitly requested.
+  - Do not describe metadata migration as purely manifest-driven.
+  - Do not execute schema DDL from the Blazor workbench/browser.
+  - Do not call Sage directly; use the controlled Sage microservice boundary.
+  - Do not use insert-then-update identity patterns.
+  dataobject_rules:
+  - Every inserted CymBuild entity must have a matching SCore.DataObjects row.
+  - SCore.DataObjects must include the correct EntityTypeId.
+  - Latest SCore.DataObjectTransition row is the current state.
+  - Status transitions must go through SCore.DataObjectTransitionUpsert.
+  sql_rules:
+  - Use explicit columns.
+  - Use RowStatus <> 0 AND RowStatus <> 254 for active records unless intentionally different.
+  - Use idempotent scripts.
+  - Prefer CREATE OR ALTER for procedures/functions/views where appropriate.
+  - Use stable GUIDs for metadata and cross-environment matching.
+  - Avoid environment-specific numeric IDs in deployment scripts.
+  metadata_rules:
+    source_of_truth:
+    - Schema = source-controlled SQL.
+    - Metadata migration = SMigration run-based code/SQL; manifests = ValidateOnly/governance support.
+    - Database = deployment target only.
+    deployment_order:
+    - Schema deploy
+    - Metadata validate
+    - Metadata apply
+    - Runtime verification
+    apply_order:
+    - Grid
+    - View
+    - Columns
+    constraints:
+    - No duplicate metadata rows.
+    - No manual metadata DB edits.
+    - Apply idempotently by Guid.
+  required_patterns:
+  - 'Metadata migration: Create Run → Stage → Validate → Identity Map → Review/Ignore/Override → Selection → Apply Preview
+    → Apply → Audit.'
+  - 'Schema deployment: accepted SMigration plan → external R27 runner/controlled worker → source-controlled SQL → audit.'
+  - Every major entity insert creates its DataObjects row atomically.
+projects:
+- key: PWA
+  path: apps/Concursus.PWA
+  stack: Blazor WebAssembly / Razor Components
+  role: >
+    Dynamic front-end renderer. Renders forms, grids, dashboards, widgets, modals, and metadata-driven UI. Should call FormHelper/client
+    wrappers, not API/gRPC directly.
+  entry_points:
+  - Program.cs
+  - App.razor
+  high_value_dirs:
+  - path: Pages
+    role: Route-level UI pages (.razor)
+    lookup_hints:
+    - Start here when user mentions a screen/page name.
+    - Search for @page directives.
+    - Check for .razor, .razor.cs, and .razor.css companions.
+    - For Telerik removal, compare existing page with V2/non-Telerik reference patterns.
+  - path: Shared
+    role: Reusable UI components, shared layout, dynamic widgets, modals, grids
+    lookup_hints:
+    - Search here for shared dynamic UI building blocks.
+    - Look for non-Telerik replacement controls and modal hosts.
+  - path: Services
+    role: Front-end service abstractions and API integration helpers
+    lookup_hints:
+    - Check whether calls are routed through FormHelper/client services.
+  - path: Helpers
+    role: Browser/client utility helpers such as storage, formatting, IndexedDB, UI formatting
+  - path: Classes
+    role: Front-end models and helper classes
+  - path: wwwroot
+    role: Static assets such as CSS, JS, images, vendor files
+    note: Large folder; avoid broad scans unless investigating static resources or styling.
+    lookup_hints:
+    - Search for cymbuild-v2.css when investigating new UI styling.
+    - Search for legacy Telerik CSS references when removing Telerik.
+  common_tasks:
+  - intent: Find page implementation
+    start_with:
+    - Pages/<Name>.razor
+    - Pages/<Name>.razor.cs
+    - Pages/<Name>.razor.css
+    - rg '@page' apps/Concursus.PWA/Pages
+  - intent: Find shared UI component
+    start_with:
+    - Shared/**/*.razor
+    - Shared/**/*.razor.cs
+    - Shared/**/*.razor.css
+  - intent: Find non-Telerik / V2 UI examples
+    start_with:
+    - rg --files apps/Concursus.PWA | rg 'V2|DynamicBatchGridView|SageInboundDiagnostics|Modal|Windowed'
+    - rg 'Telerik|Grid|Modal|Dialog|DropDown|Filter|Search' apps/Concursus.PWA/Pages apps/Concursus.PWA/Shared
+  - intent: Find client-side app bootstrap or DI
+    start_with:
+    - Program.cs
+    - App.razor
+  - intent: Find UI formatting/date/time behaviour
+    start_with:
+    - Helpers
+    - Shared
+    - rg 'UiFormattingHelper|DateTime|Timestamp' apps/Concursus.PWA
+- key: API_CLIENT
+  path: libs/Concursus.API.Client
+  stack: Shared .NET client library consumed by front-end and other services
+  role: >
+    Client-side abstraction over API/gRPC calls. This is the expected handoff point from the PWA into backend services. FormHelper
+    and related services belong here.
+  entry_points:
+  - Concursus.API.Client.csproj
+  high_value_dirs:
+  - path: Services
+    role: Client-facing wrappers/services for API access
+    lookup_hints:
+    - Search here before adding API calls to PWA.
+    - FormHelper/client wrappers should be extended here rather than bypassed.
+  - path: Models
+    role: Client DTOs and service state models
+  - path: Classes
+    role: Client helper implementations
+  common_tasks:
+  - intent: Find FormHelper method used by UI
+    start_with:
+    - rg 'class FormHelper|partial class FormHelper|FormHelper' libs/Concursus.API.Client
+  - intent: Find typed response/request model used by UI
+    start_with:
+    - Models/**/*.cs
+    - rg 'class |record ' libs/Concursus.API.Client/Models
+  - intent: Find wrapper around API or translation/file services
+    start_with:
+    - Services/*.cs
+    - Classes/*.cs
+- key: API
+  path: services/Concursus.API
+  stack: ASP.NET Core Web API + gRPC/proto integrations
+  role: >
+    Backend service layer. Owns orchestration, validation, security context, business rule coordination, gRPC endpoints, HTTP
+    endpoints where present, background workers, and integration coordination.
+  entry_points:
+  - Program.cs
+  high_value_dirs:
+  - path: Controllers
+    role: HTTP endpoints / routing layer
+  - path: Services
+    role: Domain/business logic, workers, integration orchestration, application services
+    lookup_hints:
+    - Search here for workflow, invoice automation, Sage, outbox, SharePoint, Outlook, AI and background workers.
+  - path: EntityFramework
+    role: EF-facing data models/repositories grouped by domain area
+  - path: Interfaces
+    role: Service contracts
+  - path: Protos
+    role: gRPC/protobuf contracts
+    lookup_hints:
+    - Search proto definitions when adding/changing gRPC contracts.
+  - path: Sage
+    role: Sage API/SOAP integrations and Sage-specific helpers
+    lookup_hints:
+    - Start here for Sage inbound/outbound API integration issues.
+  - path: Infrastructure
+    role: Infrastructure-level concerns such as SQL session context, middleware, logging helpers
+  - path: Classes
+    role: Utility/service helper classes
+  - path: Types
+    role: API DTOs / request-response types where present
+  - path: Models
+    role: API models where present
+  common_tasks:
+  - intent: Trace API endpoint to implementation
+    start_with:
+    - Controllers/*.cs
+    - Services/*.cs
+    - Protos/*.proto
+  - intent: Find gRPC service implementation
+    start_with:
+    - rg 'CoreService|UiService|override.*Async|Grpc' services/Concursus.API
+    - services/Concursus.API/Protos
+  - intent: Find scheduled/background processing
+    start_with:
+    - Services/**/**Worker*.cs
+    - Services/Outbox/*.cs
+    - rg 'BackgroundService|IHostedService|Worker|Schedule|Automation' services/Concursus.API
+  - intent: Find Sage integration
+    start_with:
+    - Sage
+    - Services
+    - rg 'Sage|Inbound|Outbound|IntegrationOutbox|Outbox|Idempot' services/Concursus.API
+  - intent: Find SharePoint/Outlook filing
+    start_with:
+    - rg 'SharePoint|Graph|Outlook|Email|Filing|Folder' services/Concursus.API
+  - intent: Find request/response contracts
+    start_with:
+    - Types/*.cs
+    - Models/*.cs
+    - Protos/*.proto
+- key: EF
+  path: libs/Concursus.EF
+  stack: EF/domain data-access and query/repository layer
+  role: >
+    Data access, query construction, repository logic, metadata model assembly, and domain persistence support. EF bridges
+    API services to SQL schema, stored procedures, functions, views, and metadata tables.
+  entry_points:
+  - Concursus.EF.csproj
+  - Core.cs
+  - UserInterface.cs
+  - QueryBuilder.cs
+  high_value_dirs:
+  - path: Types
+    role: Data/domain transfer types and query payload models
+  - path: Finance
+    role: Finance repositories and data access, including invoice/transaction-related logic
+  - path: Services
+    role: EF-backed synchronization and domain services
+  - path: Monitoring
+    role: Monitoring repositories
+  - path: MetadataManifests
+    role: Metadata validation/manifests tooling
+    lookup_hints:
+    - Start here for metadata CI/CD, manifest validation, and metadata apply logic.
+  - path: Helpers
+    role: EF/domain helper utilities
+  - path: Interfaces
+    role: Data/service contracts
+  common_tasks:
+  - intent: Find metadata model assembly
+    start_with:
+    - Core.cs
+    - UserInterface.cs
+    - MetadataManifests
+    - rg 'EntityType|EntityProperty|GridViewDefinition|DropDownListDefinition|Widget' libs/Concursus.EF
+  - intent: Find query construction logic
+    start_with:
+    - QueryBuilder.cs
+    - QueryBuilderTiming.cs
+  - intent: Find repository for a domain
+    start_with:
+    - '*Repository.cs'
+    - Finance/*Repository.cs
+    - rg 'Repository' libs/Concursus.EF
+  - intent: Find finance/invoice automation data logic
+    start_with:
+    - Finance
+    - rg 'InvoiceSchedule|InvoiceRequest|Transaction|RibaStage|FeeDrawdown|Automation' libs/Concursus.EF
+  - intent: Find shared domain types used across API/PWA
+    start_with:
+    - Types/*.cs
+- key: COMPONENTS_SHARED
+  path: libs/Concursus.Components.Shared
+  stack: Razor component library / shared UI controls
+  role: >
+    Reusable UI building blocks shared across CymBuild client surfaces. Important for non-Telerik replacement work and reusable
+    CymBuild-native controls.
+  entry_points:
+  - Concursus.Components.Shared.csproj
+  high_value_dirs:
+  - path: .
+    role: Shared controls, dialogs, inputs, display components, reusable UI helpers
+  common_tasks:
+  - intent: Find reusable non-Telerik control
+    start_with:
+    - rg --files libs/Concursus.Components.Shared | rg 'razor|cs|css'
+    - rg 'Modal|Dialog|DropDown|Grid|Input|Button|Toast|Signature' libs/Concursus.Components.Shared
+  - intent: Find modal/dialog component
+    start_with:
+    - rg 'Modal|Dialog|Window|Host' libs/Concursus.Components.Shared apps/Concursus.PWA/Shared
+- key: OUTLOOK_ADDIN
+  path: apps
+  stack: Outlook add-in / Blazor / Office JS / API integration
+  role: >
+    Outlook add-in and related client surface for filing emails into CymBuild and SharePoint-backed project folders.
+  note: >
+    Exact path may vary. Search by Outlook, Office, Graph, EmailFiling, or manifest names.
+  common_tasks:
+  - intent: Find Outlook add-in manifest
+    start_with:
+    - rg --files . | rg 'Outlook|Development.xml|manifest'
+  - intent: Find email filing UI
+    start_with:
+    - rg 'EmailFiling|SaveToSharePoint|Graph|Office|selectedFolderPath|Publish' apps services libs
+  - intent: Find publish prompt work
+    start_with:
+    - rg 'Publish Prompt|Enable Publish|compose|forward|send' apps services libs
+- key: SQL
+  path: database
+  stack: SQL Server schema, stored procedures, functions, views, metadata deployment scripts
+  role: >
+    Source-controlled SQL schema and deployment scripts. SQL is the deployment target for business data structures, metadata
+    tables, functions, procedures, views, and reference data. Actual folder names may vary by repo layout.
+  note: >
+    If no /database folder exists, search repo for .sql files. Do not assume schema; inspect source-controlled SQL before
+    making SQL changes.
+  common_tasks:
+  - intent: Find SQL object
+    start_with:
+    - rg --files . | rg '\.sql$'
+    - rg 'CREATE OR ALTER.*<ObjectName>|ALTER.*<ObjectName>|CREATE.*<ObjectName>' . -g '*.sql'
+  - intent: Find entity query SQL
+    start_with:
+    - rg 'EntityQueries|EntityQuery|QueryName|GridView|DropDownList' . -g '*.sql'
+  - intent: Find workflow/status SQL
+    start_with:
+    - rg 'DataObjectTransition|Workflow|WorkflowStatus|WorkflowTransition|WorkflowGetNextStatus' . -g '*.sql'
+  - intent: Find classification SQL
+    start_with:
+    - rg 'DataClassification|SecurityClassification|Classifications' . -g '*.sql'
+  - intent: Find invoice/RIBA SQL
+    start_with:
+    - rg 'InvoiceSchedule|InvoiceRequest|RibaStage|FeeDrawdown|JobRibaStageFees' . -g '*.sql'
+  - intent: Find Sage/integration SQL
+    start_with:
+    - rg 'Sage|IntegrationOutbox|Inbound|Outbound|Idempot' . -g '*.sql'
+- name: Schema deployment runner
+  path: tools/SchemaDeployment
+  role: External controlled R27 runner; consumes accepted SMigration plans and never runs from browser UI.
+  high_value_files:
+  - Invoke-CymBuildSchemaDeployment.ps1
+  - README.md
+  search_intents:
+  - schema deployment
+  - accepted run
+  - WhatIf
+  - RetryFailedDeployment
+  - AllowPartial
+  - PreDeploymentScript
+  - PostDeploymentScript
+cross_project_navigation:
+  typical_flow:
+  - PWA page/user action begins in apps/Concursus.PWA/Pages or Shared.
+  - PWA should call FormHelper/client wrapper in libs/Concursus.API.Client.
+  - API service/proto/controller continues in services/Concursus.API.
+  - Persistence/query work is implemented in libs/Concursus.EF.
+  - SQL procedure/function/view/table/metadata completes the operation.
+  formhelper_flow:
+  - Find UI event handler in PWA.
+  - Find FormHelper/client method used by the UI.
+  - Find matching gRPC/proto/API service method.
+  - Find EF repository/query/domain method.
+  - Find SQL object or metadata definition.
+  handoff_markers:
+  - Method names ending with Service/Repository patterns.
+  - DTO names shared between API_CLIENT Models and EF Types.
+  - Controller/action names mirrored by client service methods.
+  - Proto rpc names mirrored by API service overrides.
+  - Entity query names mirrored in metadata and SQL.
+  - Guid fields used to map metadata across environments.
+locate_by_intent_index:
+  routing_or_endpoint:
+  - services/Concursus.API/Controllers
+  - services/Concursus.API/Protos
+  - services/Concursus.API/Services
+  - apps/Concursus.PWA/Pages
+  business_logic:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF/*Repository.cs
+  - libs/Concursus.EF/Finance
+  - services/Concursus.API/EntityFramework
+  data_contracts:
+  - libs/Concursus.API.Client/Models
+  - libs/Concursus.EF/Types
+  - services/Concursus.API/Types
+  - services/Concursus.API/Models
+  - services/Concursus.API/Protos
+  storage_or_db_query:
+  - libs/Concursus.EF
+  - services/Concursus.API/EntityFramework
+  - database
+  - '**/*.sql'
+  ui_components:
+  - apps/Concursus.PWA/Shared
+  - apps/Concursus.PWA/Pages
+  - libs/Concursus.Components.Shared
+  metadata:
+  - libs/Concursus.EF/MetadataManifests
+  - libs/Concursus.EF/UserInterface.cs
+  - '**/*Metadata*'
+  - '**/*.sql'
+  non_telerik_ui:
+  - apps/Concursus.PWA/Pages
+  - apps/Concursus.PWA/Shared
+  - libs/Concursus.Components.Shared
+  - apps/Concursus.PWA/wwwroot
+  - 'Search terms: V2, Telerik, DynamicBatchGridView, SageInboundDiagnostics, cymbuild-v2.css'
+  sage_integration:
+  - services/Concursus.API/Sage
+  - services/Concursus.API/Services
+  - services/Concursus.API/Infrastructure
+  - libs/Concursus.EF/Finance
+  - '**/*.sql'
+  - 'Search terms: Sage, Inbound, Outbound, IntegrationOutbox, Idempotency, Retry'
+  classifications:
+  - apps/Concursus.PWA/Pages
+  - libs/Concursus.API.Client
+  - services/Concursus.API
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: DataClassification, SecurityClassification, Defcon, Official, Official Sensitive'
+  invoice_automation:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF/Finance
+  - '**/*.sql'
+  - 'Search terms: InvoiceSchedule, InvoiceRequest, InvoiceRequestItem, Automation, MonthConfiguration, PercentageConfiguration,
+    TriggerInstances'
+  riba_stage_fee_tracking:
+  - libs/Concursus.EF/Finance
+  - services/Concursus.API/Services
+  - apps/Concursus.PWA/Pages
+  - '**/*.sql'
+  - 'Search terms: RibaStage, JobRibaStageFees, FeeDrawdown, QuoteItems, Stage, Invoiced, Paid, Remaining'
+  workflow_status:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: DataObjectTransition, DataObjectTransitionUpsert, WorkflowGetNextStatus, WorkflowStatus, WorkflowTransition'
+  outlook_sharepoint:
+  - apps
+  - services/Concursus.API/Services
+  - services/Concursus.API/Controllers
+  - 'Search terms: Outlook, Office, Graph, EmailFiling, SharePoint, SaveToSharePoint, selectedFolderPath'
+  ai_assistant:
+  - services/Concursus.API/Services
+  - libs/Concursus.EF
+  - '**/*.sql'
+  - 'Search terms: AssistantKnowledge, SAi, AI, Search, Knowledge'
+  schema_migration_workbench:
+    start:
+    - apps/Concursus.PWA/Pages/Admin/SchemaMigration.razor
+    - libs/Concursus.API.Client/FormHelper.SchemaMigration.cs
+    - services/Concursus.API/Services/CoreService.SchemaMigration.cs
+    sql:
+    - Database/CymBuild_DB/Schema/Tables/SMigration.Schema_Run.sql
+    - Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.SchemaDeploymentPlan_Get.sql
+    deployment:
+    - tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1
+    - tools/SchemaDeployment/README.md
+  metadata_migration_workbench:
+    start:
+    - apps/Concursus.PWA/Pages/Admin/MetadataMigration.razor
+    - libs/Concursus.API.Client/FormHelper.MetadataMigration.cs
+    - services/Concursus.API/Services/CoreService.MetadataMigration.cs
+    sql:
+    - SQL_CI_Packs_Metadata/database/smigration/SMigration.Metadata.Schema.sql
+    - SQL_CI_Packs_Metadata/database/metadata
+    governance:
+    - metadata-manifests/v1
+    - libs/Concursus.EF/MetadataManifests/ValidateOnly
+recommended_search_patterns:
+  general:
+  - rg --files apps/Concursus.PWA | rg 'Pages|Shared|Services'
+  - rg --files services/Concursus.API | rg 'Controllers|Services|EntityFramework|Protos|Sage|Infrastructure'
+  - rg --files libs/Concursus.API.Client | rg 'Models|Services|Classes|FormHelper'
+  - rg --files libs/Concursus.EF | rg 'Types|Repository|Finance|QueryBuilder|MetadataManifests'
+  - rg --files libs/Concursus.Components.Shared | rg 'razor|cs|css'
+  - rg 'class |interface |record ' <project_path>
+  formhelper:
+  - rg 'FormHelper' apps/Concursus.PWA libs/Concursus.API.Client
+  - rg 'LoadDataObjectAsync|SaveDataObjectAsync|GetGridViewDefinitionAsync|GetGridDataAsync' apps libs services
+  telerik_removal:
+  - rg 'Telerik' apps/Concursus.PWA libs/Concursus.Components.Shared
+  - rg 'V2|DynamicBatchGridView|SageInboundDiagnostics|cymbuild-v2.css' apps/Concursus.PWA libs/Concursus.Components.Shared
+  - rg 'Modal|Dialog|Window|DropDown|Grid|Filter|Search|Button' apps/Concursus.PWA/Pages apps/Concursus.PWA/Shared libs/Concursus.Components.Shared
+  metadata:
+  - rg 'GridDefinitions|GridViewDefinitions|GridViewColumnDefinitions|DropDownListDefinitions|EntityProperties|EntityQueries'
+    .
+  - rg 'MetadataManifests|MetadataValidate|MetadataApply|Manifest' libs services .
+  sql:
+  - rg --files . | rg '\.sql$'
+  - rg 'CREATE OR ALTER|DataObjects|DataObjectTransitionUpsert|IntegrationOutbox|RowStatus <> 0' . -g '*.sql'
+  sage:
+  - rg 'Sage|Inbound|Outbound|IntegrationOutbox|Idempot|Retry|Batch' services libs apps . -g '!**/bin/**' -g '!**/obj/**'
+  classification:
+  - rg 'DataClassification|SecurityClassification|Official Sensitive|Defcon' apps services libs .
+  invoice_riba:
+  - rg 'InvoiceSchedule|InvoiceRequest|InvoiceRequestItem|RibaStage|FeeDrawdown|JobRibaStageFees|MonthConfiguration|PercentageConfiguration'
+    apps services libs .
+  workflow:
+  - rg 'WorkflowGetNextStatus|DataObjectTransition|DataObjectTransitionUpsert|WorkflowStatus|WorkflowTransition|AuthorisationQueue'
+    apps services libs .
+  schema_migration:
+  - rg 'SchemaMigration|SchemaDeploymentPlan_Get|Schema_RunSelections|DeploymentApplied' apps services libs Database tools
+  - rg 'PreDeploymentScript|PostDeploymentScript|RetryFailedDeployment|AllowPartial' tools/SchemaDeployment Database/CymBuild_DB/Schema
+  metadata_migration:
+  - rg 'MetadataMigration|MetadataStage_Run|MetadataValidate_Run|MetadataApply_Run' apps services libs Database SQL_CI_Packs_Metadata
+  - rg 'MetadataManifests|ValidateOnly|allowlist.grids|grids.json' metadata-manifests apps libs
+module_keywords:
+  dynamic_ui:
+  - EntityType
+  - EntityProperty
+  - EntityPropertyGroup
+  - GridDefinition
+  - GridViewDefinition
+  - GridViewColumnDefinition
+  - DropDownListDefinition
+  - Widget
+  - UserPreferences
+  - EditPage
+  - DynamicGridView
+  - ShoreInput
+  - FlexPropertyGroups
+  non_telerik:
+  - V2
+  - Telerik
+  - DynamicBatchGridViewV2
+  - SageInboundDiagnosticsV2
+  - CymBuildModalService
+  - CymBuildModalHost
+  - CymBuildWindowedModal
+  - cymbuild-v2.css
+  workflow:
+  - DataObjects
+  - DataObjectTransition
+  - DataObjectTransitionUpsert
+  - Workflow
+  - WorkflowStatus
+  - WorkflowTransition
+  - WorkflowGetNextStatus
+  - AuthorisationQueue
+  sage:
+  - Sage
+  - SageInbound
+  - SageOutbound
+  - IntegrationOutbox
+  - Idempotency
+  - Retry
+  - Batch
+  - Transaction
+  - InvoiceRequest
+  classifications:
+  - DataClassifications
+  - SecurityClassifications
+  - DataClassificationGuid
+  - SecurityClassificationGuid
+  - Official
+  - OfficialSensitive
+  - Defcon
+  invoice_and_riba:
+  - InvoiceSchedules
+  - InvoiceScheduleMonthConfiguration
+  - InvoiceSchedulePercentageConfiguration
+  - InvoiceRequests
+  - InvoiceRequestItems
+  - RibaStage
+  - RibaStageGuid
+  - JobRibaStageFees
+  - FeeDrawdown
+  - Paid
+  - Remaining
+  - TriggerInstances
+  outlook_sharepoint:
+  - Outlook
+  - Office
+  - Graph
+  - EmailFiling
+  - SharePoint
+  - SaveToSharePoint
+  - SelectedFolderPath
+  - PublishPrompt
+  ai:
+  - SAi
+  - AssistantKnowledge
+  - KnowledgeSearch
+  - AI
+  - Search
+debugging_guidance:
+  when_user_reports_ui_issue:
+    steps:
+    - Find the page/component in PWA.
+    - Check whether the UI uses FormHelper.
+    - Find the FormHelper/client method.
+    - Trace to API service/proto/controller.
+    - Trace to EF repository/query.
+    - Check SQL metadata/entity query/view/function.
+    - Confirm metadata is not stale or duplicated.
+    - Confirm no direct UI business logic is being introduced.
+  when_user_reports_grid_issue:
+    steps:
+    - Find GridDefinition/GridViewDefinition metadata.
+    - Find GridViewColumnDefinition metadata.
+    - Find entity query/view/function used by the grid.
+    - Check RowStatus filtering.
+    - Check formatting and column aliases.
+    - Check non-Telerik replacement if grid is being converted.
+    - Preserve search/filter/sort/paging/actions.
+  when_user_reports_status_or_workflow_issue:
+    steps:
+    - Check SCore.DataObjects row exists for the entity.
+    - Check latest SCore.DataObjectTransition.
+    - Check workflow/entity type mapping.
+    - Check SCore.WorkflowGetNextStatus or equivalent.
+    - Do not directly update status.
+    - Use SCore.DataObjectTransitionUpsert for correction/fix logic.
+  when_user_reports_integration_issue:
+    steps:
+    - Check source business record.
+    - Check SCore.DataObjects row.
+    - Check IntegrationOutbox or relevant integration table.
+    - Check idempotency keys/duplicate prevention.
+    - Check worker/service logs.
+    - Check diagnostics UI.
+    - Confirm whether existing failed messages require replay after code deployment.
+notes:
+- Prefer targeted directory scans over repository-wide searches for speed and relevance.
+- In PWA, many route pages have optional .razor.cs and .razor.css companions.
+- Treat this file as a companion index; it does not replace source-of-truth code.
+- If schema is missing or uncertain, ask for the relevant SQL/schema before proposing database changes.
+- Preserve behaviour when refactoring or removing Telerik.
+- For controlled environments, avoid manual database or metadata changes.
+- For new entities, always consider DataObjects, workflow/status, metadata, and integration side effects.
+- Release 26.3 verified schema runner baseline is CYB361_R27.
+- No explicit schema selection means all deployable rows; explicit selection means selected rows only.
+- The current metadata migration mechanism is SMigration run-based; manifests remain governance support.
+
+
+====================================================================================================
+DOCUMENT 4: 03_REPOSITORY_INVENTORY.md
+Recommended upload filename: 03_REPOSITORY_INVENTORY.markdown
+====================================================================================================
+
+# Repository Inventory
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+Generated from the current source-of-truth repository, with CYB361 R22–R27 overlaid to represent the verified 26.3 schema deployment baseline.
+
+## Solution and projects
+
+- `CymBuild.Monorepo.sln`
+- `Concursus.Metadata.Tools.csproj`
+- `apps/Concursus.Metadata.Tools/Concursus.Metadata.Tools.csproj`
+- `apps/Concursus.PWA/Concursus.PWA.csproj`
+- `apps/Concursus.PWA.Tests/Concursus.PWA.Tests.csproj`
+- `apps/CymBuild_Outlook_Addin/CymBuild_Outlook_Addin.csproj`
+- `libs/Concursus.API.Client/Concursus.API.Client.csproj`
+- `libs/Concursus.Common.Shared/Concursus.Common.Shared.csproj`
+- `libs/Concursus.Components.Shared/Concursus.Components.Shared.csproj`
+- `libs/Concursus.EF/Concursus.EF.csproj`
+- `libs/CymBuild_Outlook Manifest/CymBuild_Outlook.csproj`
+- `libs/CymBuild_Outlook_Common/CymBuild_Outlook_Common.csproj`
+- `services/Concursus.API/Concursus.API.csproj`
+- `services/CymBuild_AIErrorServiceAPI/CymBuild_AIErrorServiceAPI.csproj`
+- `services/CymBuild_Outlook_API/CymBuild_Outlook_API.csproj`
+- `services/CymBuild_Outlook_Service/CymBuild_Outlook_Service.csproj`
+- `services/PostCodeLookup/PostCodeLookup.csproj`
+- `services/Sage200Microservice/Sage200Microservice.API/Sage200Microservice.API.csproj`
+- `services/Sage200Microservice/Sage200Microservice.Data/Sage200Microservice.Data.csproj`
+- `services/Sage200Microservice/Sage200Microservice.Services/Sage200Microservice.Services.csproj`
+- `tests/Concursus.API.Tests/Concursus.API.Tests.csproj`
+
+## Key project areas
+
+| Area | Path | 26.3 responsibility |
+|---|---|---|
+| Blazor PWA | `apps/Concursus.PWA` | Pages, shared components, metadata-driven forms/grids, admin migration workbenches. |
+| API client | `libs/Concursus.API.Client` | `FormHelper` and partial wrappers; mandatory PWA entry point to gRPC. |
+| gRPC API | `services/Concursus.API` | Core, UI, finance, Sage orchestration, documents, schema/metadata/onboarding migration, assistant and worker services. |
+| EF/repositories | `libs/Concursus.EF` | SQL access, query building, repositories, metadata readers and ValidateOnly manifest tooling. |
+| Shared UI | `libs/Concursus.Components.Shared` | Reusable controls including `V2FormRenderer`, `V2FieldEditor`, and shared non-Telerik styling. |
+| Source-controlled schema | `Database/CymBuild_DB/Schema` | Tables, views, functions, procedures, triggers and guarded migrations. |
+| Metadata migration SQL | `SQL_CI_Packs_Metadata/database` | SMigration metadata schema, stage/validate/preview/apply scripts. |
+| Metadata governance | `metadata-manifests/v1` and `apps/Concursus.Metadata.Tools` | ValidateOnly/governance manifests and tooling; not the complete migration mechanism. |
+| Schema deployment | `tools/SchemaDeployment` | R27 external controlled runner and runbook. |
+| Outlook add-in | `apps/CymBuild_Outlook_Addin` | Office/Graph-assisted filing UI. |
+| Outlook services | `services/CymBuild_Outlook_API`, `services/CymBuild_Outlook_Service` | Server-controlled Outlook/SharePoint support. |
+| Sage microservice | `services/Sage200Microservice` | Controlled external Sage boundary. `services/SageAPI_TEMP_DISABLED` is not an active integration target. |
+| Tests | `tests/Concursus.API.Tests`, `apps/Concursus.PWA.Tests` | API and PWA regression tests. |
+
+## High-value 26.3 files
+
+### Schema Migration
+
+- `apps/Concursus.PWA/Pages/Admin/SchemaMigration.razor`
+- `libs/Concursus.API.Client/FormHelper.SchemaMigration.cs`
+- `services/Concursus.API/Services/CoreService.SchemaMigration.cs`
+- `services/Concursus.API/Protos/core.proto`
+- `Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.SchemaDeploymentPlan_Get.sql`
+- `Database/CymBuild_DB/Schema/Tables/SMigration.Schema_Run.sql`
+- `Database/CymBuild_DB/Schema/Tables/SMigration.Schema_RunSelections.sql`
+- `Database/CymBuild_DB/Schema/Tables/SMigration.Schema_ObjectComparisons.sql`
+- `Database/CymBuild_DB/Schema/Tables/SMigration.Schema_ValidationIssues.sql`
+- `Database/CymBuild_DB/Schema/Tables/SMigration.Schema_ExecutionLog.sql`
+- `tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1`
+- `tools/SchemaDeployment/README.md`
+- `Database/CymBuild_DB/Schema/Migrations/_Shared/SMigration.AlterColumnNullabilityWithDependencies.sql`
+
+### Metadata Migration
+
+- `apps/Concursus.PWA/Pages/Admin/MetadataMigration.razor`
+- `libs/Concursus.API.Client/FormHelper.MetadataMigration.cs`
+- `services/Concursus.API/Services/CoreService.MetadataMigration.cs`
+- `SQL_CI_Packs_Metadata/database/smigration/SMigration.Metadata.Schema.sql`
+- `SQL_CI_Packs_Metadata/database/metadata/10_metadata_stage_validate_preview.sql`
+- `SQL_CI_Packs_Metadata/database/metadata/20_metadata_apply_existing_validated_run.sql`
+- `SQL_CI_Packs_Metadata/database/metadata/21_metadata_stage_validate_apply.sql`
+- `SQL_CI_Packs_Metadata/database/metadata/30_metadata_post_apply_verify.sql`
+- `metadata-manifests/v1/families/grids/grids.json`
+- `metadata-manifests/v1/policies/allowlist.grids.json`
+- `libs/Concursus.EF/MetadataManifests/ValidateOnly/README.md`
+
+### Metadata-driven/non-Telerik UI
+
+- `libs/Concursus.Components.Shared/Controls/V2FormRenderer.razor`
+- `libs/Concursus.Components.Shared/Controls/V2FieldEditor.razor`
+- `apps/Concursus.PWA/Shared/FilteredDynamicGridViewV2.razor`
+- `apps/Concursus.PWA/Shared/DynamicBatchGridViewV2.razor`
+- `apps/Concursus.PWA/Shared/Diagnostics/SageInboundDiagnosticsV2.razor`
+- `libs/Concursus.Components.Shared/wwwroot/css/cymbuild-v2.css`
+
+### Platform identity, workflow and integration
+
+- `Database/CymBuild_DB/Schema/Tables/SCore.DataObjects.sql`
+- `Database/CymBuild_DB/Schema/Tables/SCore.DataObjectTransition.sql`
+- `Database/CymBuild_DB/Schema/Programmability/Procedures/SCore.DataObjectTransitionUpsert.sql`
+- `Database/CymBuild_DB/Schema/Tables/SCore.IntegrationOutbox.sql`
+- `services/Concursus.API/Services/Finance/SageTransactionSubmissionWorker.cs`
+- `services/Concursus.API/Services/Finance/SageInboundPaymentSyncWorker.cs`
+
+
+====================================================================================================
+DOCUMENT 5: 04_METADATA_RULES.md
+Recommended upload filename: 04_METADATA_RULES.markdown
+====================================================================================================
+
+# CymBuild Metadata Rules
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+CymBuild is metadata-driven, but the 26.3 migration mechanism is **not purely manifest-driven**.
+
+## Source of truth and deployment model
+
+```text
+Schema authoring = source-controlled SQL
+Metadata migration configuration = source-controlled SMigration SQL/code
+Metadata manifests = ValidateOnly/governance inputs
+Database = deployment target only
+```
+
+The main metadata migration process is run-based and aligned with OnBoarding:
+
+```text
+Create Run → Stage → Validate → Build Identity Map
+→ Review / Ignore / Override → Select Records
+→ Apply Preview → Apply Selected or All Valid → Audit
+```
+
+## 26.3 implementation
+
+The process uses:
+
+- `SMigration.Metadata_Run`
+- `SMigration.Metadata_StagedRows`
+- `SMigration.Metadata_ValidationIssues`
+- `SMigration.Metadata_ApplyIdentityMap`
+- `SMigration.Metadata_ExecutionLog`
+- `SMigration.Metadata_TableRegistry`
+- `SMigration.Metadata_RunSelections`
+- `SMigration.MetadataStage_Run`
+- `SMigration.MetadataValidate_Run`
+- `SMigration.MetadataApplyIdentityMap_Build`
+- `SMigration.MetadataRunSelection_Upsert`
+- `SMigration.MetadataRunSelection_Clear`
+- `SMigration.MetadataApplyPreview_Get`
+- `SMigration.MetadataApply_Run`
+
+The PWA follows `MetadataMigration.razor → FormHelper.MetadataMigration.cs → CoreService.MetadataMigration.cs → SMigration SQL`.
+
+## Manifest role
+
+The following remain important but are governance/ValidateOnly support rather than the full migration engine:
+
+- `metadata-manifests/v1/families/grids/grids.json`
+- `metadata-manifests/v1/policies/allowlist.grids.json`
+- `apps/Concursus.Metadata.Tools`
+- `libs/Concursus.EF/MetadataManifests/ValidateOnly`
+
+Do not remove or ignore them, and do not claim that applying manifests alone is the production metadata migration process.
+
+## Deployment order
+
+```text
+1. Deploy idempotent schema SQL
+2. Create/stage metadata run
+3. Validate staged metadata
+4. Build and review identity map
+5. Resolve by review, ignore, or explicit override
+6. Save selected rows, or use all valid rows when no explicit selection is required
+7. Review Apply Preview
+8. Apply selected or all valid rows
+9. Verify execution log and post-apply checks
+```
+
+## Dependency order
+
+Grid metadata must be applied in this order:
+
+```text
+GridDefinition → GridViewDefinition → GridViewColumnDefinition
+```
+
+## Metadata object families
+
+- `SCore.EntityTypes`
+- `SCore.EntityProperties`
+- `SCore.EntityPropertyGroups`
+- `SCore.EntityQueries`
+- `SCore.EntityQueryParameters`
+- `SCore.LanguageLabels`
+- `SCore.LanguageLabelTranslations`
+- `SUserInterface.GridDefinitions`
+- `SUserInterface.GridViewDefinitions`
+- `SUserInterface.GridViewColumnDefinitions`
+- `SUserInterface.DropDownListDefinitions`
+- `SUserInterface.Labels`
+- Widgets and action menus
+
+## Apply and identity rules
+
+- Resolve cross-environment identity by stable `Guid`, never copied numeric IDs.
+- Apply idempotently and avoid duplicate active rows.
+- Every metadata entity insert that participates in platform identity must create the corresponding `SCore.DataObjects` row in the same operation.
+- Do not use insert-then-update identity correction.
+- No direct metadata edits in controlled environments.
+- Ignored records and identity-map overrides must be persisted and auditable.
+- Apply Preview must represent the selected/default valid plan.
+- Preserve existing behavior unless the approved change explicitly changes it.
+
+## Choosing the implementation route
+
+| Request | 26.3 route |
+|---|---|
+| Add grid column | SQL source + run-based metadata stage/validate/selection/apply; manifest validation where covered |
+| Rename label | Language label/translation metadata through SMigration run |
+| Add dropdown field | Schema/read/upsert + entity/dropdown metadata + run-based migration |
+| Hide/show field | Entity property/group metadata unless server-side security/business rules are required |
+| Add workflow action | Workflow metadata plus transition validation; status applied only through `DataObjectTransitionUpsert` |
+| Add page-specific behavior | PWA only for presentation/orchestration; data and business rules remain behind FormHelper/API |
+
+
+====================================================================================================
+DOCUMENT 6: 05_GOLDEN_PATH_EXAMPLES.md
+Recommended upload filename: 05_GOLDEN_PATH_EXAMPLES.markdown
+====================================================================================================
+
+# Golden Path Examples
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## Example 1 — Add a field to an existing entity
+
+```text
+Source-controlled schema → Read object → Upsert → EF/API/FormHelper if required
+→ SMigration metadata run → Metadata-driven UI
+```
+
+1. Inspect the current table/read/upsert schema.
+2. Add an idempotent, data-preserving schema migration.
+3. Use explicit columns in every changed SQL object.
+4. Update upsert/read contracts while preserving backward compatibility.
+5. Create the business row and matching `SCore.DataObjects` row atomically when a new entity is involved.
+6. Stage and validate the metadata run.
+7. Build/review the identity map and save intended selections.
+8. Review Apply Preview, then apply selected/all valid rows.
+9. Verify PWA behavior through FormHelper.
+
+Never add the field only in Razor, hard-code a metadata-backed control, or make a populated column `NOT NULL` without a guarded migration.
+
+## Example 2 — Add a dropdown field
+
+```text
+Lookup/entity query → EntityProperty/DropDown metadata → Read/upsert SQL → V2FieldEditor
+```
+
+1. Confirm the lookup source and active filter uses `RowStatus <> 0 AND RowStatus <> 254`.
+2. Add or update the dropdown/entity-query metadata.
+3. Pass stable GUIDs across environment boundaries and resolve numeric IDs server-side.
+4. Keep values and dependency filtering out of Razor.
+
+## Example 3 — Add a grid column
+
+```text
+SQL source → GridDefinition → GridViewDefinition → GridViewColumnDefinition
+→ FilteredDynamicGridViewV2
+```
+
+Add the SQL alias first, then apply metadata in dependency order. Validate duplicates, label, order, width, formatting, visibility, sorting, filtering, and export behavior.
+
+## Example 4 — Add workflow behavior
+
+```text
+Workflow metadata → DataObjectTransitionUpsert → latest active transition = current state
+```
+
+Confirm the `DataObjects` row and `EntityTypeId`, validate allowed transitions, and use `SCore.DataObjectTransitionUpsert`. Never update an entity status column directly.
+
+## Example 5 — Add an integration event
+
+```text
+Business action → IntegrationOutbox → controlled worker/microservice
+→ external system → audit/diagnostics/retry
+```
+
+Use a stable idempotency key, store diagnostic context, and make retries safe. CymBuild must never call Sage directly; use the controlled Sage microservice boundary.
+
+## Example 6 — Convert Telerik UI
+
+```text
+Feature inventory → V2/shared component → FormHelper preserved → parity testing
+```
+
+Prefer `V2FormRenderer`, `V2FieldEditor`, `FilteredDynamicGridViewV2`, and existing V2 diagnostics/grid patterns. Preserve filters, sorting, paging, export, buttons, row actions, modals, validation, loading/empty/error states, accessibility, and security.
+
+## Example 7 — Promote a schema difference
+
+```text
+PWA workbench → FormHelper → gRPC → SMigration persistent plan
+→ external R27 runner → source-controlled SQL → audit
+```
+
+1. Create and compare a schema run.
+2. Save explicit selections, or intentionally use all deployable rows by default.
+3. Validate the selected/default plan.
+4. Accept the reviewed run.
+5. Execute `-WhatIf` outside the browser under a controlled account.
+6. Resolve every unsupported item with source-controlled SQL or remove it from the accepted selection.
+7. Run `-Apply` without `-AllowPartial` for a complete plan.
+8. Verify `PreDeploymentScript`, object deployment, `PostDeploymentScript`, execution log and final run status.
+
+Never deploy captured source-database DDL or grant browser sessions DDL permissions.
+
+
+====================================================================================================
+DOCUMENT 7: 06_TROUBLESHOOTING_PLAYBOOKS.md
+Recommended upload filename: 06_TROUBLESHOOTING_PLAYBOOKS.markdown
+====================================================================================================
+
+# CymBuild Troubleshooting Playbooks
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## Workflow/status issue
+
+Trace `UI → FormHelper → API → EF/SQL → DataObjects → latest DataObjectTransition`. Confirm the correct `EntityTypeId`, workflow/status/transition metadata, and use `SCore.DataObjectTransitionUpsert` for correction. Never update status directly.
+
+## Grid or dropdown issue
+
+1. Confirm the SQL source returns the expected alias with explicit columns.
+2. Confirm parent metadata and active filters use `RowStatus <> 0 AND RowStatus <> 254`.
+3. Check Grid → View → Column ordering, labels, formats, query parameters and duplicate active definitions.
+4. Check the metadata run, identity map, ignored/selected rows, Apply Preview and execution log.
+5. Trace the UI call through FormHelper; clear only appropriate client metadata caches after server state is verified.
+
+## Missing DataObject
+
+A missing identity row can break workflow, security, automation and integration. Confirm the business record GUID and `EntityTypeId`. Remediate through an approved idempotent procedure, then correct the insert path so the business row and `DataObjects` row are created atomically. Do not adopt insert-then-update identity repair as normal behavior.
+
+## Metadata migration failure
+
+1. Read `SMigration.Metadata_Run` and `SMigration.Metadata_ExecutionLog`.
+2. Review staged counts and validation issues.
+3. Build/rebuild identity map only through the workbench/API flow.
+4. Inspect unresolved, ignored and overridden issues.
+5. Confirm selection and Apply Preview represent the intended rows.
+6. Do not edit target metadata directly.
+7. Treat manifests as ValidateOnly/governance evidence, not a substitute for the run.
+
+## Schema migration failure
+
+1. Inspect the accepted plan from `SMigration.SchemaDeploymentPlan_Get`.
+2. Review `unsupported-items.csv`, `manual-preview-deployment.sql`, and `SMigration.Schema_ExecutionLog`.
+3. Confirm the selected object maps to canonical SQL under `Database/CymBuild_DB/Schema`.
+4. Use `-WhatIf`; it must not write deployment/audit state.
+5. Do not use `-AllowPartial` when the full accepted plan is required.
+6. For a failed reviewed run, use `-RetryFailedDeployment` only after the source-controlled correction is reviewed.
+7. If failure occurs after `PreDeploymentScript`, confirm R27 recovery or the subsequent successful `PostDeploymentScript` result.
+8. Recompare after a successful deployment rather than rewriting the historical run.
+
+## Sage/integration failure
+
+Trace:
+
+```text
+Source record → DataObject → IntegrationOutbox/module ledger
+→ worker → Sage200Microservice → external response → diagnostics/retry
+```
+
+Check idempotency, batch/transaction state, worker logs and approved requeue. Do not add a direct Sage call from PWA or Concursus API business paths.
+
+## Invoice automation issue
+
+Check `InvoiceSchedule` intent, schedule configuration, `InvoiceScheduleTriggerInstances` idempotent execution ledger, generated InvoiceRequest/Items, RIBA attribution, transaction state and worker audit. Re-running must not duplicate requests.
+
+## Non-Telerik regression
+
+Compare old/new feature inventories; confirm FormHelper flow, metadata rendering, search/filter/sort/page/export, actions, modals, dropdowns, validation, loading/empty/error states and shared CSS. No behavior loss is acceptable.
+
+
+====================================================================================================
+DOCUMENT 8: 07_JIRA_IMPLEMENTATION_HISTORY.md
+Recommended upload filename: 07_JIRA_IMPLEMENTATION_HISTORY.markdown
+====================================================================================================
+
+# Jira Implementation History
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+
+This file gives BlueGen memory of important CymBuild Jira work. It should be updated after each resolved Jira.
+
+## CYB-101 — WorkflowGetNextStatus
+
+### Problem
+Workflow next-status dropdowns needed to respect business rules and avoid invalid statuses.
+
+### Key rules
+- Latest transition is current state.
+- Use workflow metadata.
+- Super User override may expose all transitions if explicitly required.
+- Hide invalid sent/accepted-style statuses where there are no active quote items.
+
+### BlueGen guidance
+Do not fix next-status issues in the UI. Diagnose `DataObjects`, current transition, workflow status, transitions, and dropdown source.
+
+## CYB-197 — Sage inbound document status
+
+### Problem
+Inbound Sage processing could fail where no active Sage inbound document status row existed for a CymBuild document GUID.
+
+### BlueGen guidance
+Check source CymBuild document, active status row, integration state, worker state, and idempotency. Existing failed messages may require replay after code deployment.
+
+## CYB-222 — Outlook publish prompt
+
+### Problem
+Add optional prompt on compose/forward/send to remind users to publish emails to CymBuild.
+
+### Key rules
+- Feature toggle controls behaviour.
+- Existing behaviour unchanged by default.
+- Confirm action should open filing/publish panel.
+- Decline should continue without filing.
+
+## CYB-225 — Outlook filing visibility
+
+### Problem
+Users needed clearer visibility of incoming/outgoing email and selected folder before confirmation.
+
+### Key rules
+- Preserve filing behaviour.
+- Show selected folder/path before confirm.
+- Do not hard-code SharePoint business rules in UI.
+
+## CYB-270 — Invoice schedule amount calculation
+
+### Problem
+Invoice Schedule amount displayed incorrectly because logic used a single column for all trigger types.
+
+### Key rule
+Amount/value must be derived according to schedule type: monthly, percentage, or activity/milestone.
+
+## CYB-287 — RIBA stage support for invoice schedules
+
+### Problem
+Monthly and percentage invoice schedules needed optional RIBA stage support.
+
+### Key rules
+- RIBA stage optional.
+- Existing schedules continue unchanged.
+- Schedule-generated invoice requests/items should carry stage attribution where configured.
+- Fee drawdown should support stage-level attribution.
+
+## CYB-339 — BRAC quote/job fee carry-through
+
+### Problem
+Quote item net/stage information needed to carry into job fee drawdown correctly.
+
+### Key rules
+- User-created/custom RIBA stages must be supported.
+- Avoid hard-coded RIBA0–RIBA7 assumptions where dynamic stages exist.
+- Fee grid should report agreed, invoiced, paid, and remaining accurately.
+
+## CYB-340 — Data and security classifications
+
+### Problem
+Add Data Classification and Security Classification to project-related records.
+
+### Key rules
+- Fields apply to Quotes, Jobs, and Client Projects.
+- Quote selections can flow to Job and Client Project.
+- Dropdowns should be metadata-driven.
+- Existing records must continue working.
+
+## Future update template
+
+```text
+## CYB-000 — Title
+
+### Problem
+
+### Root cause
+
+### Changed files / SQL objects
+
+### Metadata changes
+
+### Final behaviour
+
+### Testing notes
+
+### Known limitations
+
+### BlueGen guidance
+```
+
+## CYB-361 / CYB-362 — Schema and Metadata Migration Workbenches (26.3)
+
+### Final 26.3 behavior
+
+- Schema and metadata migration use persistent `SMigration` runs.
+- Schema selection is lightweight and persistent; no explicit selection means all deployable differences.
+- Schema validation operates on the selected/default deployment plan.
+- The workbench records acceptance but does not execute browser DDL.
+- `Invoke-CymBuildSchemaDeployment.ps1` R27 consumes the accepted plan outside CymBuild under controlled permissions.
+- The runner uses source-controlled SQL only, runs `SCore.PreDeploymentScript` and `SCore.PostDeploymentScript`, writes DataObjects-compliant audit, blocks LIVE-like targets without explicit authorization, and supports explicit failed-run retry.
+- R27 dynamically preserves approved nullability-change dependencies while retaining strict guards for unsupported schema-bound or specialist objects.
+- Metadata migration follows Create Run → Stage → Validate → Identity Map → Review/Ignore/Override → Selection → Apply Preview → Apply → Audit.
+- Metadata manifests remain ValidateOnly/governance support rather than the sole migration engine.
+
+### Verified deployment
+
+The 26.3 QA run `B92EC354-5517-4DA3-9FFE-CBC40455ABFA` completed with six supported objects and status `DeploymentApplied` using R27. This is release evidence, not a reusable run GUID for other environments.
+
+### BlueGen guidance
+
+Do not recommend direct production fixes, manual metadata promotion, browser DDL, captured source-database DDL, or `-AllowPartial` when a complete accepted plan is intended.
+
+
+====================================================================================================
+DOCUMENT 9: 08_USER_HELP_GUIDES.md
+Recommended upload filename: 08_USER_HELP_GUIDES.markdown
+====================================================================================================
+
+# CymBuild User Help Guides
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+
+This file provides user-facing guide outlines for BlueGen. These should be reviewed by business users before publication.
+
+## How to create an Enquiry
+
+1. Open the Enquiries area.
+2. Select the action to create a new Enquiry.
+3. Complete required client/project/property details.
+4. Save the record.
+5. Check the status and available next actions.
+
+### Common issues
+- Missing required fields.
+- User cannot see an action due to permissions/workflow.
+- Dropdown empty due to missing setup or filtering.
+
+## How to create a Quote
+
+1. Open the relevant Enquiry.
+2. Use the configured action to create or manage Quotes.
+3. Add quote sections/items as required.
+4. Confirm products, RIBA stages, values, and classifications.
+5. Save and progress through workflow.
+
+## How to revise a Quote
+
+1. Open the Quote.
+2. Use the revise action where available.
+3. Confirm the new version/copy is created.
+4. Review copied sections/items/status.
+5. Continue through the workflow.
+
+### Support note
+If revise fails, developers should check `SSop.QuotesRevise`, `SCore.DataObjects`, and `SCore.DataObjectTransitionUpsert` usage.
+
+## How to create a Job from a Quote
+
+1. Ensure Quote is in the required workflow state.
+2. Use the configured create-job action.
+3. Confirm Quote Items are valid.
+4. Confirm classification and RIBA-stage fee information.
+5. Open the created Job and review details.
+
+## How to use Invoice Schedules
+
+1. Open the Job or Finance/Invoicing area.
+2. Choose the schedule type: monthly, percentage, or activity/milestone.
+3. Enter schedule configuration.
+4. Optionally select RIBA stage where supported.
+5. Save and allow automation to generate invoice requests when due.
+
+## How to understand RIBA stage fees
+
+The fee drawdown grid shows stage-level financial movement, including agreed, invoiced, paid, and remaining values. If a transaction or invoice item has no RIBA stage, it may not roll up to a stage-specific row unless a rule exists to map it.
+
+## How to use Outlook filing
+
+1. Open the Outlook add-in.
+2. Search/select the CymBuild target record.
+3. Choose the SharePoint folder where available.
+4. Confirm incoming/outgoing details and folder path.
+5. File/publish the email.
+
+## How to understand classifications
+
+Data Classification and Security Classification identify the sensitivity/security handling of project records. They may be shown on Quotes, Jobs, and Client Projects. Future phases may use them for access control and reporting.
+
+## How to interpret Sage/invoice statuses
+
+Sage and invoice automation may involve background processing. A UI action may create a request or queue an outbox item before the external Sage action completes. Use diagnostics when there is a failure or delay.
+
+## Developer/admin — Metadata Migration workbench
+
+1. Create a run with source/target environments and EntityType scope.
+2. Stage and validate.
+3. Build the identity map.
+4. Review missing mappings; ignore or explicitly override only with evidence.
+5. Save intended record selections.
+6. Review Apply Preview.
+7. Apply selected rows or all valid rows as intended.
+8. Review execution log and post-apply verification.
+
+The workbench follows PWA → FormHelper → gRPC → SQL. Do not edit metadata directly in QA/UAT/LIVE.
+
+## Developer/admin — Schema Migration workbench
+
+1. Create a run and Stage & Compare source/target.
+2. Select objects. With no explicit selection, all deployable differences form the default plan.
+3. Save selection and validate the current plan.
+4. Review destructive-risk and unsupported rows.
+5. Accept the validated run.
+6. Copy/review the plan; the SQL helper only returns the plan and does not deploy it.
+7. Run the external controlled runner from the repository root.
+
+## Developer/admin — 26.3 controlled schema deployment
+
+Dry-run first:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "<SERVER>" `
+    -TargetDatabase "<DATABASE>" `
+    -RunGuid "<ACCEPTED-RUN-GUID>" `
+    -ReleaseReference "26.3" `
+    -WhatIf
+```
+
+Apply only after the dry-run resolves all selected rows:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "<SERVER>" `
+    -TargetDatabase "<DATABASE>" `
+    -RunGuid "<ACCEPTED-RUN-GUID>" `
+    -ReleaseReference "26.3" `
+    -Apply
+```
+
+Do not use `-AllowPartial` for a complete accepted release plan.
+
+
+====================================================================================================
+DOCUMENT 10: 09_GLOSSARY.md
+Recommended upload filename: 09_GLOSSARY.markdown
+====================================================================================================
+
+# CymBuild Glossary
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## DataObject
+The platform identity row in `SCore.DataObjects` for a business or metadata entity. It must be created atomically at insert with the correct `EntityTypeId`.
+
+## DataObjectTransition
+Audited workflow/status transition. The latest active transition is the current state; status is never updated directly.
+
+## EntityType / EntityProperty / EntityPropertyGroup / EntityQuery
+Metadata definitions for an entity, its fields, form grouping, and SQL-backed operations/data sources.
+
+## GridDefinition / GridViewDefinition / GridViewColumnDefinition
+The parent, view, and column metadata hierarchy. Apply in Grid → View → Columns order.
+
+## FormHelper
+The client wrapper layer between Blazor PWA and gRPC. UI components must use it rather than direct API clients.
+
+## Metadata Migration Run
+A persistent `SMigration.Metadata_Run` lifecycle that stages, validates, maps identities, records ignores/overrides/selections, previews apply, applies and audits metadata.
+
+## Metadata Manifest
+A source-controlled ValidateOnly/governance representation, currently especially important for grid families and allowlists. In 26.3 it is not the sole metadata migration mechanism.
+
+## Identity Map
+Cross-environment mapping from staged source GUID/identity context to target records. Missing mappings require review, ignore, or explicit override.
+
+## Schema Migration Run
+A persistent comparison, selection, validation, acceptance and audit record in `SMigration.Schema_Run`.
+
+## Deployment Plan
+The selected schema differences returned by `SMigration.SchemaDeploymentPlan_Get`. If no explicit selection exists, all deployable differences form the default plan.
+
+## Schema Deployment Runner
+`tools/SchemaDeployment/Invoke-CymBuildSchemaDeployment.ps1`. R27 executes accepted plans outside the browser using source-controlled SQL and controlled permissions.
+
+## PreDeploymentScript / PostDeploymentScript
+Controlled SQL lifecycle procedures used to suspend and restore schema-bound dependencies/constraints around deployment. Post-deployment is skipped for `CymBuild_Dev` by the R27 runner.
+
+## IntegrationOutbox
+`SCore.IntegrationOutbox`, used to queue auditable, idempotent integration events for workers.
+
+## Invoice Schedule
+Business intent for future invoice generation.
+
+## InvoiceScheduleTriggerInstances
+Idempotent execution ledger for schedule triggers; prevents duplicate automation effects.
+
+## RIBA Stage
+Dynamic project/fee stage. Do not assume only hard-coded RIBA0–RIBA7 values.
+
+## Telerik Removal
+Migration to shared CymBuild-native/V2 controls while preserving behavior. New Telerik usage requires explicit approval.
+
+
+====================================================================================================
+DOCUMENT 11: 10_DEPLOYMENT_RUNBOOKS.md
+Recommended upload filename: 10_DEPLOYMENT_RUNBOOKS.markdown
+====================================================================================================
+
+# CymBuild Deployment Runbooks
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## Environment principles
+
+```text
+DEV = flexible
+QA = controlled
+UAT = controlled and business-facing
+LIVE = restricted; no direct fixes or browser DDL
+```
+
+## Standard 26.3 order
+
+```text
+1. Idempotent schema deployment
+2. Metadata stage/validate/identity-map review
+3. Metadata apply preview and controlled apply
+4. API/worker deployment
+5. PWA deployment
+6. Post-deploy diagnostics and audit
+```
+
+## Schema workbench boundary
+
+The PWA workbench is configuration, comparison, selection, validation and acceptance only:
+
+```text
+PWA → FormHelper.SchemaMigration → gRPC → SMigration persistent plan
+```
+
+It does not execute DDL. The copyable SQL only reads the plan.
+
+## R27 controlled runner
+
+Run from the repository root under a controlled deployment account.
+
+Dry-run:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "<SERVER>" `
+    -TargetDatabase "<DATABASE>" `
+    -RunGuid "<ACCEPTED-RUN-GUID>" `
+    -ReleaseReference "26.3" `
+    -WhatIf
+```
+
+Apply:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "<SERVER>" `
+    -TargetDatabase "<DATABASE>" `
+    -RunGuid "<ACCEPTED-RUN-GUID>" `
+    -ReleaseReference "26.3" `
+    -Apply
+```
+
+A failed reviewed run may be retried only after correction:
+
+```powershell
+-Apply -RetryFailedDeployment
+```
+
+### Runner guarantees
+
+- Reads `SMigration.SchemaDeploymentPlan_Get`.
+- Requires reviewed/accepted plan except restricted DEV override behavior.
+- Deploys only canonical files under `Database/CymBuild_DB/Schema`.
+- Never executes captured source-database DDL.
+- Defaults to dry-run.
+- `-WhatIf` writes no deployment/audit rows.
+- Blocks unsupported rows unless deliberate `-AllowPartial` is provided; do not use partial apply for a complete release plan.
+- Runs `SCore.PreDeploymentScript` before object deployment.
+- Runs `SCore.PostDeploymentScript` after success except for `CymBuild_Dev`.
+- Attempts post-deployment recovery if apply fails after pre-deployment maintenance.
+- Writes `SMigration.Schema_ExecutionLog` atomically with `SCore.DataObjects` through `SMigration.SchemaDataObject_Ensure`.
+- Blocks production-looking targets unless `-AllowLive` is explicitly supplied.
+
+## Metadata deployment
+
+Use the run-based workbench lifecycle. Manifests provide ValidateOnly/governance support. No direct target edits, copied numeric IDs, or manual promotion.
+
+## API/worker and PWA deployment
+
+Confirm schema compatibility, feature toggles, worker enablement, idempotency/retry behavior, client/API proto compatibility, service-worker/cache refresh, and non-Telerik parity.
+
+## Post-deploy checks
+
+- Confirm run status and execution logs.
+- Recompare schema with a new/preserved audit run.
+- Smoke test login, navigation, dynamic forms/grids and workflow actions.
+- Validate metadata-controlled changes.
+- Test relevant workers, outbox, Sage microservice diagnostics and SharePoint/Outlook flows.
+- Never validate status by directly changing an entity status column.
+
+## Future Phase 2
+
+A future Run Deployment button must queue controlled work:
+
+```text
+PWA → FormHelper → gRPC → IntegrationOutbox/deployment queue
+→ controlled worker/service account → SQL Server
+```
+
+The browser/user session must not receive DDL permissions.
+
+
+====================================================================================================
+DOCUMENT 12: 11_TESTING_AND_DIAGNOSTICS.md
+Recommended upload filename: 11_TESTING_AND_DIAGNOSTICS.markdown
+====================================================================================================
+
+# Testing and Diagnostics
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+Use read-only diagnostics first. Every query below uses explicit columns and the 26.3 source-controlled schema.
+
+## DataObject
+
+```sql
+DECLARE @RecordGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+SELECT
+    data_object.Guid,
+    data_object.EntityTypeId,
+    entity_type.Name AS EntityTypeName,
+    data_object.RowStatus,
+    data_object.RowVersion
+FROM SCore.DataObjects AS data_object
+LEFT JOIN SCore.EntityTypes AS entity_type
+    ON entity_type.ID = data_object.EntityTypeId
+WHERE data_object.Guid = @RecordGuid
+  AND data_object.RowStatus <> 0
+  AND data_object.RowStatus <> 254;
+```
+
+## Latest workflow transition
+
+```sql
+DECLARE @DataObjectGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+SELECT TOP (1)
+    transition.ID,
+    transition.Guid,
+    transition.DataObjectGuid,
+    transition.OldStatusID,
+    transition.StatusID,
+    workflow_status.Name AS StatusName,
+    transition.DateTimeUTC,
+    transition.Comment,
+    transition.RowStatus
+FROM SCore.DataObjectTransition AS transition
+LEFT JOIN SCore.WorkflowStatus AS workflow_status
+    ON workflow_status.ID = transition.StatusID
+WHERE transition.DataObjectGuid = @DataObjectGuid
+  AND transition.RowStatus <> 0
+  AND transition.RowStatus <> 254
+ORDER BY transition.ID DESC;
+```
+
+## Integration outbox
+
+```sql
+DECLARE @RecordGuidText NVARCHAR(36) = N'00000000-0000-0000-0000-000000000000';
+
+SELECT
+    outbox.ID,
+    outbox.Guid,
+    outbox.EventType,
+    outbox.CreatedOnUtc,
+    outbox.PublishedOnUtc,
+    outbox.PublishAttempts,
+    outbox.PublishingToken,
+    outbox.PublishingStartedOnUtc,
+    outbox.LastError,
+    outbox.RowStatus
+FROM SCore.IntegrationOutbox AS outbox
+WHERE outbox.RowStatus <> 0
+  AND outbox.RowStatus <> 254
+  AND outbox.PayloadJson LIKE N'%' + @RecordGuidText + N'%'
+ORDER BY outbox.ID DESC;
+```
+
+## Grid and columns
+
+```sql
+DECLARE @GridCode NVARCHAR(30) = N'<GRID-CODE>';
+
+SELECT
+    grid.ID,
+    grid.Guid,
+    grid.Code,
+    grid.PageUri,
+    grid.TabName,
+    grid.RowStatus
+FROM SUserInterface.GridDefinitions AS grid
+WHERE grid.Code = @GridCode
+  AND grid.RowStatus <> 0
+  AND grid.RowStatus <> 254;
+
+DECLARE @GridViewDefinitionId INT = -1;
+
+SELECT
+    grid_column.ID,
+    grid_column.Guid,
+    grid_column.Name,
+    grid_column.ColumnOrder,
+    grid_column.GridViewDefinitionId,
+    grid_column.IsHidden,
+    grid_column.IsFiltered,
+    grid_column.DisplayFormat,
+    grid_column.Width,
+    grid_column.RowStatus
+FROM SUserInterface.GridViewColumnDefinitions AS grid_column
+WHERE grid_column.GridViewDefinitionId = @GridViewDefinitionId
+  AND grid_column.RowStatus <> 0
+  AND grid_column.RowStatus <> 254
+ORDER BY grid_column.ColumnOrder, grid_column.ID;
+```
+
+## Schema migration run and audit
+
+```sql
+DECLARE @RunGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+SELECT
+    run.Guid,
+    run.SourceEnvironment,
+    run.TargetEnvironment,
+    run.SourceDatabaseName,
+    run.TargetDatabaseName,
+    run.ReleaseReference,
+    run.RunStatus,
+    run.IsReviewed,
+    run.ComparedOnUtc,
+    run.ValidatedOnUtc,
+    run.ReviewedOnUtc,
+    run.AppliedOnUtc,
+    run.DeploymentReference,
+    run.Notes
+FROM SMigration.Schema_Run AS run
+WHERE run.Guid = @RunGuid
+  AND run.RowStatus <> 0
+  AND run.RowStatus <> 254;
+
+SELECT
+    execution_log.ID,
+    execution_log.Guid,
+    execution_log.StepName,
+    execution_log.StepStatus,
+    execution_log.Message,
+    execution_log.CreatedOnUtc
+FROM SMigration.Schema_ExecutionLog AS execution_log
+WHERE execution_log.RunGuid = @RunGuid
+  AND execution_log.RowStatus <> 0
+  AND execution_log.RowStatus <> 254
+ORDER BY execution_log.ID;
+```
+
+## Metadata migration run and audit
+
+```sql
+DECLARE @MetadataRunGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+SELECT
+    run.Guid,
+    run.SourceEnvironment,
+    run.TargetEnvironment,
+    run.RunStatus,
+    run.IsValidateOnly,
+    run.CreatedOnUtc,
+    run.ValidatedOnUtc,
+    run.AppliedOnUtc
+FROM SMigration.Metadata_Run AS run
+WHERE run.Guid = @MetadataRunGuid
+  AND run.RowStatus <> 0
+  AND run.RowStatus <> 254;
+
+SELECT
+    execution_log.ID,
+    execution_log.StepName,
+    execution_log.StepStatus,
+    execution_log.Message,
+    execution_log.CreatedOnUtc
+FROM SMigration.Metadata_ExecutionLog AS execution_log
+WHERE execution_log.RunGuid = @MetadataRunGuid
+  AND execution_log.RowStatus <> 0
+  AND execution_log.RowStatus <> 254
+ORDER BY execution_log.ID;
+```
+
+Only provide remediation SQL after confirming the exact target schema and root cause. Remediation must be idempotent, non-destructive, DataObjects-compliant and environment-appropriate.
+
+
+====================================================================================================
+DOCUMENT 13: 12_TELERIK_REMOVAL_GUIDE.md
+Recommended upload filename: 12_TELERIK_REMOVAL_GUIDE.markdown
+====================================================================================================
+
+# Telerik Removal Guide
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+CymBuild 26.3 prefers non-Telerik/shared controls for new and modernized work. Existing Telerik assets still exist in the repository, so removal must be scoped and parity-tested rather than performed globally by assumption.
+
+## Preferred 26.3 patterns
+
+- `libs/Concursus.Components.Shared/Controls/V2FormRenderer.razor`
+- `libs/Concursus.Components.Shared/Controls/V2FieldEditor.razor`
+- `apps/Concursus.PWA/Shared/FilteredDynamicGridViewV2.razor`
+- `apps/Concursus.PWA/Shared/DynamicBatchGridViewV2.razor`
+- `apps/Concursus.PWA/Shared/Diagnostics/SageInboundDiagnosticsV2.razor`
+- `libs/Concursus.Components.Shared/wwwroot/css/cymbuild-v2.css`
+- CymBuild modal services/hosts and windowed modal patterns
+
+## Rules
+
+- No new Telerik usage unless explicitly requested.
+- Preserve the mandatory `UI → FormHelper → gRPC → EF → SQL` path.
+- Keep business logic and security enforcement out of UI.
+- Use metadata for fields, grids, dropdowns, labels and actions where metadata exists.
+- Prefer the V2 components above for current non-Telerik implementation; do not automatically revert to non-V2 simply because it is older.
+- Preserve backward compatibility and every visible behavior.
+
+## Parity checklist
+
+Validate search, filtering, sorting, paging, total counts, export, column formatting, pills/status presentation, buttons, row actions, bulk operations, dropdowns, modals, confirmation, validation, loading, empty/error states, permissions, accessibility, responsive/mobile behavior, keyboard behavior and CSS isolation.
+
+## Conversion process
+
+1. Capture a feature and behavior inventory from the current route.
+2. Trace every data call through FormHelper.
+3. Identify metadata-owned behavior.
+4. Convert one bounded surface at a time using V2/shared controls.
+5. Run existing PWA/API tests and user-flow regression checks.
+6. Remove Telerik imports/assets only when the scoped route has no remaining dependency and global consumers are unaffected.
+
+`apps/Concursus.PWA/wwwroot/index.html` in the supplied source still references Telerik assets. Do not remove those global references as part of an unrelated page conversion. The architectural standard names `Concursus.Components.Shared.wwwroot.css.Cymbuild_ui.css` as the canonical stylesheet, while this snapshot currently contains `libs/Concursus.Components.Shared/wwwroot/css/cymbuild-v2.css`; treat this as a controlled source reconciliation, not a reason to duplicate styles.
+
+
+====================================================================================================
+DOCUMENT 14: 13_INTEGRATION_GUIDE.md
+Recommended upload filename: 13_INTEGRATION_GUIDE.markdown
+====================================================================================================
+
+# CymBuild Integration Guide
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+CymBuild integrations are server-controlled, idempotent, auditable and retry-safe.
+
+## Mandatory boundary
+
+```text
+PWA → FormHelper → gRPC/API → business transaction/outbox
+→ worker/microservice → external system
+```
+
+Use `SCore.IntegrationOutbox` for integration events. Do not call external systems directly from UI, and CymBuild must never call Sage directly.
+
+## Sage
+
+Active 26.3 areas include:
+
+- `services/Concursus.API/Services/CoreService.Sage.cs`
+- `services/Concursus.API/Services/Finance/SageInboundPaymentSyncService.cs`
+- `services/Concursus.API/Services/Finance/SageInboundPaymentSyncWorker.cs`
+- `services/Concursus.API/Services/Finance/SageTransactionSubmissionWorker.cs`
+- `services/Concursus.API/Services/Finance/TransactionToSageIdempotencyService.cs`
+- `libs/Concursus.EF/Finance`
+- `services/Sage200Microservice`
+- `Database/CymBuild_DB/Schema/Tables/SCore.IntegrationOutbox.sql`
+
+`services/SageAPI_TEMP_DISABLED` must not be documented or used as the active integration route.
+
+## Outlook and SharePoint
+
+- `apps/CymBuild_Outlook_Addin`
+- `services/CymBuild_Outlook_API`
+- `services/CymBuild_Outlook_Service`
+- `libs/CymBuild_Outlook_Common`
+- `services/Concursus.API/Services/SharepointService.cs`
+- `services/Concursus.API/Services/CoreService.Documents.cs`
+- `services/Concursus.API/Services/CoreService.Documents.Email.cs`
+
+Use current Microsoft Graph through controlled server services where Graph is relevant. Keep SharePoint path/permission logic server-controlled.
+
+## Implementation rules
+
+- Use stable idempotency keys and execution ledgers.
+- Create outbox records atomically with the business event where possible.
+- Store source GUID, event type, payload and diagnostic context.
+- Workers must tolerate restart and duplicate delivery.
+- Do not mark integration complete merely because the PWA request succeeded.
+- Keep failed records visible; requeue only through approved APIs/procedures.
+- Use microservices for external SOAP/REST systems; no direct UI/API coupling.
+
+## Troubleshooting route
+
+```text
+Source row → DataObject → latest transition → outbox/module ledger
+→ worker logs → microservice request/response → external result
+→ retry/requeue audit
+```
+
+
+====================================================================================================
+DOCUMENT 15: 14_API_GRPC_CONTRACT_MAP.md
+Recommended upload filename: 14_API_GRPC_CONTRACT_MAP.markdown
+====================================================================================================
+
+# API and gRPC Contract Map
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+Generated from the 26.3 source-of-truth repository after applying CYB361 R22–R27.
+
+## Mandatory flow
+
+```text
+PWA component → FormHelper partial → core.proto RPC
+→ CoreService partial → EF/repository/SQL
+```
+
+## FormHelper partials
+
+| File | Main surface |
+|---|---|
+| `FormHelper.cs` | General data objects, grids, dropdowns, documents, finance, Sage orchestration, schedules and shared operations. |
+| `FormHelper.SchemaMigration.cs` | Schema run create/list/get, compare, objects/detail, lightweight selection save/clear, validate, plan, review and deployment outcome. |
+| `FormHelper.MetadataMigration.cs` | Run, stage, validate, identity map review/details/candidates/override, selection, ignore, preview, apply and dashboard. |
+| `FormHelper.OnboardingMigration.cs` | OnBoarding stage, scope, selections, validate, apply, report and audit. |
+| `FormHelper.AIAssistant.cs` | Conversations, messages, knowledge search, bookmarks and feedback. |
+| `FormHelper.AIAssistant.Uploads.cs` | Upload presign/complete/list. |
+| `FormHelper.AIAssistantKnowledgeImport.cs` | Knowledge import. |
+| `FormHelper.DeveloperInspector.cs` | Developer inspector. |
+| `FormHelper.UniversalSearch.cs` | Universal search. |
+
+## Schema Migration contracts
+
+FormHelper methods:
+
+- `SchemaMigrationRunCreateAsync`
+- `SchemaMigrationRunsAsync`
+- `SchemaMigrationRunGetAsync`
+- `SchemaMigrationCompareAsync`
+- `SchemaMigrationValidateAsync`
+- `SchemaMigrationDashboardAsync`
+- `SchemaMigrationObjectsAsync`
+- `SchemaMigrationObjectDetailAsync`
+- `SchemaMigrationSelectionSaveAsync`
+- `SchemaMigrationSelectionClearAsync`
+- `SchemaMigrationDeploymentPlanAsync`
+- `SchemaMigrationReviewSetAsync`
+- `SchemaMigrationDeploymentOutcomeAsync`
+
+Corresponding `core.proto` RPCs use the same operation names without `Async`. Comparison/object list responses are lightweight; full source/target SQL is loaded only for one selected object detail. Selection save sends selected comparison GUIDs, not full SQL definitions.
+
+## Metadata Migration contracts
+
+FormHelper methods include:
+
+- `MetadataMigrationRunCreateAsync`, `MetadataMigrationRunsAsync`, `MetadataMigrationRunGetAsync`
+- `MetadataMigrationStageAsync`, `MetadataMigrationValidateAsync`
+- `MetadataMigrationBuildIdentityMapAsync`
+- `MetadataMigrationIdentityMapReviewSetAsync`
+- `MetadataMigrationIdentityMapDetailsAsync`
+- `MetadataMigrationIdentityMapIssueUpsertAsync`
+- `MetadataMigrationIdentityMapCandidatesAsync`
+- `MetadataMigrationIdentityMapOverrideUpsertAsync`
+- `MetadataMigrationSelectionUpsertAsync`, `MetadataMigrationSelectionClearAsync`
+- `MetadataMigrationIgnoreUpsertAsync`, `MetadataMigrationIgnoredRecordsAsync`
+- `MetadataMigrationApplyPreviewAsync`, `MetadataMigrationApplyAsync`, `MetadataMigrationApplySelectedAsync`
+- `MetadataMigrationEntityTypeScopeListAsync`, `MetadataMigrationEntityTypeScopeSaveAsync`
+- `MetadataMigrationDashboardAsync`, `MetadataMigrationStagedRowsAsync`, `MetadataMigrationDiffAsync`
+
+## OnBoarding contracts
+
+`FormHelper.OnboardingMigration.cs` exposes run reservation/listing, source stage, business-unit groups, entity/stage selections, validate, apply, report, staged data, diff and audit dashboard methods.
+
+## Proto inventory
+
+- `services/Concursus.API/Protos/core.proto`: 177 RPC declarations in the supplied 26.3 source, including schema, metadata and OnBoarding migration surfaces.
+- `services/Concursus.API/Protos/assistant_v1.proto`: 52 assistant RPC declarations.
+- `services/Concursus.API/Protos/dms.proto`: 15 document/mail RPC declarations.
+- `services/Concursus.API/Protos/translation.proto`: `TranslateText`.
+
+## Service implementation files
+
+- `services/Concursus.API/Services/CoreService.SchemaMigration.cs`
+- `services/Concursus.API/Services/CoreService.MetadataMigration.cs`
+- `services/Concursus.API/Services/CoreService.OnboardingMigration.cs`
+- `services/Concursus.API/Services/CoreService.Finance.cs`
+- `services/Concursus.API/Services/CoreService.Sage.cs`
+- `services/Concursus.API/Services/CoreService.Documents.cs`
+- `services/Concursus.API/Services/UiService.cs`
+
+## Contract-change rule
+
+A new PWA operation must be implemented end to end: UI → FormHelper → proto → service → EF/SQL. Preserve existing proto behavior and message-size controls; do not return large SQL definitions in list/filter calls.
+
+
+====================================================================================================
+DOCUMENT 16: 15_BLUEGEN_INGESTION_GUIDE.md
+Recommended upload filename: 15_BLUEGEN_INGESTION_GUIDE.markdown
+====================================================================================================
+
+# BlueGen Ingestion Guide
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## Retrieval priority
+
+1. `00_BLUEGEN_SYSTEM_RULES.md`
+2. `16_RELEASE_26_3_BASELINE.md`
+3. Current source-controlled code and SQL relevant to the question
+4. `01_CYMBUILD_ARCHITECTURE.md`
+5. `02_NAVIGATION_SCHEMA.yaml`
+6. Metadata/deployment runbooks and golden paths
+7. Troubleshooting/Jira history/user help
+
+## Authority model
+
+1. Explicit current CymBuild system/release rules.
+2. Current source-controlled code and SQL.
+3. Reviewed 26.3 architecture/runbooks.
+4. Verified deployment/audit evidence.
+5. Jira history and examples.
+6. Draft guidance.
+
+Database state is deployment evidence, not the authoring source. If documents conflict with current code/schema, report the conflict and inspect source before proposing changes.
+
+## Suggested ingestion metadata
+
+```json
+{
+  "system": "CymBuild",
+  "release": "26.3",
+  "validated_on": "2026-08-04",
+  "schema_runner": "CYB361_R27",
+  "audience": "developer|admin|support|user",
+  "domain": "schema-migration|metadata-migration|workflow|finance|integration|ui|deployment",
+  "authority": "high|medium|low",
+  "review_status": "reviewed|draft"
+}
+```
+
+## Guardrails
+
+Do not guess missing schema, provide destructive/direct production SQL, encourage manual metadata edits, update status directly, bypass FormHelper, treat manifests as the complete migration engine, grant browser DDL permissions, use direct Sage calls, or ignore idempotency/audit requirements.
+
+
+====================================================================================================
+DOCUMENT 17: 16_RELEASE_26_3_BASELINE.md
+Recommended upload filename: CymBuild_26_3_16_RELEASE_26_3_BASELINE.md
+====================================================================================================
+
+# CymBuild 26.3 Release Baseline
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+## Verified architecture
+
+```text
+Blazor PWA → FormHelper → gRPC API → EF/repository → SQL Server
+```
+
+No direct UI API/DB calls and no business logic in UI.
+
+## Schema Migration — CYB-361/CYB-362
+
+The 26.3 Schema Migration workbench persists comparison, selection, validation, acceptance and audit in `SMigration`. List/filter and selection gRPC payloads are lightweight. Full definitions load only for a selected object.
+
+The browser does not deploy. R27 external runner:
+
+- reads the accepted `SchemaDeploymentPlan_Get` plan;
+- defaults to dry-run;
+- applies only source-controlled SQL;
+- handles selected-only/default-all behavior;
+- runs pre/post deployment lifecycle;
+- supports guarded table alterations and schema-bound dependency lifecycle;
+- writes DataObjects-compliant audit;
+- blocks LIVE-like targets without `-AllowLive`;
+- allows explicit failed-run retry.
+
+Verified QA evidence on 4 August 2026:
+
+```text
+Run: B92EC354-5517-4DA3-9FFE-CBC40455ABFA
+ReleaseReference: 26.3
+Plan rows: 6
+Supported rows: 6
+Unsupported rows: 0
+Final status: DeploymentApplied
+```
+
+The run GUID is historical evidence and must not be reused for another target/release.
+
+## Metadata Migration
+
+The main process is SMigration run-based and OnBoarding-aligned:
+
+```text
+Create Run → Stage → Validate → Build Identity Map
+→ Review / Ignore / Override → Select Records
+→ Apply Preview → Apply Selected or All Valid → Audit
+```
+
+Manifests remain ValidateOnly/governance support, especially for grids.
+
+## Current strategic UI direction
+
+Prefer metadata-driven V2 components and no new Telerik unless explicitly requested. Preserve current routes and full behavior during conversions.
+
+## Integration direction
+
+Use `SCore.IntegrationOutbox` and controlled workers/microservices. CymBuild never calls Sage directly.
+
+## Known source snapshot discrepancy
+
+The uploaded repository snapshot contains older `PWAVersion`/`EFVersion` values in some `appsettings*.json` files. Those configuration files were outside this documentation ZIP and were not changed. The release label in this pack follows the user-confirmed 26.3 baseline and the verified R27 26.3 deployment evidence. Release packaging should separately reconcile runtime version configuration before promotion. The same applies to the canonical stylesheet naming: current instructions refer to `Concursus.Components.Shared.wwwroot.css.Cymbuild_ui.css`, while the supplied snapshot contains `libs/Concursus.Components.Shared/wwwroot/css/cymbuild-v2.css`.
+
+## Future work, not yet implemented
+
+The proposed Run Deployment button remains Phase 2. It must enqueue work for a controlled worker/service account rather than execute SQL from a browser session.
+
+
+====================================================================================================
+DOCUMENT 18: _INDEX.md
+Recommended upload filename: _INDEX.markdown
+====================================================================================================
+
+# BlueGen CymBuild Knowledge Pack — Release 26.3
+
+> **Release baseline:** CymBuild 26.3  
+> **Validated:** 4 August 2026  
+> **Schema deployment baseline:** CYB361_R27 (QA deployment completed with `DeploymentApplied`)  
+> **Source basis:** `CymBuild.Monorepo(8).zip`, uploaded schema, and the reviewed CYB361 R22–R27 changes.
+
+This is the reviewed 26.3 knowledge pack, updated from the current source-of-truth repository/schema and the verified CYB361 R27 QA deployment.
+
+## Recommended ingestion priority
+
+1. `00_BLUEGEN_SYSTEM_RULES.md`
+2. `16_RELEASE_26_3_BASELINE.md`
+3. `01_CYMBUILD_ARCHITECTURE.md`
+4. `02_NAVIGATION_SCHEMA.yaml`
+5. `04_METADATA_RULES.md`
+6. `10_DEPLOYMENT_RUNBOOKS.md`
+7. `05_GOLDEN_PATH_EXAMPLES.md`
+8. `06_TROUBLESHOOTING_PLAYBOOKS.md`
+9. `14_API_GRPC_CONTRACT_MAP.md`
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `00_BLUEGEN_SYSTEM_RULES.md` | Highest-priority architecture, identity, workflow, SQL and deployment rules. |
+| `01_CYMBUILD_ARCHITECTURE.md` | Full platform architecture and standards. |
+| `02_NAVIGATION_SCHEMA.yaml` | Valid YAML navigation map for source analysis. |
+| `03_REPOSITORY_INVENTORY.md` | Current projects and high-value 26.3 files. |
+| `04_METADATA_RULES.md` | Hybrid run-based metadata migration and manifest governance. |
+| `05_GOLDEN_PATH_EXAMPLES.md` | Correct implementation paths. |
+| `06_TROUBLESHOOTING_PLAYBOOKS.md` | Workflow, metadata, schema, integration and UI diagnosis. |
+| `07_JIRA_IMPLEMENTATION_HISTORY.md` | Historical implementation decisions including CYB-361/CYB-362. |
+| `08_USER_HELP_GUIDES.md` | Business and admin usage guidance. |
+| `09_GLOSSARY.md` | 26.3 terminology. |
+| `10_DEPLOYMENT_RUNBOOKS.md` | Controlled R27 schema and metadata deployment guidance. |
+| `11_TESTING_AND_DIAGNOSTICS.md` | Source-verified explicit-column diagnostics. |
+| `12_TELERIK_REMOVAL_GUIDE.md` | V2/non-Telerik parity guide. |
+| `13_INTEGRATION_GUIDE.md` | Outbox, workers, Sage microservice, Outlook and SharePoint. |
+| `14_API_GRPC_CONTRACT_MAP.md` | Current FormHelper/proto/service map. |
+| `15_BLUEGEN_INGESTION_GUIDE.md` | Authority, routing and RAG metadata. |
+| `16_RELEASE_26_3_BASELINE.md` | Verified release state and known caveats. |
+
+This pack does not override current source-controlled code or SQL. Database state is a deployment target/audit source, not the authoring source.

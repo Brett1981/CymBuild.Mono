@@ -12,6 +12,7 @@ using Concursus.API.Services.Finance;
 using Concursus.API.Services.Graph;
 using Concursus.API.Services.InvoiceAutomation;
 using Concursus.API.Services.Monitoring;
+using Concursus.API.Runtime;
 using Concursus.API.Services.Outbox;
 using Concursus.Common.Shared.Kafka.Core;
 using Concursus.Common.Shared.Kafka.Core.Publisher;
@@ -166,7 +167,6 @@ try
         .ValidateDataAnnotations()
         .ValidateOnStart();
 
-    builder.Services.AddHostedService<SageInboundPaymentSyncWorker>();
     // -------------------------------------------------------------------------
     // Phase 5 wrapper gateway
     // -------------------------------------------------------------------------
@@ -238,22 +238,30 @@ try
     builder.Services.AddScoped<NotificationService>();
 
     // -------------------------------------------------------------------------
-    // Existing hosted/background services
+    // Hosted worker dependencies
     // -------------------------------------------------------------------------
     builder.Services.AddScoped<WorkflowOutboxRepository>();
-    builder.Services.AddHostedService<WorkflowOutboxKafkaPublisherWorker>();
 
     builder.Services.Configure<InvoiceAutomationOptions>(builder.Configuration.GetSection("InvoiceAutomation"));
     builder.Services.AddSingleton<InvoiceAutomationRepository>();
-    builder.Services.AddHostedService<InvoiceAutomationScheduledWorker>();
     builder.Services.AddScoped<SharePoint>();
-    builder.Services.AddHostedService<SharePointStructureRepairWorker>();
+
     // -------------------------------------------------------------------------
-    // Dedicated Phase 5 Sage transaction submission worker
+    // CymBuild runtime role
     // -------------------------------------------------------------------------
-    builder.Services.AddHostedService<SageTransactionSubmissionWorker>();
+    // Default mode is Combined, which preserves the existing behaviour of
+    // running the API and all five hosted workers in the same process.
+    // Kubernetes can select ApiOnly or exactly one Worker role through
+    // CymBuildRuntime configuration without changing the executable/image.
+    builder.Services.AddCymBuildRuntime(builder.Configuration);
 
     var app = builder.Build();
+
+    var runtimeOptions = app.Services.GetRequiredService<IOptions<CymBuildRuntimeOptions>>().Value;
+    logger.Info(
+        "CymBuild runtime configuration loaded. Mode={Mode}; WorkerRole={WorkerRole}",
+        runtimeOptions.Mode,
+        runtimeOptions.WorkerRole);
 
     var sageOptions = app.Services.GetRequiredService<IOptions<SageApiOptions>>().Value;
     logger.Info(

@@ -165,7 +165,7 @@ public partial class FilteredDynamicGridView : ComponentBase
 
     private async Task GetQuoteThreshold()
     {
-        formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+        formHelper = new FormHelper(coreClient, Guid.Empty.ToString(), userService);
 
         var quoteThresholdReq = await coreClient.GetThresholdsForOrgUnitAsync(new GetQuoteThresholdReq { UserId = userService.UserId });
         Threshold = quoteThresholdReq.QuoteThreshold;
@@ -1003,7 +1003,7 @@ public partial class FilteredDynamicGridView : ComponentBase
             }
 
             InteractionTracker.Log(NavManager.Uri, $"User Double Clicked Row in Grid - '{ViewDefinition?.Name ?? "Unknown"}' New Page Opened: '{PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition?.EntityTypeGuid ?? "No Guid")}'");
-            formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            formHelper = new FormHelper(coreClient, Guid.Empty.ToString(), userService);
             _ = formHelper.LogUsageAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid), PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());
         }
         catch (Exception ex)

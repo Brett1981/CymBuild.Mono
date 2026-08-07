@@ -9,7 +9,6 @@
 @inject UserService userService
 @inject NavigationManager NavManager
 @inject RefreshService refreshService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inherits EditPageBase
 @attribute [Authorize]
 
@@ -85,7 +84,7 @@
                 _EntityTypeGuid = contactsGuid;
 
                 //Load up the formHelper for entity type of Contacts.
-                _formHelper = new API.Client.FormHelper(coreClient, sageIntegrationService, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(contactsGuid).ToString(), userService);
+                _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(contactsGuid).ToString(), userService);
 
 
                 //Get the contactId value.

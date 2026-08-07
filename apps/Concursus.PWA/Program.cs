@@ -90,10 +90,6 @@ builder.Services
             new[] { builder.Configuration["ShoreAPI:BaseUrl"] + '/' + builder.Configuration["ShoreAPI:Scopes"] }
         ));
 
-builder.Services.AddGrpcClient<Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient>(options =>
-{
-    options.Address = new Uri(builder.Configuration["Grpc:SageApi"]);
-});
 builder.Services.AddHttpClient("SageIntegrationAPI", client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["Grpc:SageApi"]);

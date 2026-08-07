@@ -23,6 +23,22 @@ BEGIN
 		@StructuralEngineeringUK UNIQUEIDENTIFIER = 'AEBD6E67-7883-405D-A234-8377722281C1';
 
 
+	DECLARE 
+		@ValueOfWork DECIMAL(19,2);
+
+
+	SELECT @ValueOfWork = root_hobt.ValueOfWork
+	FROM SSop.Enquiries root_hobt
+	WHERE root_hobt.Guid = @Guid
+
+
+	IF(@ValueOfWork <= 0)
+	BEGIN
+		;
+		THROW 60000, N'Value of work must be set!', 1;
+	END;
+
+
 	
 
 	IF (NOT EXISTS

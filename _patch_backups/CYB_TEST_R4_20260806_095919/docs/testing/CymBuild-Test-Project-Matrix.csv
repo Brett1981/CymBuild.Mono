@@ -1,0 +1,17 @@
+ProposedProject,TargetFramework,TestLevel,ProductionScope,Priority,InitialFocus,Status,ImplementedIn
+CymBuild.Architecture.Tests,net10.0,Architecture,Entire repository,P0,Project references; solution completeness; forbidden boundaries; source guardrails,Implemented,R1
+Concursus.Common.Shared.Tests,net10.0,Unit,Concursus.Common.Shared,P0,Finance models; converters; reader helpers; deterministic utilities,Implemented,R1
+Concursus.API.Client.Tests,net10.0,Unit/Contract,Concursus.API.Client,P1,FormHelper request/reply mapping; validation; error handling; client helpers,Implemented,R2
+Concursus.Components.Shared.Tests,net10.0,Component,Concursus.Components.Shared,P1,V2FormRenderer; V2FieldEditor; dropdown and view-definition helpers,Implemented,R2
+Concursus.PWA.Tests (existing),net10.0,Unit/Component,Concursus.PWA,P1,Authentication expiry; navigation; state; FilteredDynamicGridViewV2,Existing,R0
+Concursus.EF.Tests,net10.0,Unit,Concursus.EF,P0,Metadata comparer; filters; query builders; converters,Implemented,R1
+Concursus.API.Tests (existing),net10.0,Unit,Concursus.API,P0,Sage eligibility; submission orchestration; inbound sync; idempotency; outbox parsing; worker decisions,Expanded,R1/R3
+CymBuild.Outlook.Tests,net10.0,Unit/Component/Contract,Outlook Common/Addin/API/Service,P2,Token handling; Graph mapping; filing paths; helpers,Planned,
+CymBuild.AIErrorService.Tests,net10.0,Unit/Contract,CymBuild_AIErrorServiceAPI,P2,Markdown-to-ADF; Jira mapping; AI parsing; retries,Planned,
+PostCodeLookup.Tests,net9.0,Unit/Integration,PostCodeLookup,P2,Normalisation; provider mapping; cache; controller validation,Planned,
+Sage200Microservice.Tests,net9.0,Unit/Integration,Sage API/Services/Data,P2,Authentication; retries; service orchestration; repositories; validation,Planned,
+Concursus.API.IntegrationTests,net10.0,Integration,Concursus.API,P1,Hosted REST/gRPC; DI; auth override; serialization,Planned,
+CymBuild.Database.IntegrationTests,net10.0,Database,EF and source-controlled SQL,P0,DataObjects; transitions; outbox; stored procedures; locking,Planned,
+CymBuild.Migration.IntegrationTests,net10.0,Database/Integration,Schema and metadata migration,P0,R39 exclusions; R40 constraints; lifecycle; idempotency,Planned,
+SchemaDeployment.Pester,PowerShell,Pester,SchemaDeployment tools,P0,WhatIf/Apply; LIVE guard; selection; constraints; immutable materialization,Planned,
+CymBuild.EndToEnd.Tests,net10.0,EndToEnd,PWA/API/SQL assembled environment,P3,Sign-in; V2 UI; workflow; grids; migration review; finance smoke,Planned,

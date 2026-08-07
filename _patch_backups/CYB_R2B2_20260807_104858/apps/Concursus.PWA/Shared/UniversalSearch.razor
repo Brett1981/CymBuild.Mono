@@ -1,0 +1,467 @@
+﻿@using System.Text.Json
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@inject Concursus.API.Core.Core.CoreClient CoreClient
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageClient
+@inject UserService UserService
+@inject NavigationManager Navigation
+@inject Concursus.PWA.Helpers.LocalStorageAccessor LocalStorageAccessor
+@implements IDisposable
+
+<div class="cb-universal-search" @onclick:stopPropagation="true">
+    <div class="cb-universal-search__inner">
+        <div class="cb-universal-search__input-wrap">
+            <span class="cb-universal-search__icon bi bi-search" aria-hidden="true"></span>
+            <input class="cb-universal-search__input"
+                   value="@_searchText"
+                   placeholder="Search jobs, assets, clients, enquiries, quotes, projects..."
+                   aria-label="Universal search"
+                   autocomplete="off"
+                   @onfocus="OnInputFocusAsync"
+                   @oninput="OnSearchInputAsync"
+                   @onkeydown="OnSearchKeyDownAsync" />
+
+            @if (_isSearching)
+            {
+                <span class="cb-universal-search__status" aria-live="polite">Searching...</span>
+            }
+            else if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                <button type="button"
+                        class="cb-universal-search__clear"
+                        title="Clear search"
+                        aria-label="Clear search"
+                        @onclick="ClearSearchAsync">
+                    <span class="bi bi-x-lg" aria-hidden="true"></span>
+                </button>
+            }
+        </div>
+
+        <div class="cb-universal-search__filters" aria-label="Search filters">
+            @foreach (var filter in _filterOptions)
+            {
+                <button type="button"
+                        class="@GetFilterCssClass(filter)"
+                        aria-pressed="@filter.IsSelected"
+                        title="@($"Filter by {filter.Label}")"
+                        @onclick="() => ToggleFilterAsync(filter)">
+                    @filter.Label
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_isDropdownOpen)
+    {
+        <div class="@GetDropdownCssClass()" role="listbox" aria-label="Universal search results">
+            @if (!string.IsNullOrWhiteSpace(_errorMessage))
+            {
+                <div class="cb-universal-search__empty cb-universal-search__empty--error">
+                    @_errorMessage
+                </div>
+            }
+            else if (_results.Count > 0)
+            {
+                <div class="cb-universal-search__summary">
+                    @GetResultSummaryText()
+                </div>
+
+                @foreach (var result in _results)
+                {
+                    <button type="button"
+                            class="cb-universal-search__result"
+                            role="option"
+                            @onclick="() => NavigateToResultAsync(result)">
+                        <span class="cb-universal-search__module">@result.ModuleDisplayName</span>
+                        <span class="cb-universal-search__result-main">@result.PrimaryText</span>
+                        @if (!string.IsNullOrWhiteSpace(result.SecondaryText))
+                        {
+                            <span class="cb-universal-search__result-secondary">@result.SecondaryText</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(result.TertiaryText))
+                        {
+                            <span class="cb-universal-search__result-tertiary">@result.TertiaryText</span>
+                        }
+                    </button>
+                }
+            }
+            else if (_showRecentSearches && _recentSearches.Count > 0)
+            {
+                <div class="cb-universal-search__summary">Recent searches</div>
+                @foreach (var recentSearch in _recentSearches)
+                {
+                    <button type="button"
+                            class="cb-universal-search__recent"
+                            @onclick="() => UseRecentSearchAsync(recentSearch)">
+                        <span class="bi bi-clock-history" aria-hidden="true"></span>
+                        <span>@recentSearch</span>
+                    </button>
+                }
+            }
+            else if (_hasSearched && !_isSearching)
+            {
+                <div class="cb-universal-search__empty">
+                    No matching records found.
+                </div>
+            }
+            else
+            {
+                <div class="cb-universal-search__empty">
+                    Type at least two characters to search across CymBuild.
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private const string RecentSearchesStorageKey = "CymBuild.UniversalSearch.Recent.v1";
+    private const int MaximumRecentSearches = 8;
+    private const int DefaultTake = 10;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    private readonly List<UniversalSearchFilterOption> _filterOptions =
+    [
+        new("ASSETS", "Assets"),
+        new("CRM", "CRM"),
+        new("JOBS", "Jobs"),
+        new("ENQUIRIES", "Enquiries"),
+        new("QUOTES", "Quotes"),
+        new("PROJECTS", "Client Projects"),
+        new("PROJECT_MANAGER", "Project Manager")
+    ];
+
+    private readonly List<UniversalSearchRow> _results = [];
+    private readonly List<string> _recentSearches = [];
+    private Concursus.API.Client.FormHelper? _formHelper;
+    private CancellationTokenSource? _debounceCts;
+    private string _searchText = string.Empty;
+    private string _lastSearchedText = string.Empty;
+    private string _errorMessage = string.Empty;
+    private bool _isDropdownOpen;
+    private bool _isSearching;
+    private bool _hasSearched;
+    private bool _showRecentSearches;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentSearchesAsync();
+    }
+
+    private async Task OnInputFocusAsync()
+    {
+        _isDropdownOpen = true;
+        _showRecentSearches = string.IsNullOrWhiteSpace(_searchText);
+        await LoadRecentSearchesAsync();
+    }
+
+    private async Task OnSearchInputAsync(ChangeEventArgs args)
+    {
+        _searchText = args.Value?.ToString() ?? string.Empty;
+        _showRecentSearches = string.IsNullOrWhiteSpace(_searchText);
+        _isDropdownOpen = true;
+        await QueueSearchAsync();
+    }
+
+    private async Task OnSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (!string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (_results.Count > 0)
+        {
+            await NavigateToResultAsync(_results[0]);
+            return;
+        }
+
+        await ExecuteSearchAsync(CancellationToken.None);
+    }
+
+    private async Task ToggleFilterAsync(UniversalSearchFilterOption filter)
+    {
+        filter.IsSelected = !filter.IsSelected;
+
+        if (!string.IsNullOrWhiteSpace(_searchText))
+        {
+            await QueueSearchAsync();
+        }
+    }
+
+    private async Task QueueSearchAsync()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        _errorMessage = string.Empty;
+
+        if (_searchText.Trim().Length < 2)
+        {
+            _results.Clear();
+            _hasSearched = false;
+            _isSearching = false;
+            return;
+        }
+
+        _isSearching = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(300, token);
+            await ExecuteSearchAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer search request replaced this one.
+        }
+    }
+
+    private async Task ExecuteSearchAsync(CancellationToken cancellationToken)
+    {
+        var cleanSearchText = _searchText.Trim();
+        if (cleanSearchText.Length < 2)
+        {
+            return;
+        }
+
+        EnsureFormHelper();
+
+        _isSearching = true;
+        _hasSearched = true;
+        _lastSearchedText = cleanSearchText;
+        _errorMessage = string.Empty;
+
+        var request = new UniversalSearchRequest
+        {
+            SearchText = cleanSearchText,
+            Take = DefaultTake,
+            UserId = UserService?.UserId ?? -1
+        };
+
+        request.ModuleFilters.AddRange(GetSelectedModuleKeys());
+
+        var response = await _formHelper!.UniversalSearchAsync(request, cancellationToken);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _results.Clear();
+
+        if (response.IsSuccess)
+        {
+            _results.AddRange(response.Results);
+            await SaveRecentSearchAsync(cleanSearchText);
+        }
+        else
+        {
+            _errorMessage = response.Message;
+        }
+
+        _isSearching = false;
+        _showRecentSearches = false;
+        _isDropdownOpen = true;
+        StateHasChanged();
+    }
+
+    private IReadOnlyList<string> GetSelectedModuleKeys()
+    {
+        var selected = _filterOptions
+            .Where(filter => filter.IsSelected)
+            .Select(filter => filter.Key)
+            .ToList();
+
+        return selected.Count == 0
+            ? _filterOptions.Select(filter => filter.Key).ToList()
+            : selected;
+    }
+
+    private async Task NavigateToResultAsync(UniversalSearchRow result)
+    {
+        if (!Guid.TryParse(result.RecordGuid, out var recordGuid) || recordGuid == Guid.Empty)
+        {
+            _errorMessage = "The selected result does not have a valid record Guid.";
+            return;
+        }
+
+        if (!Guid.TryParse(result.EntityTypeGuid, out var entityTypeGuid) || entityTypeGuid == Guid.Empty)
+        {
+            _errorMessage = "The selected result does not have a valid entity type Guid.";
+            return;
+        }
+
+        var detailPageUri = string.IsNullOrWhiteSpace(result.DetailPageUri) ? "DynamicEdit" : result.DetailPageUri;
+        await SaveRecentSearchAsync(_searchText);
+
+        var url = PWAFunctions.BuildEntityNavigationUrl(
+            Navigation.BaseUri,
+            detailPageUri,
+            recordGuid,
+            entityTypeGuid,
+            Navigation.Uri);
+
+        _isDropdownOpen = false;
+        var forceLoad = ShouldForceReloadForSameDetailRoute(url);
+
+        Navigation.NavigateTo(url, forceLoad: forceLoad);
+    }
+
+    private bool ShouldForceReloadForSameDetailRoute(string targetUrl)
+    {
+        try
+        {
+            var currentRoute = GetFirstBaseRelativeRouteSegment(Navigation.Uri);
+            var targetRoute = GetFirstBaseRelativeRouteSegment(targetUrl);
+
+            return IsDetailRouteSegment(targetRoute)
+                && string.Equals(currentRoute, targetRoute, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // Navigation must still proceed if route inspection fails.
+            return false;
+        }
+    }
+
+    private string GetFirstBaseRelativeRouteSegment(string url)
+    {
+        var absoluteUrl = Navigation.ToAbsoluteUri(url).ToString();
+        var baseRelativePath = Navigation.ToBaseRelativePath(absoluteUrl);
+        var pathOnly = baseRelativePath.Split('?', '#')[0];
+
+        var segments = pathOnly
+            .Trim('/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        return segments.Length > 0 ? segments[0] : string.Empty;
+    }
+
+    private static bool IsDetailRouteSegment(string routeSegment)
+    {
+        return routeSegment.Equals("DynamicEdit", StringComparison.OrdinalIgnoreCase)
+            || routeSegment.EndsWith("Detail", StringComparison.OrdinalIgnoreCase);
+    }
+    private async Task UseRecentSearchAsync(string recentSearch)
+    {
+        _searchText = recentSearch;
+        _showRecentSearches = false;
+        _isDropdownOpen = true;
+        await ExecuteSearchAsync(CancellationToken.None);
+    }
+
+    private async Task ClearSearchAsync()
+    {
+        _debounceCts?.Cancel();
+        _searchText = string.Empty;
+        _lastSearchedText = string.Empty;
+        _errorMessage = string.Empty;
+        _results.Clear();
+        _hasSearched = false;
+        _isSearching = false;
+        _showRecentSearches = true;
+        _isDropdownOpen = true;
+        await LoadRecentSearchesAsync();
+    }
+
+    private async Task LoadRecentSearchesAsync()
+    {
+        try
+        {
+            var json = await LocalStorageAccessor.GetValueAsync<string?>(RecentSearchesStorageKey);
+            var values = string.IsNullOrWhiteSpace(json)
+                ? new List<string>()
+                : JsonSerializer.Deserialize<List<string>>(json, JsonOptions) ?? new List<string>();
+
+            _recentSearches.Clear();
+            _recentSearches.AddRange(values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(MaximumRecentSearches));
+        }
+        catch
+        {
+            _recentSearches.Clear();
+        }
+    }
+
+    private async Task SaveRecentSearchAsync(string searchText)
+    {
+        var cleanSearchText = searchText.Trim();
+        if (cleanSearchText.Length < 2)
+        {
+            return;
+        }
+
+        _recentSearches.RemoveAll(value => string.Equals(value, cleanSearchText, StringComparison.OrdinalIgnoreCase));
+        _recentSearches.Insert(0, cleanSearchText);
+
+        while (_recentSearches.Count > MaximumRecentSearches)
+        {
+            _recentSearches.RemoveAt(_recentSearches.Count - 1);
+        }
+
+        try
+        {
+            var json = JsonSerializer.Serialize(_recentSearches, JsonOptions);
+            await LocalStorageAccessor.SetValueAsync(RecentSearchesStorageKey, json);
+        }
+        catch
+        {
+            // Recent-search persistence must not block navigation or searching.
+        }
+    }
+
+    private void EnsureFormHelper()
+    {
+        _formHelper ??= new Concursus.API.Client.FormHelper(
+            CoreClient,
+            SageClient,
+            Guid.Empty.ToString(),
+            UserService);
+    }
+
+    private string GetDropdownCssClass()
+    {
+        var isRecentOnlyDropdown = _showRecentSearches
+            && _results.Count == 0
+            && string.IsNullOrWhiteSpace(_searchText);
+
+        return isRecentOnlyDropdown
+            ? "cb-universal-search__dropdown cb-universal-search__dropdown--recent"
+            : "cb-universal-search__dropdown";
+    }
+    private string GetResultSummaryText()
+    {
+        var suffix = _results.Count == 1 ? string.Empty : "s";
+        return $"{_results.Count} result{suffix} for {_lastSearchedText}";
+    }
+
+    private static string GetFilterCssClass(UniversalSearchFilterOption filter)
+    {
+        return filter.IsSelected
+            ? "cb-universal-search__filter cb-universal-search__filter--selected"
+            : "cb-universal-search__filter";
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+
+    private sealed class UniversalSearchFilterOption(string key, string label)
+    {
+        public string Key { get; } = key;
+        public string Label { get; } = label;
+        public bool IsSelected { get; set; } = true;
+    }
+}
+
+
+

@@ -1,15 +1,10 @@
-﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create procedure [SMigration].[SchemaDeploymentPlan_Get]')
-GO
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SMigration].[SchemaDeploymentPlan_Get]')
+PRINT (N'Create or alter procedure [SMigration].[SchemaDeploymentPlan_Get]')
 GO
 
-CREATE PROCEDURE [SMigration].[SchemaDeploymentPlan_Get]
+CREATE OR ALTER PROCEDURE [SMigration].[SchemaDeploymentPlan_Get]
 (
     @RunGuid UNIQUEIDENTIFIER
 )
@@ -24,53 +19,76 @@ BEGIN
                 WHEN EXISTS
                 (
                     SELECT 1
-                    FROM SMigration.Schema_RunSelections AS rs
-                    WHERE rs.RunGuid = @RunGuid
-                      AND rs.RowStatus <> 0
-                      AND rs.RowStatus <> 254
+                    FROM [SMigration].[Schema_RunSelections] AS selection
+                    WHERE selection.[RunGuid] = @RunGuid
+                      AND selection.[RowStatus] <> 0
+                      AND selection.[RowStatus] <> 254
                 ) THEN CONVERT(BIT, 1)
                 ELSE CONVERT(BIT, 0)
             END
     );
 
     SELECT
-        c.Guid AS ComparisonGuid,
-        c.ObjectType,
-        c.SchemaName,
-        c.ObjectName,
-        c.ParentObjectName,
-        c.DifferenceType,
-        c.SourceHash,
-        c.TargetHash,
-        c.SourceDefinition,
-        c.TargetDefinition,
-        c.IsDeployable,
-        c.IsDestructiveRisk,
-        CASE WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, 1) ELSE ISNULL(sel.IsSelected, CONVERT(BIT, 0)) END AS IsSelected,
-        @HasExplicitSelection AS HasExplicitSelection
-    FROM SMigration.Schema_ObjectComparisons AS c
+        comparison.[Guid] AS [ComparisonGuid],
+        comparison.[ObjectType],
+        comparison.[SchemaName],
+        comparison.[ObjectName],
+        comparison.[ParentObjectName],
+        comparison.[DifferenceType],
+        comparison.[SourceHash],
+        comparison.[TargetHash],
+        comparison.[SourceDefinition],
+        comparison.[TargetDefinition],
+        comparison.[IsDeployable],
+        comparison.[IsDestructiveRisk],
+        CASE
+            WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, CASE WHEN comparison.[IsDestructiveRisk] = 1 THEN 0 ELSE 1 END)
+            ELSE ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0))
+        END AS [IsSelected],
+        @HasExplicitSelection AS [HasExplicitSelection]
+    FROM [SMigration].[Schema_ObjectComparisons] AS comparison
     OUTER APPLY
     (
         SELECT TOP (1)
-            rs.IsSelected
-        FROM SMigration.Schema_RunSelections AS rs
-        WHERE rs.RunGuid = c.RunGuid
-          AND rs.ObjectType = c.ObjectType
-          AND rs.SchemaName = c.SchemaName
-          AND rs.ObjectName = c.ObjectName
-          AND rs.ParentObjectName = c.ParentObjectName
-          AND rs.RowStatus <> 0
-          AND rs.RowStatus <> 254
-        ORDER BY rs.ID DESC
-    ) AS sel
-    WHERE c.RunGuid = @RunGuid
-      AND c.RowStatus <> 0
-      AND c.RowStatus <> 254
-      AND c.IsDeployable = 1
-      AND c.DifferenceType <> N'Equal'
-      AND (@HasExplicitSelection = 0 OR ISNULL(sel.IsSelected, CONVERT(BIT, 0)) = 1)
+            selection.[IsSelected]
+        FROM [SMigration].[Schema_RunSelections] AS selection
+        WHERE selection.[RunGuid] = comparison.[RunGuid]
+          AND selection.[ObjectType] = comparison.[ObjectType]
+          AND selection.[SchemaName] = comparison.[SchemaName]
+          AND selection.[ObjectName] = comparison.[ObjectName]
+          AND selection.[ParentObjectName] = comparison.[ParentObjectName]
+          AND selection.[RowStatus] <> 0
+          AND selection.[RowStatus] <> 254
+        ORDER BY selection.[ID] DESC
+    ) AS selectionState
+    WHERE comparison.[RunGuid] = @RunGuid
+      AND comparison.[RowStatus] <> 0
+      AND comparison.[RowStatus] <> 254
+      AND comparison.[IsDeployable] = 1
+      AND comparison.[DifferenceType] <> N'Equal'
+      AND
+      (
+          @HasExplicitSelection = 1
+          OR comparison.[IsDestructiveRisk] = 0
+      )
+      AND
+      (
+          @HasExplicitSelection = 0
+          OR ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0)) = 1
+      )
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM [SMigration].[Schema_ExcludedObjects] AS excluded
+          WHERE excluded.[ObjectType] = comparison.[ObjectType]
+            AND excluded.[SchemaName] = comparison.[SchemaName]
+            AND excluded.[ObjectName] = comparison.[ObjectName]
+            AND excluded.[ParentObjectName] = comparison.[ParentObjectName]
+            AND excluded.[RowStatus] <> 0
+            AND excluded.[RowStatus] <> 254
+      )
     ORDER BY
-        CASE c.ObjectType
+        CASE comparison.[ObjectType]
             WHEN N'Schema' THEN 10
             WHEN N'TableType' THEN 20
             WHEN N'Table' THEN 30
@@ -83,7 +101,7 @@ BEGIN
             WHEN N'Trigger' THEN 100
             ELSE 900
         END,
-        c.SchemaName,
-        c.ObjectName;
+        comparison.[SchemaName],
+        comparison.[ObjectName];
 END;
 GO

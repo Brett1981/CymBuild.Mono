@@ -1,0 +1,679 @@
+@page "/InvoicingScheduleDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using System.Web
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Concursus.API.Client.Models.Finance
+@using Concursus.Components.Shared.Classes
+@using Google.Protobuf.WellKnownTypes
+@using Newtonsoft.Json
+
+@inject Core.CoreClient coreClient
+@inject UserService userService
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inherits EditPageBase
+
+@inject IConfiguration configuration
+
+@attribute [Authorize]
+
+<EditPage @ref="@editPage"
+          EntityTypeGuid="81fcacdb-0446-443e-9263-7992a33c160f"
+          Windowed="@Windowed"
+          @bind-RecordGuid="@RecordGuid"
+          ModalId="@ModalId"
+          @bind-ParentDataObjectReference="@ParentDataObjectReference"
+          ReturnUrl="@ReturnUrl"
+          CloseWindow="@CloseWindow"
+          GridUpdated="@GridUpdated"
+          IsDetailWindowed="@IsDetailWindowed"
+          HideDefaultActions="@HideDefaultActions"
+          DisableDefaultActions="@ShouldDisableDefaultActions()"
+          TransientVirtualProperties="@BuildTransientVirtualProperties()"
+          DataObjectLoaded="@OnInvoiceScheduleDataObjectLoadedAsync">
+    <FormTitle>
+        <i class="bi bi-person-fill-lock" style="font-size: 1.2rem;"></i>
+    </FormTitle>
+
+    <FormBody>
+
+        @* Warning message for automated invoicing *@
+        @if (!configuration.GetValue<bool>("AutomatedInvoicing:Enabled"))
+        {
+            var warningMessageForInvoicing = configuration.GetValue<string>("AutomatedInvoicing:Message");
+
+            <div class="alert alert-warning" role="alert">
+                @warningMessageForInvoicing
+            </div>
+        }
+
+        <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
+                            entityProperties="@editPage.entityProperties"
+                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                            IsMainRecordContext="@IsMainRecordContext"
+                            FormHelper="@_formHelper"
+                            @bind-dataObject="@editPage.dataObject"
+                            RecordGuid="@RecordGuid"
+                            inputUpdated="@HandleInvoiceScheduleInputUpdatedAsync" />
+
+        @if (ShowMonthBreakDownGrid)
+        {
+            @if (CanAmendAutomatedMonthlyDrawdowns)
+            {
+                <div class="alert alert-info" role="alert">
+                    <strong>Automated monthly drawdowns can be amended directly.</strong>
+                    The Job remains in Automated mode. Review dates in the past before saving because eligible,
+                    ungenerated drawdowns may be processed by invoice automation.
+                </div>
+            }
+
+            <div class="invoice-schedule-total-panel">
+                <div class="invoice-schedule-total-title">Monthly Drawdowns</div>
+
+                @if (_totalsLoading)
+                {
+                    <div class="invoice-schedule-total-muted">Refreshing totals...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_totalsError))
+                {
+                    <div class="invoice-schedule-total-error">@_totalsError</div>
+                }
+                else
+                {
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Amount</span>
+                        <strong>@FormatCurrency(_totals?.MonthlyTotalAmount ?? 0m)</strong>
+                    </div>
+                }
+            </div>
+            <DynamicGrid @key="GetCurrentInvoiceScheduleGuid()"
+                         FormHelper="@_formHelper"
+                         GridCode="INVSCEDMONTHLY"
+                         @bind-Disabled="@DisableNewButton"
+                         ParentGuid="@GetCurrentInvoiceScheduleGuid()"
+                         ParentDataObjectReference="@editPage.MyDataObjectReference"
+                         ParentRowStatus="@editPage.dataObject.RowStatus"
+                         ResyncDataObject="@editPage.ReSyncDataObject"
+                         OnActionCompleted="@RefreshInvoiceScheduleTotalsForcedAsync"
+                         TransientVirtualProperties="@BuildTransientVirtualProperties()" />
+        }
+        else if (ShowPercentageBreakDownGrid)
+        {
+            <div class="invoice-schedule-total-panel">
+                <div class="invoice-schedule-total-title">Percentage Drawdowns</div>
+
+                @if (_totalsLoading)
+                {
+                    <div class="invoice-schedule-total-muted">Refreshing totals...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(_totalsError))
+                {
+                    <div class="invoice-schedule-total-error">@_totalsError</div>
+                }
+                else
+                {
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Percentage</span>
+                        <strong>@FormatPercentage(_totals?.PercentageTotalPercentage ?? 0m)</strong>
+                    </div>
+
+                    <div class="invoice-schedule-total-row">
+                        <span>Total Amount</span>
+                        <strong>@FormatCurrency(_totals?.PercentageTotalAmount ?? 0m)</strong>
+                    </div>
+                }
+            </div>
+            <DynamicGrid @key="GetCurrentInvoiceScheduleGuid()"
+                         FormHelper="@_formHelper"
+                         GridCode="INVSCEDULEPERCENTAGE"
+                         @bind-Disabled="@DisableNewButton"
+                         ParentGuid="@GetCurrentInvoiceScheduleGuid()"
+                         ParentDataObjectReference="@editPage.MyDataObjectReference"
+                         ParentRowStatus="@editPage.dataObject.RowStatus"
+                         ResyncDataObject="@editPage.ReSyncDataObject"
+                         OnActionCompleted="@RefreshInvoiceScheduleTotalsForcedAsync"
+                         TransientVirtualProperties="@BuildTransientVirtualProperties()" />
+        }
+
+    </FormBody>
+</EditPage>
+
+@code {
+    [Parameter] public string? SerializedDataObjectReference { get; set; }
+    [Parameter] public string? ModalId { get; set; }
+    [Parameter] public EventCallback<DataObjectReference> ParentDataObjectReferenceChanged { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public bool IsDetailWindowed { get; set; } = false;
+    [Parameter] public bool IsMainRecordContext { get; set; } = true;
+    [Parameter] public bool HideDefaultActions { get; set; } = false;
+    [Parameter] public bool DisableDefaultActions { get; set; } = false;
+    [Parameter] public bool BypassReadOnlyForAutomationReenable { get; set; } = false;
+    [Parameter] public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+    [Parameter] public bool ScheduleReenabled { get; set; } = false;
+
+    private const string AllowAutomatedMonthlyDrawdownAmendmentKey =
+        "AllowAutomatedMonthlyDrawdownAmendment";
+
+    private bool ShowMonthBreakDownGrid { get; set; } = false;
+    private bool ShowPercentageBreakDownGrid { get; set; } = false;
+    private bool DisableNewButton { get; set;  } = false;
+    private API.Client.FormHelper? _formHelper;
+    private InvoiceScheduleConfigurationTotalsModel? _totals;
+    private bool _totalsLoading;
+    private string? _totalsError;
+    private string? _lastTotalsInvoiceScheduleGuid;
+    private bool _totalsRefreshQueued;
+
+    private static readonly Guid InvoiceScheduleTriggerTypePropertyGuid = Guid.Parse("bb1fc1da-d825-4cb7-ba29-936b3218fc42");
+    private static readonly Guid ScheduleReenabledPropertyGuid = Guid.Parse("47583ed8-d82b-4575-9447-8374fddc9068");
+
+    private Dictionary<string, Any> BuildTransientVirtualProperties()
+    {
+        var result = new Dictionary<string, Any>(StringComparer.OrdinalIgnoreCase);
+
+        if (TransientVirtualProperties != null)
+        {
+            foreach (var kvp in TransientVirtualProperties)
+            {
+                result[kvp.Key] = kvp.Value;
+            }
+        }
+
+        /*
+        Normal Job flow:
+        - form should be read-only
+        - actions should be disabled
+
+        Automation re-enable flow:
+        - form should be editable
+        - actions should remain enabled
+        */
+        result["BypassReadOnlyForAutomationReenable"] =
+            Any.Pack(new BoolValue { Value = BypassReadOnlyForAutomationReenable });
+
+        result["DisableInvoiceScheduleActions"] =
+            Any.Pack(new BoolValue { Value = BypassReadOnlyForAutomationReenable });
+
+        return result;
+    }
+
+    protected override void OnInitialized()
+    {
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            sageIntegrationService,
+            "81fcacdb-0446-443e-9263-7992a33c160f",
+            userService);
+    }
+
+    private async Task RefreshInvoiceScheduleTotalsForcedAsync()
+    {
+        _lastTotalsInvoiceScheduleGuid = null;
+        await RefreshInvoiceScheduleTotalsAsync();
+    }
+
+    private async Task RefreshInvoiceScheduleTotalsAsync()
+    {
+        try
+        {
+            _totalsError = null;
+
+            var invoiceScheduleGuidText = GetCurrentInvoiceScheduleGuid();
+
+            if (!Guid.TryParse(invoiceScheduleGuidText, out var invoiceScheduleGuid) ||
+                invoiceScheduleGuid == Guid.Empty)
+            {
+                _totals = new InvoiceScheduleConfigurationTotalsModel();
+                _lastTotalsInvoiceScheduleGuid = null;
+                return;
+            }
+
+            _totalsLoading = true;
+            StateHasChanged();
+
+            _totals = await _formHelper.InvoiceScheduleConfigurationTotalsGetAsync(invoiceScheduleGuid);
+            _lastTotalsInvoiceScheduleGuid = invoiceScheduleGuid.ToString();
+        }
+        catch (Exception ex)
+        {
+            _totalsError = $"Totals could not be refreshed: {ex.Message}";
+        }
+        finally
+        {
+            _totalsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void QueueTotalsRefreshIfNeeded()
+    {
+        var invoiceScheduleGuid = GetCurrentInvoiceScheduleGuid();
+
+        if (string.IsNullOrWhiteSpace(invoiceScheduleGuid) ||
+            invoiceScheduleGuid == Guid.Empty.ToString())
+        {
+            return;
+        }
+
+        if (_totalsRefreshQueued)
+        {
+            return;
+        }
+
+        if (string.Equals(_lastTotalsInvoiceScheduleGuid, invoiceScheduleGuid, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _totalsRefreshQueued = true;
+
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await RefreshInvoiceScheduleTotalsAsync();
+            }
+            finally
+            {
+                _totalsRefreshQueued = false;
+            }
+        });
+    }
+
+    private static string FormatCurrency(decimal value)
+    {
+        return value.ToString("C2", System.Globalization.CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatPercentage(decimal value)
+    {
+        return $"{value:N2}%";
+    }
+
+    private bool GetTransientBool(string key, bool defaultValue = false)
+    {
+        var transient = BuildTransientVirtualProperties();
+
+        if (transient.TryGetValue(key, out var anyValue) &&
+            anyValue != null &&
+            anyValue.Is(BoolValue.Descriptor))
+        {
+            return anyValue.Unpack<BoolValue>().Value;
+        }
+
+        return defaultValue;
+    }
+
+    private bool CanAmendAutomatedMonthlyDrawdowns =>
+        ShowMonthBreakDownGrid
+        && GetTransientBool(AllowAutomatedMonthlyDrawdownAmendmentKey, false);
+
+    private bool ShouldDisableDefaultActions()
+    {
+        if (DisableDefaultActions)
+        {
+            return true;
+        }
+
+        return GetTransientBool("DisableInvoiceScheduleActions", false);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            if (ParentDataObjectReference != null)
+            {
+                ParentDataObjectReference =
+                    JsonConvert.DeserializeObject<DataObjectReference>(
+                        HttpUtility.UrlDecode(SerializedDataObjectReference) ?? string.Empty);
+
+                await ParentDataObjectReferenceChanged.InvokeAsync(ParentDataObjectReference);
+            }
+
+            await base.OnParametersSetAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while setting parameters for the Invoice Schedule Detail page.");
+            ex.Data.Add("PageMethod", "InvoicingScheduleDetail/OnParametersSetAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private string GetCurrentInvoiceScheduleGuid()
+    {
+        var guidFromDataObject = editPage?.dataObject?.Guid;
+
+        if (!string.IsNullOrWhiteSpace(guidFromDataObject) &&
+            Guid.TryParse(guidFromDataObject, out var parsedDataObjectGuid) &&
+            parsedDataObjectGuid != Guid.Empty)
+        {
+            return parsedDataObjectGuid.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(RecordGuid) &&
+            Guid.TryParse(RecordGuid, out var parsedRecordGuid) &&
+            parsedRecordGuid != Guid.Empty)
+        {
+            return parsedRecordGuid.ToString();
+        }
+
+        return Guid.Empty.ToString();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (editPage?.dataObject != null)
+        {
+            ShowCorrectInvoiceSchedulingGrid();
+            ShouldDisableNewButton();
+
+            if (ShowMonthBreakDownGrid || ShowPercentageBreakDownGrid)
+            {
+                QueueTotalsRefreshIfNeeded();
+            }
+        }
+
+        base.OnAfterRender(firstRender);
+    }
+
+    /// <summary>
+    /// Sets the SchdeuleReenabled field to true, which in turn
+    /// will disable the mechanism by which the user can edit after the first
+    /// time enabling automation. (works with the validation script)
+    /// </summary>
+    // private void ScheduleHasBeenReenabled()
+    // {
+    //     string SchdeuleReenabledFieldGuid = "47583ed8-d82b-4575-9447-8374fddc9068";
+
+    //     var dataObject = editPage.dataObject;
+    //     var SchdeuleReenabledProperty = dataObject.DataProperties
+    //         .FirstOrDefault(x => x.EntityPropertyGuid == SchdeuleReenabledFieldGuid);
+
+    //     //Set it to true
+    //     if (SchdeuleReenabledProperty != null)
+    //     {
+    //         Console.WriteLine("Setting 'chdeuleReenabled' to true.");
+    //         SchdeuleReenabledProperty.Value = Any.Pack(new BoolValue { Value = true });
+    //     }
+    // }
+
+
+    private async Task OnInvoiceScheduleDataObjectLoadedAsync(Concursus.API.Core.DataObject loadedDataObject)
+    {
+        try
+        {
+            ApplyScheduleReenabledFlagToLoadedDataObject();
+            ShowCorrectInvoiceSchedulingGrid();
+            ShouldDisableNewButton();
+
+            if (ShowMonthBreakDownGrid || ShowPercentageBreakDownGrid)
+            {
+                QueueTotalsRefreshIfNeeded();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while preparing the invoice schedule child grids.");
+            ex.Data.Add("PageMethod", "InvoicingScheduleDetail/OnInvoiceScheduleDataObjectLoadedAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    /// <summary>
+    /// Extracts the set configuration from the dropdown (Invoicing Structure)
+    /// and shows the appropriate grid.
+    /// </summary>
+    private void ShowCorrectInvoiceSchedulingGrid()
+    {
+        const string MonthlyTriggerType = "1a6296d5-6f78-4692-9acb-895ba1e7e9bb";
+        const string PercentageTriggerType = "3f5d1de2-05cf-47ed-9e0d-af56cc6cead0";
+
+        var dataObject = editPage?.dataObject;
+        if (dataObject?.DataProperties == null)
+        {
+            return;
+        }
+
+        var triggerTypeProperty = dataObject.DataProperties
+            .FirstOrDefault(x => string.Equals(x.EntityPropertyGuid, InvoiceScheduleTriggerTypePropertyGuid.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        var triggerTypeValue = ReadAnyAsString(triggerTypeProperty?.Value);
+        var normalisedTrigger = NormaliseTriggerValue(triggerTypeValue);
+
+        var shouldShowMonthly =
+            string.Equals(normalisedTrigger, MonthlyTriggerType, StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("monthly", StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("month", StringComparison.OrdinalIgnoreCase);
+
+        var shouldShowPercentage =
+            string.Equals(normalisedTrigger, PercentageTriggerType, StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("percentage", StringComparison.OrdinalIgnoreCase)
+            || normalisedTrigger.Contains("percent", StringComparison.OrdinalIgnoreCase);
+
+        var updated = false;
+
+        if (!shouldShowMonthly && ShowMonthBreakDownGrid)
+        {
+            ShowMonthBreakDownGrid = false;
+            updated = true;
+        }
+
+        if (!shouldShowPercentage && ShowPercentageBreakDownGrid)
+        {
+            ShowPercentageBreakDownGrid = false;
+            updated = true;
+        }
+
+        if (ShowMonthBreakDownGrid != shouldShowMonthly)
+        {
+            ShowMonthBreakDownGrid = shouldShowMonthly;
+            updated = true;
+        }
+
+        if (ShowPercentageBreakDownGrid != shouldShowPercentage)
+        {
+            ShowPercentageBreakDownGrid = shouldShowPercentage;
+            updated = true;
+        }
+
+        if (!shouldShowMonthly && !shouldShowPercentage)
+        {
+            _lastTotalsInvoiceScheduleGuid = null;
+            _totals = new InvoiceScheduleConfigurationTotalsModel();
+        }
+
+        if (updated)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleInvoiceScheduleInputUpdatedAsync(InputUpdatedArgs inputUpdatedArgs)
+    {
+        try
+        {
+            if (editPage is not null)
+            {
+                await editPage.HandleInputUpdated(inputUpdatedArgs);
+            }
+
+            ShowCorrectInvoiceSchedulingGrid();
+            ShouldDisableNewButton();
+
+            if (inputUpdatedArgs.EntityId == InvoiceScheduleTriggerTypePropertyGuid)
+            {
+                _lastTotalsInvoiceScheduleGuid = null;
+
+                if (ShowMonthBreakDownGrid || ShowPercentageBreakDownGrid)
+                {
+                    QueueTotalsRefreshIfNeeded();
+                }
+                else
+                {
+                    _totals = new InvoiceScheduleConfigurationTotalsModel();
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+            ex.Data.Add("AdditionalInfo", "An error occurred while updating the invoice schedule form.");
+            ex.Data.Add("PageMethod", "InvoicingScheduleDetail/HandleInvoiceScheduleInputUpdatedAsync()");
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private async Task ApplyScheduleReenabledFlagToLoadedDataObjectAsync(bool markAsChanged)
+    {
+        if (!ApplyScheduleReenabledFlagToLoadedDataObject() || !markAsChanged)
+        {
+            return;
+        }
+
+        var packedValue = Any.Pack(new BoolValue { Value = true });
+        await editPage.HandleInputUpdated(new InputUpdatedArgs
+        {
+            EntityId = ScheduleReenabledPropertyGuid,
+            NewValue = packedValue
+        });
+    }
+
+    private bool ApplyScheduleReenabledFlagToLoadedDataObject()
+    {
+        if (!ScheduleReenabled)
+        {
+            return false;
+        }
+
+        var dataObject = editPage?.dataObject;
+        if (dataObject?.DataProperties == null)
+        {
+            return false;
+        }
+
+        var scheduleReenabledProperty = dataObject.DataProperties
+            .FirstOrDefault(x => string.Equals(x.EntityPropertyGuid, ScheduleReenabledPropertyGuid.ToString(), StringComparison.OrdinalIgnoreCase));
+
+        if (scheduleReenabledProperty == null)
+        {
+            return false;
+        }
+
+        if (ReadAnyAsBool(scheduleReenabledProperty.Value))
+        {
+            return false;
+        }
+
+        scheduleReenabledProperty.Value = Any.Pack(new BoolValue { Value = true });
+        return true;
+    }
+
+    private static bool ReadAnyAsBool(Any? value)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        if (value.Is(BoolValue.Descriptor))
+        {
+            return value.Unpack<BoolValue>().Value;
+        }
+
+        if (value.Is(StringValue.Descriptor))
+        {
+            return bool.TryParse(value.Unpack<StringValue>().Value, out var parsed) && parsed;
+        }
+
+        if (value.Is(Int32Value.Descriptor))
+        {
+            return value.Unpack<Int32Value>().Value != 0;
+        }
+
+        if (value.Is(Int64Value.Descriptor))
+        {
+            return value.Unpack<Int64Value>().Value != 0;
+        }
+
+        return false;
+    }
+
+    private static string ReadAnyAsString(Any? value)
+    {
+        if (value is null)
+        {
+            return string.Empty;
+        }
+
+        if (value.Is(StringValue.Descriptor))
+        {
+            return value.Unpack<StringValue>().Value?.Trim() ?? string.Empty;
+        }
+
+        if (value.Is(Int32Value.Descriptor))
+        {
+            return value.Unpack<Int32Value>().Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (value.Is(Int64Value.Descriptor))
+        {
+            return value.Unpack<Int64Value>().Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (value.Is(BoolValue.Descriptor))
+        {
+            return value.Unpack<BoolValue>().Value.ToString();
+        }
+
+        return value.ToString();
+    }
+
+    private static string NormaliseTriggerValue(string? value)
+    {
+        return (value ?? string.Empty)
+            .Trim()
+            .Trim('{', '}')
+            .ToLowerInvariant();
+    }
+    /// <summary>
+    /// Hides the "New" button for the grid - based on the "IsEnabled" prop for the field "Name".
+    /// </summary>
+    private void ShouldDisableNewButton()
+    {
+        const string NameFieldGuid = "e770228e-e75a-4a36-bd58-5ebdd365f234";
+
+        if (BypassReadOnlyForAutomationReenable || CanAmendAutomatedMonthlyDrawdowns)
+        {
+            DisableNewButton = false;
+            return;
+        }
+
+        var nameField = editPage.dataObject.DataProperties
+            .FirstOrDefault(x => x.EntityPropertyGuid == NameFieldGuid);
+
+        DisableNewButton = nameField?.IsReadOnly == true;
+    }
+
+    public Task SaveAndExitAsync()
+    {
+        return editPage.SaveAndExitAsync();
+    }
+
+    public async Task SaveAndExitForAutomationReenableAsync()
+    {
+        await ApplyScheduleReenabledFlagToLoadedDataObjectAsync(markAsChanged: true);
+        await editPage.SaveAndExitAsync();
+    }
+
+    public Task CancelAndExitAsync()
+    {
+        return editPage.CancelAndExitAsync();
+    }
+}

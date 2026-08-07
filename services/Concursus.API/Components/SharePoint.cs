@@ -1041,7 +1041,7 @@ ORDER BY q.ID DESC;";
             "Admin",
             "Certs",
             "Design Information",
-            "Design Risk",
+            "Design Risk Management",
             "Emails",
             "Finance",
             "Photos",
@@ -1065,17 +1065,19 @@ ORDER BY q.ID DESC;";
             {
                 case OrganisationalUnitEnum.CDM:
 
-                    defaultFolderStruct.Add("Minutes");
+                    defaultFolderStruct.Add("Meeting Minutes");
                     defaultFolderStruct.Remove("Certs");
 
                     subFoldersToCreate["Admin"] = new List<string>
                     {
                         "CDM Support",
                         "Appointments & Contracts",
-                        "Handover Checklist",
+                        "Handover Checklist & Notes",
                         "Client & Designer duties",
                         "CDM Strategy",
-                        "Project Directory"
+                        "Project Directory",
+                        "Construction Programme",
+                        "F10"
                     };
 
                     subFoldersToCreate["Design Information"] = new List<string>
@@ -1088,7 +1090,7 @@ ORDER BY q.ID DESC;";
                         "Other"
                     };
 
-                    subFoldersToCreate["Design Risk"] = new List<string>
+                    subFoldersToCreate["Design Risk Management"] = new List<string>
                     {
                         "DRRs",
                         "Risk Meetings or Workshops"
@@ -1097,25 +1099,41 @@ ORDER BY q.ID DESC;";
                     subFoldersToCreate["Finance"] = new List<string>
                     {
                         "Invoices",
-                        "POs",
-                        "Correspondence"
+                        "Credit Notes",
+                        "POs & Billing Instructions",
+                        "Correspondence",
+                        "Fee Drawdown"
                     };
 
                     subFoldersToCreate["Photos"] = new List<string>
                     {
-                        "Initial Visit",
+                        "PCI Initial Visit",
                         "Inspections",
+                        "Compliance Visits",
                         "Client Photos"
                     };
 
                     subFoldersToCreate["Reports"] = new List<string>
                     {
-                        "F10 Notification",
+                       
                         "PCI",
                         "CPP",
-                        "H&S File",
-                        "Inspections",
+                        "H&S File & Review",
+                        "H&S Inspections",
+                        "Compliance Visits",
                         "O&M Manual"
+                    };
+
+                    subFoldersToCreate["Reports/PCI"] = new List<string>
+                    {
+                        "PCI Information",
+                        "PCI Review"
+                    };
+
+                    subFoldersToCreate["Reports/CPP"] = new List<string>
+                    {
+                        "CPP",
+                        "CPP Review"
                     };
 
 

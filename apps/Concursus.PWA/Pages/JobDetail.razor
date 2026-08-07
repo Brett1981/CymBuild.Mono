@@ -17,7 +17,6 @@
 @inject UserService userService
 @inject NavigationManager NavManager
 @inject RefreshService refreshService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject AppConfiguration appConfiguration
 @inject ModalService modalService
 @inject IOptions<ClientConfiguration> Config
@@ -265,6 +264,13 @@
                                  Disabled="@(_currentMode == InvoiceProcessingModeUi.Paused || editPage.GetValueAsBool("CannotBeInvoiced"))"
                                  DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
 
+
+                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="PURCHASEORDERS"
+                                 OnActionCompleted="RefreshJobProgress"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
+                                 DisabledMessage="@GetInvoiceRequestsDisabledMessage()" TransientVirtualProperties="@TransientVirtualProperties" />
 
                     @if (ShowSubContractorGrid)
                     {
@@ -1201,7 +1207,6 @@
 
         _formHelper = new API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(),
             userService);
     }

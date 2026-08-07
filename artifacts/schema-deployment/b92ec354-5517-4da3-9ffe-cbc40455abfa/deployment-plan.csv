@@ -1,0 +1,7 @@
+"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"cddb2931-ee4f-4498-9f76-88d9b206f3bd","Table","SCore","ObjectSecurity","","Different","True","True","True","True"
+"ba9952f0-b217-4532-ad00-9d3e6b0af6e7","Function","SSop","tvf_Quotes","","Different","True","False","True","True"
+"4fa32e3d-648d-4897-85eb-3162b44d0e90","StoredProcedure","SFin","TransactionSageSubmission_Requeue","","Different","True","False","True","True"
+"106099a1-1d6c-409d-a732-e270fbb733f2","StoredProcedure","SFin","TransactionsUpsert","","Different","True","False","True","True"
+"1acf6c5f-8190-4648-b3da-79039141c419","StoredProcedure","SFin","TransactionUnbatch","","Different","True","False","True","True"
+"4168d7d5-8350-4951-bde3-34e8639cc0bd","Trigger","SFin","tr_Transactions_RecordBatchApprovalTransition","SFin.Transactions","Different","True","False","True","True"

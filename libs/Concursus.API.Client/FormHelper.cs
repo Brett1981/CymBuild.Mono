@@ -23,7 +23,6 @@ public partial class FormHelper
     #region Private Fields
 
     private readonly Core.Core.CoreClient _coreClient;
-    private readonly Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient _sageClient;
     private readonly string _entityTypeGuid;
     private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
@@ -71,10 +70,9 @@ public partial class FormHelper
 
     #region Public Constructors
 
-    public FormHelper(Core.Core.CoreClient coreClient, Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageClient, string entityTypeGuid, UserService userService)
+    public FormHelper(Core.Core.CoreClient coreClient, string entityTypeGuid, UserService userService)
     {
         this._coreClient = coreClient;
-        this._sageClient = sageClient;
         this._entityTypeGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityTypeGuid).ToString();
         FormControls = new List<FormControl>();
         EntityType = new EntityType();
@@ -1457,11 +1455,10 @@ public partial class FormHelper
         }
     }
 
-    public async Task<List<UsageData>> GetUsageReportAsync(int days)
+    public async Task<List<UsageData>> GetUsageReportAsync(UsageReportRequest request)
     {
         try
         {
-            var request = new UsageReportRequest { Days = days };
             var response = await _coreClient.GetUsageReportAsync(request);
             return response.UsageData.ToList();
         }
@@ -1470,6 +1467,30 @@ public partial class FormHelper
             Console.WriteLine($"Failed to fetch usage report: {ex.Message}");
             return new List<UsageData>();
         }
+    }
+
+    public Task<List<UsageData>> GetUsageReportAsync(int days)
+    {
+        var endDateUtc = DateTime.UtcNow;
+        var startDateUtc = endDateUtc.AddDays(-Math.Max(1, days));
+        return GetUsageReportAsync(new UsageReportRequest
+        {
+            Days = Math.Max(1, days),
+            StartDateUtc = Timestamp.FromDateTime(DateTime.SpecifyKind(startDateUtc, DateTimeKind.Utc)),
+            EndDateUtc = Timestamp.FromDateTime(DateTime.SpecifyKind(endDateUtc, DateTimeKind.Utc))
+        });
+    }
+
+    public async Task<List<UserUsageLast7DaysData>> GetUserUsageLast7DaysAsync()
+    {
+        var response = await _coreClient.GetUserUsageLast7DaysAsync(new Empty());
+        return response.Users.ToList();
+    }
+
+    public async Task<List<User>> GetUsageReportUsersAsync()
+    {
+        var response = await _coreClient.UsersGetAsync(new UsersGetRequest());
+        return response.Users.ToList();
     }
 
     /// <summary>

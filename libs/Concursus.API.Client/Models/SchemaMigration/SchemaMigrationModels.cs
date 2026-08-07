@@ -41,6 +41,37 @@ public sealed class SchemaMigrationObjectComparisonModel
     public bool HasExplicitSelection { get; set; }
 }
 
+public sealed class SchemaMigrationExcludedObjectModel
+{
+    public Guid Guid { get; set; }
+    public string ObjectType { get; set; } = string.Empty;
+    public string SchemaName { get; set; } = string.Empty;
+    public string ObjectName { get; set; } = string.Empty;
+    public string ParentObjectName { get; set; } = string.Empty;
+    public string StableObjectKey { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public string ExclusionScope { get; set; } = string.Empty;
+    public string OriginServerName { get; set; } = string.Empty;
+    public string OriginDatabaseName { get; set; } = string.Empty;
+    public int ExcludedByUserId { get; set; }
+    public string ExcludedOnUtcText { get; set; } = string.Empty;
+    public string UnexcludedOnUtcText { get; set; } = string.Empty;
+    public Guid LastSeenRunGuid { get; set; }
+    public string LastSeenOnUtcText { get; set; } = string.Empty;
+    public int RowStatus { get; set; }
+    public bool IsSynchronizedToTarget { get; set; }
+    public bool IsActive => RowStatus != 0 && RowStatus != 254;
+    public string DisplayName => string.IsNullOrWhiteSpace(ParentObjectName)
+        ? $"{SchemaName}.{ObjectName}"
+        : $"{SchemaName}.{ParentObjectName}.{ObjectName}";
+}
+
+public sealed class SchemaMigrationExclusionResultModel
+{
+    public int ExcludedCount { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
 public sealed class SchemaMigrationSelectionItemModel
 {
     public Guid ComparisonGuid { get; set; }
@@ -100,6 +131,7 @@ public sealed class SchemaMigrationDashboardModel
     public int FailCount { get; set; }
     public int WarnCount { get; set; }
     public int InfoCount { get; set; }
+    public int ExcludedCount { get; set; }
     public List<SchemaMigrationObjectTypeCountModel> ObjectTypeCounts { get; set; } = new();
     public List<SchemaMigrationValidationIssueModel> ValidationIssues { get; set; } = new();
     public List<SchemaMigrationExecutionLogItemModel> ExecutionLog { get; set; } = new();

@@ -8,7 +8,6 @@
 @inject UserService userService
 @inject NavigationManager NavManager
 @inject RefreshService refreshService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @implements IDisposable
 
 <PageTitle>CymBuild Wait Statistics Dashboard</PageTitle>
@@ -615,7 +614,6 @@
     {
         formHelper = new FormHelper(
             coreClient,
-            sageIntegrationService,
             ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(Guid.Empty.ToString()).ToString(),
             userService);
 

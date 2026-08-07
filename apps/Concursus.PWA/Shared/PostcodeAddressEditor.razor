@@ -3,8 +3,6 @@
 @using Concursus.Components.Shared.Helpers
 @inject UserService UserService
 @inject Core.CoreClient CoreClient
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageIntegrationService
-
 @if (EntityProperties == null || EntityProperties.Count == 0)
 {
     <div class="text-danger">Address fields not found in metadata.</div>
@@ -76,7 +74,6 @@ else
         {
             _formHelper = new FormHelper(
                 CoreClient,
-                SageIntegrationService,
                 EntityTypeGuid,
                 UserService);
         }

@@ -146,7 +146,6 @@ namespace Concursus.PWA.Shared
         {
             _formHelper = new API.Client.FormHelper(
                 coreClient,
-                sageIntegrationService,
                 PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DataObject.EntityTypeGuid).ToString(),
                 userService);
 

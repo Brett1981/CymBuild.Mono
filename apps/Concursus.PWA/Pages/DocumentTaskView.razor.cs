@@ -405,7 +405,7 @@ public partial class DocumentTaskView
 
                 ListViewData = menuItems;
                 Filter();
-                FormHelper = new FormHelper(coreClient, sageIntegrationService, ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
+                FormHelper = new FormHelper(coreClient, ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
                 WindowIsVisible = true;
                 base.OnInitialized();

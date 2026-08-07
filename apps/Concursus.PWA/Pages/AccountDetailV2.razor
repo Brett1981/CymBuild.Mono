@@ -20,7 +20,6 @@
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Account Detail V2 (Experimental)</PageTitle>
@@ -215,7 +214,7 @@ else
             _loadError = null;
 
             // Keep parity with existing pattern (FormHelper owns metadata/data lifecycle)
-            _formHelper = new FormHelper(coreClient, sageIntegrationService, AccountEntityTypeGuid, userService);
+            _formHelper = new FormHelper(coreClient, AccountEntityTypeGuid, userService);
 
             await _formHelper.LoadMetaDataAsync(isInformationPage: false);
 

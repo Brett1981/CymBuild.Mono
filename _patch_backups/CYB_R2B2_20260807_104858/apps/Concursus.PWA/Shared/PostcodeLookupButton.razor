@@ -1,0 +1,282 @@
+@using Concursus.PWA.Classes
+@using System
+@using System.Collections.Generic
+@using Concursus.API.Client.Models
+@using Google.Protobuf.WellKnownTypes
+@inject HttpClient Http
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
+@inject Concursus.Components.Shared.Services.UserInteractionTrackerService InteractionTracker
+@inject Concursus.PWA.Services.AiErrorReporter AiErrorReporter
+
+<button type="button" class="btn btn-primary form-action-menu postcode-lookup-open-button" @onclick="OpenModal" @onclick:stopPropagation="true">
+    <i class="bi bi-search me-1"></i>
+    Address Lookup
+</button>
+
+@if (LoaderVisible)
+{
+    <div class="postcode-lookup-loader-overlay" aria-live="polite" aria-busy="true">
+        <div class="spinner-border postcode-lookup-spinner" role="status">
+            <span class="visually-hidden">Loading address lookup...</span>
+        </div>
+    </div>
+}
+
+@if (WindowIsVisible)
+{
+    <div class="postcode-lookup-modal-backdrop" role="presentation" @onclick:stopPropagation="true">
+        <div class="postcode-lookup-modal responsive-window" role="dialog" aria-modal="true" aria-labelledby="postcodeLookupTitle">
+            <div class="postcode-lookup-modal-header">
+                <div>
+                    <h5 id="postcodeLookupTitle" class="postcode-lookup-modal-title">Address Lookup</h5>
+                    <div class="postcode-lookup-modal-subtitle">Search, resolve and confirm the address for the current record.</div>
+                </div>
+                <button type="button" class="btn-close" aria-label="Close address lookup" @onclick="CloseModal"></button>
+            </div>
+
+            <div class="postcode-lookup-modal-body">
+                <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
+
+                @if (LockScreenIfNoAPICredentials)
+                {
+                    <div class="alert alert-danger d-flex align-items-center shadow-sm" role="alert">
+                        <div class="me-3">
+                            <i class="bi bi-exclamation-triangle-fill fs-3"></i>
+                        </div>
+                        <div>
+                            <h4 class="alert-heading">API Error</h4>
+                            <p class="mb-0">The API Credentials could not be loaded for Postcode Lookup. Please, check your configuration settings.</p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="addressFinderBody postcode-lookup-body">
+                        <div class="accordion mb-4" id="postcodeLookupInformation">
+                            <div class="accordion-item postcode-lookup-info-card">
+                                <h2 class="accordion-header" id="postcodeLookupInformationHeading">
+                                    <button class="accordion-button collapsed postcode-lookup-info-button"
+                                            type="button"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target="#postcodeLookupInformationBody"
+                                            aria-expanded="false"
+                                            aria-controls="postcodeLookupInformationBody">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        Information
+                                    </button>
+                                </h2>
+                                <div id="postcodeLookupInformationBody" class="accordion-collapse collapse" aria-labelledby="postcodeLookupInformationHeading" data-bs-parent="#postcodeLookupInformation">
+                                    <div class="accordion-body">
+                                        <ul class="mb-0">
+                                            <li>Enter a full address or postcode on the left-hand side.</li>
+                                            <li>Select the country context before searching.</li>
+                                            <li>Use Search Database to look up the address, then select the correct result if present.</li>
+                                            <li>If no match is returned, select Address Not Found and perform the online search.</li>
+                                            <li>The resolved address fields populate on the right so they can be reviewed before confirmation.</li>
+                                            <li>Use manual entry only when the address cannot be resolved through lookup.</li>
+                                            <li>Click Done to transfer the address details to the parent record.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="postcode-lookup-card-grid">
+                            <div class="card postcode-lookup-card">
+                                <div class="card-body d-flex flex-column">
+                                    <h5 class="card-title">Postcode Lookup</h5>
+
+                                    <div class="mb-3">
+                                        <div class="postcode-lookup-search-row">
+                                            <div class="postcode-lookup-search-input">
+                                                <input placeholder="@InputFieldText"
+                                                       id="search-address"
+                                                       @bind="AddressSearchInput"
+                                                       class="form-control @IsInvalid"
+                                                       disabled="@DisableAddressSearch" />
+                                                <div class="invalid-feedback">
+                                                    @IsInvalidMsg
+                                                </div>
+                                            </div>
+                                            <div class="postcode-lookup-iso-select">
+                                                <select class="form-select" @bind="selectedISO" disabled="@DisableAddressSearch" aria-label="Address lookup country context">
+                                                    @foreach (var isoCode in ISOCodes)
+                                                    {
+                                                        <option value="@isoCode.iso">@isoCode.name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <button type="button"
+                                                class="btn btn-primary mt-2 mb-2 d-block w-100"
+                                                disabled="@DisableAddressSearch"
+                                                @onclick="@(() => SearchByAddress())">
+                                            <i class="bi bi-search me-1"></i>
+                                            @SearchButtonTex
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        @if (addressRecommendations is not null && !DisableAddressSearch)
+                                        {
+                                            <label class="form-label" for="addressSuggestionFilter">Address suggestions</label>
+                                            <input id="addressSuggestionFilter"
+                                                   type="search"
+                                                   class="form-control mb-2"
+                                                   placeholder="Filter address suggestions..."
+                                                   @bind="AddressSuggestionFilterText"
+                                                   @bind:event="oninput" />
+                                            <select class="form-select"
+                                                    @bind="DropdownSelectionForAddress"
+                                                    aria-label="Select address suggestion">
+                                                <option value="">Select an address:</option>
+                                                @foreach (var recommendation in FilteredAddressRecommendations)
+                                                {
+                                                    <option value="@recommendation.Urls">@recommendation.Suggestion</option>
+                                                }
+                                            </select>
+                                        }
+                                        else if (postcodeRecommendations is not null && !DisableAddressSearch)
+                                        {
+                                            <label class="form-label" for="postcodeSuggestionFilter">Postcode matches</label>
+                                            <input id="postcodeSuggestionFilter"
+                                                   type="search"
+                                                   class="form-control mb-2"
+                                                   placeholder="Filter postcode matches..."
+                                                   @bind="PostcodeSuggestionFilterText"
+                                                   @bind:event="oninput" />
+                                            <select class="form-select"
+                                                    @bind="DropdownSelectionForPostcode"
+                                                    aria-label="Select postcode match">
+                                                <option value="">Select an address:</option>
+                                                @foreach (var recommendation in FilteredPostcodeRecommendations)
+                                                {
+                                                    <option value="@recommendation.Uprn">@recommendation.FormattedAddress</option>
+                                                }
+                                            </select>
+                                        }
+                                    </div>
+
+                                    <div>
+                                        @if (addressRecommendations is not null && !DisableAddressSearch)
+                                        {
+                                            <button type="button" class="btn btn-success w-100" @onclick="SelectAddressSuggestion">Confirm</button>
+                                        }
+                                        else if (postcodeRecommendations is not null)
+                                        {
+                                            <button type="button" class="btn btn-success w-100" @onclick="SelectPostcodeSuggestion">Confirm</button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card postcode-lookup-card">
+                                <div class="card-body">
+                                    <h5 class="card-title">Selected Address:</h5>
+                                    <div class="mt-4 container-fluid postcode-lookup-form">
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">UPRN (read-only):</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Uprn" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Number:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Number" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Local Authority:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.AuthorityCode" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Address Line 1:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Line1" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Address Line 2:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Line2" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Town / City:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Town" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">County:</label>
+                                            <div class="col-sm-8">
+                                                <input type="search"
+                                                       class="form-control mb-2"
+                                                       placeholder="Filter counties..."
+                                                       @bind="CountyFilterText"
+                                                       @bind:event="oninput" />
+                                                <select class="form-select" @bind="CountySelection" aria-label="County">
+                                                    <option value="@Guid.Empty">Select county</option>
+                                                    @foreach (var county in FilteredCountyComboItems)
+                                                    {
+                                                        <option value="@county.Value">@county.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Postcode:</label>
+                                            <div class="col-sm-8">
+                                                <input readonly="@IsReadOnlyForm" @bind="ResolvedAddress.Postcode" class="form-control" />
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <label class="col-sm-4 col-form-label">Country:</label>
+                                            <div class="col-sm-8">
+                                                <input type="search"
+                                                       class="form-control mb-2"
+                                                       placeholder="Filter countries..."
+                                                       @bind="CountryFilterText"
+                                                       @bind:event="oninput" />
+                                                <select class="form-select" @bind="CountrySelection" aria-label="Country">
+                                                    <option value="@Guid.Empty">Select country</option>
+                                                    @foreach (var country in FilteredCountryComboItems)
+                                                    {
+                                                        <option value="@country.Value">@country.Name</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-row justify-content-end mt-3 gap-2">
+                            @if (ShowManualEntryButton)
+                            {
+                                <button type="button" class="btn btn-secondary" @onclick="EnableReadOnlyForm">@ManualAddressEntryText</button>
+                            }
+
+                            @if (ShowOverwriteAddressButton)
+                            {
+                                <button type="button" class="btn btn-secondary" @onclick="OverwriteAddress">Amend address</button>
+                            }
+
+                            @if (ShowDoneButton || ShowManualEntryButton)
+                            {
+                                <button type="button" class="btn btn-success" @onclick="ConfirmAddress">Done</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}

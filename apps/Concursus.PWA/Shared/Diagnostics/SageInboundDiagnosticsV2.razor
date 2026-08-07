@@ -12,7 +12,6 @@
 @using static Concursus.API.Client.FormHelper
 
 @inject Core.CoreClient CoreClient
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageClient
 @inject UserService UserService
 @inject NavigationManager NavManager
 @inject ModalService modalService
@@ -439,7 +438,7 @@
 
     private void EnsureFormHelper()
     {
-        _formHelper ??= new FormHelper(CoreClient, SageClient, Guid.Empty.ToString(), UserService);
+        _formHelper ??= new FormHelper(CoreClient, Guid.Empty.ToString(), UserService);
     }
 
     private async Task LoadAsync()

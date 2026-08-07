@@ -1,0 +1,69 @@
+﻿{
+    "TargetServer":  "SOC-SQLBRE01\\SQL2022",
+    "TargetDatabase":  "CymBuild_UAT",
+    "Mode":  "WhatIf",
+    "Status":  "BootstrapRequired",
+    "MissingBefore":  [
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_Run]"
+                          },
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_ObjectComparisons]"
+                          },
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_ValidationIssues]"
+                          },
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_ExecutionLog]"
+                          },
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_RunSelections]"
+                          },
+                          {
+                              "ObjectKind":  "StoredProcedure",
+                              "ObjectName":  "[SMigration].[SchemaDataObject_Ensure]"
+                          },
+                          {
+                              "ObjectKind":  "StoredProcedure",
+                              "ObjectName":  "[SMigration].[SchemaDeploymentPlan_Get]"
+                          }
+                      ],
+    "MissingAfter":  [
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_Run]"
+                         },
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_ObjectComparisons]"
+                         },
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_ValidationIssues]"
+                         },
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_ExecutionLog]"
+                         },
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_RunSelections]"
+                         },
+                         {
+                             "ObjectKind":  "StoredProcedure",
+                             "ObjectName":  "[SMigration].[SchemaDataObject_Ensure]"
+                         },
+                         {
+                             "ObjectKind":  "StoredProcedure",
+                             "ObjectName":  "[SMigration].[SchemaDeploymentPlan_Get]"
+                         }
+                     ],
+    "BootstrapSql":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\Database\\CymBuild_DB\\Schema\\Migrations\\CYB361\\SMigration.SchemaWorkbench.Bootstrap.sql",
+    "BootstrapSqlSha256":  "e2728472f73818bbd48888b59375cd2c5131636603448c3384db73eb0295b38a",
+    "GeneratedOnUtc":  "2026-08-04T15:49:02.0190768Z"
+}

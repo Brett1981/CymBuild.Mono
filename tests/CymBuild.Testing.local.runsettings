@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Local-only override for Visual Studio Test Explorer.
+
+  tests\CymBuild.Testing.runsettings is shared with Invoke-CymBuildSqlIntegrationTests.ps1
+  (used locally and in CI). Do not add EnvironmentVariables there: VSTest sets them on the
+  testhost process after inheriting the parent environment, so they would override the
+  connection string the script exports per run and silently redirect every invocation
+  (including CI) to whatever database is hardcoded here.
+
+  This file is gitignored. Point Visual Studio at it via
+  Test > Configure Run Settings > Select Solution Wide runsettings File.
+-->
+<RunSettings>
+  <RunConfiguration>
+    <ResultsDirectory>TestResults</ResultsDirectory>
+    <EnvironmentVariables>
+      <CYMBUILD_SQL_TEST_CONNECTION_STRING>Server=(localdb)\MSSQLLocalDB;Database=CymBuild_Test_R4;Integrated Security=True;TrustServerCertificate=True;Connection Timeout=10</CYMBUILD_SQL_TEST_CONNECTION_STRING>
+    </EnvironmentVariables>
+  </RunConfiguration>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>[*.Tests]*,[*Tests]*</Exclude>
+          <ExcludeByFile>**/bin/**,**/obj/**,**/*.g.cs,**/*.designer.cs,**/Program.cs</ExcludeByFile>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <UseSourceLink>true</UseSourceLink>
+          <DeterministicReport>true</DeterministicReport>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

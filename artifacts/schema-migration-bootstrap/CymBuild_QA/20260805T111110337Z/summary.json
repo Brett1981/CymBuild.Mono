@@ -1,0 +1,39 @@
+﻿{
+    "TargetServer":  "SOC-SQLDEVBRE01\\GENERAL",
+    "TargetDatabase":  "CymBuild_QA",
+    "Mode":  "WhatIf",
+    "Status":  "BootstrapRequired",
+    "MissingBefore":  [
+                          {
+                              "ObjectKind":  "Table",
+                              "ObjectName":  "[SMigration].[Schema_ExcludedObjects]"
+                          },
+                          {
+                              "ObjectKind":  "StoredProcedure",
+                              "ObjectName":  "[SMigration].[SchemaExcludedObject_Apply]"
+                          },
+                          {
+                              "ObjectKind":  "StoredProcedure",
+                              "ObjectName":  "[SMigration].[SchemaExcludedObjects_List]"
+                          }
+                      ],
+    "MissingAfter":  [
+                         {
+                             "ObjectKind":  "Table",
+                             "ObjectName":  "[SMigration].[Schema_ExcludedObjects]"
+                         },
+                         {
+                             "ObjectKind":  "StoredProcedure",
+                             "ObjectName":  "[SMigration].[SchemaExcludedObject_Apply]"
+                         },
+                         {
+                             "ObjectKind":  "StoredProcedure",
+                             "ObjectName":  "[SMigration].[SchemaExcludedObjects_List]"
+                         }
+                     ],
+    "BootstrapSql":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\Database\\CymBuild_DB\\Schema\\Migrations\\CYB361\\SMigration.SchemaWorkbench.Bootstrap.sql",
+    "BootstrapSqlSha256":  "90ce02eb0bb5ff32c1cd925d58261c3fcbd1678d2ec85de9f476e8a456b5e613",
+    "ExclusionsBootstrapSql":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\Database\\CymBuild_DB\\Schema\\Migrations\\CYB361\\SMigration.SchemaExclusions.Bootstrap.sql",
+    "ExclusionsBootstrapSqlSha256":  "a842d962a3e231b0b0934ed46db02c422a811a49117b4b73d38a9159c6cc602b",
+    "GeneratedOnUtc":  "2026-08-05T11:11:10.6548976Z"
+}

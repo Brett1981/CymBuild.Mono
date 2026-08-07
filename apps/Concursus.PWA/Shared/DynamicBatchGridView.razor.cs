@@ -638,7 +638,7 @@ public partial class DynamicBatchGridView : ComponentBase
             IsPerformingGridAction = true;
             StateHasChanged();
 
-            var formHelper = new FormHelper(coreClient, sageIntegrationService, ViewDefinition?.EntityTypeGuid ?? Guid.Empty.ToString(), userService);
+            var formHelper = new FormHelper(coreClient, ViewDefinition?.EntityTypeGuid ?? Guid.Empty.ToString(), userService);
             item.FormHelper = formHelper;
 
             var infoMessage = PWAFunctions.GetMessageDisplayFromGridViewAction(
@@ -782,7 +782,7 @@ public partial class DynamicBatchGridView : ComponentBase
             _isInvoicePreviewBusy = true;
             ResetInvoicePreviewState();
 
-            var formHelper = new FormHelper(coreClient, sageIntegrationService, ViewDefinition?.EntityTypeGuid ?? Guid.Empty.ToString(), userService);
+            var formHelper = new FormHelper(coreClient, ViewDefinition?.EntityTypeGuid ?? Guid.Empty.ToString(), userService);
             var selectedTransactionGuids = new List<Guid>();
 
             foreach (var selectedItem in SelectedItems)

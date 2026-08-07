@@ -338,7 +338,7 @@ public partial class V2DynamicGridView : ComponentBase
                 InteractionTracker.Log(NavManager.Uri, $"User Double Clicked Row - '{ViewDefinition.Name}' Navigated to detail.");
             }
 
-            var formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            var formHelper = new FormHelper(coreClient, Guid.Empty.ToString(), userService);
             _ = formHelper.LogUsageAsync(
                 PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid),
                 PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ViewDefinition.EntityTypeGuid).ToString());

@@ -1,9 +1,10 @@
 @using Concursus.PWA.Classes
 @using System
 @using System.Collections.Generic
-@inject IHttpClientFactory HttpFactory
 @inject IConfiguration Config
 @inject HttpClient Http
+@inject Concursus.API.Core.Core.CoreClient coreClient
+@inject Concursus.API.Client.Models.UserService userService
 
 @if (!uiEnabled)
 {
@@ -169,19 +170,19 @@ else
 }
 
 @code {
+    private API.Client.FormHelper? _formHelper;
+
     // UI state
     bool uiEnabled;
     bool enterManually;
     string postcodeInput = "";
     List<AddressResponse>? addresses;
     AddressResponse? selected;
-    int selectedIndex = -1;
 
     //ISO code dropdown:
     List<CountryWithISO> ISOCodes = new();
     private string selectedISO { get; set; } = "GBR";
     List<AddressSearchResult> addressRecommendations = new();
-    AddressSearchResult SelectecRecommendation;
     string AddressSearchInput = "";
 
     //Variables for the box that displays suggestions:
@@ -218,8 +219,8 @@ else
     //Class defintion for reading the country codes.
     public class CountryWithISO
     {
-        public string name { get; set; }
-        public string iso { get; set; }
+        public string name { get; set; } = string.Empty;
+        public string iso { get; set; } = string.Empty;
     }
 
     //Class defintion for the suggestions returned by Ideal Postcode Lookup.
@@ -231,6 +232,11 @@ else
 
     protected override void OnInitialized()
     {
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            Guid.Empty.ToString(),
+            userService);
+
         uiEnabled = Config.GetValue<bool>("PostcodeLookupUI:Enabled");
         AddressLookupInputs addressLookupInputs = new AddressLookupInputs();
         LoadCountryISOCodes();
@@ -260,7 +266,7 @@ else
     private async void LoadCountryISOCodes()
     {
         string jsonFileName = "PostCodeLookup_Assets/country_iso_codes.json";
-        ISOCodes = await Http.GetFromJsonAsync<List<CountryWithISO>>(jsonFileName);
+        ISOCodes = await Http.GetFromJsonAsync<List<CountryWithISO>>(jsonFileName) ?? new List<CountryWithISO>();
     }
 
     async Task Search()
@@ -269,12 +275,23 @@ else
         {
             if (string.IsNullOrWhiteSpace(postcodeInput))
                 return;
-            var client = HttpFactory.CreateClient("PostcodeLookupUI");
-            var resp = await client.PostAsJsonAsync("PostcodeLookup", new { postcode = postcodeInput, forceApi = true });
-            resp.EnsureSuccessStatusCode();
-            addresses = await resp.Content.ReadFromJsonAsync<List<AddressResponse>>();
+
+            if (_formHelper is null)
+                throw new InvalidOperationException("FormHelper is not initialised.");
+
+            var response = await _formHelper.AddressLookupSearchAsync(
+                postcodeInput,
+                "GBR",
+                forceApi: true);
+
+            if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+                throw new InvalidOperationException(response.ErrorReturned);
+
+            addresses = response.PostcodeAddresses
+                .Select(MapLookupAddress)
+                .ToList();
+
             selected = null;
-            selectedIndex = -1;
         }
         catch (Exception ex)
         {
@@ -290,38 +307,44 @@ else
     {
         try
         {
-            //var client   = HttpFactory.CreateClient("AddressLookupUI");
-            //var resp = await client.PostAsJsonAsync("GetAddress", new { address = AddressSearchInput, context = selectedISO, forceApi = true });
+            if (_formHelper is null)
+                throw new InvalidOperationException("FormHelper is not initialised.");
 
-            string BaseUrl = "http://localhost:5041/api/AddressLookup/";
-            string GetAddressEndpoint = "GetAddress";
+            var response = await _formHelper.AddressLookupSearchAsync(
+                AddressSearchInput,
+                selectedISO,
+                forceApi: true);
 
-            var client = HttpFactory.CreateClient("AddressLookupUI");
-            var resp = await client.PostAsJsonAsync($"{BaseUrl}{GetAddressEndpoint}", new
-            {
-                address = AddressSearchInput,
-                context = selectedISO,
-                forceApi = true
-            });
+            if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+                throw new InvalidOperationException(response.ErrorReturned);
 
-            resp.EnsureSuccessStatusCode();
-            addressRecommendations = await resp.Content.ReadFromJsonAsync<List<AddressSearchResult>>();
+            addressRecommendations = response.AddressSuggestions
+                .Select(x => new AddressSearchResult
+                {
+                    Id = x.Id ?? string.Empty,
+                    Suggestion = x.Suggestion ?? string.Empty,
+                    Udprn = x.Udprn ?? string.Empty,
+                    Urls = x.Urls ?? string.Empty
+                })
+                .ToList();
+
             SelectedAddressRecommendationId = string.Empty;
 
-            if(addressRecommendations?.Count > 0)
+            if (addressRecommendations.Count > 0)
             {
                 ListBoxData = addressRecommendations;
                 StateHasChanged();
             }
             else
             {
-                addressRecommendations.Add(new AddressSearchResult()
+                addressRecommendations.Add(new AddressSearchResult
                 {
                     Id = "NA",
-                    Suggestion ="Could not find any address",
+                    Suggestion = "Could not find any address",
                     Udprn = "NA",
                     Urls = "NA"
                 });
+
                 ListBoxData = addressRecommendations;
                 StateHasChanged();
             }
@@ -339,28 +362,46 @@ else
             if (string.IsNullOrWhiteSpace(SelectedAddressRecommendationId))
                 return;
 
-            string BaseUrl = "http://localhost:5041/api/AddressLookup/";
-            string GetAddressEndpoint = "ResolveAddress";
+            if (_formHelper is null)
+                throw new InvalidOperationException("FormHelper is not initialised.");
 
-            var client = HttpFactory.CreateClient("AddressLookupUI");
+            var response = await _formHelper.AddressLookupResolveAsync(
+                SelectedAddressRecommendationId,
+                selectedISO);
 
-            var ID = SelectedAddressRecommendationId;
+            if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+                throw new InvalidOperationException(response.ErrorReturned);
 
-            var resp = await client.PostAsJsonAsync($"{BaseUrl}{GetAddressEndpoint}", new
-            {
-                id = ID,
-                context = selectedISO
-            });
+            if (response.Address is null)
+                throw new InvalidOperationException("No address was returned by the lookup service.");
 
-            resp.EnsureSuccessStatusCode();
-
-            ResolvedAddress = await resp.Content.ReadFromJsonAsync<AddressResponse>();
+            ResolvedAddress = MapLookupAddress(response.Address);
             StateHasChanged();
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             Console.WriteLine(ex.Message);
         }
+    }
+
+    private static AddressResponse MapLookupAddress(LookupAddressRecordContract source)
+    {
+        return new AddressResponse
+        {
+            Number = source.Number ?? string.Empty,
+            FormattedAddress = source.FormattedAddress ?? string.Empty,
+            Line1 = source.Line1 ?? string.Empty,
+            Line2 = string.IsNullOrWhiteSpace(source.Line2) ? null : source.Line2,
+            Town = source.Town ?? string.Empty,
+            County = string.IsNullOrWhiteSpace(source.County) ? null : source.County,
+            Postcode = source.Postcode ?? string.Empty,
+            Country = source.Country ?? string.Empty,
+            Uprn = string.IsNullOrWhiteSpace(source.Uprn) ? null : source.Uprn,
+            LocalAuthority = string.IsNullOrWhiteSpace(source.LocalAuthority) ? null : source.LocalAuthority,
+            AuthorityCode = string.IsNullOrWhiteSpace(source.AuthorityCode) ? null : source.AuthorityCode,
+            Latitude = source.HasLatitude ? source.Latitude : null,
+            Longitude = source.HasLongitude ? source.Longitude : null
+        };
     }
 
     void OnSelect(ChangeEventArgs e)

@@ -39,9 +39,8 @@ WHERE
 			WHERE 
 				(
 					Acts.ID = root_hobt.ActivityStatusID AND 
-					Acts.IsActive = 1 AND
-					Acts.IsCompleteStatus = 0 AND
-					Acts.ID <> 1 
+					--Acts.IsActive = 1 AND
+					Acts.ID NOT IN (4, 6, 7)
 				)
 			
 		)

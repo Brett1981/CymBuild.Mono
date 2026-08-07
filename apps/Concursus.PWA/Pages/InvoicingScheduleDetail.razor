@@ -9,7 +9,6 @@
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inherits EditPageBase
 
 @inject IConfiguration configuration
@@ -200,7 +199,6 @@
     {
         _formHelper = new API.Client.FormHelper(
             coreClient,
-            sageIntegrationService,
             "81fcacdb-0446-443e-9263-7992a33c160f",
             userService);
     }

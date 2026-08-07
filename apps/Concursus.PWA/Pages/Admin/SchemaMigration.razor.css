@@ -1078,3 +1078,220 @@
     }
 }
 /* END CYB-361 R18 */
+
+/* CYB-361 R30: effective selection summary and validation scope visibility. */
+.schema-summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.schema-summary-card-interactive {
+    width: 100%;
+    min-width: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.schema-summary-card-interactive:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.10);
+}
+
+.schema-summary-card-interactive:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.28);
+    outline-offset: 2px;
+}
+
+.schema-selected-view-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+    padding: 13px 15px;
+    border: 1px solid #bfdbfe;
+    border-radius: 12px;
+    background: #eff6ff;
+}
+
+.schema-selected-view-note > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.schema-selected-view-note strong {
+    color: #0f172a;
+}
+
+.schema-selected-view-note span {
+    color: #1e40af;
+}
+
+.schema-validation-scope-panel {
+    margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+    .schema-selected-view-note {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+/* END CYB-361 R30 */
+
+/* CYB-361 R31: summary-card parity and acceptance-note update UX. */
+.schema-summary-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    min-width: 0;
+    box-sizing: border-box;
+    text-align: left;
+    color: inherit;
+}
+
+.schema-summary-card > span,
+.schema-summary-card > strong,
+.schema-summary-card > small {
+    display: block;
+    width: 100%;
+    min-width: 0;
+}
+
+.schema-summary-card > small {
+    line-height: 1.45;
+}
+
+/* Override the workbench's intentional generic action-button fallback. */
+.schema-workbench button.schema-summary-card-interactive {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 0 !important;
+    width: 100% !important;
+    height: 100%;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 16px !important;
+    border: 1px solid #d9e2ef !important;
+    border-left-width: 5px !important;
+    border-radius: 18px !important;
+    background: #ffffff !important;
+    color: inherit !important;
+    font: inherit !important;
+    font-weight: 400 !important;
+    line-height: normal !important;
+    text-align: left !important;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08) !important;
+}
+
+.schema-workbench button.schema-summary-card-interactive.success { border-left-color: #16a34a !important; }
+.schema-workbench button.schema-summary-card-interactive.info { border-left-color: #2563eb !important; }
+.schema-workbench button.schema-summary-card-interactive.warning { border-left-color: #d97706 !important; }
+.schema-workbench button.schema-summary-card-interactive.danger { border-left-color: #dc2626 !important; }
+
+.schema-workbench button.schema-summary-card-interactive:hover:not(:disabled) {
+    transform: translateY(-1px) !important;
+    background: #ffffff !important;
+    border-top-color: #d9e2ef !important;
+    border-right-color: #d9e2ef !important;
+    border-bottom-color: #d9e2ef !important;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12) !important;
+}
+
+.schema-workbench button.schema-summary-card-interactive:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.28) !important;
+    outline-offset: 2px !important;
+}
+/* END CYB-361 R31 */
+
+/* CYB-361 R32: generated PowerShell deployment commands. */
+.schema-command-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+}
+
+.schema-command-block {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+.schema-command-block > strong {
+    color: #0f172a;
+}
+
+.schema-command-block > small {
+    min-height: 3.2em;
+    color: #475569;
+    line-height: 1.45;
+}
+
+.schema-powershell-script {
+    min-height: 185px;
+}
+
+@media (max-width: 1000px) {
+    .schema-command-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .schema-command-block > small {
+        min-height: 0;
+    }
+}
+/* END CYB-361 R32 */
+
+/* CYB-361 R39: source-authoritative schema exclusions. */
+.schema-exclusion-editor {
+    display: grid;
+    gap: 12px;
+    margin: 16px 0;
+    padding: 16px;
+    border: 1px solid #d9e2ef;
+    border-left: 5px solid #64748b;
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.schema-exclusion-editor > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.schema-exclusion-editor > div > span,
+.schema-exclusion-editor label > span {
+    color: #475569;
+    line-height: 1.45;
+}
+
+.schema-exclusion-editor label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.schema-toggle-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 16px;
+    color: #334155;
+    font-weight: 600;
+}
+
+.schema-toggle-row input {
+    width: 18px;
+    height: 18px;
+}
+/* END CYB-361 R39 */

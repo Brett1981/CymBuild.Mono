@@ -17,7 +17,6 @@
 @inject UserService userService
 @inject Core.CoreClient coreClient
 @inject DeviceInfoService DeviceInfoService
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient sageIntegrationService
 @inject OfflineSyncService SyncService
 @inject IToastService NotificationService
 @inject SyncQueueState SyncQueueState
@@ -201,7 +200,7 @@ else
     {
         if (!string.IsNullOrEmpty(featureName))
         {
-            formHelper = new FormHelper(coreClient, sageIntegrationService, Guid.Empty.ToString(), userService);
+            formHelper = new FormHelper(coreClient, Guid.Empty.ToString(), userService);
             Guid userId = ParseAndReturnEmptyGuidIfInvalid(userService.Guid);
             await formHelper.LogUsageAsync(userId, featureName);
         }

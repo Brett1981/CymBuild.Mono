@@ -1,0 +1,19 @@
+﻿{
+    "RunGuid":  "1ab37b95-1c8a-4a2d-830a-04b61720288b",
+    "TargetServer":  "SOC-SQLDEVBRE01\\GENERAL",
+    "TargetDatabase":  "CymBuild_QA",
+    "ReleaseReference":  "26.3.1 Testing",
+    "DeploymentReference":  "26.3.1 Testing",
+    "IsApply":  true,
+    "IsWhatIf":  false,
+    "PlanCount":  1,
+    "SupportedCount":  1,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  0,
+    "RetryFailedDeployment":  false,
+    "GeneratedOnUtc":  "2026-08-05T08:54:34.2411196Z",
+    "ExecutionId":  "20260805T085433774Z-apply-pid2304-2208e385",
+    "ExecutionMode":  "apply",
+    "RunOutputRoot":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\1ab37b95-1c8a-4a2d-830a-04b61720288b",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\1ab37b95-1c8a-4a2d-830a-04b61720288b\\executions\\20260805T085433774Z-apply-pid2304-2208e385"
+}

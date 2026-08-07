@@ -2,7 +2,6 @@
 @using Concursus.API.Client.Models
 @using Concursus.API.Core
 @inject Concursus.API.Core.Core.CoreClient CoreClient
-@inject Sage200Microservice.API.Protos.Invoice.InvoiceService.InvoiceServiceClient SageClient
 @inject UserService UserService
 @inject NavigationManager Navigation
 @inject Concursus.PWA.Helpers.LocalStorageAccessor LocalStorageAccessor
@@ -421,7 +420,6 @@
     {
         _formHelper ??= new Concursus.API.Client.FormHelper(
             CoreClient,
-            SageClient,
             Guid.Empty.ToString(),
             UserService);
     }
