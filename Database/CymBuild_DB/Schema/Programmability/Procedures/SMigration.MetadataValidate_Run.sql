@@ -26,7 +26,8 @@ BEGIN
       AND IssueCode IN
       (
           N'RunNotFound',
-          N'DuplicateStagedRow'
+          N'DuplicateStagedRow',
+          N'UnsupportedApplyHandler'
       );
 
     IF NOT EXISTS
@@ -94,6 +95,107 @@ BEGIN
         sr.RegistryGuid,
         sr.SourceRowGuid
     HAVING COUNT_BIG(1) > 1;
+
+    /*
+        Staging can discover metadata tables dynamically from EntityTypes, while
+        MetadataApply_Run intentionally uses explicit, reviewed handlers. Fail
+        closed when an actionable staged table has no apply handler so a run
+        cannot report success while silently leaving metadata unapplied.
+    */
+    INSERT INTO SMigration.Metadata_ValidationIssues
+    (
+        Guid,
+        RowStatus,
+        RunGuid,
+        RegistryGuid,
+        SourceRowGuid,
+        Severity,
+        IssueCode,
+        IssueMessage,
+        DetailsJson,
+        CreatedOnUtc
+    )
+    SELECT
+        NEWID(),
+        1,
+        @RunGuid,
+        sr.RegistryGuid,
+        NULL,
+        N'Fail',
+        N'UnsupportedApplyHandler',
+        CONCAT
+        (
+            N'No controlled metadata apply handler exists for ',
+            tr.SchemaName,
+            N'.',
+            tr.TableName,
+            N'.'
+        ),
+        CONCAT
+        (
+            N'{"SchemaName":"',
+            STRING_ESCAPE(tr.SchemaName, 'json'),
+            N'","TableName":"',
+            STRING_ESCAPE(tr.TableName, 'json'),
+            N'"}'
+        ),
+        SYSUTCDATETIME()
+    FROM SMigration.Metadata_StagedRows AS sr
+    INNER JOIN SMigration.Metadata_TableRegistry AS tr
+        ON tr.Guid = sr.RegistryGuid
+       AND tr.RowStatus NOT IN (0,254)
+    INNER JOIN SMigration.Metadata_Run AS run
+        ON run.Guid = sr.RunGuid
+       AND run.RowStatus NOT IN (0,254)
+    WHERE sr.RunGuid = @RunGuid
+      AND sr.RowStatus NOT IN (0,254)
+      AND sr.DifferenceType IN (N'Insert', N'Update')
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Metadata_IgnoredRecords AS ignored
+          WHERE ignored.DatabaseName = run.TargetDatabaseName
+            AND ignored.RegistryGuid = sr.RegistryGuid
+            AND ignored.SourceRowGuid = sr.SourceRowGuid
+            AND ignored.RowStatus NOT IN (0,254)
+      )
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Metadata_IdentityMapOverrides AS identityOverride
+          WHERE identityOverride.DatabaseName = run.TargetDatabaseName
+            AND identityOverride.RegistryGuid = sr.RegistryGuid
+            AND identityOverride.SourceRowGuid = sr.SourceRowGuid
+            AND identityOverride.RowStatus NOT IN (0,254)
+      )
+      AND NOT
+      (
+          (tr.SchemaName = N'SCore' AND tr.TableName IN
+          (
+              N'LanguageLabels',
+              N'LanguageLabelTranslations',
+              N'EntityDataTypes',
+              N'EntityTypes',
+              N'EntityHobts',
+              N'EntityPropertyGroups',
+              N'EntityQueries',
+              N'EntityProperties',
+              N'EntityQueryParameters'
+          ))
+          OR
+          (tr.SchemaName = N'SUserInterface' AND tr.TableName IN
+          (
+              N'Icons',
+              N'DropDownListDefinitions',
+              N'GridDefinitions',
+              N'GridViewDefinitions',
+              N'GridViewColumnDefinitions'
+          ))
+      )
+    GROUP BY
+        sr.RegistryGuid,
+        tr.SchemaName,
+        tr.TableName;
 
     SELECT
         @FailCount = SUM(CASE WHEN vi.Severity = N'Fail' THEN 1 ELSE 0 END),

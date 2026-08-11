@@ -215,40 +215,40 @@ public partial class CoreService : Core.Core.CoreBase
     }
 
     [Authorize(Roles = "User.ReadWrite")]
-    public override async Task<ExecuteMenuItemResponse> ExecuteMenuItemPost(ExecuteMenuItemRequest request,
-        ServerCallContext context)
-    {
-        var message = "Exception occurred getting ExecuteMenuItemPost for EntityQueryGuid " + Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid).ToString() +
-                      " - ";
-        try
-        {
-            EF.Types.ExecuteEntityQueryRequest efRequest = new()
-            {
-                EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid),
-                DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject)
-            };
+    //public override async Task<ExecuteMenuItemResponse> ExecuteMenuItemPost(ExecuteMenuItemRequest request,
+    //    ServerCallContext context)
+    //{
+    //    var message = "Exception occurred getting ExecuteMenuItemPost for EntityQueryGuid " + Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid).ToString() +
+    //                  " - ";
+    //    try
+    //    {
+    //        EF.Types.ExecuteEntityQueryRequest efRequest = new()
+    //        {
+    //            EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid),
+    //            DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject)
+    //        };
 
-            var response = _serviceBase._entityFramework.ExecuteEntityQuery(efRequest);
+    //        var response = _serviceBase._entityFramework.ExecuteEntityQuery(efRequest);
 
-            ExecuteMenuItemResponse efResponse = new()
-            {
-                DataObject = Converters.ConvertEfDataObjectToCoreDataObject(response.Result.DataObject),
-                ExitOnSuccess = response.Result == null ? true : response.Result.ExitOnSuccess
-            };
-            if (!string.IsNullOrEmpty(efResponse.DataObject.ErrorReturned))
-            {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, efResponse.DataObject.ErrorReturned));
-            }
-            return efResponse;
-        }
-        catch (Exception ex)
-        {
-            var preMessage = $"Error in ExecuteMenuItemPost: EntityTypeGuid-{request.DataObject.EntityTypeGuid}|Guid-{request.DataObject.Guid}  |  ";
-            _serviceBase.logger.LogException(ex, preMessage);
+    //        ExecuteMenuItemResponse efResponse = new()
+    //        {
+    //            DataObject = Converters.ConvertEfDataObjectToCoreDataObject(response.Result.DataObject),
+    //            ExitOnSuccess = response.Result == null ? true : response.Result.ExitOnSuccess
+    //        };
+    //        if (!string.IsNullOrEmpty(efResponse.DataObject.ErrorReturned))
+    //        {
+    //            throw new RpcException(new Status(StatusCode.FailedPrecondition, efResponse.DataObject.ErrorReturned));
+    //        }
+    //        return efResponse;
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        var preMessage = $"Error in ExecuteMenuItemPost: EntityTypeGuid-{request.DataObject.EntityTypeGuid}|Guid-{request.DataObject.Guid}  |  ";
+    //        _serviceBase.logger.LogException(ex, preMessage);
 
-            return new ExecuteMenuItemResponse() { ErrorReturned = preMessage + ex.Message };
-        }
-    }
+    //        return new ExecuteMenuItemResponse() { ErrorReturned = preMessage + ex.Message };
+    //    }
+    //}
 
     //CBLD-265
     public override async Task<ExecuteGridMenuItemResponse> ExecuteGridMenuAction(ExecuteGridMenuItemRequest request, ServerCallContext context)

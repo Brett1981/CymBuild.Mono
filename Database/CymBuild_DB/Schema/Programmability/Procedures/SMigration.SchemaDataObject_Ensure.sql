@@ -4,7 +4,9 @@ GO
 PRINT (N'Create or alter procedure [SMigration].[SchemaDataObject_Ensure]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[SchemaDataObject_Ensure]
+PRINT (N'Create procedure [SMigration].[SchemaDataObject_Ensure]')
+GO
+CREATE PROCEDURE [SMigration].[SchemaDataObject_Ensure]
 (
     @Guid UNIQUEIDENTIFIER,
     @SchemeName NVARCHAR(255),
@@ -52,7 +54,7 @@ BEGIN
     END;
 
     IF @EntityTypeId IS NULL
-        THROW 51260, 'No active SCore.EntityTypes row exists to support Schema Migration DataObjects creation.', 1;
+        THROW 51354, 'No active SCore.EntityTypes row exists to support Schema Migration DataObjects creation.', 1;
 
     IF NOT EXISTS
     (

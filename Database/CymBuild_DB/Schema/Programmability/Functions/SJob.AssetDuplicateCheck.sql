@@ -3,6 +3,9 @@ GO
 
 PRINT (N'Create function [SJob].[AssetDuplicateCheck]')
 GO
+PRINT (N'Create function [SJob].[AssetDuplicateCheck]')
+GO
+
 /*
 USUAGE:
 
@@ -21,17 +24,17 @@ SELECT
     r.MatchScore,
     r.MatchDetails
 FROM SJob.AssetDuplicateCheck(
-    @Name           = N'Cymru House',
-    @Number         = N'10',
-    @AddressLine1   = N'Cathedral Road',
-    @AddressLine2   = NULL,
-    @AddressLine3   = NULL,
-    @Town           = N'Cardiff',
-    @Postcode       = N'CF11 9LJ',
-    @GovernmentUPRN = N'12345678',
-    @OwnerAccountId = 42,
-    @Latitude       = 51.481583,
-    @Longitude      = -3.190000
+    N'Cymru House',
+    N'10',
+    N'Cathedral Road',
+    NULL,
+    NULL,
+    N'Cardiff',
+    N'CF11 9LJ',
+    N'12345678',
+    42,
+    51.481583,
+    -3.190000
 ) AS r
 ORDER BY r.MatchScore DESC;
 

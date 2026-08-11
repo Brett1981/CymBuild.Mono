@@ -5,6 +5,8 @@ PRINT (N'Create function [SFin].[tvf_AllTransactions]')
 GO
 PRINT (N'Create function [SFin].[tvf_AllTransactions]')
 GO
+PRINT (N'Create function [SFin].[tvf_AllTransactions]')
+GO
 
 /*
     CYB-445 - Minimal Sage Legacy status correction for All Transactions.
@@ -92,6 +94,9 @@ SELECT
       END AS HasSageReference
     , OrgUnit.Name AS Department
     , OrgUnit2.Name AS OrgUnit
+	,j.Number AS JobNumber,
+	j.JobDescription,
+	Prods.Products
 FROM SFin.Transactions AS t
 INNER JOIN SFin.TransactionCalculations AS tc
     ON tc.ID = t.ID
@@ -126,6 +131,21 @@ OUTER APPLY
       AND setr.RowStatus <> 254
     ORDER BY setr.ID DESC
 ) AS legacy
+OUTER APPLY
+	(
+		SELECT STRING_AGG(d.Code, ',') AS Products
+		FROM
+		(
+			SELECT DISTINCT p.Code
+			FROM SSop.QuoteItems qi
+			JOIN SJob.Jobs jobs
+				ON jobs.ID = qi.CreatedJobId
+			LEFT JOIN SProd.Products p
+				ON p.ID = qi.ProductId
+			WHERE qi.RowStatus NOT IN (0,254)
+			  AND jobs.Guid = j.Guid
+		) AS d
+	) AS Prods
 OUTER APPLY
 (
     SELECT
@@ -201,5 +221,62 @@ WHERE t.RowStatus <> 0
           a.Guid,
           @UserId
       ) AS oscr
-  );
+  )
+
+
+UNION ALL
+
+
+SELECT 
+		root_hobt.ID,
+        root_hobt.RowStatus,
+        root_hobt.RowVersion,
+        root_hobt.Guid,
+        root_hobt.InvoiceNumber,
+		root_hobt.InvoiceDate,
+		a.Name AS Account,
+		N'Subcontractor Invoice' AS TransactionType,
+		root_hobt.ValueWithoutVAT AS Net,
+		root_hobt.ValueWithVAT AS Vat,
+		root_hobt.ValueWithVAT AS Gross,
+		0 AS Outstanding,
+		N'' AS SageTransactionReference,
+		N'' AS PurchaseOrderNumber,
+		Surveyor.FullName AS Surveyor,
+		0 AS Batched,
+		N'' AS IsOverdue,
+		N'' AS SageStatusCode,
+		N'' AS HasSageReference,
+		OrgUnit.Name AS Department,
+		OrgUnit2.Name AS OrgUnit,
+		j.Number,
+		j.JobDescription,
+		Prods.Products
+FROM SJob.SubContractorInvoices root_hobt
+JOIN SJob.Jobs j ON (root_hobt.JobId = j.ID)
+JOIN SCore.Identities Surveyor ON (j.SurveyorID = Surveyor.ID)
+JOIN SCore.OrganisationalUnits AS OrgUnit
+    ON OrgUnit.ID = j.OrganisationalUnitID
+JOIN SCore.OrganisationalUnits AS OrgUnit2
+	ON OrgUnit.ParentID = OrgUnit2.ID
+JOIN SCrm.Accounts AS a  ON (a.ID = root_hobt.SubContractorId)
+OUTER APPLY
+	(
+		SELECT STRING_AGG(d.Code, ',') AS Products
+		FROM
+		(
+			SELECT DISTINCT p.Code
+			FROM SSop.QuoteItems qi
+			JOIN SJob.Jobs jobs
+				ON jobs.ID = qi.CreatedJobId
+			LEFT JOIN SProd.Products p
+				ON p.ID = qi.ProductId
+			WHERE qi.RowStatus NOT IN (0,254)
+			  AND jobs.Guid = j.Guid
+		) AS d
+	) AS Prods
+WHERE 
+		(root_hobt.RowStatus NOT IN (0,254))
+	AND (root_hobt.ID > 0)
+	AND (root_hobt.InvoiceDate IS NOT NULL)
 GO

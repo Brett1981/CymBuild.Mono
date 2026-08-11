@@ -13,6 +13,8 @@ PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
 GO
 PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataStage_Run]')
+GO
 
 
 CREATE PROCEDURE [SMigration].[MetadataStage_Run]

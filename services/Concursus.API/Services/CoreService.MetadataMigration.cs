@@ -11,12 +11,19 @@ namespace Concursus.API.Services;
 
 public partial class CoreService
 {
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "User.ReadWrite,SysAdmin")]
     public override async Task<MetadataMigrationRunResponse> MetadataMigrationRunCreate(
         MetadataMigrationRunCreateRequest request,
         ServerCallContext context)
     {
         try
         {
+            var bootstrap = await _migrationBootstrapRepository.EnsureMetadataWorkbenchAsync(
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                request.TargetEnvironment,
+                context.CancellationToken);
+
             await using var templateConnection = await OpenSqlAsync(context.CancellationToken);
             await using var cn = await OpenSqlForServerDatabaseAsync(
                 templateConnection.ConnectionString,
@@ -26,39 +33,97 @@ public partial class CoreService
 
             await ExecuteNonQueryAsync(cn, "SMigration.MetadataRegistry_Seed", context.CancellationToken);
 
-            await using var cmd = new SqlCommand("SMigration.MetadataRun_Create", cn)
+            await using var transaction = (SqlTransaction)await cn
+                .BeginTransactionAsync(context.CancellationToken)
+                .ConfigureAwait(false);
+
+            try
             {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 300
-            };
+                await using var cmd = new SqlCommand("SMigration.MetadataRun_Create", cn, transaction)
+                {
+                    CommandType = CommandType.StoredProcedure,
+                    CommandTimeout = 300
+                };
 
-            var runGuid = Guid.Empty;
+                var runGuid = Guid.Empty;
 
-            cmd.Parameters.Add(new SqlParameter("@SourceEnvironment", SqlDbType.NVarChar, 20) { Value = request.SourceEnvironment ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@TargetEnvironment", SqlDbType.NVarChar, 20) { Value = request.TargetEnvironment ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@SourceServerName", SqlDbType.NVarChar, 255) { Value = request.SourceServerName ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@SourceDatabaseName", SqlDbType.NVarChar, 255) { Value = request.SourceDatabaseName ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@TargetServerName", SqlDbType.NVarChar, 255) { Value = request.TargetServerName ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@TargetDatabaseName", SqlDbType.NVarChar, 255) { Value = request.TargetDatabaseName ?? string.Empty });
-            cmd.Parameters.Add(new SqlParameter("@IsValidateOnly", SqlDbType.Bit) { Value = request.IsValidateOnly });
+                cmd.Parameters.Add(new SqlParameter("@SourceEnvironment", SqlDbType.NVarChar, 20) { Value = request.SourceEnvironment ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@TargetEnvironment", SqlDbType.NVarChar, 20) { Value = request.TargetEnvironment ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@SourceServerName", SqlDbType.NVarChar, 255) { Value = request.SourceServerName ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@SourceDatabaseName", SqlDbType.NVarChar, 255) { Value = request.SourceDatabaseName ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@TargetServerName", SqlDbType.NVarChar, 255) { Value = request.TargetServerName ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@TargetDatabaseName", SqlDbType.NVarChar, 255) { Value = request.TargetDatabaseName ?? string.Empty });
+                cmd.Parameters.Add(new SqlParameter("@IsValidateOnly", SqlDbType.Bit) { Value = request.IsValidateOnly });
 
-            var runGuidParameter = new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier)
-            {
-                Direction = ParameterDirection.Output
-            };
-            cmd.Parameters.Add(runGuidParameter);
+                var runGuidParameter = new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier)
+                {
+                    Direction = ParameterDirection.Output
+                };
+                cmd.Parameters.Add(runGuidParameter);
 
-            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+                await cmd.ExecuteNonQueryAsync(context.CancellationToken);
 
-            if (runGuidParameter.Value is Guid parsedRunGuid)
-            {
-                runGuid = parsedRunGuid;
+                if (runGuidParameter.Value is Guid parsedRunGuid)
+                {
+                    runGuid = parsedRunGuid;
+                }
+
+                if (runGuid == Guid.Empty)
+                {
+                    throw new InvalidOperationException("Metadata run creation returned an empty run Guid.");
+                }
+
+                if (bootstrap.WasApplied)
+                {
+                    await AddExecutionLogAsync(
+                        cn,
+                        transaction,
+                        runGuid,
+                        "BootstrapTarget",
+                        "Applied",
+                        "Metadata Migration target prerequisites were installed from source-controlled SQL.",
+                        JsonSerializer.Serialize(new
+                        {
+                            bootstrap.BootstrapKind,
+                            bootstrap.EnvironmentName,
+                            DatabaseRole = "Target",
+                            bootstrap.ServerName,
+                            bootstrap.DatabaseName,
+                            bootstrap.MissingBefore,
+                            bootstrap.MissingAfter,
+                            bootstrap.InstalledObjects,
+                            bootstrap.ScriptSha256
+                        }),
+                        context.CancellationToken);
+                }
+
+                await transaction.CommitAsync(context.CancellationToken).ConfigureAwait(false);
+
+                return new MetadataMigrationRunResponse
+                {
+                    Run = await ReadRunSummaryAsync(cn, runGuid, context.CancellationToken)
+                };
             }
-
-            return new MetadataMigrationRunResponse
+            catch
             {
-                Run = await ReadRunSummaryAsync(cn, runGuid, context.CancellationToken)
-            };
+                try
+                {
+                    if (transaction.Connection is not null)
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // SQL Server already completed or rolled back the transaction.
+                }
+
+                throw;
+            }
+        }
+        catch (Concursus.EF.MigrationBootstrapRepository.MigrationBootstrapException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
         }
         catch (SqlException ex)
         {
@@ -70,10 +135,24 @@ public partial class CoreService
         }
     }
 
+    [Microsoft.AspNetCore.Authorization.Authorize(Roles = "User.ReadWrite,SysAdmin")]
     public override async Task<MetadataMigrationRunsResponse> MetadataMigrationRuns(
         MetadataMigrationRunsRequest request,
         ServerCallContext context)
     {
+        try
+        {
+            await _migrationBootstrapRepository.EnsureMetadataWorkbenchAsync(
+                request.TargetServerName,
+                request.TargetDatabaseName,
+                string.Empty,
+                context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Concursus.EF.MigrationBootstrapRepository.MigrationBootstrapException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+
         var response = new MetadataMigrationRunsResponse();
         var top = request.Top <= 0 ? 50 : Math.Min(request.Top, 200);
 
@@ -508,18 +587,13 @@ ORDER BY r.ID DESC;", cn)
 
         try
         {
-            await using var cn = await OpenTargetSqlFromApplyRequestAsync(request, context.CancellationToken);
-            await using var cmd = new SqlCommand("SMigration.MetadataApply_Run", cn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 600
-            };
-
-            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
-            cmd.Parameters.Add(new SqlParameter("@ForceApply", SqlDbType.Bit) { Value = request.ForceApply });
-            cmd.Parameters.Add(new SqlParameter("@ApplySelectedOnly", SqlDbType.Bit) { Value = request.ApplySelectedOnly });
-
-            await cmd.ExecuteNonQueryAsync(context.CancellationToken);
+            await _metadataMigrationRepository.ApplyAsync(
+                runGuid,
+                request.ForceApply,
+                request.ApplySelectedOnly,
+                request.TargetServerName ?? string.Empty,
+                request.TargetDatabaseName ?? string.Empty,
+                context.CancellationToken).ConfigureAwait(false);
 
             return new MetadataMigrationApplyResponse
             {
@@ -531,6 +605,14 @@ ORDER BY r.ID DESC;", cn)
         catch (SqlException ex)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata apply SQL failed: {ex.Message}"));
+        }
+        catch (Concursus.EF.MetadataMigrationRepository.MetadataMigrationDriftException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
         }
     }
 
@@ -547,38 +629,39 @@ ORDER BY r.ID DESC;", cn)
 
         try
         {
-            await using var cn = await OpenTargetSqlFromApplyPreviewRequestAsync(request, context.CancellationToken);
-            await using var cmd = new SqlCommand("SMigration.MetadataApplyPreview_Get", cn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 300
-            };
+            var preview = await _metadataMigrationRepository.GetApplyPreviewAsync(
+                runGuid,
+                request.ApplySelectedOnly,
+                request.IncludeIgnored,
+                request.TargetServerName ?? string.Empty,
+                request.TargetDatabaseName ?? string.Empty,
+                context.CancellationToken).ConfigureAwait(false);
 
-            cmd.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
-            cmd.Parameters.Add(new SqlParameter("@ApplySelectedOnly", SqlDbType.Bit) { Value = request.ApplySelectedOnly });
-            cmd.Parameters.Add(new SqlParameter("@IncludeIgnored", SqlDbType.Bit) { Value = request.IncludeIgnored });
-
-            await using var reader = await cmd.ExecuteReaderAsync(context.CancellationToken);
-            while (await reader.ReadAsync(context.CancellationToken))
+            foreach (var previewRow in preview.Rows)
             {
                 var row = new MetadataMigrationApplyPreviewRow
                 {
-                    SchemaName = Convert.ToString(reader["SchemaName"]) ?? string.Empty,
-                    TableName = Convert.ToString(reader["TableName"]) ?? string.Empty,
-                    SourceRowGuid = Convert.ToString(reader["SourceRowGuid"]) ?? string.Empty,
-                    SourceRowId = Convert.ToInt64(reader["SourceRowId"]),
-                    DifferenceType = Convert.ToString(reader["DifferenceType"]) ?? string.Empty,
-                    IsSelected = Convert.ToBoolean(reader["IsSelected"]),
-                    IsIgnored = Convert.ToBoolean(reader["IsIgnored"]),
-                    HasValidationFailure = Convert.ToBoolean(reader["HasValidationFailure"]),
-                    ApplyAction = Convert.ToString(reader["ApplyAction"]) ?? string.Empty,
-                    SkipReason = Convert.ToString(reader["SkipReason"]) ?? string.Empty,
-                    ChangedColumns = Convert.ToString(reader["ChangedColumns"]) ?? string.Empty,
-                    RunValidationFailureCount = Convert.ToInt32(reader["RunValidationFailureCount"])
+                    SchemaName = previewRow.SchemaName,
+                    TableName = previewRow.TableName,
+                    SourceRowGuid = previewRow.SourceRowGuid.ToString(),
+                    SourceRowId = previewRow.SourceRowId,
+                    DifferenceType = previewRow.DifferenceType,
+                    IsSelected = previewRow.IsSelected,
+                    IsIgnored = previewRow.IsIgnored,
+                    HasValidationFailure = previewRow.HasValidationFailure,
+                    ApplyAction = previewRow.ApplyAction,
+                    SkipReason = previewRow.SkipReason,
+                    ChangedColumns = previewRow.ChangedColumns,
+                    RunValidationFailureCount = previewRow.RunValidationFailureCount
                 };
 
                 response.Rows.Add(row);
             }
+
+            response.PreviewFingerprint = preview.PreviewFingerprint;
+            response.IsAccepted = preview.IsAccepted;
+            response.AcceptedOnUtc = preview.AcceptedOnUtc;
+            response.AcceptedByUserId = preview.AcceptedByUserId;
 
             response.ApplyCount = response.Rows.Count(row => row.ApplyAction.Equals("Apply", StringComparison.OrdinalIgnoreCase));
             response.BlockedCount = response.Rows.Count(row => row.ApplyAction.Equals("Blocked", StringComparison.OrdinalIgnoreCase));
@@ -591,6 +674,67 @@ ORDER BY r.ID DESC;", cn)
         catch (SqlException ex)
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata apply preview SQL failed: {ex.Message}"));
+        }
+        catch (Concursus.EF.MetadataMigrationRepository.MetadataMigrationDriftException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+    }
+
+    public override async Task<MetadataMigrationApplyPreviewAcceptResponse> MetadataMigrationApplyPreviewAccept(
+        MetadataMigrationApplyPreviewAcceptRequest request,
+        ServerCallContext context)
+    {
+        var runGuid = ParseGuid(request.RunGuid, "runGuid");
+
+        try
+        {
+            var result = await _metadataMigrationRepository.AcceptApplyPreviewAsync(
+                runGuid,
+                request.ApplySelectedOnly,
+                request.ExpectedPreviewFingerprint ?? string.Empty,
+                request.TargetServerName ?? string.Empty,
+                request.TargetDatabaseName ?? string.Empty,
+                context.CancellationToken).ConfigureAwait(false);
+
+            return new MetadataMigrationApplyPreviewAcceptResponse
+            {
+                IsAccepted = result.IsAccepted,
+                ApplySelectedOnly = result.ApplySelectedOnly,
+                PreviewFingerprint = result.PreviewFingerprint,
+                ApplyCount = result.ApplyCount,
+                AcceptedOnUtc = result.AcceptedOnUtc,
+                AcceptedByUserId = result.AcceptedByUserId,
+                Message = result.Message
+            };
+        }
+        catch (SqlException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Metadata apply preview acceptance SQL failed: {ex.Message}"));
+        }
+        catch (Concursus.EF.MetadataMigrationRepository.MetadataMigrationDriftException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message));
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var message = ex.InnerException is null
+                ? ex.Message
+                : $"{ex.Message} Inner: {ex.InnerException.Message}";
+
+            throw new RpcException(new Status(StatusCode.Internal, $"Metadata apply preview acceptance failed: {message}"));
         }
     }
 
@@ -1187,32 +1331,6 @@ ORDER BY r.ID DESC;", cn)
             request.TargetDatabaseName,
             cancellationToken);
     }
-
-
-    private async Task<SqlConnection> OpenTargetSqlFromApplyPreviewRequestAsync(
-        MetadataMigrationApplyPreviewRequest request,
-        CancellationToken cancellationToken)
-    {
-        await using var templateConnection = await OpenSqlAsync(cancellationToken);
-        return await OpenSqlForServerDatabaseAsync(
-            templateConnection.ConnectionString,
-            request.TargetServerName,
-            request.TargetDatabaseName,
-            cancellationToken);
-    }
-
-    private async Task<SqlConnection> OpenTargetSqlFromApplyRequestAsync(
-        MetadataMigrationApplyRequest request,
-        CancellationToken cancellationToken)
-    {
-        await using var templateConnection = await OpenSqlAsync(cancellationToken);
-        return await OpenSqlForServerDatabaseAsync(
-            templateConnection.ConnectionString,
-            request.TargetServerName,
-            request.TargetDatabaseName,
-            cancellationToken);
-    }
-
     private async Task<SqlConnection> OpenTargetSqlFromSelectionClearRequestAsync(
         MetadataMigrationSelectionClearRequest request,
         CancellationToken cancellationToken)
@@ -2853,4 +2971,3 @@ ORDER BY el.ID;", cn)
         }
     }
 }
-

@@ -5,6 +5,8 @@ PRINT (N'Create function [SJob].[tvf_SubcontractorInvoices]')
 GO
 PRINT (N'Create function [SJob].[tvf_SubcontractorInvoices]')
 GO
+PRINT (N'Create function [SJob].[tvf_SubcontractorInvoices]')
+GO
 CREATE FUNCTION [SJob].[tvf_SubcontractorInvoices]
 (
 	@UserId INT,
@@ -22,7 +24,7 @@ RETURN
 				si.RowVersion,
 				si.RowStatus,
 				CASE 
-					WHEN (si.SubContractorName = N'' AND si.SubContractorId = -1 ) THEN acc.Name ELSE si.SubContractorName
+					WHEN (si.SubContractorName = N'' AND si.SubContractorId <> -1 ) THEN acc.Name ELSE si.SubContractorName
 				END AS SubContractorName,
 				--si.SubContractorName,
 				si.DescriptionOfWork,

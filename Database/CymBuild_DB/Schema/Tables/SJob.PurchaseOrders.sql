@@ -1,5 +1,7 @@
 ﻿PRINT (N'Create table [SJob].[PurchaseOrders]')
 GO
+PRINT (N'Create table [SJob].[PurchaseOrders]')
+GO
 CREATE TABLE [SJob].[PurchaseOrders] (
   [ID] [bigint] IDENTITY,
   [RowStatus] [tinyint] NOT NULL CONSTRAINT [DF_PurchaseOrders_RowStatus] DEFAULT (0),
@@ -13,7 +15,8 @@ CREATE TABLE [SJob].[PurchaseOrders] (
   [DateReceived] [date] NULL,
   [ValidUntilDate] [date] NULL,
   [ActivityId] [bigint] NOT NULL CONSTRAINT [DF_PurchaseOrders_ActivityId] DEFAULT (-1),
-  [JobId] [int] NOT NULL CONSTRAINT [DF_PurchaseOrders_JobId] DEFAULT (-1)
+  [JobId] [int] NOT NULL CONSTRAINT [DF_PurchaseOrders_JobId] DEFAULT (-1),
+  [InvoiceRequestId] [int] NOT NULL CONSTRAINT [DF_PurchaseOrders_InvoiceRequestId] DEFAULT (-1)
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
@@ -300,6 +303,12 @@ PRINT (N'Disable foreign key [FK_PurchaseOrders_DataObjects] on table [SJob].[Pu
 GO
 ALTER TABLE [SJob].[PurchaseOrders]
   NOCHECK CONSTRAINT [FK_PurchaseOrders_DataObjects]
+GO
+
+PRINT (N'Create foreign key [FK_PurchaseOrders_InvoiceRequestId] on table [SJob].[PurchaseOrders]')
+GO
+ALTER TABLE [SJob].[PurchaseOrders] WITH NOCHECK
+  ADD CONSTRAINT [FK_PurchaseOrders_InvoiceRequestId] FOREIGN KEY ([InvoiceRequestId]) REFERENCES [SFin].[InvoiceRequests] ([ID])
 GO
 
 PRINT (N'Create foreign key [FK_PurchaseOrders_JobId] on table [SJob].[PurchaseOrders]')

@@ -12,6 +12,8 @@ PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
 GO
 PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataApplyIdentityMap_Build]')
+GO
 
 CREATE PROCEDURE [SMigration].[MetadataApplyIdentityMap_Build]
 (

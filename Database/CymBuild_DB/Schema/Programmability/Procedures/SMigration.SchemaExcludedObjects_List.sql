@@ -4,7 +4,9 @@ GO
 PRINT (N'Create or alter procedure [SMigration].[SchemaExcludedObjects_List]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[SchemaExcludedObjects_List]
+PRINT (N'Create procedure [SMigration].[SchemaExcludedObjects_List]')
+GO
+CREATE PROCEDURE [SMigration].[SchemaExcludedObjects_List]
 (
     @IncludeInactive BIT = 0
 )
@@ -41,5 +43,5 @@ BEGIN
         excluded.[SchemaName],
         excluded.[ObjectName],
         excluded.[ParentObjectName];
-END
+END;
 GO

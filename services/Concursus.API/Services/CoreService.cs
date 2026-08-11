@@ -16,6 +16,8 @@ using Concursus.Common.Shared.Monitoring;
 using Concursus.EF.Finance;
 using Concursus_EF;
 using DocumentFormat.OpenXml.ExtendedProperties;
+using MetadataMigrationRepository = Concursus.EF.MetadataMigrationRepository;
+using MigrationBootstrapRepository = Concursus.EF.MigrationBootstrapRepository;
 
 //using Concursus.EF.Types;
 using Google.Protobuf.Collections;
@@ -26,6 +28,7 @@ using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using static Concursus.Common.Shared.Enums;
 
 namespace Concursus.API.Services;
@@ -45,6 +48,8 @@ public partial class CoreService : Core.Core.CoreBase
     private readonly IDelegatedGraphClientFactory _delegatedGraphClientFactory;
     private readonly ISageInboundPaymentSyncService _sageInboundPaymentSyncService;
     private readonly ISageInboundDiagnosticsRepository _sageInboundDiagnosticsRepository;
+    private readonly MetadataMigrationRepository _metadataMigrationRepository;
+    private readonly MigrationBootstrapRepository _migrationBootstrapRepository;
     private readonly IAIAssistantAnswerService? _aiAssistantAnswerService;
     private readonly IBlueGenClient? _blueGenClient;
     private readonly IMemoryCache _memoryCache;
@@ -71,6 +76,8 @@ public partial class CoreService : Core.Core.CoreBase
         IDelegatedGraphClientFactory delegatedGraphClientFactory,
         ISageInboundPaymentSyncService sageInboundPaymentSyncService,
         ISageInboundDiagnosticsRepository sageInboundDiagnosticsRepository,
+        MetadataMigrationRepository metadataMigrationRepository,
+        MigrationBootstrapRepository migrationBootstrapRepository,
         IMemoryCache memoryCache,
         IAIAssistantAnswerService? aiAssistantAnswerService = null,
         IBlueGenClient? blueGenClient = null
@@ -86,6 +93,8 @@ public partial class CoreService : Core.Core.CoreBase
         _delegatedGraphClientFactory = delegatedGraphClientFactory ?? throw new ArgumentNullException(nameof(delegatedGraphClientFactory));
         _sageInboundPaymentSyncService = sageInboundPaymentSyncService ?? throw new ArgumentNullException(nameof(sageInboundPaymentSyncService));
         _sageInboundDiagnosticsRepository = sageInboundDiagnosticsRepository ?? throw new ArgumentNullException(nameof(sageInboundDiagnosticsRepository));
+        _metadataMigrationRepository = metadataMigrationRepository ?? throw new ArgumentNullException(nameof(metadataMigrationRepository));
+        _migrationBootstrapRepository = migrationBootstrapRepository ?? throw new ArgumentNullException(nameof(migrationBootstrapRepository));
         _aiAssistantAnswerService = aiAssistantAnswerService;
         _blueGenClient = blueGenClient;
         _memoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
@@ -652,6 +661,220 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
 
+
+
+    public override async Task<QuoteCreateJobsStageScheduleValidationGetResponse> QuoteCreateJobsStageScheduleValidationGet(
+    QuoteCreateJobsStageScheduleValidationGetRequest request,
+    ServerCallContext context)
+    {
+        var response = new QuoteCreateJobsStageScheduleValidationGetResponse();
+
+        try
+        {
+            var quoteGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.QuoteGuid);
+            var findings = await _serviceBase._entityFramework.QuoteCreateJobsStageScheduleValidationGetAsync(
+                    quoteGuid,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var finding in findings)
+            {
+                response.Findings.Add(new QuoteCreateJobsStageScheduleValidationFinding
+                {
+                    SeverityCode = finding.SeverityCode ?? string.Empty,
+                    ValidationCode = finding.ValidationCode ?? string.Empty,
+                    QuoteItemStageId = finding.QuoteItemStageId,
+                    InvoiceScheduleId = finding.InvoiceScheduleId,
+                    StageName = finding.StageName ?? string.Empty,
+                    QuoteItemStageTotal = Convert.ToDouble(finding.QuoteItemStageTotal),
+                    InvoiceScheduleStageTotal = Convert.ToDouble(finding.InvoiceScheduleStageTotal ?? 0m),
+                    HasInvoiceScheduleStageTotal = finding.InvoiceScheduleStageTotal.HasValue,
+                    Message = finding.Message ?? string.Empty
+                });
+            }
+
+            response.HasBlockingFindings = findings.Any(f => string.Equals(f.SeverityCode, "B", StringComparison.OrdinalIgnoreCase));
+            response.RequiresConfirmation = findings.Any(f =>
+                string.Equals(f.SeverityCode, "W", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(f.ValidationCode, "QuoteItemStageMissingFromInvoiceSchedule", StringComparison.OrdinalIgnoreCase));
+
+            var blockingFindings = findings
+                .Where(f => string.Equals(f.SeverityCode, "B", StringComparison.OrdinalIgnoreCase))
+                .Select(f => $"{f.StageName}: quote item total {f.QuoteItemStageTotal:N2}, invoice schedule total {(f.InvoiceScheduleStageTotal.HasValue ? f.InvoiceScheduleStageTotal.Value.ToString("N2") : "not entered")}")
+                .ToList();
+
+            if (blockingFindings.Count > 0)
+            {
+                response.BlockingMessage = "The total of the Invoice Schedule must be equal to the total of the Quote Item(s) before conversion to a Job. Please correct the following total(s): "
+                    + string.Join("; ", blockingFindings);
+            }
+
+            var missingStages = findings
+                .Where(f => string.Equals(f.SeverityCode, "W", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(f.ValidationCode, "QuoteItemStageMissingFromInvoiceSchedule", StringComparison.OrdinalIgnoreCase))
+                .Select(f => f.StageName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (missingStages.Count > 0)
+            {
+                response.PromptMessage = "The quote item stage is not in the Invoice schedule, do you want to continue?"
+                    + Environment.NewLine
+                    + Environment.NewLine
+                    + "Missing stage(s): "
+                    + string.Join(", ", missingStages);
+            }
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "QuoteCreateJobsStageScheduleValidationGet failed.");
+            response.ErrorReturned = ex.Message;
+            return response;
+        }
+    }
+
+    public override async Task<ExecuteMenuItemResponse> ExecuteMenuItemPost(
+        ExecuteMenuItemRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            var executeResponse = await _serviceBase._entityFramework.ExecuteEntityQuery(
+                    new EF.Types.ExecuteEntityQueryRequest
+                    {
+                        EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid),
+                        DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject)
+                    },
+                    request.AllowQuoteItemStageFallback)
+                .ConfigureAwait(false);
+
+            var responseDataObject = executeResponse?.DataObject ?? new EF.Types.DataObject();
+
+            return new ExecuteMenuItemResponse
+            {
+                DataObject = Converters.ConvertEfDataObjectToCoreDataObject(responseDataObject),
+                ErrorReturned = responseDataObject.ErrorReturned ?? string.Empty,
+                ExitOnSuccess = false
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "ExecuteMenuItemPost failed.");
+
+            return new ExecuteMenuItemResponse
+            {
+                DataObject = request.DataObject ?? new DataObject(),
+                ErrorReturned = ex.Message,
+                ExitOnSuccess = false
+            };
+        }
+    }
+
+
+
+    public override async Task<InvoiceScheduleMonthlySeriesGenerateResponse> InvoiceScheduleMonthlySeriesGenerate(
+        InvoiceScheduleMonthlySeriesGenerateRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.InvoiceScheduleGuid, out var invoiceScheduleGuid) ||
+                invoiceScheduleGuid == Guid.Empty)
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "Invoice schedule guid is required."
+                };
+            }
+
+            if (!DateOnly.TryParseExact(
+                    request.StartDate,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var startDate))
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "Start date must be a valid yyyy-MM-dd date."
+                };
+            }
+
+            if (!DateOnly.TryParseExact(
+                    request.EndDate,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var endDate))
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "End date must be a valid yyyy-MM-dd date."
+                };
+            }
+
+            if (startDate > endDate)
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "Start date must be before or equal to end date."
+                };
+            }
+
+            if (!decimal.TryParse(
+                    request.TotalValueNet,
+                    NumberStyles.Number,
+                    CultureInfo.InvariantCulture,
+                    out var totalValueNet) ||
+                totalValueNet <= 0m)
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResponse
+                {
+                    Success = false,
+                    ErrorReturned = "Total value must be greater than zero."
+                };
+            }
+
+            _serviceBase.logger.LogInformation(
+                $"GenerateMonthlySeries: schedule={invoiceScheduleGuid}, start={startDate}, end={endDate}, total={totalValueNet}, overwrite={request.OverwriteExisting}");
+
+            var result = await _serviceBase._entityFramework
+                .InvoiceScheduleMonthlySeriesGenerateAsync(
+                    invoiceScheduleGuid,
+                    startDate,
+                    endDate,
+                    totalValueNet,
+                    request.OverwriteExisting,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new InvoiceScheduleMonthlySeriesGenerateResponse
+            {
+                Success = true,
+                InsertedCount = result.InsertedCount,
+                MonthsCount = result.MonthsCount,
+                Message = $"Generated {result.InsertedCount} monthly periods.",
+                ErrorReturned = string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "InvoiceScheduleMonthlySeriesGenerate failed.");
+
+            return new InvoiceScheduleMonthlySeriesGenerateResponse
+            {
+                Success = false,
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
     public override async Task<InvoiceScheduleConfigurationTotalsGetResponse> InvoiceScheduleConfigurationTotalsGet(
     InvoiceScheduleConfigurationTotalsGetRequest request,
     ServerCallContext context)
@@ -672,7 +895,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                 : _serviceBase._userId;
 
             var totals = await _serviceBase._entityFramework
-                .GetInvoiceScheduleConfigurationTotalsAsync(
+               .GetInvoiceScheduleConfigurationTotalsAsync(
                     userId,
                     invoiceScheduleGuid,
                     context.CancellationToken)

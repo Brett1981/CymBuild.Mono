@@ -120,6 +120,8 @@ try
 
         return new Concursus.EF.Core(connectionString, user);
     });
+    builder.Services.AddScoped<MetadataMigrationRepository>();
+    builder.Services.AddScoped<MigrationBootstrapRepository>();
 
     // -------------------------------------------------------------------------
     // Lower-level Sage API client registration

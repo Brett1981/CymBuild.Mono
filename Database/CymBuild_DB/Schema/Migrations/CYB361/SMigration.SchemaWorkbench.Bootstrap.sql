@@ -6,9 +6,9 @@
       Schema Migration workbench and controlled deployment runner.
 
     Governance:
-      - Run only through tools/SchemaDeployment/Initialize-CymBuildSchemaMigration.ps1
-        or the future controlled deployment worker.
-      - Do not execute from the Blazor browser session.
+      - Run only through the controlled API/EF bootstrap path, the Schema
+        Deployment initializer, or an approved deployment worker.
+      - The Blazor browser never receives DDL or direct database access.
       - Existing incompatible objects are rejected rather than altered or replaced.
       - No business data or workflow status is changed.
 */
@@ -29,7 +29,7 @@ GO
 
 IF SCHEMA_ID(N'SMigration') IS NULL
 BEGIN
-    EXEC sys.sp_executesql N'CREATE SCHEMA [SMigration];';
+    EXEC sys.sp_executesql N'CREATE SCHEMA [SMigration] AUTHORIZATION [dbo];';
 END;
 GO
 

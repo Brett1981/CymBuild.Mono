@@ -280,7 +280,13 @@
     private bool HasApplyPreview => ApplyPreview is not null;
     private bool IsApplyPreviewBlocked => ApplyPreviewBlockedCount > 0 || (ApplyPreview?.RunValidationFailureCount ?? 0) > 0;
     private bool CanConfirmApplyPreview => HasApplyPreview && !IsApplyPreviewBlocked && ApplyPreviewApplyCount > 0;
+    private bool CanAcceptApplyPreview => CanConfirmApplyPreview
+        && !ApplyPreviewReviewed
+        && (ApplyPreview?.PreviewFingerprint?.Length ?? 0) == 64;
     private string ApplyPreviewGeneratedOnText => ApplyPreviewGeneratedOn?.ToString("dd/MM/yyyy HH:mm:ss") ?? "-";
+    private string ApplyPreviewAcceptedOnText => string.IsNullOrWhiteSpace(ApplyPreview?.AcceptedOnUtcText)
+        ? "-"
+        : ApplyPreview.AcceptedOnUtcText;
     private string EntityTypeScopeServerName => EntityTypeScopeSelectedDatabase.Equals(EntityTypeScopeTargetDatabase, StringComparison.OrdinalIgnoreCase) ? TargetServerName : SourceServerName;
     private string EntityTypeScopeDatabaseName => EntityTypeScopeSelectedDatabase.Equals(EntityTypeScopeTargetDatabase, StringComparison.OrdinalIgnoreCase) ? TargetDatabaseName : SourceDatabaseName;
     private int ActionableDifferenceCount => InsertCount + UpdateCount;
@@ -390,7 +396,7 @@
 
         if (!ApplyPreviewReviewed)
         {
-            return "Tick the review confirmation before applying.";
+            return "Accept the reviewed preview for deployment before applying.";
         }
 
         return "Ready to apply.";
@@ -1284,11 +1290,12 @@
                 <span class="bi bi-clipboard-check"></span>
                 <div>
                     <label class="metadata-apply-review-check">
-                        <input type="checkbox" @bind="ApplyPreviewReviewed" disabled="@(!CanConfirmApplyPreview)" />
-                        <span>I have reviewed this @(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records") preview and confirm it is ready to apply.</span>
+                        <input type="checkbox" checked="@ApplyPreviewReviewed" disabled />
+                        <span>This exact @(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records") preview is accepted for deployment on the server.</span>
                     </label>
-                    <small>Preview generated: @ApplyPreviewGeneratedOnText. Any stage, validation, selection, ignore or scope change clears this confirmation.</small>
+                    <small>Preview generated: @ApplyPreviewGeneratedOnText. Accepted: @ApplyPreviewAcceptedOnText. Any stage, validation, selection, ignore, override, payload or scope change invalidates this acceptance.</small>
                 </div>
+                <button type="button" class="cb-v2-btn-primary compact" @onclick="AcceptApplyPreviewAsync" disabled="@(IsBusy || !CanAcceptApplyPreview)">Accept for Deployment</button>
             </div>
         }
         else
@@ -1688,7 +1695,7 @@
         <div class="metadata-section-header">
             <div>
                 <h2>Rules & Automation Impact</h2>
-                <p>Review which workbench decisions are temporary UI checks and which persistent rules can affect future metadata runs.</p>
+                <p>Review which workbench decisions are guidance, which are server-enforced run gates and which persistent rules affect future metadata runs.</p>
             </div>
             <div class="metadata-section-actions">
                 <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => SelectSectionAsync(SectionSetup))" disabled="@IsBusy">EntityType Scope</button>
@@ -1700,7 +1707,7 @@
 
         <div class="metadata-notice metadata-notice-info">
             <span class="bi bi-info-circle"></span>
-            <span>The workbench is a DEV/QA/admin tool for analysis and controlled preparation. Automated CI/CD should still use the backend metadata validate/apply path directly; UI review buttons do not block automation unless we explicitly wire CI/CD to check them.</span>
+            <span>The workbench is a DEV/QA/admin tool for analysis and controlled preparation. Automated CI/CD must use the backend preview, acceptance and apply service path; Apply now rejects any scope that does not match a current server-side accepted fingerprint.</span>
         </div>
 
         <div class="metadata-rules-grid">
@@ -1738,7 +1745,7 @@
             </div>
 
             <div class="metadata-step-list">
-                <h3>Run-specific UI checks</h3>
+                <h3>Run-specific checks</h3>
                 <table class="metadata-table compact">
                     <thead><tr><th>Check</th><th>Scope</th><th>Automation impact</th></tr></thead>
                     <tbody>
@@ -1749,8 +1756,8 @@
                         </tr>
                         <tr>
                             <td>Apply preview confirmation</td>
-                            <td>Current browser/session/run</td>
-                            <td>UI safety gate only. Backend apply remains procedure-driven.</td>
+                            <td>Current run, scope and fingerprint</td>
+                            <td>Persisted in the migration execution log and enforced again by backend Apply.</td>
                         </tr>
                         <tr>
                             <td>Run readiness cards</td>
@@ -2051,6 +2058,10 @@
                 generatedOn = ApplyPreviewGeneratedOnText,
                 selectedOnly = ApplyPreview.ApplySelectedOnly,
                 reviewed = ApplyPreviewReviewed,
+                acceptedForDeployment = ApplyPreviewReviewed,
+                previewFingerprint = ApplyPreview.PreviewFingerprint,
+                acceptedOnUtc = ApplyPreview.AcceptedOnUtcText,
+                acceptedByUserId = ApplyPreview.AcceptedByUserId,
                 apply = ApplyPreview.ApplyCount,
                 skipped = ApplyPreview.SkipCount,
                 blocked = ApplyPreview.BlockedCount,
@@ -2267,7 +2278,7 @@
         builder.AppendLine(ApplyPreview is null
             ? "- [ ] Generate and review an apply preview before release artefacts are committed."
             : $"- [ ] Preview generated for {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}: {ApplyPreviewApplyCount} apply, {ApplyPreviewSkipCount} skipped, {ApplyPreviewBlockedCount} blocked.");
-        builder.AppendLine($"- [ ] Preview reviewed in workbench: {(ApplyPreviewReviewed ? "Yes" : "No")}");
+        builder.AppendLine($"- [ ] Exact preview fingerprint accepted for deployment on the server: {(ApplyPreviewReviewed ? "Yes" : "No")}");
         builder.AppendLine();
         builder.AppendLine("## Persistent decisions to capture in source control");
         builder.AppendLine();
@@ -2310,7 +2321,8 @@
         builder.AppendLine("-- Intended automated deployment sequence:");
         builder.AppendLine("--   1. Schema deploy using idempotent SQL.");
         builder.AppendLine("--   2. Metadata validate using the backend/CLI metadata validation path.");
-        builder.AppendLine("--   3. Metadata apply using the backend/CLI metadata apply path.");
+        builder.AppendLine("--   3. Metadata preview and acceptance using the backend service path.");
+        builder.AppendLine("--   4. Metadata apply using the backend/CLI metadata apply path.");
         builder.AppendLine();
         builder.AppendLine("-- Workbench run summary:");
         builder.AppendLine($"--   Inserts: {InsertCount}");
@@ -2325,9 +2337,9 @@
         builder.AppendLine("--   * Convert intended ignored records or map overrides into explicit deployment artefacts where they must affect CI/CD.");
         builder.AppendLine("--   * Do not rely on direct LIVE database edits.");
         builder.AppendLine();
-        builder.AppendLine("-- Non-executing reference only:");
-        builder.AppendLine($"-- EXEC SMigration.MetadataApplyPreview_Get @RunGuid = '{(HasRunGuid ? RunGuidText : "00000000-0000-0000-0000-000000000000")}', @ApplySelectedOnly = 0, @IncludeIgnored = 1;");
-        builder.AppendLine($"-- EXEC SMigration.MetadataApply_Run @RunGuid = '{(HasRunGuid ? RunGuidText : "00000000-0000-0000-0000-000000000000")}', @ForceApply = {(ForceApply ? 1 : 0)}, @ApplySelectedOnly = 0;");
+        builder.AppendLine("-- Direct SQL preview, acceptance and Apply are intentionally unsupported.");
+        builder.AppendLine("-- The controlled FormHelper -> gRPC -> EF path must re-read and lock the approved source/target snapshots.");
+        builder.AppendLine($"-- RunGuid for the controlled deployment runner: {(HasRunGuid ? RunGuidText : "<none>")}");
         return builder.ToString();
     }
     private IReadOnlyList<MetadataAuditTimelineRow> BuildAuditTimelineRows()
@@ -2470,7 +2482,7 @@
             new()
             {
                 Area = "Preview",
-                Check = "Apply preview has been generated and reviewed before manual apply.",
+                Check = "The exact apply preview fingerprint has been accepted for deployment on the server.",
                 StatusText = ApplyPreviewReviewed ? "Pass" : ApplyPreview is null ? "Pending" : "Review",
                 Tone = ApplyPreviewReviewed ? "ready" : ApplyPreview is null ? "warning" : "info",
                 Evidence = ApplyPreview is null ? "No preview generated." : ApplyPreviewSummaryText(),
@@ -2488,7 +2500,7 @@
             new()
             {
                 Area = "Apply",
-                Check = "Manual apply remains guarded by validation, preview confirmation and environment controls.",
+                Check = "Apply remains guarded by validation, server-side preview acceptance and environment controls.",
                 StatusText = HasAppliedRun ? "Applied" : CanApply || CanApplySelected ? "Ready" : "Guarded",
                 Tone = HasAppliedRun ? "ready" : CanApply || CanApplySelected ? "ready" : "info",
                 Evidence = ApplyPreviewRequiredText(ApplyPreview?.ApplySelectedOnly ?? false),
@@ -2590,10 +2602,10 @@
             new()
             {
                 Name = "UI review gates",
-                Status = "UI only",
-                Tone = "info",
-                Detail = "Preview confirmation, readiness cards and Mark Reviewed are workbench controls/audit aids.",
-                Action = "They do not block automation unless CI/CD is explicitly changed to check them."
+                Status = "Server enforced",
+                Tone = "ready",
+                Detail = "Apply preview acceptance is persisted against the exact server-generated preview fingerprint and is rechecked by Apply.",
+                Action = "CI/CD must use the same preview and acceptance service path before invoking Apply."
             },
             new()
             {
@@ -3025,12 +3037,37 @@
             TargetDatabaseName,
             includeIgnored: true);
         ApplyPreviewGeneratedOn = DateTime.Now;
-        ApplyPreviewReviewed = false;
+        ApplyPreviewReviewed = ApplyPreview.IsAccepted;
 
         Message = selectedOnly
             ? $"Selected apply preview loaded. {ApplyPreview.ApplyCount} record(s) would apply, {ApplyPreview.SkipCount} skipped, {ApplyPreview.BlockedCount} blocked."
             : $"Apply all preview loaded. {ApplyPreview.ApplyCount} record(s) would apply, {ApplyPreview.SkipCount} skipped, {ApplyPreview.BlockedCount} blocked.";
     }, busyMessage: "Building metadata apply preview. Please wait.");
+
+    private async Task AcceptApplyPreviewAsync() => await ExecuteAsync(async () =>
+    {
+        if (ApplyPreview is null)
+        {
+            throw new InvalidOperationException("Generate an apply preview before accepting it for deployment.");
+        }
+
+        var acceptance = await CurrentFormHelper.MetadataMigrationApplyPreviewAcceptAsync(
+            CurrentRunGuid(),
+            ApplyPreview.ApplySelectedOnly,
+            ApplyPreview.PreviewFingerprint,
+            TargetServerName,
+            TargetDatabaseName);
+
+        ApplyPreview.IsAccepted = acceptance.IsAccepted;
+        ApplyPreview.AcceptedOnUtcText = acceptance.AcceptedOnUtcText;
+        ApplyPreview.AcceptedByUserId = acceptance.AcceptedByUserId;
+        ApplyPreviewReviewed = acceptance.IsAccepted
+            && acceptance.PreviewFingerprint.Equals(ApplyPreview.PreviewFingerprint, StringComparison.OrdinalIgnoreCase)
+            && acceptance.ApplySelectedOnly == ApplyPreview.ApplySelectedOnly;
+
+        await RefreshDashboardCoreAsync(false);
+        Message = acceptance.Message;
+    }, busyMessage: "Accepting the reviewed metadata preview for deployment. Please wait.");
 
     private async Task ApplyAsync() => await ExecuteAsync(async () =>
     {
@@ -3544,7 +3581,7 @@
             new()
             {
                 Title = "Review confirmation",
-                Detail = ApplyPreviewReviewed ? "The current preview has been reviewed and confirmed." : "Tick the review confirmation after checking the preview.",
+                Detail = ApplyPreviewReviewed ? "The current preview fingerprint is accepted for deployment on the server." : "Review the preview, then accept its exact fingerprint for deployment.",
                 StatusText = ApplyPreviewReviewed ? "Confirmed" : "Required",
                 Tone = ApplyPreviewReviewed ? "ready" : "pending",
                 IconCss = ApplyPreviewReviewed ? "bi-check-circle" : "bi-clipboard-check",
@@ -3642,7 +3679,7 @@
 
         if (!ApplyPreviewReviewed)
         {
-            return "Next: review the preview and tick the confirmation checkbox.";
+            return "Next: review the preview and accept that exact fingerprint for deployment.";
         }
 
         if (HasAppliedRun)
@@ -3911,7 +3948,7 @@
             ? "-- This record is currently ignored and will be skipped by apply unless unignored."
             : "-- Record is not ignored.";
 
-        return $"EXEC SMigration.MetadataApplyPreview_Get @RunGuid = '{RunGuidText}', @ApplySelectedOnly = {applySelectedOnly}, @IncludeIgnored = 1;\nEXEC SMigration.MetadataApply_Run @RunGuid = '{RunGuidText}', @ForceApply = {(ForceApply ? 1 : 0)}, @ApplySelectedOnly = {applySelectedOnly};\n-- Selected record context: {SelectedDiffRow.SchemaName}.{SelectedDiffRow.TableName} / {SelectedDiffRow.SourceRowGuid}\n{note}";
+        return $"-- Preview and Apply use the controlled FormHelper -> gRPC -> EF path.\n-- Direct SQL is unsupported because it does not perform the required live source/target re-read and locking.\n-- Apply selected only: {applySelectedOnly}\n-- Selected record context: {SelectedDiffRow.SchemaName}.{SelectedDiffRow.TableName} / {SelectedDiffRow.SourceRowGuid}\n{note}";
     }
 
     private sealed class JsonDisplayLine
@@ -3980,12 +4017,4 @@
         public int TotalCount => InsertCount + UpdateCount + NoChangeCount;
     }
 }
-
-
-
-
-
-
-
-
 

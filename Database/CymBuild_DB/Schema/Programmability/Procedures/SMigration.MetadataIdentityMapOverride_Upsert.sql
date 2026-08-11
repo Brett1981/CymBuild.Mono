@@ -15,6 +15,8 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataIdentityMapOverride_Upsert]')
+GO
 
 CREATE PROCEDURE [SMigration].[MetadataIdentityMapOverride_Upsert]
 (

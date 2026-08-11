@@ -696,8 +696,8 @@ public class Functions
         return resultSort;
     }
 
-        internal static async Task<DataObjectUpsertResponse> PrepareUpdateToEfDataObjectSharePoint(DataObject dataObject, EF.Core efCore,
-        string siteId, string siteUrl, string? requestEntityQueryGuid, bool? requestValidateOnly = false)
+    internal static async Task<DataObjectUpsertResponse> PrepareUpdateToEfDataObjectSharePoint(DataObject dataObject, EF.Core efCore,
+          string siteId, string siteUrl, string? requestEntityQueryGuid, bool? requestValidateOnly = false)
     {
         try
         {

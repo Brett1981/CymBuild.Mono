@@ -3,11 +3,14 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_AssetsCheckForDuplicate]')
 GO
+PRINT (N'Create function [SJob].[tvf_AssetsCheckForDuplicate]')
+GO
 
 
 CREATE FUNCTION [SJob].[tvf_AssetsCheckForDuplicate] 
 (
-   @Number NVARCHAR(50),
+   @Name    NVARCHAR(100)   = NULL,
+   @Number NVARCHAR(50) = NULL,
    @AddressLine1 NVARCHAR(100) = N'',
    @AddressLine2 NVARCHAR(100) = N'',
    @AddressLine3 NVARCHAR(100) = N'',
@@ -29,6 +32,7 @@ BEGIN
     DECLARE @NormNumber     NVARCHAR(50)  = UPPER(LTRIM(RTRIM(ISNULL(@Number, ''))));
     DECLARE @NormAddr1      NVARCHAR(50)  = UPPER(LTRIM(RTRIM(ISNULL(@AddressLine1, ''))));
     DECLARE @NormTown       NVARCHAR(50)  = UPPER(LTRIM(RTRIM(ISNULL(@Town, ''))));
+	DECLARE @NormName       NVARCHAR(100) = UPPER(LTRIM(RTRIM(ISNULL(@Name, ''))));
 
 
 INSERT INTO @Results
@@ -41,17 +45,28 @@ INSERT INTO @Results
         root_hobt.Guid,
         root_hobt.FormattedAddressComma,
 		(
-            -- Exact postcode match (normalised, spaces removed)
-            + CASE WHEN @NormPostcode <> ''
+
+			-- Exact Name match
+            + CASE WHEN @NormName <> ''
+                   AND UPPER(LTRIM(RTRIM(root_hobt.Name))) = @NormName
+                   THEN 40 ELSE 0 END
+
+			+ CASE WHEN @NormPostcode <> ''
                    AND REPLACE(UPPER(LTRIM(RTRIM(root_hobt.Postcode))), ' ', '') = @NormPostcode
                    THEN 30 ELSE 0 END
-
-          
 
             -- Exact Number (building number) match
             + CASE WHEN @NormNumber <> ''
                    AND UPPER(LTRIM(RTRIM(root_hobt.Number))) = @NormNumber
                    THEN 20 ELSE 0 END
+
+            -- SOUNDEX Name match (fuzzy, only if not exact)
+            + CASE WHEN @NormName <> ''
+                   AND root_hobt.Name <> ''
+                   AND SOUNDEX(root_hobt.Name) = SOUNDEX(@Name)
+                   AND UPPER(LTRIM(RTRIM(root_hobt.Name))) <> @NormName
+                   THEN 15 ELSE 0 END
+
 
             -- Exact AddressLine1 match
             + CASE WHEN @NormAddr1 <> ''
@@ -68,14 +83,14 @@ INSERT INTO @Results
             -- Exact Town match
             + CASE WHEN @NormTown <> ''
                    AND UPPER(LTRIM(RTRIM(root_hobt.Town))) = @NormTown
-                   THEN 10 ELSE 0 END
+                   THEN 30 ELSE 0 END
 
             -- SOUNDEX Town match
             + CASE WHEN @NormTown <> ''
                    AND root_hobt.Town <> ''
                    AND SOUNDEX(root_hobt.Town) = SOUNDEX(@Town)
                    AND UPPER(LTRIM(RTRIM(root_hobt.Town))) <> @NormTown
-                   THEN 5 ELSE 0 END
+                   THEN 30 ELSE 0 END
 
            
         ) AS MatchScore
@@ -96,8 +111,91 @@ INSERT INTO @Results
 					OR county.Guid = @CountyGuid
 				)
 				OR (@Postcode <> N'' AND REPLACE(UPPER(LTRIM(RTRIM(root_hobt.Postcode))), ' ', '') = @NormPostcode)
-		
 			)
+
+
+		INSERT INTO @Results
+		(
+			Guid,
+			FormattedAddress,
+			MatchScore
+		)
+		SELECT
+		'00000000-0000-0000-0000-000000000000',
+        CONCAT_WS(', ',
+            NULLIF(e.PropertyNameNumber, ''),
+            NULLIF(e.PropertyAddressLine1, ''),
+            NULLIF(e.PropertyTown, ''),
+            NULLIF(e.PropertyPostCode, '')
+        )                                       AS FormattedAddress,
+		
+        -- === Weighted scoring (no UPRN/Geo available on enquiries) ===
+        (
+            -- Exact postcode match
+            CASE WHEN @NormPostcode <> ''
+                 AND REPLACE(UPPER(LTRIM(RTRIM(e.PropertyPostCode))), ' ', '') = @NormPostcode
+                 THEN 30 ELSE 0 END
+
+            -- Exact PropertyNameNumber match (equivalent to Asset.Name)
+            + CASE WHEN @NormName <> ''
+                   AND UPPER(LTRIM(RTRIM(e.PropertyNameNumber))) = @NormName
+                   THEN 40 ELSE 0 END
+
+            -- SOUNDEX PropertyNameNumber match
+            + CASE WHEN @NormName <> ''
+                   AND e.PropertyNameNumber <> ''
+                   AND SOUNDEX(e.PropertyNameNumber) = SOUNDEX(@Name)
+                   AND UPPER(LTRIM(RTRIM(e.PropertyNameNumber))) <> @NormName
+                   THEN 15 ELSE 0 END
+
+            -- Exact AddressLine1 match
+            + CASE WHEN @NormAddr1 <> ''
+                   AND UPPER(LTRIM(RTRIM(e.PropertyAddressLine1))) = @NormAddr1
+                   THEN 25 ELSE 0 END
+
+            -- SOUNDEX AddressLine1 match
+            + CASE WHEN @NormAddr1 <> ''
+                   AND e.PropertyAddressLine1 <> ''
+                   AND SOUNDEX(e.PropertyAddressLine1) = SOUNDEX(@AddressLine1)
+                   AND UPPER(LTRIM(RTRIM(e.PropertyAddressLine1))) <> @NormAddr1
+                   THEN 10 ELSE 0 END
+
+            -- Exact Town match
+            + CASE WHEN @NormTown <> ''
+                   AND UPPER(LTRIM(RTRIM(e.PropertyTown))) = @NormTown
+                   THEN 10 ELSE 0 END
+
+            -- SOUNDEX Town match
+            + CASE WHEN @NormTown <> ''
+                   AND e.PropertyTown <> ''
+                   AND SOUNDEX(e.PropertyTown) = SOUNDEX(@Town)
+                   AND UPPER(LTRIM(RTRIM(e.PropertyTown))) <> @NormTown
+                   THEN 5 ELSE 0 END
+
+        )                                       AS MatchScore
+
+       
+         
+
+    FROM SSop.Enquiries AS e
+    WHERE e.RowStatus NOT IN (0, 254)
+      -- Only enquiries that entered NEW structure/property details
+      AND (e.EnterNewStructureDetails = 1 OR e.PropertyId = -1)
+      -- Only enquiries where NO active EnquiryService has been linked to a Quote
+      AND NOT EXISTS (
+          SELECT 1
+          FROM SSop.EnquiryServices AS es
+          WHERE es.EnquiryId = e.ID
+            AND es.RowStatus NOT IN (0, 254)
+            AND es.QuoteId <> -1
+      )
+      -- Pre-filter: at least one meaningful criterion must match
+      AND (
+            (@NormPostcode <> '' AND REPLACE(UPPER(LTRIM(RTRIM(e.PropertyPostCode))), ' ', '') = @NormPostcode)
+         OR (@NormName <> '' AND e.PropertyNameNumber <> '' AND SOUNDEX(e.PropertyNameNumber) = SOUNDEX(@Name))
+         OR (@NormAddr1 <> '' AND e.PropertyAddressLine1 <> '' AND SOUNDEX(e.PropertyAddressLine1) = SOUNDEX(@AddressLine1))
+      );
+		DELETE FROM @Results WHERE MatchScore <= 20;
 		
 
 		RETURN;

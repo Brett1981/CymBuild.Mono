@@ -9,6 +9,8 @@ PRINT (N'Create procedure [SMigration].[MetadataStage_NormaliseDifferences]')
 GO
 PRINT (N'Create procedure [SMigration].[MetadataStage_NormaliseDifferences]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataStage_NormaliseDifferences]')
+GO
 
 /*
     CymBuild Metadata CI/CD

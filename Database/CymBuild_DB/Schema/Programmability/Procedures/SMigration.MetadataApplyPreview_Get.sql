@@ -1,10 +1,3 @@
-SET ANSI_NULLS ON;
-GO
-SET QUOTED_IDENTIFIER ON;
-GO
-
-PRINT (N'Create or alter procedure [SMigration].[MetadataApplyPreview_Get]')
-GO
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
@@ -15,16 +8,28 @@ CREATE PROCEDURE [SMigration].[MetadataApplyPreview_Get]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @ApplySelectedOnly BIT = 0,
-    @IncludeIgnored BIT = 1
+    @IncludeIgnored BIT = 1,
+    @SourceSnapshotFingerprint VARCHAR(64),
+    @TargetSnapshotFingerprint VARCHAR(64)
 )
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET XACT_ABORT ON;
 
     DECLARE
         @TargetDatabaseName SYSNAME,
         @RunFailureCount INT = 0,
+        @PreviewFingerprint VARBINARY(32),
+        @ScopeFingerprint VARBINARY(32),
+        @PreviewFingerprintHex VARCHAR(64),
+        @ScopeFingerprintHex VARCHAR(64),
+        @PreviewApplyCount INT = 0,
+        @AcceptedOnUtc DATETIME2,
+        @AcceptedByUserId INT = -1,
         @ZeroGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
+
+    BEGIN TRANSACTION;
 
     SELECT
         @TargetDatabaseName = r.TargetDatabaseName
@@ -41,6 +46,18 @@ BEGIN
     WHERE vi.RunGuid = @RunGuid
       AND vi.RowStatus NOT IN (0,254)
       AND vi.Severity = N'Fail';
+
+    EXEC SMigration.MetadataApplyPreviewFingerprint_Get
+        @RunGuid = @RunGuid,
+        @ApplySelectedOnly = @ApplySelectedOnly,
+        @SourceSnapshotFingerprint = @SourceSnapshotFingerprint,
+        @TargetSnapshotFingerprint = @TargetSnapshotFingerprint,
+        @PreviewFingerprint = @PreviewFingerprint OUTPUT,
+        @ScopeFingerprint = @ScopeFingerprint OUTPUT,
+        @ApplyCount = @PreviewApplyCount OUTPUT;
+
+    SET @PreviewFingerprintHex = CONVERT(VARCHAR(64), @PreviewFingerprint, 2);
+    SET @ScopeFingerprintHex = CONVERT(VARCHAR(64), @ScopeFingerprint, 2);
 
     SELECT
         tr.SchemaName,
@@ -115,5 +132,29 @@ BEGIN
         tr.SchemaName,
         tr.TableName,
         sr.SourceRowId;
+
+    SELECT TOP (1)
+        @AcceptedOnUtc = el.CreatedOnUtc,
+        @AcceptedByUserId = ISNULL(TRY_CONVERT(INT, JSON_VALUE(el.DetailsJson, '$.acceptedByUserId')), -1)
+    FROM SMigration.Metadata_ExecutionLog AS el
+    WHERE el.RunGuid = @RunGuid
+      AND el.RowStatus NOT IN (0,254)
+      AND el.StepName = N'ApplyPreviewAcceptance'
+      AND el.StepStatus = N'Accepted'
+      AND JSON_VALUE(el.DetailsJson, '$.previewFingerprint') = @PreviewFingerprintHex
+      AND JSON_VALUE(el.DetailsJson, '$.scopeFingerprint') = @ScopeFingerprintHex
+      AND JSON_VALUE(el.DetailsJson, '$.sourceSnapshotFingerprint') = UPPER(@SourceSnapshotFingerprint)
+      AND JSON_VALUE(el.DetailsJson, '$.targetSnapshotFingerprint') = UPPER(@TargetSnapshotFingerprint)
+      AND TRY_CONVERT(INT, JSON_VALUE(el.DetailsJson, '$.applySelectedOnly')) = CONVERT(INT, ISNULL(@ApplySelectedOnly, 0))
+    ORDER BY el.ID DESC;
+
+    COMMIT TRANSACTION;
+
+    SELECT
+        @PreviewFingerprintHex AS PreviewFingerprint,
+        @PreviewApplyCount AS PreviewApplyCount,
+        CONVERT(BIT, CASE WHEN @AcceptedOnUtc IS NULL THEN 0 ELSE 1 END) AS IsAccepted,
+        @AcceptedOnUtc AS AcceptedOnUtc,
+        @AcceptedByUserId AS AcceptedByUserId;
 END;
 GO

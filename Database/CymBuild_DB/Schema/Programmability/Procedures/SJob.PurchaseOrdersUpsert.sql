@@ -3,6 +3,8 @@ GO
 
 PRINT (N'Create procedure [SJob].[PurchaseOrdersUpsert]')
 GO
+PRINT (N'Create procedure [SJob].[PurchaseOrdersUpsert]')
+GO
 
 
 CREATE PROCEDURE [SJob].[PurchaseOrdersUpsert]
@@ -14,17 +16,20 @@ CREATE PROCEDURE [SJob].[PurchaseOrdersUpsert]
 		@DateReceived	DATE,
 		@ValidUntilDate DATE,
 		@ActivityGuid	UNIQUEIDENTIFIER,
-		@JobGuid		UNIQUEIDENTIFIER
+		@JobGuid		UNIQUEIDENTIFIER,
+		@InvoiceRequestGuid UNIQUEIDENTIFIER
 
 	)
 AS
 	BEGIN
 
 		DECLARE 
-				@ActivityId		INT = -1,
-				@StageId		INT = -1,
-				@AssetId		INT = -1,
-				@JobId			INT = -1;
+				@ActivityId			INT = -1,
+				@StageId			INT = -1,
+				@AssetId			INT = -1,
+				@JobId				INT = -1,
+				@InvoiceRequestId	INT = -1;
+
 				
 
 		SELECT @ActivityId = ID
@@ -42,6 +47,11 @@ AS
 		SELECT @JobId = ID
 		FROM SJob.Jobs
 		WHERE (Guid = @JobGuid);
+
+
+		SELECT @InvoiceRequestId = ID 
+		FROM SFin.InvoiceRequests
+		WHERE Guid = @InvoiceRequestGuid;
 
 
 
@@ -67,7 +77,8 @@ AS
 							DateReceived,
 							ValidUntilDate,
 							ActivityId,
-							JobId
+							JobId,
+							InvoiceRequestId
 						)
 				VALUES
 						(
@@ -81,22 +92,24 @@ AS
 							@DateReceived,
 							@ValidUntilDate,
 							@ActivityId,
-							@JobId
+							@JobId,
+							@InvoiceRequestId
 						)
 			END
 		ELSE
 			BEGIN
 				UPDATE  SJob.PurchaseOrders
 				SET		
-					Number			= @Number,
-					Description		= @Description,
-					StageId			= @StageId,
-					SiteId			= @AssetId,
-					Value			= @Value,
-					DateReceived	= @DateReceived,
-					ValidUntilDate	= @ValidUntilDate,
-					ActivityId		= @ActivityId,
-					JobId			= @JobId
+					Number				= @Number,
+					Description			= @Description,
+					StageId				= @StageId,
+					SiteId				= @AssetId,
+					Value				= @Value,
+					DateReceived		= @DateReceived,
+					ValidUntilDate		= @ValidUntilDate,
+					ActivityId			= @ActivityId,
+					JobId				= @JobId,
+					InvoiceRequestId	= @InvoiceRequestId
 				WHERE
 					([Guid] = @Guid)
 			END

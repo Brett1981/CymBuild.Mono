@@ -27,6 +27,8 @@ PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
 GO
 PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
 GO
+PRINT (N'Create procedure [SMigration].[OnboardingStage_LoadFromSource]')
+GO
 
 /* ================================================================================================
    Load onboarding migration stage from source DB.

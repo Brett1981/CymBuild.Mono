@@ -1,0 +1,2230 @@
+<#
+.SYNOPSIS
+    CYB-361 R40 manual schema deployment runner.
+
+.DESCRIPTION
+    Reads an accepted SMigration schema deployment plan from the target database and applies the
+    corresponding source-controlled SQL artefacts from the repository. When an accepted Function,
+    View, StoredProcedure, Trigger or Constraint is missing its canonical repository file, the
+    dry-run can materialize reviewed idempotent SQL from the accepted declarative snapshot.
+
+    This is the manual version of the future release-pipeline step. It never executes captured DDL
+    directly. Materialized definitions are written under Database/CymBuild_DB/Schema first, become
+    reviewable source artefacts, and must be committed through the normal source-control process.
+
+    Default behaviour is dry-run. Use -Apply to execute.
+    Each invocation writes artifacts to a unique execution-scoped directory beneath the run Guid, so
+    a prior dry-run, editor, Explorer preview pane or concurrent process cannot block an apply by
+    holding summary.json or another fixed artifact open.
+
+.EXAMPLE
+    .\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+        -TargetServer "SOC-SQLDEVBRE01\GENERAL" `
+        -TargetDatabase "CymBuild_QA" `
+        -RunGuid "B92EC354-5517-4DA3-9FFE-CBC40455ABFA" `
+        -ReleaseReference "26.3" `
+        -WhatIf
+
+.EXAMPLE
+    .\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+        -TargetServer "SOC-SQLDEVBRE01\GENERAL" `
+        -TargetDatabase "CymBuild_QA" `
+        -RunGuid "B92EC354-5517-4DA3-9FFE-CBC40455ABFA" `
+        -ReleaseReference "26.3" `
+        -Apply
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$TargetServer,
+
+    [Parameter(Mandatory = $true)]
+    [string]$TargetDatabase,
+
+    [Parameter(Mandatory = $true)]
+    [Guid]$RunGuid,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ReleaseReference = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$DeploymentReference = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ConnectionString = "",
+
+    [Parameter(Mandatory = $false)]
+    [string]$SqlUsername = "",
+
+    [Parameter(Mandatory = $false)]
+    [System.Security.SecureString]$SqlPassword,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$Apply,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$WhatIf,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$AllowPartial,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$AllowLive,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$IgnoreTargetMismatch,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipAcceptanceCheck,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$RetryFailedDeployment,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipPreDeployment,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipPostDeployment,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipSourceMaterialization,
+
+    [Parameter(Mandatory = $false)]
+    [string]$OutputDirectory = ""
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$deploymentAuditStarted = $false
+
+if ($Apply -and $WhatIf) {
+    throw "Specify either -Apply or -WhatIf, not both."
+}
+
+if (-not $Apply) {
+    $WhatIf = $true
+}
+
+if (-not [string]::IsNullOrWhiteSpace($SqlUsername) -and $null -eq $SqlPassword) {
+    throw "-SqlPassword is required when -SqlUsername is supplied."
+}
+
+$RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+
+if ([string]::IsNullOrWhiteSpace($DeploymentReference)) {
+    if ([string]::IsNullOrWhiteSpace($ReleaseReference)) {
+        $DeploymentReference = "ManualSchemaDeployment-$($RunGuid.ToString())"
+    }
+    else {
+        $DeploymentReference = $ReleaseReference
+    }
+}
+
+$outputDirectoryWasExplicit = -not [string]::IsNullOrWhiteSpace($OutputDirectory)
+$executionMode = if ($Apply) { "apply" } else { "whatif" }
+$executionId = "{0}-{1}-pid{2}-{3}" -f `
+    [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssfffZ"), `
+    $executionMode, `
+    $PID, `
+    ([Guid]::NewGuid().ToString("N").Substring(0, 8))
+
+if (-not $outputDirectoryWasExplicit) {
+    $runOutputRoot = Join-Path $RepoRoot "artifacts\schema-deployment\$($RunGuid.ToString())"
+    $OutputDirectory = Join-Path $runOutputRoot "executions\$executionId"
+}
+else {
+    $runOutputRoot = $OutputDirectory
+}
+
+New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+
+function Write-CymBuildTextFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Content,
+
+        [Parameter(Mandatory = $false)]
+        [int]$MaximumAttempts = 8
+    )
+
+    if ($MaximumAttempts -lt 1) {
+        throw "MaximumAttempts must be at least 1."
+    }
+
+    $directory = Split-Path -Parent $Path
+    if (-not [string]::IsNullOrWhiteSpace($directory)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+
+    $temporaryPath = Join-Path $directory (".{0}.{1}.{2}.tmp" -f ([System.IO.Path]::GetFileName($Path)), $PID, [Guid]::NewGuid().ToString("N"))
+    $utf8WithBom = [System.Text.UTF8Encoding]::new($true)
+
+    try {
+        [System.IO.File]::WriteAllText($temporaryPath, $Content, $utf8WithBom)
+
+        for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+            try {
+                if (Test-Path -LiteralPath $Path -PathType Leaf) {
+                    Remove-Item -LiteralPath $Path -Force
+                }
+
+                Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+                return
+            }
+            catch {
+                if ($attempt -ge $MaximumAttempts) {
+                    throw "Unable to write artifact '$Path' after $MaximumAttempts attempts. The destination may be held open by another process. Original error: $($_.Exception.Message)"
+                }
+
+                $delayMilliseconds = [Math]::Min(1000, 100 * [Math]::Pow(2, $attempt - 1))
+                Start-Sleep -Milliseconds ([int]$delayMilliseconds)
+            }
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function ConvertTo-CymBuildCsvText {
+    param([object[]]$Rows)
+
+    if ($null -eq $Rows -or $Rows.Count -eq 0) {
+        return ""
+    }
+
+    [string[]]$lines = @($Rows | ConvertTo-Csv -NoTypeInformation)
+    return ([string]::Join("`r`n", $lines) + "`r`n")
+}
+
+function ConvertTo-PlainTextPassword {
+    param([System.Security.SecureString]$SecureValue)
+
+    if ($null -eq $SecureValue) {
+        return ""
+    }
+
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
+
+function New-CymBuildSqlConnectionString {
+    if (-not [string]::IsNullOrWhiteSpace($ConnectionString)) {
+        return $ConnectionString
+    }
+
+    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
+    $builder["Data Source"] = $TargetServer
+    $builder["Initial Catalog"] = $TargetDatabase
+    $builder["TrustServerCertificate"] = $true
+    $builder["MultipleActiveResultSets"] = $false
+    $builder["Application Name"] = "CymBuild.SchemaDeploymentRunner"
+
+    if (-not [string]::IsNullOrWhiteSpace($SqlUsername)) {
+        $builder["Integrated Security"] = $false
+        $builder["User ID"] = $SqlUsername
+        $builder["Password"] = ConvertTo-PlainTextPassword -SecureValue $SqlPassword
+    }
+    else {
+        $builder["Integrated Security"] = $true
+    }
+
+    return $builder.ConnectionString
+}
+
+function New-SqlConnection {
+    param([string]$SqlConnectionString)
+
+    $connection = New-Object System.Data.SqlClient.SqlConnection($SqlConnectionString)
+    try {
+        $connection.Open()
+        return $connection
+    }
+    catch {
+        $connection.Dispose()
+        throw
+    }
+}
+
+function Add-SqlParameter {
+    param(
+        [System.Data.SqlClient.SqlCommand]$Command,
+        [string]$Name,
+        [System.Data.SqlDbType]$Type,
+        [object]$Value,
+        [int]$Size = 0
+    )
+
+    $parameter = if ($Size -ne 0) {
+        New-Object System.Data.SqlClient.SqlParameter($Name, $Type, $Size)
+    }
+    else {
+        New-Object System.Data.SqlClient.SqlParameter($Name, $Type)
+    }
+
+    $parameter.Value = if ($null -eq $Value) { [DBNull]::Value } else { $Value }
+    [void]$Command.Parameters.Add($parameter)
+}
+
+function Add-InferredSqlParameter {
+    param(
+        [System.Data.SqlClient.SqlCommand]$Command,
+        [string]$Name,
+        [object]$Value
+    )
+
+    if ($null -eq $Value -or $Value -is [DBNull]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::NVarChar) -Value $null -Size 1
+        return
+    }
+
+    if ($Value -is [Guid]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::UniqueIdentifier) -Value $Value
+        return
+    }
+
+    if ($Value -is [bool]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::Bit) -Value $Value
+        return
+    }
+
+    if ($Value -is [byte]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::TinyInt) -Value $Value
+        return
+    }
+
+    if ($Value -is [int16]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::SmallInt) -Value $Value
+        return
+    }
+
+    if ($Value -is [int32]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::Int) -Value $Value
+        return
+    }
+
+    if ($Value -is [int64]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::BigInt) -Value $Value
+        return
+    }
+
+    if ($Value -is [datetime]) {
+        Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::DateTime2) -Value $Value
+        return
+    }
+
+    if ($Value -is [decimal]) {
+        $parameter = New-Object System.Data.SqlClient.SqlParameter($Name, [System.Data.SqlDbType]::Decimal)
+        $parameter.Precision = 38
+        $parameter.Scale = 10
+        $parameter.Value = $Value
+        [void]$Command.Parameters.Add($parameter)
+        return
+    }
+
+    $stringValue = [string]$Value
+    $size = if ($stringValue.Length -gt 4000) { -1 } else { [Math]::Max(1, $stringValue.Length) }
+    Add-SqlParameter -Command $Command -Name $Name -Type ([System.Data.SqlDbType]::NVarChar) -Value $stringValue -Size $size
+}
+
+function Add-SqlParameters {
+    param(
+        [System.Data.SqlClient.SqlCommand]$Command,
+        [hashtable]$Parameters
+    )
+
+    foreach ($key in $Parameters.Keys) {
+        Add-InferredSqlParameter -Command $Command -Name ([string]$key) -Value $Parameters[$key]
+    }
+}
+
+function Invoke-SqlQuery {
+    param(
+        [System.Data.SqlClient.SqlConnection]$Connection,
+        [string]$Sql,
+        [hashtable]$Parameters = @{},
+        [int]$TimeoutSeconds = 300
+    )
+
+    $command = $Connection.CreateCommand()
+    $command.CommandText = $Sql
+    $command.CommandType = [System.Data.CommandType]::Text
+    $command.CommandTimeout = $TimeoutSeconds
+
+    Add-SqlParameters -Command $command -Parameters $Parameters
+
+    $table = New-Object System.Data.DataTable
+    $adapter = New-Object System.Data.SqlClient.SqlDataAdapter($command)
+    try {
+        [void]$adapter.Fill($table)
+        return ,$table
+    }
+    finally {
+        $adapter.Dispose()
+        $command.Dispose()
+    }
+}
+
+function Invoke-SqlNonQuery {
+    param(
+        [System.Data.SqlClient.SqlConnection]$Connection,
+        [string]$Sql,
+        [hashtable]$Parameters = @{},
+        [int]$TimeoutSeconds = 300
+    )
+
+    $command = $Connection.CreateCommand()
+    $command.CommandText = $Sql
+    $command.CommandType = [System.Data.CommandType]::Text
+    $command.CommandTimeout = $TimeoutSeconds
+
+    Add-SqlParameters -Command $command -Parameters $Parameters
+
+    try {
+        [void]$command.ExecuteNonQuery()
+    }
+    finally {
+        $command.Dispose()
+    }
+}
+
+function Set-SchemaPreflightContext {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Data.SqlClient.SqlConnection]$Connection,
+
+        [Parameter(Mandatory = $true)]
+        [bool]$PreDeploymentWillRun
+    )
+
+    Invoke-SqlNonQuery -Connection $Connection -Sql @"
+EXEC sys.sp_set_session_context
+    @key = N'CymBuild_schema_predeployment_will_run',
+    @value = @ContextValue,
+    @read_only = 0;
+"@ -Parameters @{
+        "@ContextValue" = $PreDeploymentWillRun
+    }
+}
+
+function ConvertTo-JsonSafe {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return "{}"
+    }
+
+    $json = $Value | ConvertTo-Json -Depth 12 -Compress
+    if ($json.Length -gt 3900) {
+        return $json.Substring(0, 3900)
+    }
+
+    return $json
+}
+
+function Add-SchemaExecutionLog {
+    param(
+        [System.Data.SqlClient.SqlConnection]$Connection,
+        [Guid]$RunGuidValue,
+        [string]$StepName,
+        [string]$StepStatus,
+        [string]$Message,
+        [object]$Details
+    )
+
+    $detailsJson = ConvertTo-JsonSafe -Value $Details
+    $messageValue = if ($null -eq $Message) { "" } else { $Message }
+    $safeMessage = if ($messageValue.Length -gt 2000) { $messageValue.Substring(0, 2000) } else { $messageValue }
+
+    Invoke-SqlNonQuery -Connection $Connection -Sql @"
+SET XACT_ABORT ON;
+
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    DECLARE @LogGuid UNIQUEIDENTIFIER = NEWID();
+
+    EXEC [SMigration].[SchemaDataObject_Ensure]
+        @Guid = @LogGuid,
+        @SchemeName = N'SMigration',
+        @ObjectName = N'Schema_ExecutionLog';
+
+    INSERT INTO [SMigration].[Schema_ExecutionLog]
+    (
+        [Guid],
+        [RowStatus],
+        [RunGuid],
+        [StepName],
+        [StepStatus],
+        [Message],
+        [DetailsJson],
+        [CreatedOnUtc]
+    )
+    VALUES
+    (
+        @LogGuid,
+        1,
+        @RunGuid,
+        @StepName,
+        @StepStatus,
+        @Message,
+        @DetailsJson,
+        SYSUTCDATETIME()
+    );
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF XACT_STATE() <> 0
+    BEGIN
+        ROLLBACK TRANSACTION;
+    END;
+
+    THROW;
+END CATCH;
+"@ -Parameters @{
+        "@RunGuid" = $RunGuidValue
+        "@StepName" = $StepName
+        "@StepStatus" = $StepStatus
+        "@Message" = $safeMessage
+        "@DetailsJson" = $detailsJson
+    } -TimeoutSeconds 300
+}
+
+function Split-SqlBatches {
+    param([string]$Sql)
+
+    $batches = New-Object System.Collections.Generic.List[string]
+    $builder = New-Object System.Text.StringBuilder
+    $lines = $Sql -split "`r?`n"
+
+    foreach ($line in $lines) {
+        if ($line -match '^\s*GO\s*(\d+)?\s*(?:--.*)?$') {
+            $batch = $builder.ToString().Trim()
+            if (-not [string]::IsNullOrWhiteSpace($batch)) {
+                $repeatToken = if ($Matches.ContainsKey(1)) { [string]$Matches[1] } else { "" }
+                $repeatCount = if ([string]::IsNullOrWhiteSpace($repeatToken)) { 1 } else { [int]$repeatToken }
+                if ($repeatCount -lt 1) {
+                    throw "Invalid GO repeat count '$repeatCount'."
+                }
+
+                for ($repeatIndex = 0; $repeatIndex -lt $repeatCount; $repeatIndex++) {
+                    [void]$batches.Add($batch)
+                }
+            }
+            [void]$builder.Clear()
+        }
+        else {
+            [void]$builder.AppendLine($line)
+        }
+    }
+
+    $lastBatch = $builder.ToString().Trim()
+    if (-not [string]::IsNullOrWhiteSpace($lastBatch)) {
+        [void]$batches.Add($lastBatch)
+    }
+
+    return [string[]]$batches.ToArray()
+}
+
+function Invoke-SqlScriptText {
+    param(
+        [System.Data.SqlClient.SqlConnection]$Connection,
+        [string]$Sql,
+        [string]$Description,
+        [int]$TimeoutSeconds = 600
+    )
+
+    $batches = Split-SqlBatches -Sql $Sql
+    $batchNumber = 0
+
+    foreach ($batch in $batches) {
+        $batchNumber++
+        try {
+            Invoke-SqlNonQuery -Connection $Connection -Sql $batch -TimeoutSeconds $TimeoutSeconds
+        }
+        catch {
+            throw "SQL batch $batchNumber failed for $Description. $($_.Exception.Message)"
+        }
+    }
+}
+
+function Test-SqlObjectExists {
+    param(
+        [System.Data.SqlClient.SqlConnection]$Connection,
+        [string]$ObjectType,
+        [string]$SchemaName,
+        [string]$ObjectName
+    )
+
+    $sql = switch ($ObjectType) {
+        "Schema" { "SELECT CONVERT(BIT, CASE WHEN SCHEMA_ID(@SchemaName) IS NULL THEN 0 ELSE 1 END) AS ExistsFlag;" }
+        "Table" { "SELECT CONVERT(BIT, CASE WHEN OBJECT_ID(QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@ObjectName), N'U') IS NULL THEN 0 ELSE 1 END) AS ExistsFlag;" }
+        "TableType" { "SELECT CONVERT(BIT, CASE WHEN TYPE_ID(QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@ObjectName)) IS NULL THEN 0 ELSE 1 END) AS ExistsFlag;" }
+        "Sequence" { "SELECT CONVERT(BIT, CASE WHEN OBJECT_ID(QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@ObjectName), N'SO') IS NULL THEN 0 ELSE 1 END) AS ExistsFlag;" }
+        default { "SELECT CONVERT(BIT, CASE WHEN OBJECT_ID(QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@ObjectName)) IS NULL THEN 0 ELSE 1 END) AS ExistsFlag;" }
+    }
+
+    $table = Invoke-SqlQuery -Connection $Connection -Sql $sql -Parameters @{ "@SchemaName" = $SchemaName; "@ObjectName" = $ObjectName }
+    return [bool]$table.Rows[0]["ExistsFlag"]
+}
+
+function Get-SourceSqlFile {
+    param(
+        [string]$ObjectType,
+        [string]$SchemaName,
+        [string]$ObjectName,
+        [string]$ParentObjectName
+    )
+
+    $schemaRoot = Join-Path $RepoRoot "Database\CymBuild_DB\Schema"
+    $fileName = "$SchemaName.$ObjectName.sql"
+
+    switch ($ObjectType) {
+        "Schema" { return Join-Path $schemaRoot "Security\Schemas\$SchemaName.sql" }
+        "Table" { return Join-Path $schemaRoot "Tables\$fileName" }
+        "TableType" { return Join-Path $schemaRoot "Programmability\User Types\Table Types\$fileName" }
+        "Sequence" { return Join-Path $schemaRoot "Programmability\Sequences\$fileName" }
+        "Function" { return Join-Path $schemaRoot "Programmability\Functions\$fileName" }
+        "View" { return Join-Path $schemaRoot "Views\$fileName" }
+        "StoredProcedure" { return Join-Path $schemaRoot "Programmability\Procedures\$fileName" }
+        "Trigger" { return Join-Path $schemaRoot "Programmability\Triggers\$fileName" }
+        "Constraint" { return (Get-CymBuildConstraintPaths -SchemaName $SchemaName -ParentObjectName $ParentObjectName -ObjectName $ObjectName).ApplyFile }
+        default { return "" }
+    }
+}
+
+function Get-DedicatedMigrationDescriptor {
+    param(
+        [string]$ObjectType,
+        [string]$SchemaName,
+        [string]$ObjectName,
+        [string]$DifferenceType
+    )
+
+    $schemaRoot = Join-Path $RepoRoot "Database\CymBuild_DB\Schema"
+
+    if ($ObjectType.Equals("Table", [System.StringComparison]::OrdinalIgnoreCase) -and
+        $SchemaName.Equals("SCore", [System.StringComparison]::OrdinalIgnoreCase) -and
+        $ObjectName.Equals("ObjectSecurity", [System.StringComparison]::OrdinalIgnoreCase) -and
+        $DifferenceType.Equals("Different", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            SourceFile = Join-Path $schemaRoot "Migrations\CYB361\SCore.ObjectSecurity.alter.sql"
+            PreflightFile = Join-Path $schemaRoot "Migrations\CYB361\SCore.ObjectSecurity.preflight.sql"
+            SupportFiles = @(
+                (Join-Path $schemaRoot "Migrations\_Shared\SMigration.AlterColumnNullabilityWithDependencies.sql")
+            )
+            ExpectedSourceHash = "6BB3BF24C7B4A3991239D04BD8F0726389DCDE6AE5BC4E0B71FBFB5B5FF9751C"
+            DeploymentMode = "DedicatedMigration"
+            Description = "Guarded data-preserving ObjectSecurity alignment using reusable ROWGUIDCOL, index and statistics dependency handling."
+        }
+    }
+
+    return $null
+}
+
+function Test-ApprovedSchemaSourcePath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    $schemaRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot "Database\CymBuild_DB\Schema"))
+    $candidatePath = [System.IO.Path]::GetFullPath($Path)
+    $schemaRootPrefix = $schemaRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+
+    return $candidatePath.StartsWith($schemaRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Convert-SchemaScriptForDeployment {
+    param(
+        [string]$Sql,
+        [string]$ObjectType,
+        [string]$SchemaName,
+        [string]$ObjectName,
+        [string]$DifferenceType
+    )
+
+    $sqlText = $Sql.TrimStart([char]0xFEFF)
+
+    switch ($ObjectType) {
+        "Schema" {
+            $schemaEscaped = $SchemaName.Replace("]", "]]" )
+            $schemaSqlLiteral = $SchemaName.Replace("'", "''")
+            return "IF SCHEMA_ID(N'$schemaSqlLiteral') IS NULL`r`nBEGIN`r`n    EXEC(N'CREATE SCHEMA [$schemaEscaped];');`r`nEND;"
+        }
+        "Function" {
+            return [regex]::Replace($sqlText, '(?im)^(\s*)CREATE\s+FUNCTION\b', '$1CREATE OR ALTER FUNCTION', 1)
+        }
+        "View" {
+            return [regex]::Replace($sqlText, '(?im)^(\s*)CREATE\s+VIEW\b', '$1CREATE OR ALTER VIEW', 1)
+        }
+        "StoredProcedure" {
+            $converted = [regex]::Replace($sqlText, '(?im)^(\s*)CREATE\s+PROCEDURE\b', '$1CREATE OR ALTER PROCEDURE', 1)
+            if ($converted -eq $sqlText) {
+                $converted = [regex]::Replace($sqlText, '(?im)^(\s*)CREATE\s+PROC\b', '$1CREATE OR ALTER PROC', 1)
+            }
+            return $converted
+        }
+        "Trigger" {
+            return [regex]::Replace($sqlText, '(?im)^(\s*)CREATE\s+TRIGGER\b', '$1CREATE OR ALTER TRIGGER', 1)
+        }
+        default {
+            return $sqlText
+        }
+    }
+}
+
+function Get-DataRowText {
+    param(
+        [System.Data.DataRow]$Row,
+        [string]$ColumnName
+    )
+
+    if ($null -eq $Row -or
+        -not $Row.Table.Columns.Contains($ColumnName) -or
+        $Row[$ColumnName] -eq [DBNull]::Value) {
+        return ""
+    }
+
+    return [string]$Row[$ColumnName]
+}
+
+function Test-CanMaterializeProgrammableObject {
+    param([string]$ObjectType)
+
+    return $ObjectType -in @("Function", "View", "StoredProcedure", "Trigger")
+}
+
+function Get-TextSha256 {
+    param([string]$Text)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        $hash = $sha256.ComputeHash($bytes)
+        return ([System.BitConverter]::ToString($hash)).Replace("-", "")
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function ConvertTo-CymBuildFileNamePart {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return "_"
+    }
+
+    return [regex]::Replace($Value.Trim(), '[<>:"/\\|?*\x00-\x1F]', '_')
+}
+
+function Quote-CymBuildSqlIdentifier {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "A SQL identifier cannot be empty."
+    }
+
+    return "[$($Value.Replace(']', ']]'))]"
+}
+
+function Quote-CymBuildSqlStringLiteral {
+    param([string]$Value)
+
+    $escapedValue = $Value.Replace("'", "''")
+    return "N'$escapedValue'"
+}
+
+function ConvertTo-CymBuildBoolean {
+    param([object]$Value)
+
+    if ($null -eq $Value) {
+        return $false
+    }
+
+    return [System.Convert]::ToBoolean($Value, [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Get-CymBuildObjectProperty {
+    param(
+        [object]$InputObject,
+        [string]$PropertyName,
+        [switch]$Required
+    )
+
+    if ($null -eq $InputObject -or -not ($InputObject.PSObject.Properties.Name -contains $PropertyName)) {
+        if ($Required) {
+            throw "Constraint definition property '$PropertyName' is required."
+        }
+
+        return $null
+    }
+
+    $value = $InputObject.$PropertyName
+    if ($Required -and ($null -eq $value -or ([string]$value).Length -eq 0)) {
+        throw "Constraint definition property '$PropertyName' is required."
+    }
+
+    return $value
+}
+
+function Get-CymBuildConstraintPayload {
+    param([string]$Definition)
+
+    $prefix = "CYB_CONSTRAINT_V2|"
+    if ([string]::IsNullOrWhiteSpace($Definition) -or -not $Definition.StartsWith($prefix, [System.StringComparison]::Ordinal)) {
+        throw "Constraint definition is not in the CYB_CONSTRAINT_V2 declarative format. Run Stage & Compare again with the R40 API before accepting the plan."
+    }
+
+    $json = $Definition.Substring($prefix.Length)
+    try {
+        return ($json | ConvertFrom-Json)
+    }
+    catch {
+        throw "Constraint definition JSON is invalid. $($_.Exception.Message)"
+    }
+}
+
+function Get-CymBuildConstraintPaths {
+    param(
+        [string]$SchemaName,
+        [string]$ParentObjectName,
+        [string]$ObjectName
+    )
+
+    $schemaRoot = Join-Path $RepoRoot "Database\CymBuild_DB\Schema"
+    $constraintRoot = Join-Path $schemaRoot "Constraints"
+    $baseName = "{0}.{1}.{2}" -f `
+        (ConvertTo-CymBuildFileNamePart -Value $SchemaName), `
+        (ConvertTo-CymBuildFileNamePart -Value $ParentObjectName), `
+        (ConvertTo-CymBuildFileNamePart -Value $ObjectName)
+
+    return [pscustomobject]@{
+        ApplyFile = Join-Path $constraintRoot "$baseName.sql"
+        PrepareFile = Join-Path $constraintRoot "$baseName.prepare.sql"
+        PreflightFile = Join-Path $constraintRoot "$baseName.preflight.sql"
+    }
+}
+
+function Get-CymBuildConstraintActionSql {
+    param([string]$Action)
+
+    $normalizedAction = if ([string]::IsNullOrWhiteSpace($Action)) { "NO_ACTION" } else { $Action.ToUpperInvariant() }
+    switch ($normalizedAction) {
+        "NO_ACTION" { return "NO ACTION" }
+        "CASCADE" { return "CASCADE" }
+        "SET_NULL" { return "SET NULL" }
+        "SET_DEFAULT" { return "SET DEFAULT" }
+        default { throw "Unsupported referential action '$Action'." }
+    }
+}
+
+function New-CymBuildGeneratedSchemaHeader {
+    param(
+        [string]$ObjectDescription,
+        [string]$ComparisonGuid,
+        [string]$DifferenceType,
+        [string]$ComparisonHash,
+        [string]$DefinitionSha256,
+        [string]$Purpose
+    )
+
+    $generatedUtc = [DateTime]::UtcNow.ToString("O")
+    return @"
+/*
+    CymBuild generated canonical schema source.
+    Generated by       : CYB-361 R40 schema deployment runner
+    Run Guid           : $RunGuid
+    Comparison Guid    : $ComparisonGuid
+    Object             : $ObjectDescription
+    Difference         : $DifferenceType
+    Comparison hash    : $ComparisonHash
+    Definition SHA-256 : $DefinitionSha256
+    Purpose            : $Purpose
+    Generated UTC      : $generatedUtc
+
+    This file was generated from the accepted declarative schema snapshot. Review and commit it
+    through the normal source-control process before promoting the release. It is never executed
+    directly from captured database DDL.
+*/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+"@
+}
+
+function Write-CymBuildConstraintGeneratedFile {
+    param(
+        [string]$Path,
+        [string]$Content,
+        [string]$DefinitionSha256,
+        [bool]$AllowCreate
+    )
+
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        $existingContent = Get-Content -LiteralPath $Path -Raw
+        $isGeneratedFile = $existingContent.Contains("CymBuild generated canonical schema source.")
+        if (-not $isGeneratedFile) {
+            return $false
+        }
+
+        if ($existingContent.Contains("Definition SHA-256 : $DefinitionSha256")) {
+            return $false
+        }
+
+        if (-not $AllowCreate) {
+            throw "Generated constraint source file '$Path' is stale and source materialization is disabled."
+        }
+
+        Write-CymBuildTextFile -Path $Path -Content $Content
+        return $true
+    }
+
+    if (-not $AllowCreate) {
+        throw "Required source-controlled constraint file '$Path' is missing and source materialization is disabled."
+    }
+
+    Write-CymBuildTextFile -Path $Path -Content $Content
+    return $true
+}
+
+
+function New-MaterializedConstraintSourceFiles {
+    param(
+        [System.Data.DataRow]$Row,
+        [bool]$AllowCreate = $true
+    )
+
+    $schemaName = Get-DataRowText -Row $Row -ColumnName "SchemaName"
+    $objectName = Get-DataRowText -Row $Row -ColumnName "ObjectName"
+    $parentObjectName = Get-DataRowText -Row $Row -ColumnName "ParentObjectName"
+    $differenceType = Get-DataRowText -Row $Row -ColumnName "DifferenceType"
+    $comparisonGuid = Get-DataRowText -Row $Row -ColumnName "ComparisonGuid"
+    $sourceHash = Get-DataRowText -Row $Row -ColumnName "SourceHash"
+    $targetHash = Get-DataRowText -Row $Row -ColumnName "TargetHash"
+    $sourceDefinition = Get-DataRowText -Row $Row -ColumnName "SourceDefinition"
+    $targetDefinition = Get-DataRowText -Row $Row -ColumnName "TargetDefinition"
+    $definition = if ($differenceType.Equals("MissingInSource", [System.StringComparison]::OrdinalIgnoreCase)) { $targetDefinition } else { $sourceDefinition }
+    $comparisonHash = if ($differenceType.Equals("MissingInSource", [System.StringComparison]::OrdinalIgnoreCase)) { $targetHash } else { $sourceHash }
+    $paths = Get-CymBuildConstraintPaths -SchemaName $schemaName -ParentObjectName $parentObjectName -ObjectName $objectName
+
+    $result = [ordered]@{
+        Succeeded = $false
+        WasCreated = $false
+        ApplyFile = ""
+        PrepareFile = ""
+        PreflightFile = ""
+        MaterializedFiles = @()
+        DefinitionSha256 = ""
+        ConstraintKind = ""
+        Reason = ""
+    }
+
+    try {
+        if ([string]::IsNullOrWhiteSpace($parentObjectName)) {
+            throw "Constraint '$schemaName.$objectName' does not have a parent table name."
+        }
+
+        $payload = Get-CymBuildConstraintPayload -Definition $definition
+        $constraintKind = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "ConstraintKind" -Required)
+        $constraintKind = $constraintKind.ToUpperInvariant()
+        if ($constraintKind -notin @("FOREIGN_KEY", "CHECK", "DEFAULT", "PRIMARY_KEY", "UNIQUE")) {
+            throw "Unsupported constraint kind '$constraintKind'."
+        }
+
+        $definitionSha256 = Get-TextSha256 -Text $definition
+        $tableName = "$(Quote-CymBuildSqlIdentifier -Value $schemaName).$(Quote-CymBuildSqlIdentifier -Value $parentObjectName)"
+        $tableNameLiteral = Quote-CymBuildSqlStringLiteral -Value $tableName
+        $constraintIdentifier = Quote-CymBuildSqlIdentifier -Value $objectName
+        $constraintNameLiteral = Quote-CymBuildSqlStringLiteral -Value $objectName
+        $objectDescription = "Constraint $schemaName.$parentObjectName.$objectName"
+        $requiredFiles = New-Object System.Collections.Generic.List[string]
+        $createdFiles = New-Object System.Collections.Generic.List[string]
+
+        $constraintExistsPredicate = @"
+EXISTS
+(
+    SELECT 1
+    FROM sys.objects AS constraintObject
+    WHERE constraintObject.parent_object_id = OBJECT_ID($tableNameLiteral, N'U')
+      AND constraintObject.name = $constraintNameLiteral
+)
+"@
+
+        if ($differenceType -in @("Different", "MissingInSource")) {
+            $prepareHeader = New-CymBuildGeneratedSchemaHeader `
+                -ObjectDescription $objectDescription `
+                -ComparisonGuid $comparisonGuid `
+                -DifferenceType $differenceType `
+                -ComparisonHash $comparisonHash `
+                -DefinitionSha256 $definitionSha256 `
+                -Purpose "Prepare phase: remove the target constraint before structural deployment."
+            $prepareSql = @"
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    IF $constraintExistsPredicate
+    BEGIN
+        ALTER TABLE $tableName DROP CONSTRAINT $constraintIdentifier;
+    END;
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF XACT_STATE() <> 0
+        ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+"@
+            [void]$requiredFiles.Add($paths.PrepareFile)
+            $prepareContent = $prepareHeader + $prepareSql + "`r`nGO`r`n"
+            if (Write-CymBuildConstraintGeneratedFile -Path $paths.PrepareFile -Content $prepareContent -DefinitionSha256 $definitionSha256 -AllowCreate $AllowCreate) {
+                [void]$createdFiles.Add($paths.PrepareFile)
+            }
+            $result.PrepareFile = $paths.PrepareFile
+        }
+
+        if (-not $differenceType.Equals("MissingInSource", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $preflightLines = New-Object System.Collections.Generic.List[string]
+            [void]$preflightLines.Add("SET NOCOUNT ON;")
+            [void]$preflightLines.Add("")
+            [void]$preflightLines.Add("IF OBJECT_ID($tableNameLiteral, N'U') IS NULL")
+            [void]$preflightLines.Add("    THROW 51400, 'Constraint parent table $schemaName.$parentObjectName does not exist.', 1;")
+
+            $applyStatement = ""
+            $postCreateStateStatement = ""
+
+            switch ($constraintKind) {
+                "FOREIGN_KEY" {
+                    $referencedSchemaName = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "ReferencedSchemaName" -Required)
+                    $referencedTableName = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "ReferencedTableName" -Required)
+                    $columns = @((Get-CymBuildObjectProperty -InputObject $payload -PropertyName "Columns" -Required) | Sort-Object { [int]$_.ColumnOrder })
+                    if ($columns.Count -eq 0) { throw "Foreign-key constraint '$objectName' has no columns." }
+
+                    $parentColumns = New-Object System.Collections.Generic.List[string]
+                    $referencedColumns = New-Object System.Collections.Generic.List[string]
+                    foreach ($column in $columns) {
+                        $parentColumn = [string](Get-CymBuildObjectProperty -InputObject $column -PropertyName "ParentColumn" -Required)
+                        $referencedColumn = [string](Get-CymBuildObjectProperty -InputObject $column -PropertyName "ReferencedColumn" -Required)
+                        [void]$parentColumns.Add((Quote-CymBuildSqlIdentifier -Value $parentColumn))
+                        [void]$referencedColumns.Add((Quote-CymBuildSqlIdentifier -Value $referencedColumn))
+                        [void]$preflightLines.Add("IF COL_LENGTH($tableNameLiteral, $(Quote-CymBuildSqlStringLiteral -Value $parentColumn)) IS NULL")
+                        [void]$preflightLines.Add("    THROW 51401, 'Foreign-key parent column $schemaName.$parentObjectName.$parentColumn does not exist.', 1;")
+                    }
+
+                    $referencedTable = "$(Quote-CymBuildSqlIdentifier -Value $referencedSchemaName).$(Quote-CymBuildSqlIdentifier -Value $referencedTableName)"
+                    $referencedTableLiteral = Quote-CymBuildSqlStringLiteral -Value $referencedTable
+                    [void]$preflightLines.Add("IF OBJECT_ID($referencedTableLiteral, N'U') IS NULL")
+                    [void]$preflightLines.Add("    THROW 51402, 'Foreign-key referenced table $referencedSchemaName.$referencedTableName does not exist.', 1;")
+                    foreach ($column in $columns) {
+                        $referencedColumn = [string]$column.ReferencedColumn
+                        [void]$preflightLines.Add("IF COL_LENGTH($referencedTableLiteral, $(Quote-CymBuildSqlStringLiteral -Value $referencedColumn)) IS NULL")
+                        [void]$preflightLines.Add("    THROW 51403, 'Foreign-key referenced column $referencedSchemaName.$referencedTableName.$referencedColumn does not exist.', 1;")
+                    }
+
+                    $deleteAction = Get-CymBuildConstraintActionSql -Action ([string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "DeleteAction"))
+                    $updateAction = Get-CymBuildConstraintActionSql -Action ([string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "UpdateAction"))
+                    $notForReplication = if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IsNotForReplication")) { " NOT FOR REPLICATION" } else { "" }
+                    $referentialActions = " ON DELETE $deleteAction ON UPDATE $updateAction$notForReplication"
+                    $applyStatement = "ALTER TABLE $tableName WITH NOCHECK ADD CONSTRAINT $constraintIdentifier FOREIGN KEY ($([string]::Join(', ', $parentColumns))) REFERENCES $referencedTable ($([string]::Join(', ', $referencedColumns)))$referentialActions;"
+                    $postCreateStateStatement = if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IsDisabled")) {
+                        "ALTER TABLE $tableName NOCHECK CONSTRAINT $constraintIdentifier;"
+                    }
+                    else {
+                        "ALTER TABLE $tableName CHECK CONSTRAINT $constraintIdentifier;"
+                    }
+                }
+                "CHECK" {
+                    $checkDefinition = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "CheckDefinition" -Required)
+                    if ([regex]::IsMatch($checkDefinition, '(?im)^\s*(?:GO|USE\s+)')) { throw "Check constraint definition contains a forbidden batch or database-context statement." }
+                    $notForReplication = if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IsNotForReplication")) { " NOT FOR REPLICATION" } else { "" }
+                    $applyStatement = "ALTER TABLE $tableName WITH NOCHECK ADD CONSTRAINT $constraintIdentifier CHECK$notForReplication $checkDefinition;"
+                    $postCreateStateStatement = if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IsDisabled")) {
+                        "ALTER TABLE $tableName NOCHECK CONSTRAINT $constraintIdentifier;"
+                    }
+                    else {
+                        "ALTER TABLE $tableName CHECK CONSTRAINT $constraintIdentifier;"
+                    }
+                }
+                "DEFAULT" {
+                    $parentColumnName = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "ParentColumnName" -Required)
+                    $defaultDefinition = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "DefaultDefinition" -Required)
+                    if ([regex]::IsMatch($defaultDefinition, '(?im)^\s*(?:GO|USE\s+)')) { throw "Default constraint definition contains a forbidden batch or database-context statement." }
+                    [void]$preflightLines.Add("IF COL_LENGTH($tableNameLiteral, $(Quote-CymBuildSqlStringLiteral -Value $parentColumnName)) IS NULL")
+                    [void]$preflightLines.Add("    THROW 51404, 'Default-constraint column $schemaName.$parentObjectName.$parentColumnName does not exist.', 1;")
+                    $applyStatement = "ALTER TABLE $tableName ADD CONSTRAINT $constraintIdentifier DEFAULT $defaultDefinition FOR $(Quote-CymBuildSqlIdentifier -Value $parentColumnName);"
+                }
+                { $_ -in @("PRIMARY_KEY", "UNIQUE") } {
+                    $indexType = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IndexType" -Required)
+                    $indexType = $indexType.ToUpperInvariant()
+                    if ($indexType -notin @("CLUSTERED", "NONCLUSTERED")) { throw "Unsupported key-constraint index type '$indexType'." }
+                    if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName "IsDisabled")) { throw "Disabled PRIMARY KEY or UNIQUE constraints require a dedicated reviewed migration." }
+                    $dataSpaceType = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "DataSpaceType")
+                    if (-not [string]::IsNullOrWhiteSpace($dataSpaceType) -and -not $dataSpaceType.Equals("ROWS_FILEGROUP", [System.StringComparison]::OrdinalIgnoreCase)) {
+                        throw "Key constraint '$objectName' uses unsupported data-space type '$dataSpaceType'. Partitioned and specialist constraints require a dedicated migration."
+                    }
+                    $columns = @((Get-CymBuildObjectProperty -InputObject $payload -PropertyName "Columns" -Required) | Sort-Object { [int]$_.KeyOrdinal })
+                    if ($columns.Count -eq 0) { throw "Key constraint '$objectName' has no columns." }
+                    $columnSql = New-Object System.Collections.Generic.List[string]
+                    $groupBySql = New-Object System.Collections.Generic.List[string]
+                    $nullPredicates = New-Object System.Collections.Generic.List[string]
+                    foreach ($column in $columns) {
+                        $columnName = [string](Get-CymBuildObjectProperty -InputObject $column -PropertyName "ColumnName" -Required)
+                        $quotedColumn = Quote-CymBuildSqlIdentifier -Value $columnName
+                        $direction = if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $column -PropertyName "IsDescending")) { "DESC" } else { "ASC" }
+                        [void]$columnSql.Add("$quotedColumn $direction")
+                        [void]$groupBySql.Add($quotedColumn)
+                        [void]$nullPredicates.Add("$quotedColumn IS NULL")
+                        [void]$preflightLines.Add("IF COL_LENGTH($tableNameLiteral, $(Quote-CymBuildSqlStringLiteral -Value $columnName)) IS NULL")
+                        [void]$preflightLines.Add("    THROW 51405, 'Key-constraint column $schemaName.$parentObjectName.$columnName does not exist.', 1;")
+                    }
+
+                    if ($constraintKind -eq "PRIMARY_KEY") {
+                        [void]$preflightLines.Add("IF EXISTS (SELECT 1 FROM $tableName WHERE $([string]::Join(' OR ', $nullPredicates)))")
+                        [void]$preflightLines.Add("    THROW 51406, 'PRIMARY KEY constraint $objectName cannot be created because NULL key values exist.', 1;")
+                    }
+                    [void]$preflightLines.Add("IF EXISTS (SELECT $([string]::Join(', ', $groupBySql)) FROM $tableName GROUP BY $([string]::Join(', ', $groupBySql)) HAVING COUNT_BIG(1) > 1)")
+                    [void]$preflightLines.Add("    THROW 51407, 'Key constraint $objectName cannot be created because duplicate key values exist.', 1;")
+
+                    $options = New-Object System.Collections.Generic.List[string]
+                    [void]$options.Add("PAD_INDEX = $(if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName 'IsPadded')) { 'ON' } else { 'OFF' })")
+                    [void]$options.Add("IGNORE_DUP_KEY = $(if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName 'IgnoreDuplicateKey')) { 'ON' } else { 'OFF' })")
+                    [void]$options.Add("ALLOW_ROW_LOCKS = $(if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName 'AllowRowLocks')) { 'ON' } else { 'OFF' })")
+                    [void]$options.Add("ALLOW_PAGE_LOCKS = $(if (ConvertTo-CymBuildBoolean -Value (Get-CymBuildObjectProperty -InputObject $payload -PropertyName 'AllowPageLocks')) { 'ON' } else { 'OFF' })")
+                    $fillFactor = [int](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "FillFactor")
+                    if ($fillFactor -gt 0) {
+                        if ($fillFactor -gt 100) { throw "Constraint fill factor must be between 1 and 100." }
+                        [void]$options.Add("FILLFACTOR = $fillFactor")
+                    }
+                    $keyKeyword = if ($constraintKind -eq "PRIMARY_KEY") { "PRIMARY KEY" } else { "UNIQUE" }
+                    $dataSpaceName = [string](Get-CymBuildObjectProperty -InputObject $payload -PropertyName "DataSpaceName")
+                    $onClause = if ([string]::IsNullOrWhiteSpace($dataSpaceName)) { "" } else { " ON $(Quote-CymBuildSqlIdentifier -Value $dataSpaceName)" }
+                    $applyStatement = "ALTER TABLE $tableName ADD CONSTRAINT $constraintIdentifier $keyKeyword $indexType ($([string]::Join(', ', $columnSql))) WITH ($([string]::Join(', ', $options)))$onClause;"
+                }
+            }
+
+            $preflightHeader = New-CymBuildGeneratedSchemaHeader `
+                -ObjectDescription $objectDescription `
+                -ComparisonGuid $comparisonGuid `
+                -DifferenceType $differenceType `
+                -ComparisonHash $comparisonHash `
+                -DefinitionSha256 $definitionSha256 `
+                -Purpose "Read-only preflight for the selected constraint operation."
+            [void]$requiredFiles.Add($paths.PreflightFile)
+            $preflightContent = $preflightHeader + ([string]::Join("`r`n", $preflightLines)) + "`r`nGO`r`n"
+            if (Write-CymBuildConstraintGeneratedFile -Path $paths.PreflightFile -Content $preflightContent -DefinitionSha256 $definitionSha256 -AllowCreate $AllowCreate) {
+                [void]$createdFiles.Add($paths.PreflightFile)
+            }
+
+            $applyHeader = New-CymBuildGeneratedSchemaHeader `
+                -ObjectDescription $objectDescription `
+                -ComparisonGuid $comparisonGuid `
+                -DifferenceType $differenceType `
+                -ComparisonHash $comparisonHash `
+                -DefinitionSha256 $definitionSha256 `
+                -Purpose "Finalize phase: create the source constraint from the declarative snapshot."
+            $stateSql = if ([string]::IsNullOrWhiteSpace($postCreateStateStatement)) { "" } else { "`r`n    $postCreateStateStatement" }
+            $applySql = @"
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+BEGIN TRY
+    BEGIN TRANSACTION;
+
+    IF NOT $constraintExistsPredicate
+    BEGIN
+        $applyStatement
+    END;$stateSql
+
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF XACT_STATE() <> 0
+        ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+"@
+            [void]$requiredFiles.Add($paths.ApplyFile)
+            $applyContent = $applyHeader + $applySql + "`r`nGO`r`n"
+            if (Write-CymBuildConstraintGeneratedFile -Path $paths.ApplyFile -Content $applyContent -DefinitionSha256 $definitionSha256 -AllowCreate $AllowCreate) {
+                [void]$createdFiles.Add($paths.ApplyFile)
+            }
+            $result.ApplyFile = $paths.ApplyFile
+            $result.PreflightFile = $paths.PreflightFile
+        }
+
+        foreach ($requiredFile in $requiredFiles) {
+            if (-not (Test-ApprovedSchemaSourcePath -Path $requiredFile)) {
+                throw "Constraint source path '$requiredFile' is outside Database/CymBuild_DB/Schema."
+            }
+            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+                throw "Required generated constraint source file '$requiredFile' does not exist."
+            }
+        }
+
+        $result.Succeeded = $true
+        $result.WasCreated = $createdFiles.Count -gt 0
+        $result.MaterializedFiles = [string[]]$createdFiles.ToArray()
+        $result.DefinitionSha256 = $definitionSha256
+        $result.ConstraintKind = $constraintKind
+        $result.Reason = if ($result.WasCreated) {
+            "Constraint prepare/preflight/apply SQL was materialized from the accepted declarative snapshot."
+        }
+        else {
+            "Source-controlled constraint SQL files were resolved."
+        }
+        return [pscustomobject]$result
+    }
+    catch {
+        $result.Reason = $_.Exception.Message
+        return [pscustomobject]$result
+    }
+}
+
+
+function New-MaterializedSchemaSourceFile {
+    param(
+        [System.Data.DataRow]$Row,
+        [string]$DestinationPath
+    )
+
+    $objectType = Get-DataRowText -Row $Row -ColumnName "ObjectType"
+    $schemaName = Get-DataRowText -Row $Row -ColumnName "SchemaName"
+    $objectName = Get-DataRowText -Row $Row -ColumnName "ObjectName"
+    $differenceType = Get-DataRowText -Row $Row -ColumnName "DifferenceType"
+    $comparisonGuid = Get-DataRowText -Row $Row -ColumnName "ComparisonGuid"
+    $sourceHash = Get-DataRowText -Row $Row -ColumnName "SourceHash"
+    $sourceDefinition = Get-DataRowText -Row $Row -ColumnName "SourceDefinition"
+
+    $result = [ordered]@{
+        Succeeded = $false
+        WasCreated = $false
+        DestinationPath = $DestinationPath
+        DefinitionSha256 = ""
+        Reason = ""
+    }
+
+    if (-not (Test-CanMaterializeProgrammableObject -ObjectType $objectType)) {
+        $result.Reason = "Object type '$objectType' is not eligible for automatic source materialization."
+        return [pscustomobject]$result
+    }
+
+    if ([string]::IsNullOrWhiteSpace($sourceDefinition)) {
+        $result.Reason = "The accepted deployment plan does not contain a source definition for $objectType '$schemaName.$objectName'. Re-run Stage & Compare before accepting the plan."
+        return [pscustomobject]$result
+    }
+
+    if ([regex]::IsMatch($sourceDefinition, '(?im)^\s*GO\s*(?:--.*)?$')) {
+        $result.Reason = "The captured source definition for $objectType '$schemaName.$objectName' contains a batch separator and cannot be materialized safely."
+        return [pscustomobject]$result
+    }
+
+    if ([regex]::IsMatch($sourceDefinition, '(?im)^\s*USE\s+')) {
+        $result.Reason = "The captured source definition for $objectType '$schemaName.$objectName' contains a database-context statement and cannot be materialized safely."
+        return [pscustomobject]$result
+    }
+
+    $canonicalSql = Convert-SchemaScriptForDeployment `
+        -Sql $sourceDefinition `
+        -ObjectType $objectType `
+        -SchemaName $schemaName `
+        -ObjectName $objectName `
+        -DifferenceType $differenceType
+
+    $headerText = [regex]::Replace($canonicalSql, '\[([^\]]+)\]', '$1')
+    $headerText = [regex]::Replace($headerText, '"([^"]+)"', '$1')
+    $headerText = [regex]::Replace($headerText, '\s+', ' ')
+
+    $kindPattern = switch ($objectType) {
+        "Function" { "FUNCTION" }
+        "View" { "VIEW" }
+        "StoredProcedure" { "(?:PROCEDURE|PROC)" }
+        "Trigger" { "TRIGGER" }
+        default { "" }
+    }
+
+    $identityPattern = (
+        '(?i)\bCREATE\s+OR\s+ALTER\s+' +
+        $kindPattern +
+        '\s+' +
+        [regex]::Escape($schemaName) +
+        '\s*\.\s*' +
+        [regex]::Escape($objectName) +
+        '(?:\s|\(|$)'
+    )
+
+    if (-not [regex]::IsMatch($headerText, $identityPattern)) {
+        $result.Reason = "The captured source definition does not declare the expected $objectType '$schemaName.$objectName' using CREATE OR ALTER."
+        return [pscustomobject]$result
+    }
+
+    if (-not (Test-ApprovedSchemaSourcePath -Path $DestinationPath)) {
+        $result.Reason = "The materialized source path is outside Database/CymBuild_DB/Schema."
+        return [pscustomobject]$result
+    }
+
+    if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+        $result.Succeeded = $true
+        $result.Reason = "The canonical source file was created by another process before materialization completed."
+        return [pscustomobject]$result
+    }
+
+    $definitionSha256 = Get-TextSha256 -Text $sourceDefinition
+    $generatedUtc = [DateTime]::UtcNow.ToString("O")
+    $header = @"
+/*
+    CymBuild generated canonical schema source.
+    Generated by       : CYB-361 R40 schema deployment runner
+    Run Guid           : $RunGuid
+    Comparison Guid    : $comparisonGuid
+    Object             : $objectType $schemaName.$objectName
+    Difference         : $differenceType
+    Comparison hash    : $sourceHash
+    Definition SHA-256 : $definitionSha256
+    Generated UTC      : $generatedUtc
+
+    This file was materialized from the accepted source-definition snapshot. Review and commit it
+    through the normal source-control process before promoting the release beyond the controlled
+    environment in which it was generated.
+*/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+"@
+
+    $fileContent = $header + $canonicalSql.Trim() + "`r`nGO`r`n"
+    $destinationDirectory = Split-Path -Parent $DestinationPath
+    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+
+    $temporaryPath = "$DestinationPath.tmp.$([Guid]::NewGuid().ToString('N'))"
+    $utf8WithBom = [System.Text.UTF8Encoding]::new($true)
+
+    try {
+        [System.IO.File]::WriteAllText($temporaryPath, $fileContent, $utf8WithBom)
+
+        if (Test-Path -LiteralPath $DestinationPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+            $result.Succeeded = $true
+            $result.Reason = "The canonical source file was created by another process before materialization completed."
+            return [pscustomobject]$result
+        }
+
+        Move-Item -LiteralPath $temporaryPath -Destination $DestinationPath
+        $result.Succeeded = $true
+        $result.WasCreated = $true
+        $result.DefinitionSha256 = $definitionSha256
+        $result.Reason = "Canonical source SQL was materialized from the accepted source-definition snapshot."
+        return [pscustomobject]$result
+    }
+    finally {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+}
+
+function Resolve-DeploymentItem {
+    param([System.Data.DataRow]$Row)
+
+    $objectType = [string]$Row["ObjectType"]
+    $schemaName = [string]$Row["SchemaName"]
+    $objectName = [string]$Row["ObjectName"]
+    $parentObjectName = [string]$Row["ParentObjectName"]
+    $differenceType = [string]$Row["DifferenceType"]
+    $sourceHash = if ($Row.Table.Columns.Contains("SourceHash") -and $Row["SourceHash"] -ne [DBNull]::Value) { [string]$Row["SourceHash"] } else { "" }
+    $targetHash = if ($Row.Table.Columns.Contains("TargetHash") -and $Row["TargetHash"] -ne [DBNull]::Value) { [string]$Row["TargetHash"] } else { "" }
+
+    $result = [ordered]@{
+        ComparisonGuid = [string]$Row["ComparisonGuid"]
+        ObjectType = $objectType
+        SchemaName = $schemaName
+        ObjectName = $objectName
+        ParentObjectName = $parentObjectName
+        DifferenceType = $differenceType
+        SourceHash = $sourceHash
+        TargetHash = $targetHash
+        SourceFile = ""
+        PrepareFile = ""
+        PreflightFile = ""
+        SupportFiles = @()
+        DeploymentMode = ""
+        IsSupported = $false
+        WasMaterialized = $false
+        MaterializedDefinitionSha256 = ""
+        MaterializedFiles = @()
+        ConstraintKind = ""
+        Reason = ""
+    }
+
+    $dedicatedMigration = Get-DedicatedMigrationDescriptor -ObjectType $objectType -SchemaName $schemaName -ObjectName $objectName -DifferenceType $differenceType
+    if ($null -ne $dedicatedMigration) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$dedicatedMigration.ExpectedSourceHash) -and
+            -not $sourceHash.Equals([string]$dedicatedMigration.ExpectedSourceHash, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $result.Reason = "A dedicated migration exists for $objectType '$schemaName.$objectName', but its approved source hash does not match the current comparison. Re-stage and review the source-controlled migration."
+            return [pscustomobject]$result
+        }
+
+        $sourceFile = [System.IO.Path]::GetFullPath([string]$dedicatedMigration.SourceFile)
+        $preflightFile = [System.IO.Path]::GetFullPath([string]$dedicatedMigration.PreflightFile)
+        $supportFileList = New-Object System.Collections.Generic.List[string]
+
+        if ($dedicatedMigration.PSObject.Properties.Name -contains "SupportFiles") {
+            foreach ($supportFileValue in $dedicatedMigration.SupportFiles) {
+                if ([string]::IsNullOrWhiteSpace([string]$supportFileValue)) {
+                    continue
+                }
+
+                [void]$supportFileList.Add([System.IO.Path]::GetFullPath([string]$supportFileValue))
+            }
+        }
+
+        if (-not (Test-ApprovedSchemaSourcePath -Path $sourceFile) -or
+            -not (Test-ApprovedSchemaSourcePath -Path $preflightFile)) {
+            $result.Reason = "Dedicated migration paths must remain under Database/CymBuild_DB/Schema."
+            return [pscustomobject]$result
+        }
+
+        foreach ($supportFile in $supportFileList) {
+            if (-not (Test-ApprovedSchemaSourcePath -Path $supportFile)) {
+                $result.Reason = "Dedicated migration support paths must remain under Database/CymBuild_DB/Schema."
+                return [pscustomobject]$result
+            }
+        }
+
+        if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
+            $result.Reason = "Dedicated source-controlled migration file not found for $objectType '$schemaName.$objectName'."
+            return [pscustomobject]$result
+        }
+
+        if (-not (Test-Path -LiteralPath $preflightFile -PathType Leaf)) {
+            $result.Reason = "Dedicated source-controlled preflight file not found for $objectType '$schemaName.$objectName'."
+            return [pscustomobject]$result
+        }
+
+        foreach ($supportFile in $supportFileList) {
+            if (-not (Test-Path -LiteralPath $supportFile -PathType Leaf)) {
+                $result.Reason = "Dedicated source-controlled support file not found for $objectType '$schemaName.$objectName'."
+                return [pscustomobject]$result
+            }
+        }
+
+        $result.SourceFile = $sourceFile
+        $result.PreflightFile = $preflightFile
+        $result.SupportFiles = [string[]]$supportFileList.ToArray()
+        $result.DeploymentMode = [string]$dedicatedMigration.DeploymentMode
+        $result.IsSupported = $true
+        $result.Reason = [string]$dedicatedMigration.Description
+        return [pscustomobject]$result
+    }
+
+    if ($objectType.Equals("Constraint", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $constraintMaterialization = New-MaterializedConstraintSourceFiles -Row $Row -AllowCreate (-not $SkipSourceMaterialization)
+        if (-not $constraintMaterialization.Succeeded) {
+            $result.Reason = $constraintMaterialization.Reason
+            return [pscustomobject]$result
+        }
+
+        $result.SourceFile = [string]$constraintMaterialization.ApplyFile
+        $result.PrepareFile = [string]$constraintMaterialization.PrepareFile
+        $result.PreflightFile = [string]$constraintMaterialization.PreflightFile
+        $result.DeploymentMode = if ($differenceType.Equals("MissingInSource", [System.StringComparison]::OrdinalIgnoreCase)) { "ConstraintRemove" } elseif ($differenceType.Equals("Different", [System.StringComparison]::OrdinalIgnoreCase)) { "ConstraintReplace" } else { "ConstraintCreate" }
+        $result.IsSupported = $true
+        $result.WasMaterialized = [bool]$constraintMaterialization.WasCreated
+        $result.MaterializedDefinitionSha256 = [string]$constraintMaterialization.DefinitionSha256
+        $result.MaterializedFiles = [string[]]$constraintMaterialization.MaterializedFiles
+        $result.ConstraintKind = [string]$constraintMaterialization.ConstraintKind
+        $result.Reason = [string]$constraintMaterialization.Reason
+        return [pscustomobject]$result
+    }
+
+    if ($objectType.Equals("Index", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $result.Reason = "Index deployment requires a dedicated source-controlled migration script or future object extractor. It is not executed from captured database DDL."
+        return [pscustomobject]$result
+    }
+
+    if ($objectType -in @("Table", "TableType", "Sequence") -and $differenceType -ne "MissingInTarget") {
+        $result.Reason = "$objectType '$schemaName.$objectName' exists in the target but differs. Non-destructive ALTER migration SQL is required; table/type/sequence recreate is not allowed."
+        return [pscustomobject]$result
+    }
+
+    $sourceFile = Get-SourceSqlFile -ObjectType $objectType -SchemaName $schemaName -ObjectName $objectName -ParentObjectName $parentObjectName
+    if ([string]::IsNullOrWhiteSpace($sourceFile)) {
+        $result.Reason = "No source-controlled SQL mapping exists for object type '$objectType'."
+        return [pscustomobject]$result
+    }
+
+    $sourceFile = [System.IO.Path]::GetFullPath($sourceFile)
+    if (-not (Test-ApprovedSchemaSourcePath -Path $sourceFile)) {
+        $result.Reason = "Resolved source path is outside Database/CymBuild_DB/Schema."
+        return [pscustomobject]$result
+    }
+
+    $result.SourceFile = $sourceFile
+
+    if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
+        if (-not $SkipSourceMaterialization -and (Test-CanMaterializeProgrammableObject -ObjectType $objectType)) {
+            $materialization = New-MaterializedSchemaSourceFile -Row $Row -DestinationPath $sourceFile
+            if (-not $materialization.Succeeded) {
+                $result.Reason = $materialization.Reason
+                return [pscustomobject]$result
+            }
+
+            $result.WasMaterialized = [bool]$materialization.WasCreated
+            $result.MaterializedDefinitionSha256 = [string]$materialization.DefinitionSha256
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
+        $result.Reason = "Source-controlled SQL file not found for $objectType '$schemaName.$objectName'."
+        return [pscustomobject]$result
+    }
+
+    $result.DeploymentMode = if ($objectType -in @("Table", "TableType", "Sequence")) { "CanonicalCreate" } elseif ($result.WasMaterialized) { "MaterializedCanonicalAlter" } else { "CanonicalAlter" }
+    $result.IsSupported = $true
+    $result.Reason = if ($result.WasMaterialized) { "Source definition materialized to canonical source-controlled SQL path." } else { "Source-controlled SQL file resolved." }
+    return [pscustomobject]$result
+}
+
+function Get-RunAndPlan {
+    param([System.Data.SqlClient.SqlConnection]$Connection)
+
+    $runTable = Invoke-SqlQuery -Connection $Connection -Sql @"
+SELECT TOP (1)
+    sr.Guid,
+    sr.RunStatus,
+    sr.IsReviewed,
+    sr.SourceEnvironment,
+    sr.TargetEnvironment,
+    sr.SourceServerName,
+    sr.SourceDatabaseName,
+    sr.TargetServerName,
+    sr.TargetDatabaseName,
+    sr.ReleaseReference,
+    sr.DeploymentReference,
+    sr.CreatedOnUtc,
+    sr.ReviewedOnUtc,
+    sr.RowStatus
+FROM [SMigration].[Schema_Run] AS sr
+WHERE sr.Guid = @RunGuid
+  AND sr.RowStatus <> 0
+  AND sr.RowStatus <> 254;
+"@ -Parameters @{ "@RunGuid" = $RunGuid }
+
+    if ($runTable.Rows.Count -ne 1) {
+        throw "Schema migration run $RunGuid was not found in $TargetDatabase."
+    }
+
+    $planTable = Invoke-SqlQuery -Connection $Connection -Sql @"
+EXEC [SMigration].[SchemaDeploymentPlan_Get]
+    @RunGuid = @RunGuid;
+"@ -Parameters @{ "@RunGuid" = $RunGuid } -TimeoutSeconds 600
+
+    return [pscustomobject]@{
+        RunRow = $runTable.Rows[0]
+        PlanTable = $planTable
+    }
+}
+
+function Test-LiveTargetName {
+    param(
+        [string]$EnvironmentName,
+        [string]$ServerName,
+        [string]$DatabaseName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvironmentName) -and
+        $EnvironmentName.Trim().Equals("LIVE", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($DatabaseName)) {
+        $databaseValue = $DatabaseName.Trim()
+        if ($databaseValue.Equals("Concursus", [System.StringComparison]::OrdinalIgnoreCase) -or
+            $databaseValue -match '(?i)(^|[_\-])(live|prod|production)([_\-]|$)') {
+            return $true
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ServerName) -and
+        $ServerName -match '(?i)(live|prod|production)') {
+        return $true
+    }
+
+    return $false
+}
+
+function Test-DevTarget {
+    param(
+        [System.Data.DataRow]$RunRow,
+        [System.Data.SqlClient.SqlConnection]$Connection
+    )
+
+    $targetEnvironment = ([string]$RunRow["TargetEnvironment"]).Trim()
+    $runTargetDatabase = ([string]$RunRow["TargetDatabaseName"]).Trim()
+    $actualDatabase = $Connection.Database
+
+    $actualIsDev = $actualDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $actualDatabase.Equals("Concursus_Dev", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $actualDatabase -match '(?i)(^|[_\-])dev([_\-]|$)'
+
+    $runDatabaseIsDev = $runTargetDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $runTargetDatabase.Equals("Concursus_Dev", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $runTargetDatabase -match '(?i)(^|[_\-])dev([_\-]|$)'
+
+    return $actualIsDev -and
+        ($runDatabaseIsDev -or $targetEnvironment.Equals("DEV", [System.StringComparison]::OrdinalIgnoreCase))
+}
+
+function Assert-RunCanDeploy {
+    param(
+        [System.Data.DataRow]$RunRow,
+        [System.Data.SqlClient.SqlConnection]$Connection
+    )
+
+    $runTargetDatabase = ([string]$RunRow["TargetDatabaseName"]).Trim()
+    $runTargetServer = ([string]$RunRow["TargetServerName"]).Trim()
+    $actualTargetDatabase = $Connection.Database
+    $actualTargetServer = $Connection.DataSource
+
+    if (-not $IgnoreTargetMismatch) {
+        if (-not $runTargetDatabase.Equals($TargetDatabase, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Run target database '$runTargetDatabase' does not match requested target database '$TargetDatabase'. Use -IgnoreTargetMismatch only when deliberately using an equivalent alias."
+        }
+
+        if (-not $actualTargetDatabase.Equals($TargetDatabase, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "The SQL connection opened database '$actualTargetDatabase', which does not match requested target database '$TargetDatabase'."
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($actualTargetServer) -and
+            -not $actualTargetServer.Equals($TargetServer, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "The SQL connection opened server '$actualTargetServer', which does not match requested target server '$TargetServer'. Use -IgnoreTargetMismatch only for an approved equivalent alias."
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($runTargetServer) -and
+            -not $runTargetServer.Equals($TargetServer, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Run target server '$runTargetServer' does not match requested target server '$TargetServer'. Use -IgnoreTargetMismatch only when deliberately using an equivalent alias."
+        }
+    }
+
+    $runStatus = ([string]$RunRow["RunStatus"]).Trim()
+    $isReviewedRun = $runStatus.Equals("Reviewed", [System.StringComparison]::OrdinalIgnoreCase)
+    $isApprovedFailedRetry = $RetryFailedDeployment -and
+        $runStatus.Equals("DeploymentFailed", [System.StringComparison]::OrdinalIgnoreCase)
+
+    if (-not $SkipAcceptanceCheck -and
+        (-not [bool]$RunRow["IsReviewed"] -or
+         (-not $isReviewedRun -and -not $isApprovedFailedRetry))) {
+        throw "Run $RunGuid is not in an accepted deployable state. Validate and accept the current plan in CymBuild, or use -RetryFailedDeployment only to resume an unchanged reviewed run whose status is DeploymentFailed."
+    }
+
+    if ($SkipAcceptanceCheck -and $Apply -and -not (Test-DevTarget -RunRow $RunRow -Connection $Connection)) {
+        throw "-SkipAcceptanceCheck is restricted to DEV apply diagnostics."
+    }
+
+    $isLiveTarget =
+        (Test-LiveTargetName -EnvironmentName ([string]$RunRow["TargetEnvironment"]) -ServerName $runTargetServer -DatabaseName $runTargetDatabase) -or
+        (Test-LiveTargetName -EnvironmentName "" -ServerName $TargetServer -DatabaseName $TargetDatabase) -or
+        (Test-LiveTargetName -EnvironmentName "" -ServerName $actualTargetServer -DatabaseName $actualTargetDatabase)
+
+    if ($Apply -and $isLiveTarget -and -not $AllowLive) {
+        throw "Target appears to be LIVE/production. Re-run with -AllowLive only under the approved LIVE release procedure."
+    }
+}
+
+function Write-PlanOutputs {
+    param(
+        [System.Data.DataRow]$RunRow,
+        [System.Data.DataTable]$PlanTable,
+        [object[]]$ResolvedItems,
+        [object[]]$UnsupportedItems
+    )
+
+    $planCsv = Join-Path $OutputDirectory "deployment-plan.csv"
+    $resolvedCsv = Join-Path $OutputDirectory "resolved-items.csv"
+    $unsupportedCsv = Join-Path $OutputDirectory "unsupported-items.csv"
+    $materializedCsv = Join-Path $OutputDirectory "materialized-source-items.csv"
+    $summaryJson = Join-Path $OutputDirectory "summary.json"
+
+    $planRows = foreach ($row in $PlanTable.Rows) {
+        [pscustomobject]@{
+            ComparisonGuid = [string]$row["ComparisonGuid"]
+            ObjectType = [string]$row["ObjectType"]
+            SchemaName = [string]$row["SchemaName"]
+            ObjectName = [string]$row["ObjectName"]
+            ParentObjectName = [string]$row["ParentObjectName"]
+            DifferenceType = [string]$row["DifferenceType"]
+            IsDeployable = [bool]$row["IsDeployable"]
+            IsDestructiveRisk = [bool]$row["IsDestructiveRisk"]
+            IsSelected = [bool]$row["IsSelected"]
+            HasExplicitSelection = [bool]$row["HasExplicitSelection"]
+        }
+    }
+
+    [object[]]$planRowArray = @($planRows)
+    [object[]]$materializedItems = @($ResolvedItems | Where-Object { $_.WasMaterialized })
+
+    Write-CymBuildTextFile -Path $planCsv -Content (ConvertTo-CymBuildCsvText -Rows $planRowArray)
+    Write-CymBuildTextFile -Path $resolvedCsv -Content (ConvertTo-CymBuildCsvText -Rows $ResolvedItems)
+    Write-CymBuildTextFile -Path $unsupportedCsv -Content (ConvertTo-CymBuildCsvText -Rows $UnsupportedItems)
+    Write-CymBuildTextFile -Path $materializedCsv -Content (ConvertTo-CymBuildCsvText -Rows $materializedItems)
+
+    $supportedCount = @($ResolvedItems | Where-Object { $_.IsSupported }).Count
+
+    $summary = [ordered]@{
+        RunGuid = $RunGuid.ToString()
+        TargetServer = $TargetServer
+        TargetDatabase = $TargetDatabase
+        ReleaseReference = $ReleaseReference
+        DeploymentReference = $DeploymentReference
+        IsApply = [bool]$Apply
+        IsWhatIf = [bool]$WhatIf
+        PlanCount = $PlanTable.Rows.Count
+        SupportedCount = $supportedCount
+        UnsupportedCount = $UnsupportedItems.Count
+        MaterializedSourceCount = $materializedItems.Count
+        RetryFailedDeployment = [bool]$RetryFailedDeployment
+        GeneratedOnUtc = [DateTime]::UtcNow.ToString("O")
+        ExecutionId = $executionId
+        ExecutionMode = $executionMode
+        RunOutputRoot = $runOutputRoot
+        OutputDirectory = $OutputDirectory
+    }
+
+    $summaryText = $summary | ConvertTo-Json -Depth 12
+    Write-CymBuildTextFile -Path $summaryJson -Content ($summaryText + "`r`n")
+}
+
+function New-PreviewDeploymentScript {
+    param([object[]]$SupportedItems)
+
+    $scriptPath = Join-Path $OutputDirectory "manual-preview-deployment.sql"
+    $content = New-Object System.Text.StringBuilder
+
+    [void]$content.AppendLine("/*")
+    [void]$content.AppendLine("    CYB-361 generated manual preview deployment script")
+    [void]$content.AppendLine("    Target server   : $TargetServer")
+    [void]$content.AppendLine("    Target database : $TargetDatabase")
+    [void]$content.AppendLine("    Run Guid        : $RunGuid")
+    [void]$content.AppendLine("    Generated UTC   : $([DateTime]::UtcNow.ToString("O"))")
+    [void]$content.AppendLine("")
+    [void]$content.AppendLine("    INSPECTION ONLY. Do not execute this generated file as the approved deployment path.")
+    [void]$content.AppendLine("    Run Invoke-CymBuildSchemaDeployment.ps1 so existence checks, LIVE guardrails and SMigration audit are enforced.")
+    [void]$content.AppendLine("*/")
+    [void]$content.AppendLine("USE [$($TargetDatabase.Replace("]", "]]"))];")
+    [void]$content.AppendLine("GO")
+    [void]$content.AppendLine("EXEC sys.sp_set_session_context @key = N'CymBuild_schema_predeployment_will_run', @value = $([int](-not $SkipPreDeployment)), @read_only = 0;")
+    [void]$content.AppendLine("GO")
+
+    foreach ($item in $SupportedItems) {
+        foreach ($supportFile in $item.SupportFiles) {
+            $supportSql = Get-Content -LiteralPath $supportFile -Raw
+            [void]$content.AppendLine("")
+            [void]$content.AppendLine("/* Prepare shared migration support for $($item.ObjectType) $($item.SchemaName).$($item.ObjectName) from $supportFile */")
+            [void]$content.AppendLine($supportSql)
+            [void]$content.AppendLine("GO")
+        }
+
+        if ([string]::IsNullOrWhiteSpace([string]$item.PreflightFile)) {
+            continue
+        }
+
+        $preflightSql = Get-Content -LiteralPath $item.PreflightFile -Raw
+        [void]$content.AppendLine("")
+        [void]$content.AppendLine("/* Preflight $($item.ObjectType) $($item.SchemaName).$($item.ObjectName) from $($item.PreflightFile) */")
+        [void]$content.AppendLine($preflightSql)
+        [void]$content.AppendLine("GO")
+    }
+
+    if (-not $SkipPreDeployment) {
+        [void]$content.AppendLine("EXEC [SCore].[PreDeploymentScript];")
+        [void]$content.AppendLine("GO")
+        [void]$content.AppendLine("EXEC sys.sp_set_session_context @key = N'CymBuild_schema_predeployment_will_run', @value = 0, @read_only = 0;")
+        [void]$content.AppendLine("GO")
+
+        foreach ($item in $SupportedItems) {
+            if ([string]::IsNullOrWhiteSpace([string]$item.PreflightFile)) {
+                continue
+            }
+
+            $strictPreflightSql = Get-Content -LiteralPath $item.PreflightFile -Raw
+            [void]$content.AppendLine("")
+            [void]$content.AppendLine("/* Strict post-pre-deployment preflight $($item.ObjectType) $($item.SchemaName).$($item.ObjectName) */")
+            [void]$content.AppendLine($strictPreflightSql)
+            [void]$content.AppendLine("GO")
+        }
+    }
+
+    foreach ($item in @(
+        $SupportedItems |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.PrepareFile) } |
+            Sort-Object @{ Expression = {
+                switch ($_.ConstraintKind) {
+                    "FOREIGN_KEY" { 10 }
+                    "CHECK" { 20 }
+                    "DEFAULT" { 20 }
+                    "UNIQUE" { 30 }
+                    "PRIMARY_KEY" { 30 }
+                    default { 50 }
+                }
+            } }, SchemaName, ParentObjectName, ObjectName
+    )) {
+        $prepareSql = Get-Content -LiteralPath $item.PrepareFile -Raw
+        [void]$content.AppendLine("")
+        [void]$content.AppendLine("/* Prepare $($item.ObjectType) $($item.SchemaName).$($item.ParentObjectName).$($item.ObjectName) from $($item.PrepareFile) */")
+        [void]$content.AppendLine($prepareSql)
+        [void]$content.AppendLine("GO")
+    }
+
+    $orderedApplyItems = @(
+        $SupportedItems |
+            Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.SourceFile) } |
+            Sort-Object @{ Expression = {
+                if ($_.ObjectType -ne "Constraint") {
+                    100
+                }
+                else {
+                    switch ($_.ConstraintKind) {
+                        "PRIMARY_KEY" { 1000 }
+                        "UNIQUE" { 1000 }
+                        "DEFAULT" { 1010 }
+                        "CHECK" { 1020 }
+                        "FOREIGN_KEY" { 1030 }
+                        default { 1090 }
+                    }
+                }
+            } }, SchemaName, ParentObjectName, ObjectName
+    )
+
+    foreach ($item in $orderedApplyItems) {
+        $sql = Get-Content -LiteralPath $item.SourceFile -Raw
+        $sql = Convert-SchemaScriptForDeployment -Sql $sql -ObjectType $item.ObjectType -SchemaName $item.SchemaName -ObjectName $item.ObjectName -DifferenceType $item.DifferenceType
+        [void]$content.AppendLine("")
+        [void]$content.AppendLine("/* Deploy $($item.ObjectType) $($item.SchemaName).$($item.ObjectName) using $($item.DeploymentMode) from $($item.SourceFile) */")
+        [void]$content.AppendLine($sql)
+        [void]$content.AppendLine("GO")
+    }
+
+    if (-not $SkipPostDeployment -and -not $TargetDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase)) {
+        [void]$content.AppendLine("EXEC [SCore].[PostDeploymentScript];")
+        [void]$content.AppendLine("GO")
+    }
+
+    Write-CymBuildTextFile -Path $scriptPath -Content $content.ToString()
+    return $scriptPath
+}
+
+function Invoke-CymBuildSchemaDeployment {
+    $preDeploymentCompleted = $false
+    $postDeploymentCompleted = $false
+
+    $sqlConnectionString = New-CymBuildSqlConnectionString
+    $connection = New-SqlConnection -SqlConnectionString $sqlConnectionString
+
+    try {
+        $runAndPlan = Get-RunAndPlan -Connection $connection
+        $runRow = $runAndPlan.RunRow
+        $planTable = $runAndPlan.PlanTable
+
+        Assert-RunCanDeploy -RunRow $runRow -Connection $connection
+
+        if ($planTable.Rows.Count -eq 0) {
+            throw "The selected deployment plan is empty. Select deployable schema differences in CymBuild and save the selection before running deployment."
+        }
+
+        $resolved = New-Object System.Collections.Generic.List[object]
+        $unsupported = New-Object System.Collections.Generic.List[object]
+
+        foreach ($row in $planTable.Rows) {
+            $item = Resolve-DeploymentItem -Row $row
+            [void]$resolved.Add($item)
+            if (-not $item.IsSupported) {
+                [void]$unsupported.Add($item)
+            }
+        }
+
+        [object[]]$resolvedItems = $resolved.ToArray()
+        [object[]]$unsupportedItems = $unsupported.ToArray()
+        [object[]]$supported = @($resolvedItems | Where-Object { $_.IsSupported })
+        [object[]]$materializedItems = @($resolvedItems | Where-Object { $_.WasMaterialized })
+
+        Write-PlanOutputs -RunRow $runRow -PlanTable $planTable -ResolvedItems $resolvedItems -UnsupportedItems $unsupportedItems
+        $previewScriptPath = New-PreviewDeploymentScript -SupportedItems $supported
+
+        Write-Host "CYB-361 R40 schema deployment runner" -ForegroundColor Cyan
+        Write-Host "Repo root       : $RepoRoot"
+        Write-Host "Target          : $TargetServer / $TargetDatabase"
+        Write-Host "Run Guid        : $RunGuid"
+        Write-Host "Plan rows       : $($planTable.Rows.Count)"
+        Write-Host "Supported rows  : $($supported.Count)"
+        Write-Host "Unsupported rows: $($unsupportedItems.Count)"
+        Write-Host "Materialized SQL: $($materializedItems.Count)"
+        Write-Host "Run output root : $runOutputRoot"
+        Write-Host "Execution ID    : $executionId"
+        Write-Host "Output folder   : $OutputDirectory"
+        Write-Host "Preview SQL     : $previewScriptPath"
+
+        if ($materializedItems.Count -gt 0) {
+            Write-Host "Canonical source SQL was materialized from the accepted plan:" -ForegroundColor Green
+            foreach ($materializedItem in $materializedItems) {
+                $generatedFiles = @($materializedItem.MaterializedFiles)
+                if ($generatedFiles.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$materializedItem.SourceFile)) {
+                    $generatedFiles = @([string]$materializedItem.SourceFile)
+                }
+                foreach ($generatedFile in $generatedFiles) {
+                    Write-Host "  $($materializedItem.ObjectType) $($materializedItem.SchemaName).$($materializedItem.ObjectName) -> $generatedFile" -ForegroundColor Green
+                }
+            }
+            Write-Host "Review and commit the generated files through the normal source-control process." -ForegroundColor Yellow
+
+            if ($Apply) {
+                throw "The runner materialized new canonical source SQL during this apply attempt. No target deployment has started. Review the generated files, run -WhatIf, then re-run -Apply."
+            }
+        }
+
+        if ($unsupportedItems.Count -gt 0) {
+            Write-Host "Unsupported rows were found. See unsupported-items.csv." -ForegroundColor Yellow
+            if (-not $AllowPartial) {
+                throw "Deployment plan contains unsupported rows. Narrow the selection in CymBuild or re-run with -AllowPartial to deploy only supported rows."
+            }
+        }
+
+        if ($supported.Count -eq 0) {
+            throw "No supported source-controlled schema artefacts were resolved for this deployment plan."
+        }
+
+        Set-SchemaPreflightContext -Connection $connection -PreDeploymentWillRun (-not $SkipPreDeployment)
+
+        $preflightedItemList = New-Object System.Collections.Generic.List[object]
+        foreach ($item in $supported) {
+            $objectLabel = "$($item.ObjectType) $($item.SchemaName).$($item.ObjectName)"
+
+            foreach ($supportFile in $item.SupportFiles) {
+                Write-Host "Preparing shared migration support for $objectLabel" -ForegroundColor DarkCyan
+                $supportSql = Get-Content -LiteralPath $supportFile -Raw
+                Invoke-SqlScriptText -Connection $connection -Sql $supportSql -Description "$objectLabel shared migration support" -TimeoutSeconds 600
+            }
+
+            if ([string]::IsNullOrWhiteSpace([string]$item.PreflightFile)) {
+                continue
+            }
+
+            Write-Host "Preflighting $objectLabel" -ForegroundColor Cyan
+            $preflightSql = Get-Content -LiteralPath $item.PreflightFile -Raw
+            Invoke-SqlScriptText -Connection $connection -Sql $preflightSql -Description "$objectLabel preflight" -TimeoutSeconds 600
+            [void]$preflightedItemList.Add($item)
+        }
+        [object[]]$preflightedItems = $preflightedItemList.ToArray()
+
+        if ($WhatIf) {
+            $materializationMessage = if ($materializedItems.Count -gt 0) { " Canonical source files were generated in the repository; review and commit them before promotion." } else { "" }
+            Write-Host "Dry-run only. Read-only target preflights completed, including eligibility validation for schema-bound dependencies scheduled for SCore.PreDeploymentScript; no target schema, data, or SMigration audit rows were changed.$materializationMessage Re-run with -Apply to deploy." -ForegroundColor Yellow
+            return
+        }
+
+        $deploymentAuditStarted = $true
+
+        Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentRunner" -StepStatus "Started" -Message "Manual source-controlled schema deployment runner started." -Details @{
+            TargetServer = $TargetServer
+            TargetDatabase = $TargetDatabase
+            ReleaseReference = $ReleaseReference
+            DeploymentReference = $DeploymentReference
+            PlanCount = $planTable.Rows.Count
+            SupportedCount = $supported.Count
+            UnsupportedCount = $unsupportedItems.Count
+            MaterializedSourceCount = $materializedItems.Count
+            AllowPartial = [bool]$AllowPartial
+            RetryFailedDeployment = [bool]$RetryFailedDeployment
+        }
+
+        foreach ($unsupportedItem in $unsupportedItems) {
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentObject" -StepStatus "Skipped" -Message "$($unsupportedItem.ObjectType) $($unsupportedItem.SchemaName).$($unsupportedItem.ObjectName) is unsupported by the current manual runner and was skipped under -AllowPartial." -Details $unsupportedItem
+        }
+
+        foreach ($item in $preflightedItems) {
+            $objectLabel = "$($item.ObjectType) $($item.SchemaName).$($item.ObjectName)"
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentPreflight" -StepStatus "Succeeded" -Message "$objectLabel source-controlled preflight completed." -Details @{
+                ComparisonGuid = $item.ComparisonGuid
+                ObjectType = $item.ObjectType
+                SchemaName = $item.SchemaName
+                ObjectName = $item.ObjectName
+                DifferenceType = $item.DifferenceType
+                DeploymentMode = $item.DeploymentMode
+                PreflightFile = $item.PreflightFile
+                SupportFiles = [string[]]$item.SupportFiles
+            }
+        }
+
+        if (-not $SkipPreDeployment) {
+            Write-Host "Running SCore.PreDeploymentScript..." -ForegroundColor Cyan
+            Invoke-SqlScriptText -Connection $connection -Sql "EXEC [SCore].[PreDeploymentScript];" -Description "SCore.PreDeploymentScript" -TimeoutSeconds 1800
+            $preDeploymentCompleted = $true
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentPre" -StepStatus "Succeeded" -Message "SCore.PreDeploymentScript completed on the target database." -Details @{
+                TargetServer = $TargetServer
+                TargetDatabase = $TargetDatabase
+            }
+
+            Set-SchemaPreflightContext -Connection $connection -PreDeploymentWillRun $false
+
+            foreach ($item in $preflightedItems) {
+                $objectLabel = "$($item.ObjectType) $($item.SchemaName).$($item.ObjectName)"
+                Write-Host "Re-preflighting $objectLabel after SCore.PreDeploymentScript" -ForegroundColor Cyan
+                $strictPreflightSql = Get-Content -LiteralPath $item.PreflightFile -Raw
+                Invoke-SqlScriptText -Connection $connection -Sql $strictPreflightSql -Description "$objectLabel strict post-pre-deployment preflight" -TimeoutSeconds 600
+
+                Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentPostPreflight" -StepStatus "Succeeded" -Message "$objectLabel strict preflight confirmed that managed schema-bound dependencies were removed." -Details @{
+                    ComparisonGuid = $item.ComparisonGuid
+                    ObjectType = $item.ObjectType
+                    SchemaName = $item.SchemaName
+                    ObjectName = $item.ObjectName
+                    PreflightFile = $item.PreflightFile
+                }
+            }
+        }
+
+        $appliedObjectKeys = @{}
+
+        foreach ($item in @(
+            $supported |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.PrepareFile) } |
+                Sort-Object @{ Expression = {
+                    switch ($_.ConstraintKind) {
+                        "FOREIGN_KEY" { 10 }
+                        "CHECK" { 20 }
+                        "DEFAULT" { 20 }
+                        "UNIQUE" { 30 }
+                        "PRIMARY_KEY" { 30 }
+                        default { 50 }
+                    }
+                } }, SchemaName, ParentObjectName, ObjectName
+        )) {
+            $objectLabel = "$($item.ObjectType) $($item.SchemaName).$($item.ParentObjectName).$($item.ObjectName)"
+            Write-Host "Preparing $objectLabel" -ForegroundColor Cyan
+            $prepareSql = Get-Content -LiteralPath $item.PrepareFile -Raw
+            Invoke-SqlScriptText -Connection $connection -Sql $prepareSql -Description "$objectLabel prepare" -TimeoutSeconds 1800
+            $itemKey = "$($item.ObjectType)|$($item.SchemaName)|$($item.ParentObjectName)|$($item.ObjectName)"
+            $appliedObjectKeys[$itemKey] = $true
+
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentConstraintPrepare" -StepStatus "Applied" -Message "$objectLabel target constraint preparation applied from source-controlled SQL." -Details @{
+                ComparisonGuid = $item.ComparisonGuid
+                ObjectType = $item.ObjectType
+                SchemaName = $item.SchemaName
+                ObjectName = $item.ObjectName
+                ParentObjectName = $item.ParentObjectName
+                DifferenceType = $item.DifferenceType
+                DeploymentMode = $item.DeploymentMode
+                PrepareFile = $item.PrepareFile
+                ConstraintKind = $item.ConstraintKind
+            }
+        }
+
+        $orderedApplyItems = @(
+            $supported |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.SourceFile) } |
+                Sort-Object @{ Expression = {
+                if ($_.ObjectType -ne "Constraint") {
+                    100
+                }
+                else {
+                    switch ($_.ConstraintKind) {
+                        "PRIMARY_KEY" { 1000 }
+                        "UNIQUE" { 1000 }
+                        "DEFAULT" { 1010 }
+                        "CHECK" { 1020 }
+                        "FOREIGN_KEY" { 1030 }
+                        default { 1090 }
+                    }
+                }
+            } }, SchemaName, ParentObjectName, ObjectName
+        )
+
+        foreach ($item in $orderedApplyItems) {
+            $objectLabel = "$($item.ObjectType) $($item.SchemaName).$($item.ObjectName)"
+            Write-Host "Deploying $objectLabel" -ForegroundColor Cyan
+
+            if ($item.DeploymentMode -eq "CanonicalCreate" -and
+                (Test-SqlObjectExists -Connection $connection -ObjectType $item.ObjectType -SchemaName $item.SchemaName -ObjectName $item.ObjectName)) {
+                Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentObject" -StepStatus "Skipped" -Message "$objectLabel already exists. Non-destructive recreate was not attempted." -Details $item
+                continue
+            }
+
+            $sql = Get-Content -LiteralPath $item.SourceFile -Raw
+            $sql = Convert-SchemaScriptForDeployment -Sql $sql -ObjectType $item.ObjectType -SchemaName $item.SchemaName -ObjectName $item.ObjectName -DifferenceType $item.DifferenceType
+            Invoke-SqlScriptText -Connection $connection -Sql $sql -Description $objectLabel -TimeoutSeconds 1800
+            $itemKey = "$($item.ObjectType)|$($item.SchemaName)|$($item.ParentObjectName)|$($item.ObjectName)"
+            $appliedObjectKeys[$itemKey] = $true
+
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentObject" -StepStatus "Applied" -Message "$objectLabel applied from source-controlled SQL." -Details @{
+                ComparisonGuid = $item.ComparisonGuid
+                ObjectType = $item.ObjectType
+                SchemaName = $item.SchemaName
+                ObjectName = $item.ObjectName
+                ParentObjectName = $item.ParentObjectName
+                DifferenceType = $item.DifferenceType
+                DeploymentMode = $item.DeploymentMode
+                SourceFile = $item.SourceFile
+                PrepareFile = $item.PrepareFile
+                PreflightFile = $item.PreflightFile
+                SupportFiles = [string[]]$item.SupportFiles
+                ConstraintKind = $item.ConstraintKind
+            }
+        }
+
+        $appliedCount = $appliedObjectKeys.Count
+
+        if (-not $SkipPostDeployment -and -not $TargetDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "Running SCore.PostDeploymentScript..." -ForegroundColor Cyan
+            Invoke-SqlScriptText -Connection $connection -Sql "EXEC [SCore].[PostDeploymentScript];" -Description "SCore.PostDeploymentScript" -TimeoutSeconds 1800
+            $postDeploymentCompleted = $true
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentPost" -StepStatus "Succeeded" -Message "SCore.PostDeploymentScript completed on the target database." -Details @{
+                TargetServer = $TargetServer
+                TargetDatabase = $TargetDatabase
+            }
+        }
+        elseif ($TargetDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase)) {
+            Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentPost" -StepStatus "Skipped" -Message "SCore.PostDeploymentScript skipped because target is CymBuild_Dev." -Details @{
+                TargetServer = $TargetServer
+                TargetDatabase = $TargetDatabase
+            }
+        }
+
+        $finalStatus = if ($unsupportedItems.Count -gt 0) { "DeploymentPartiallyApplied" } else { "DeploymentApplied" }
+        $note = "Manual schema deployment runner applied $appliedCount source-controlled object(s)."
+        if ($unsupportedItems.Count -gt 0) {
+            $note += " Unsupported rows were skipped because -AllowPartial was used."
+        }
+
+        Invoke-SqlNonQuery -Connection $connection -Sql @"
+UPDATE [SMigration].[Schema_Run]
+SET
+    [RunStatus] = @RunStatus,
+    [AppliedOnUtc] = SYSUTCDATETIME(),
+    [DeploymentReference] = @DeploymentReference,
+    [ReleaseReference] = CASE WHEN LEN(@ReleaseReference) > 0 THEN @ReleaseReference ELSE [ReleaseReference] END,
+    [Notes] = LEFT(CONCAT(ISNULL([Notes], N''), CHAR(13), CHAR(10), @Note), 2000)
+WHERE [Guid] = @RunGuid
+  AND [RowStatus] <> 0
+  AND [RowStatus] <> 254;
+"@ -Parameters @{
+            "@RunGuid" = $RunGuid
+            "@RunStatus" = $finalStatus
+            "@DeploymentReference" = $DeploymentReference
+            "@ReleaseReference" = $ReleaseReference
+            "@Note" = $note
+        }
+
+        Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentRunner" -StepStatus "Succeeded" -Message $note -Details @{
+            AppliedCount = $appliedCount
+            UnsupportedCount = $unsupportedItems.Count
+            RunStatus = $finalStatus
+            OutputDirectory = $OutputDirectory
+        }
+
+        Write-Host "Schema deployment completed. Applied $appliedCount object(s). Status: $finalStatus" -ForegroundColor Green
+    }
+    catch {
+        $deploymentError = $_
+        $failureMessage = $deploymentError.Exception.Message
+        $recoveryAttempted = $false
+        $recoverySucceeded = $false
+        $recoveryError = ""
+
+        if ($Apply -and
+            $preDeploymentCompleted -and
+            -not $postDeploymentCompleted -and
+            -not $SkipPostDeployment -and
+            -not $TargetDatabase.Equals("CymBuild_Dev", [System.StringComparison]::OrdinalIgnoreCase) -and
+            $null -ne $connection -and
+            $connection.State -eq [System.Data.ConnectionState]::Open) {
+            $recoveryAttempted = $true
+            Write-Warning "Deployment failed after SCore.PreDeploymentScript. Attempting SCore.PostDeploymentScript recovery before returning the original error."
+
+            try {
+                Invoke-SqlScriptText -Connection $connection -Sql "EXEC [SCore].[PostDeploymentScript];" -Description "SCore.PostDeploymentScript failure recovery" -TimeoutSeconds 1800
+                $postDeploymentCompleted = $true
+                $recoverySucceeded = $true
+            }
+            catch {
+                $recoveryError = $_.Exception.Message
+                Write-Warning "SCore.PostDeploymentScript failure recovery did not complete: $recoveryError"
+            }
+
+            if ($recoverySucceeded -and $deploymentAuditStarted) {
+                try {
+                    Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentRecovery" -StepStatus "Succeeded" -Message "SCore.PostDeploymentScript completed as failure recovery after deployment stopped." -Details @{
+                        OriginalError = $failureMessage
+                        TargetServer = $TargetServer
+                        TargetDatabase = $TargetDatabase
+                    }
+                }
+                catch {
+                    Write-Warning "Post-deployment recovery completed, but its dedicated audit row could not be written: $($_.Exception.Message)"
+                }
+            }
+        }
+
+        try {
+            if ($Apply -and $deploymentAuditStarted -and $null -ne $connection -and $connection.State -eq [System.Data.ConnectionState]::Open) {
+                Invoke-SqlNonQuery -Connection $connection -Sql @"
+UPDATE [SMigration].[Schema_Run]
+SET
+    [RunStatus] = N'DeploymentFailed',
+    [Notes] = LEFT(CONCAT(ISNULL([Notes], N''), CHAR(13), CHAR(10), N'Manual deployment failed: ', @FailureMessage), 2000)
+WHERE [Guid] = @RunGuid
+  AND [RowStatus] <> 0
+  AND [RowStatus] <> 254;
+"@ -Parameters @{
+                    "@RunGuid" = $RunGuid
+                    "@FailureMessage" = $failureMessage
+                }
+
+                Add-SchemaExecutionLog -Connection $connection -RunGuidValue $RunGuid -StepName "ManualDeploymentRunner" -StepStatus "Failed" -Message "Manual source-controlled schema deployment runner failed." -Details @{
+                    Error = $failureMessage
+                    TargetServer = $TargetServer
+                    TargetDatabase = $TargetDatabase
+                    AuditStarted = $deploymentAuditStarted
+                    PreDeploymentCompleted = $preDeploymentCompleted
+                    RecoveryAttempted = $recoveryAttempted
+                    RecoverySucceeded = $recoverySucceeded
+                    RecoveryError = $recoveryError
+                }
+            }
+        }
+        catch {
+            Write-Warning "Failed to write SMigration execution state after deployment failure: $($_.Exception.Message)"
+        }
+
+        throw $deploymentError
+    }
+    finally {
+        if ($null -ne $connection) {
+            $connection.Dispose()
+        }
+    }
+}
+
+Invoke-CymBuildSchemaDeployment

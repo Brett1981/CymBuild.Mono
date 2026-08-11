@@ -10,7 +10,9 @@ CREATE PROCEDURE [SMigration].[MetadataApply_Run]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @ForceApply BIT = 0,
-    @ApplySelectedOnly BIT = 0
+    @ApplySelectedOnly BIT = 0,
+    @SourceSnapshotFingerprint VARCHAR(64),
+    @TargetSnapshotFingerprint VARCHAR(64)
 )
 AS
 BEGIN
@@ -19,14 +21,22 @@ BEGIN
 
     DECLARE
         @RunStatus NVARCHAR(30),
+        @IsValidateOnly BIT,
         @TargetEnvironment NVARCHAR(20),
         @TargetDatabaseName SYSNAME,
         @SourceDatabaseName SYSNAME,
         @FailCount INT = 0,
+        @PreviewFingerprint VARBINARY(32),
+        @ScopeFingerprint VARBINARY(32),
+        @PreviewFingerprintHex VARCHAR(64),
+        @ScopeFingerprintHex VARCHAR(64),
+        @PreviewApplyCount INT = 0,
+        @ApplyDetailsJson NVARCHAR(MAX),
         @ZeroGuid UNIQUEIDENTIFIER = '00000000-0000-0000-0000-000000000000';
 
     SELECT
         @RunStatus = r.RunStatus,
+        @IsValidateOnly = r.IsValidateOnly,
         @TargetEnvironment = r.TargetEnvironment,
         @TargetDatabaseName = r.TargetDatabaseName,
         @SourceDatabaseName = r.SourceDatabaseName
@@ -36,6 +46,9 @@ BEGIN
 
     IF @RunStatus IS NULL
         THROW 52000, 'Metadata run was not found or is inactive.', 1;
+
+    IF ISNULL(@IsValidateOnly, 1) = 1
+        THROW 52006, 'Validate-only metadata runs cannot be applied. Create and validate a deployment-enabled run before apply.', 1;
 
     IF @RunStatus NOT IN
     (
@@ -59,14 +72,138 @@ BEGIN
     IF @TargetEnvironment = N'LIVE' AND ISNULL(@ForceApply, 0) = 0
         THROW 52003, 'LIVE metadata apply requires @ForceApply = 1.', 1;
 
+    /*
+        Metadata_TableRegistry can be extended dynamically, but this procedure
+        deliberately applies only tables with explicit, reviewed handlers.
+        Re-check handler coverage at execution time so stale or bypassed
+        validation cannot produce a false-success apply.
+    */
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_StagedRows AS sr
+        INNER JOIN SMigration.Metadata_TableRegistry AS tr
+            ON tr.Guid = sr.RegistryGuid
+           AND tr.RowStatus NOT IN (0,254)
+        WHERE sr.RunGuid = @RunGuid
+          AND sr.RowStatus NOT IN (0,254)
+          AND sr.DifferenceType IN (N'Insert', N'Update')
+          AND
+          (
+              ISNULL(@ApplySelectedOnly, 0) = 0
+              OR EXISTS
+              (
+                  SELECT 1
+                  FROM SMigration.Metadata_RunSelections AS selection
+                  WHERE selection.RunGuid = sr.RunGuid
+                    AND selection.RegistryGuid = sr.RegistryGuid
+                    AND selection.SourceRowGuid = sr.SourceRowGuid
+                    AND selection.RowStatus NOT IN (0,254)
+              )
+          )
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SMigration.Metadata_IgnoredRecords AS ignored
+              WHERE ignored.DatabaseName = @TargetDatabaseName
+                AND ignored.RegistryGuid = sr.RegistryGuid
+                AND ignored.SourceRowGuid = sr.SourceRowGuid
+                AND ignored.RowStatus NOT IN (0,254)
+          )
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SMigration.Metadata_IdentityMapOverrides AS identityOverride
+              WHERE identityOverride.DatabaseName = @TargetDatabaseName
+                AND identityOverride.RegistryGuid = sr.RegistryGuid
+                AND identityOverride.SourceRowGuid = sr.SourceRowGuid
+                AND identityOverride.RowStatus NOT IN (0,254)
+          )
+          AND NOT
+          (
+              (tr.SchemaName = N'SCore' AND tr.TableName IN
+              (
+                  N'LanguageLabels',
+                  N'LanguageLabelTranslations',
+                  N'EntityDataTypes',
+                  N'EntityTypes',
+                  N'EntityHobts',
+                  N'EntityPropertyGroups',
+                  N'EntityQueries',
+                  N'EntityProperties',
+                  N'EntityQueryParameters'
+              ))
+              OR
+              (tr.SchemaName = N'SUserInterface' AND tr.TableName IN
+              (
+                  N'Icons',
+                  N'DropDownListDefinitions',
+                  N'GridDefinitions',
+                  N'GridViewDefinitions',
+                  N'GridViewColumnDefinitions'
+              ))
+          )
+    )
+        THROW 52005, 'Metadata apply contains an actionable table without a controlled apply handler. Re-stage, validate and add a source-controlled handler before deployment.', 1;
+
     BEGIN TRANSACTION;
+
+    /*
+        Apply must be bound to the exact preview accepted through the controlled
+        server-side acceptance path. The fingerprint procedure uses HOLDLOCK
+        reads so the accepted staged/selection/ignore/override scope cannot
+        change between this check and the deployment writes in this transaction.
+    */
+    EXEC SMigration.MetadataApplyPreviewFingerprint_Get
+        @RunGuid = @RunGuid,
+        @ApplySelectedOnly = @ApplySelectedOnly,
+        @SourceSnapshotFingerprint = @SourceSnapshotFingerprint,
+        @TargetSnapshotFingerprint = @TargetSnapshotFingerprint,
+        @PreviewFingerprint = @PreviewFingerprint OUTPUT,
+        @ScopeFingerprint = @ScopeFingerprint OUTPUT,
+        @ApplyCount = @PreviewApplyCount OUTPUT;
+
+    SET @PreviewFingerprintHex = CONVERT(VARCHAR(64), @PreviewFingerprint, 2);
+    SET @ScopeFingerprintHex = CONVERT(VARCHAR(64), @ScopeFingerprint, 2);
+
+    IF ISNULL(@PreviewApplyCount, 0) = 0
+        THROW 52007, 'Metadata apply requires at least one actionable row in the accepted preview scope.', 1;
+
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM SMigration.Metadata_ExecutionLog AS acceptedPreview WITH (HOLDLOCK)
+        WHERE acceptedPreview.RunGuid = @RunGuid
+          AND acceptedPreview.RowStatus NOT IN (0,254)
+          AND acceptedPreview.StepName = N'ApplyPreviewAcceptance'
+          AND acceptedPreview.StepStatus = N'Accepted'
+          AND JSON_VALUE(acceptedPreview.DetailsJson, '$.previewFingerprint') = @PreviewFingerprintHex
+          AND JSON_VALUE(acceptedPreview.DetailsJson, '$.scopeFingerprint') = @ScopeFingerprintHex
+          AND JSON_VALUE(acceptedPreview.DetailsJson, '$.sourceSnapshotFingerprint') = UPPER(@SourceSnapshotFingerprint)
+          AND JSON_VALUE(acceptedPreview.DetailsJson, '$.targetSnapshotFingerprint') = UPPER(@TargetSnapshotFingerprint)
+          AND TRY_CONVERT(INT, JSON_VALUE(acceptedPreview.DetailsJson, '$.applySelectedOnly')) = CONVERT(INT, ISNULL(@ApplySelectedOnly, 0))
+    )
+        THROW 52007, 'Metadata apply requires a current server-side accepted preview for the same scope. Reload, review and accept the preview before deployment.', 1;
+
+    SELECT
+        @ApplyDetailsJson =
+        (
+            SELECT
+                @PreviewFingerprintHex AS previewFingerprint,
+                @ScopeFingerprintHex AS scopeFingerprint,
+                UPPER(@SourceSnapshotFingerprint) AS sourceSnapshotFingerprint,
+                UPPER(@TargetSnapshotFingerprint) AS targetSnapshotFingerprint,
+                CONVERT(INT, ISNULL(@ApplySelectedOnly, 0)) AS applySelectedOnly,
+                @PreviewApplyCount AS applyCount
+            FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES
+        );
 
     EXEC SMigration.MetadataExecutionLog_Add
         @RunGuid = @RunGuid,
         @StepName = N'ApplyStart',
         @StepStatus = N'Started',
         @Message = N'Metadata apply started.',
-        @DetailsJson = N'{}';
+        @DetailsJson = @ApplyDetailsJson;
 
     
     IF OBJECT_ID(N'tempdb..#MetadataSourceGuidLookup') IS NOT NULL

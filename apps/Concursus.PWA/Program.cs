@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
-using System.Net.Http.Headers;
 using System.Threading.Channels;
 
 
@@ -141,25 +140,6 @@ builder.Services.AddMsalAuthentication(options =>
 builder.Services.AddScoped<SessionStorageAccessor>();
 builder.Services.AddScoped<LocalStorageAccessor>();
 
-builder.Services.AddHttpClient("ShoreApiHttp", client =>
-{
-    var apiUrl = builder.Configuration["ShoreAPI:Url"]
-        ?? throw new InvalidOperationException("Missing ShoreAPI:Url");
-
-    client.BaseAddress = new Uri(apiUrl);
-    client.DefaultRequestHeaders.Accept.Add(
-        new MediaTypeWithQualityHeaderValue("application/json"));
-})
-.AddHttpMessageHandler(sp =>
-{
-    // Reuse the same MSAL token flow you already use for gRPC
-    var handler = sp.GetRequiredService<AuthorizationMessageHandler>();
-
-    return handler.ConfigureHandler(
-        authorizedUrls: new[] { builder.Configuration["ShoreAPI:Url"]! },
-        scopes: new[] { builder.Configuration["ShoreAPI:BaseUrl"] + "/" + builder.Configuration["ShoreAPI:Scopes"] }
-    );
-});
 
 var gridSettingsSection = builder.Configuration.GetSection("GridSettings");
 builder.Services.Configure<GridSettings>(options => gridSettingsSection.Bind(options));

@@ -4,7 +4,9 @@ GO
 PRINT (N'Create or alter procedure [SMigration].[SchemaDeploymentPlan_Get]')
 GO
 
-CREATE OR ALTER PROCEDURE [SMigration].[SchemaDeploymentPlan_Get]
+PRINT (N'Create procedure [SMigration].[SchemaDeploymentPlan_Get]')
+GO
+CREATE PROCEDURE [SMigration].[SchemaDeploymentPlan_Get]
 (
     @RunGuid UNIQUEIDENTIFIER
 )
@@ -42,7 +44,7 @@ BEGIN
         comparison.[IsDeployable],
         comparison.[IsDestructiveRisk],
         CASE
-            WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, CASE WHEN comparison.[IsDestructiveRisk] = 1 THEN 0 ELSE 1 END)
+            WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, 1)
             ELSE ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0))
         END AS [IsSelected],
         @HasExplicitSelection AS [HasExplicitSelection]
@@ -66,11 +68,6 @@ BEGIN
       AND comparison.[RowStatus] <> 254
       AND comparison.[IsDeployable] = 1
       AND comparison.[DifferenceType] <> N'Equal'
-      AND
-      (
-          @HasExplicitSelection = 1
-          OR comparison.[IsDestructiveRisk] = 0
-      )
       AND
       (
           @HasExplicitSelection = 0

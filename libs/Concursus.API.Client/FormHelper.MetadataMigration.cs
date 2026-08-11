@@ -297,6 +297,10 @@ public partial class FormHelper
             BlockedCount = reply.BlockedCount,
             IgnoredSkipCount = reply.IgnoredSkipCount,
             RunValidationFailureCount = reply.RunValidationFailureCount,
+            PreviewFingerprint = reply.PreviewFingerprint ?? string.Empty,
+            IsAccepted = reply.IsAccepted,
+            AcceptedOnUtcText = reply.AcceptedOnUtc ?? string.Empty,
+            AcceptedByUserId = reply.AcceptedByUserId,
             Rows = reply.Rows.Select(row => new MetadataMigrationApplyPreviewRowModel
             {
                 SchemaName = row.SchemaName ?? string.Empty,
@@ -312,6 +316,37 @@ public partial class FormHelper
                 ChangedColumns = row.ChangedColumns ?? string.Empty,
                 RunValidationFailureCount = row.RunValidationFailureCount
             }).ToList()
+        };
+    }
+
+    public async Task<MetadataMigrationApplyPreviewAcceptanceModel> MetadataMigrationApplyPreviewAcceptAsync(
+        Guid runGuid,
+        bool applySelectedOnly,
+        string expectedPreviewFingerprint,
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationApplyPreviewAcceptAsync(
+            new MetadataMigrationApplyPreviewAcceptRequest
+            {
+                RunGuid = runGuid.ToString(),
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                ApplySelectedOnly = applySelectedOnly,
+                ExpectedPreviewFingerprint = expectedPreviewFingerprint ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationApplyPreviewAcceptanceModel
+        {
+            IsAccepted = reply.IsAccepted,
+            ApplySelectedOnly = reply.ApplySelectedOnly,
+            PreviewFingerprint = reply.PreviewFingerprint ?? string.Empty,
+            ApplyCount = reply.ApplyCount,
+            AcceptedOnUtcText = reply.AcceptedOnUtc ?? string.Empty,
+            AcceptedByUserId = reply.AcceptedByUserId,
+            Message = reply.Message ?? string.Empty
         };
     }
 

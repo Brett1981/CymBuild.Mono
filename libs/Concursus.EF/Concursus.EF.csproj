@@ -26,4 +26,21 @@
   <ItemGroup>
     <ProjectReference Include="..\Concursus.Common.Shared\Concursus.Common.Shared.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\Database\CymBuild_DB\Schema\Migrations\CYB361\SMigration.SchemaWorkbench.Bootstrap.sql">
+      <LogicalName>CymBuild.SqlBootstrap.Schema.SMigration.SchemaWorkbench.Bootstrap.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\Database\CymBuild_DB\Schema\Migrations\CYB361\SMigration.SchemaExclusions.Bootstrap.sql">
+      <LogicalName>CymBuild.SqlBootstrap.Schema.SMigration.SchemaExclusions.Bootstrap.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\Database\CymBuild_DB\Schema\Migrations\Metadata\SMigration.MetadataWorkbench.Bootstrap.Schema.sql">
+      <LogicalName>CymBuild.SqlBootstrap.Metadata.Schema.SMigration.MetadataWorkbench.Bootstrap.Schema.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\Database\CymBuild_DB\Schema\Tables\SMigration.Metadata_*.sql">
+      <LogicalName>CymBuild.SqlBootstrap.Metadata.Tables.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\Database\CymBuild_DB\Schema\Programmability\Procedures\SMigration.Metadata*.sql">
+      <LogicalName>CymBuild.SqlBootstrap.Metadata.Procedures.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

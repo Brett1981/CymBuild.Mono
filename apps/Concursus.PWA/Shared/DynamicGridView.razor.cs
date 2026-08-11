@@ -12,7 +12,6 @@ using System.Collections;
 using System.Dynamic;
 using System.Globalization;
 using System.IO;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using static Concursus.PWA.Shared.DynamicGrid;
@@ -1496,27 +1495,17 @@ public partial class DynamicGridView : ComponentBase, IDisposable
 
             MonthlySeriesSaving = true;
 
-            var payload = new
-            {
-                StartDateFirstInvoice = start,
-                EndDateFinalInvoice = end,
-                TotalValueNet = MonthlySeries.TotalValueNet.Value,
-                OverwriteExisting = MonthlySeries.OverwriteExisting
-            };
+            var helper = FormHelper ?? (formHelper ??= new FormHelper(
+                coreClient,
+                Guid.Empty.ToString(),
+                userService));
 
-            var apiHttp = HttpClientFactory.CreateClient("ShoreApiHttp");
-            var res = await apiHttp.PostAsJsonAsync(
-                $"api/invoice-schedules/{invoiceScheduleGuid}/month-configurations/generate",
-                payload);
-
-            if (!res.IsSuccessStatusCode)
-            {
-                var body = await res.Content.ReadAsStringAsync();
-                MonthlySeriesError = $"Failed to generate monthly schedule: {res.StatusCode} {body}";
-                return;
-            }
-
-            var result = await res.Content.ReadFromJsonAsync<GenerateMonthlySeriesResponse>() ?? new GenerateMonthlySeriesResponse();
+            var result = await helper.InvoiceScheduleMonthlySeriesGenerateAsync(
+                invoiceScheduleGuid,
+                start,
+                end,
+                MonthlySeries.TotalValueNet.Value,
+                MonthlySeries.OverwriteExisting);
             Toast.ShowSuccess($"Generated {result.InsertedCount} monthly periods.");
             CloseMonthlySeriesModal();
             await LoadPageAsync(preservePage: true);
@@ -1976,11 +1965,6 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         public bool OverwriteExisting { get; set; }
     }
 
-    private sealed class GenerateMonthlySeriesResponse
-    {
-        public int InsertedCount { get; set; }
-        public int MonthsCount { get; set; }
-    }
 
     private sealed class NativeGridState
     {

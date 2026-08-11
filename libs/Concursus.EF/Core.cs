@@ -19,6 +19,20 @@ using System.Text.RegularExpressions;
 
 namespace Concursus.EF
 {
+
+    public sealed class QuoteCreateJobsStageScheduleValidationFinding
+    {
+        public string SeverityCode { get; set; } = string.Empty;
+        public string ValidationCode { get; set; } = string.Empty;
+        public int QuoteItemStageId { get; set; }
+        public int InvoiceScheduleId { get; set; }
+        public string StageName { get; set; } = string.Empty;
+        public decimal QuoteItemStageTotal { get; set; }
+        public decimal? InvoiceScheduleStageTotal { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+
     public class Core
     {
         #region Protected Fields
@@ -814,6 +828,9 @@ WHERE wft.RowStatus NOT IN (0,254)
                 return pick.ToId > 0 ? pick.ToId : candidates.First().ToId;
             }
         }
+
+
+
 
         // =========================================================================================
         // Helpers: Identity GUID resolution (proc requires GUIDs) =========================================================================================
@@ -2735,7 +2752,100 @@ WHERE i.RowStatus NOT IN (0,254)
             return Guid.TryParse(Convert.ToString(value), out var parsed) ? parsed : fallback;
         }
 
-        public async Task<ExecuteEntityQueryResponse> ExecuteEntityQuery(ExecuteEntityQueryRequest request)
+        public async Task<IReadOnlyList<QuoteCreateJobsStageScheduleValidationFinding>> QuoteCreateJobsStageScheduleValidationGetAsync(
+    Guid quoteGuid,
+    CancellationToken cancellationToken = default)
+        {
+            var findings = new List<QuoteCreateJobsStageScheduleValidationFinding>();
+
+            if (quoteGuid == Guid.Empty)
+            {
+                findings.Add(new QuoteCreateJobsStageScheduleValidationFinding
+                {
+                    SeverityCode = "B",
+                    ValidationCode = "InvalidQuoteGuid",
+                    QuoteItemStageId = -1,
+                    InvoiceScheduleId = -1,
+                    StageName = string.Empty,
+                    QuoteItemStageTotal = 0m,
+                    InvoiceScheduleStageTotal = null,
+                    Message = "Cannot validate quote stage invoice schedule totals because the supplied Quote Guid is empty."
+                });
+
+                return findings;
+            }
+
+            await using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            const string sql = @"
+                SELECT
+                    v.SeverityCode,
+                    v.ValidationCode,
+                    v.QuoteItemStageID,
+                    v.InvoiceScheduleID,
+                    v.StageName,
+                    v.QuoteItemStageTotal,
+                    v.InvoiceScheduleStageTotal,
+                    v.Message
+                FROM SSop.tvf_QuoteCreateJobsStageScheduleValidation(@QuoteGuid) AS v
+                ORDER BY
+                    v.SeverityCode,
+                    v.InvoiceScheduleID,
+                    v.QuoteItemStageID;";
+
+            await using var command = new SqlCommand(sql, connection)
+            {
+                CommandType = CommandType.Text
+            };
+
+            command.Parameters.Add(new SqlParameter("@QuoteGuid", SqlDbType.UniqueIdentifier) { Value = quoteGuid });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                findings.Add(new QuoteCreateJobsStageScheduleValidationFinding
+                {
+                    SeverityCode = reader.IsDBNull(reader.GetOrdinal("SeverityCode")) ? string.Empty : reader.GetString(reader.GetOrdinal("SeverityCode")),
+                    ValidationCode = reader.IsDBNull(reader.GetOrdinal("ValidationCode")) ? string.Empty : reader.GetString(reader.GetOrdinal("ValidationCode")),
+                    QuoteItemStageId = reader.IsDBNull(reader.GetOrdinal("QuoteItemStageID")) ? -1 : reader.GetInt32(reader.GetOrdinal("QuoteItemStageID")),
+                    InvoiceScheduleId = reader.IsDBNull(reader.GetOrdinal("InvoiceScheduleID")) ? -1 : reader.GetInt32(reader.GetOrdinal("InvoiceScheduleID")),
+                    StageName = reader.IsDBNull(reader.GetOrdinal("StageName")) ? string.Empty : reader.GetString(reader.GetOrdinal("StageName")),
+                    QuoteItemStageTotal = reader.IsDBNull(reader.GetOrdinal("QuoteItemStageTotal")) ? 0m : reader.GetDecimal(reader.GetOrdinal("QuoteItemStageTotal")),
+                    InvoiceScheduleStageTotal = reader.IsDBNull(reader.GetOrdinal("InvoiceScheduleStageTotal")) ? null : reader.GetDecimal(reader.GetOrdinal("InvoiceScheduleStageTotal")),
+                    Message = reader.IsDBNull(reader.GetOrdinal("Message")) ? string.Empty : reader.GetString(reader.GetOrdinal("Message"))
+                });
+            }
+
+            return findings;
+        }
+
+        private static bool IsQuoteCreateJobsEntityQuery(EntityQuery query)
+        {
+            return query?.Statement?.IndexOf("QuoteCreateJobs", StringComparison.OrdinalIgnoreCase) >= 0
+                && query.Statement.IndexOf("QuoteCreateJobsStageScheduleValidation", StringComparison.OrdinalIgnoreCase) < 0
+                && query.Statement.IndexOf("QuoteCreateJobsStageScheduleAssert", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static async Task ExecuteQuoteCreateJobsWithInvoiceScheduleStageValidationAsync(
+            DataObject dataObject,
+            bool allowQuoteItemStageFallback,
+            SqlConnection connection,
+            SqlTransaction transaction)
+        {
+            await using var command = new SqlCommand("SSop.QuoteCreateJobs_WithInvoiceScheduleStageValidation", connection, transaction)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = dataObject.Guid });
+            command.Parameters.Add(new SqlParameter("@AllowQuoteItemStageFallback", SqlDbType.Bit) { Value = allowQuoteItemStageFallback });
+
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        public async Task<ExecuteEntityQueryResponse> ExecuteEntityQuery(ExecuteEntityQueryRequest request, bool allowQuoteItemStageFallback = false)
         {
             ExecuteEntityQueryResponse response = new();
 
@@ -2779,8 +2889,20 @@ WHERE i.RowStatus NOT IN (0,254)
 
                     targetGuid = Functions.ReplaceTargetGuidToken(query);
 
-                    using var command = QueryBuilder.BuildCommandForEntityQuery(query, dataObject, request.EntityQueryParameterValues.ToList(), connection, transaction);
-                    await command.ExecuteScalarAsync();
+                    if (IsQuoteCreateJobsEntityQuery(query))
+                    {
+                        await ExecuteQuoteCreateJobsWithInvoiceScheduleStageValidationAsync(
+                            dataObject,
+                            allowQuoteItemStageFallback,
+                            connection,
+                            transaction);
+                    }
+                    else
+                    {
+                        using var command = QueryBuilder.BuildCommandForEntityQuery(query, dataObject, request.EntityQueryParameterValues.ToList(), connection, transaction);
+                        await command.ExecuteScalarAsync();
+                    }
+
                     Console.WriteLine($"Query {query.Name} executed successfully.");
                 }
 
@@ -5506,6 +5628,84 @@ ORDER BY us.SearchRank,
             return result;
         }
 
+        public async Task<InvoiceScheduleMonthlySeriesGenerateResult> InvoiceScheduleMonthlySeriesGenerateAsync(
+            Guid invoiceScheduleGuid,
+            DateOnly startDate,
+            DateOnly endDate,
+            decimal totalValueNet,
+            bool overwriteExisting,
+            CancellationToken ct = default)
+        {
+            if (invoiceScheduleGuid == Guid.Empty)
+            {
+                throw new ArgumentException("Invoice schedule guid is required.", nameof(invoiceScheduleGuid));
+            }
+
+            if (startDate > endDate)
+            {
+                throw new ArgumentException("Start date must be before or equal to end date.", nameof(startDate));
+            }
+
+            if (totalValueNet <= 0m)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(totalValueNet),
+                    totalValueNet,
+                    "Total value must be greater than zero.");
+            }
+
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var command = new SqlCommand(
+                "[SFin].[InvoiceScheduleMonthConfiguration_GenerateMonthlySeries]",
+                connection)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 0
+            };
+
+            command.Parameters.Add(new SqlParameter("@InvoiceScheduleGuid", SqlDbType.UniqueIdentifier)
+            {
+                Value = invoiceScheduleGuid
+            });
+            command.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date)
+            {
+                Value = startDate.ToDateTime(TimeOnly.MinValue)
+            });
+            command.Parameters.Add(new SqlParameter("@EndDate", SqlDbType.Date)
+            {
+                Value = endDate.ToDateTime(TimeOnly.MinValue)
+            });
+            command.Parameters.Add(new SqlParameter("@TotalValueNet", SqlDbType.Decimal)
+            {
+                Precision = 19,
+                Scale = 2,
+                Value = totalValueNet
+            });
+            command.Parameters.Add(new SqlParameter("@OverwriteExisting", SqlDbType.Bit)
+            {
+                Value = overwriteExisting
+            });
+
+            await using var reader = await command.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                return new InvoiceScheduleMonthlySeriesGenerateResult();
+            }
+
+            return new InvoiceScheduleMonthlySeriesGenerateResult
+            {
+                InsertedCount = reader.IsDBNull(reader.GetOrdinal("InsertedCount"))
+                    ? 0
+                    : Convert.ToInt32(reader["InsertedCount"]),
+                MonthsCount = reader.IsDBNull(reader.GetOrdinal("MonthsCount"))
+                    ? 0
+                    : Convert.ToInt32(reader["MonthsCount"])
+            };
+        }
+
         public async Task<int> InvoiceScheduleDrawdownsBulkUpdateAsync(
             int userId,
             Guid invoiceScheduleGuid,
@@ -5642,6 +5842,12 @@ ORDER BY us.SearchRank,
                 await transaction.RollbackAsync(ct);
                 throw;
             }
+        }
+
+        public sealed class InvoiceScheduleMonthlySeriesGenerateResult
+        {
+            public int InsertedCount { get; set; }
+            public int MonthsCount { get; set; }
         }
 
         public sealed class InvoiceScheduleDrawdownBulkUpdateRow

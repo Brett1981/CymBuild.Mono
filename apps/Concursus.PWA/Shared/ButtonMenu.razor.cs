@@ -172,6 +172,100 @@ public partial class ButtonMenu
             && !string.IsNullOrWhiteSpace(item.Text);
     }
 
+    private readonly struct QuoteCreateJobsValidationDecision
+    {
+        public QuoteCreateJobsValidationDecision(bool cancelAction, bool allowQuoteItemStageFallback)
+        {
+            CancelAction = cancelAction;
+            AllowQuoteItemStageFallback = allowQuoteItemStageFallback;
+        }
+
+        public bool CancelAction { get; }
+        public bool AllowQuoteItemStageFallback { get; }
+    }
+
+    private static bool IsCreateJobsAction(API.Client.MenuItem item)
+    {
+        return string.Equals(item.Text, "Create Jobs", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task DisplayLocalActionMessageAsync(string message, ShowMessageType messageType, string pageMethod)
+    {
+        var displayMessage = new Exception(message);
+        displayMessage.Data.Add("MessageType", messageType);
+        displayMessage.Data.Add("AdditionalInfo", message);
+        displayMessage.Data.Add("PageMethod", pageMethod);
+        await OnError.InvokeAsync(displayMessage);
+    }
+
+    private async Task<QuoteCreateJobsValidationDecision> ValidateQuoteCreateJobsStageScheduleAsync(API.Client.MenuItem item)
+    {
+        if (!IsCreateJobsAction(item))
+        {
+            return new QuoteCreateJobsValidationDecision(cancelAction: false, allowQuoteItemStageFallback: false);
+        }
+
+        if (formHelper == null || dataObject == null)
+        {
+            throw new InvalidOperationException("Cannot validate quote-to-job invoice schedule stages because the current data object is not available.");
+        }
+
+        var validationResponse = await formHelper.QuoteCreateJobsStageScheduleValidationGetAsync(dataObject.Guid);
+
+        if (!string.IsNullOrWhiteSpace(validationResponse.ErrorReturned))
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, validationResponse.ErrorReturned));
+        }
+
+        if (validationResponse.HasBlockingFindings)
+        {
+            var blockingMessage = string.IsNullOrWhiteSpace(validationResponse.BlockingMessage)
+                ? "The total of the Invoice Schedule must be equal to the total of the Quote Items at the stage before conversion to a Job."
+                : validationResponse.BlockingMessage;
+
+            await DisplayLocalActionMessageAsync(
+                blockingMessage,
+                ShowMessageType.Error,
+                "ButtonMenu/ValidateQuoteCreateJobsStageScheduleAsync(Blocked)");
+
+            return new QuoteCreateJobsValidationDecision(cancelAction: true, allowQuoteItemStageFallback: false);
+        }
+
+        if (!validationResponse.RequiresConfirmation)
+        {
+            return new QuoteCreateJobsValidationDecision(cancelAction: false, allowQuoteItemStageFallback: false);
+        }
+
+        var promptMessage = string.IsNullOrWhiteSpace(validationResponse.PromptMessage)
+            ? "The quote item stage is not in the Invoice schedule, do you want to continue?"
+            : validationResponse.PromptMessage;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", promptMessage);
+
+        if (!confirmed)
+        {
+            await DisplayLocalActionMessageAsync(
+                "Create Jobs cancelled. No Job has been created.",
+                ShowMessageType.Information,
+                "ButtonMenu/ValidateQuoteCreateJobsStageScheduleAsync(Cancelled)");
+
+            return new QuoteCreateJobsValidationDecision(cancelAction: true, allowQuoteItemStageFallback: false);
+        }
+
+        return new QuoteCreateJobsValidationDecision(cancelAction: false, allowQuoteItemStageFallback: true);
+    }
+
+    private static void SetExceptionData(Exception exception, string key, object value)
+    {
+        if (exception.Data.Contains(key))
+        {
+            exception.Data[key] = value;
+            return;
+        }
+
+        exception.Data.Add(key, value);
+    }
+
     private static IEnumerable<API.Client.MenuItem> GetVisibleMenuItems(IEnumerable<API.Client.MenuItem>? items)
     {
         if (items is null)

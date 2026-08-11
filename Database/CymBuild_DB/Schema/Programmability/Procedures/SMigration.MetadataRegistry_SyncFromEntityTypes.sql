@@ -17,6 +17,8 @@ GO
 
 PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
 GO
+PRINT (N'Create procedure [SMigration].[MetadataRegistry_SyncFromEntityTypes]')
+GO
 
 CREATE PROCEDURE [SMigration].[MetadataRegistry_SyncFromEntityTypes]
 (

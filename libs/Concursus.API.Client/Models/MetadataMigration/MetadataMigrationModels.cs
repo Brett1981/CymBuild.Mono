@@ -257,7 +257,22 @@ public sealed class MetadataMigrationApplyPreviewModel
     public int BlockedCount { get; set; }
     public int IgnoredSkipCount { get; set; }
     public int RunValidationFailureCount { get; set; }
+    public string PreviewFingerprint { get; set; } = string.Empty;
+    public bool IsAccepted { get; set; }
+    public string AcceptedOnUtcText { get; set; } = string.Empty;
+    public int AcceptedByUserId { get; set; } = -1;
     public List<MetadataMigrationApplyPreviewRowModel> Rows { get; set; } = new();
+}
+
+public sealed class MetadataMigrationApplyPreviewAcceptanceModel
+{
+    public bool IsAccepted { get; set; }
+    public bool ApplySelectedOnly { get; set; }
+    public string PreviewFingerprint { get; set; } = string.Empty;
+    public int ApplyCount { get; set; }
+    public string AcceptedOnUtcText { get; set; } = string.Empty;
+    public int AcceptedByUserId { get; set; } = -1;
+    public string Message { get; set; } = string.Empty;
 }
 
 public sealed class MetadataMigrationDashboardModel

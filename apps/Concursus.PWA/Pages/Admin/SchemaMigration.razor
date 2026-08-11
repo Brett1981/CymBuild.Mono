@@ -88,40 +88,8 @@
         {
             <div class="schema-notice schema-notice-error">
                 <span class="bi bi-exclamation-triangle"></span>
-                <span>@ErrorDisplayText</span>
+                <span>@Error</span>
             </div>
-        }
-
-        @if (IsSchemaMigrationBootstrapRequired)
-        {
-            <section class="schema-card">
-                <div class="schema-card-body">
-                    <div class="schema-section-heading">
-                        <div>
-                            <h2>Initialise Schema Migration on the @BootstrapDatabaseRole</h2>
-                            <p>The selected @BootstrapDatabaseRole database does not yet contain the minimum SMigration workbench and source-authoritative exclusion objects. The browser will not deploy them or request DDL permissions. Run the controlled dry-run and apply commands below from the repository root using an approved deployment account, then retry <strong>Create Run</strong>.</p>
-                        </div>
-                    </div>
-
-                    <div class="schema-warning-panel">
-                        <strong>Controlled bootstrap only</strong>
-                        <span>The bootstrap installs only the source-controlled Schema Migration administration schema, tables, indexes and procedures. It does not compare or deploy application schema objects, change workflow status, or alter business data. LIVE-looking targets remain protected and are not given an automatic <code>-AllowLive</code> override.</span>
-                    </div>
-
-                    <div class="schema-command-grid">
-                        <label class="schema-command-block">
-                            <strong>1. Bootstrap dry-run</strong>
-                            <small>Checks the selected @BootstrapDatabaseRole database and lists missing SMigration objects without changing SQL Server.</small>
-                            <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@BootstrapWhatIfPowerShellScript</textarea>
-                        </label>
-                        <label class="schema-command-block">
-                            <strong>2. Bootstrap apply</strong>
-                            <small>Applies the idempotent source-controlled bootstrap after the dry-run has been reviewed.</small>
-                            <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@BootstrapApplyPowerShellScript</textarea>
-                        </label>
-                    </div>
-                </div>
-            </section>
         }
 
         @if (IsBusy)
@@ -928,55 +896,6 @@
             : $"Accepted for deployment on {Dashboard.Run.ReviewedOnUtc}. The controlled runner or worker can consume the saved deployment plan."
         : "Not yet accepted for deployment. Accept the run after validating the selected plan and recording any caveats.";
 
-    private const string SchemaMigrationBootstrapRequiredMarker = "SCHEMA_MIGRATION_BOOTSTRAP_REQUIRED|";
-    private const string SchemaMigrationSourceBootstrapRequiredMarker = "SCHEMA_MIGRATION_SOURCE_BOOTSTRAP_REQUIRED|";
-
-    private bool IsSourceSchemaMigrationBootstrapRequired =>
-        !string.IsNullOrWhiteSpace(Error)
-        && Error.Contains(SchemaMigrationSourceBootstrapRequiredMarker, StringComparison.OrdinalIgnoreCase);
-
-    private bool IsSchemaMigrationBootstrapRequired =>
-        !string.IsNullOrWhiteSpace(Error)
-        &&
-        (
-            Error.Contains(SchemaMigrationBootstrapRequiredMarker, StringComparison.OrdinalIgnoreCase)
-            || IsSourceSchemaMigrationBootstrapRequired
-        );
-
-    private string BootstrapDatabaseRole => IsSourceSchemaMigrationBootstrapRequired ? "source" : "target";
-
-    private string ErrorDisplayText
-    {
-        get
-        {
-            if (!IsSchemaMigrationBootstrapRequired)
-            {
-                return Error;
-            }
-
-            var marker = IsSourceSchemaMigrationBootstrapRequired
-                ? SchemaMigrationSourceBootstrapRequiredMarker
-                : SchemaMigrationBootstrapRequiredMarker;
-            var markerIndex = Error.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (markerIndex < 0)
-            {
-                return Error;
-            }
-
-            var detail = Error[(markerIndex + marker.Length)..].Trim();
-            var statusSuffixIndex = detail.LastIndexOf("\")", StringComparison.Ordinal);
-            if (statusSuffixIndex > 0)
-            {
-                detail = detail[..statusSuffixIndex];
-            }
-
-            return detail.Trim().TrimEnd('"', ')');
-        }
-    }
-
-    private string BootstrapWhatIfPowerShellScript => BuildBootstrapPowerShellScript(apply: false);
-    private string BootstrapApplyPowerShellScript => BuildBootstrapPowerShellScript(apply: true);
-
     private string DeploymentPlanSqlScript => BuildDeploymentPlanSqlScript();
     private string DeploymentWhatIfPowerShellScript => BuildDeploymentPowerShellScript(apply: false);
     private string DeploymentApplyPowerShellScript => BuildDeploymentPowerShellScript(apply: true);
@@ -1434,28 +1353,6 @@ WHERE sr.Guid = @RunGuid
 EXEC [SMigration].[SchemaDeploymentPlan_Get]
     @RunGuid = @RunGuid;
 GO";
-    }
-
-    private string BuildBootstrapPowerShellScript(bool apply)
-    {
-        var selectedServerName = IsSourceSchemaMigrationBootstrapRequired ? SourceServerName : TargetServerName;
-        var selectedDatabaseName = IsSourceSchemaMigrationBootstrapRequired ? SourceDatabaseName : TargetDatabaseName;
-        var targetServer = string.IsNullOrWhiteSpace(selectedServerName)
-            ? $"<{BootstrapDatabaseRole.ToUpperInvariant()}-SERVER>"
-            : selectedServerName.Trim();
-        var targetDatabase = string.IsNullOrWhiteSpace(selectedDatabaseName)
-            ? $"<{BootstrapDatabaseRole.ToUpperInvariant()}-DATABASE>"
-            : selectedDatabaseName.Trim();
-
-        var lines = new List<string>
-        {
-            @".\tools\SchemaDeployment\Initialize-CymBuildSchemaMigration.ps1 `",
-            $"    -TargetServer {PowerShellQuote(targetServer)} `",
-            $"    -TargetDatabase {PowerShellQuote(targetDatabase)} `",
-            apply ? "    -Apply" : "    -WhatIf"
-        };
-
-        return string.Join(Environment.NewLine, lines);
     }
 
     private string BuildDeploymentPowerShellScript(bool apply)
@@ -2132,4 +2029,3 @@ GO";
     }
 
 }
-

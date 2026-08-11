@@ -24,6 +24,7 @@ service Core {
   rpc DepartmentsGet (DepartmentsGetRequest) returns (DepartmentsGetResponse);
   rpc GetUsersForDepartment (GetUsersForDepartmentRequest) returns (GetUsersForDepartmentResponse);
 
+  rpc QuoteCreateJobsStageScheduleValidationGet (QuoteCreateJobsStageScheduleValidationGetRequest) returns (QuoteCreateJobsStageScheduleValidationGetResponse);
 
   rpc AIAssistantMessageList (AIAssistantMessageListRequest) returns (AIAssistantMessageListResponse);
   rpc AIAssistantMessageSend (AIAssistantMessageSendRequest) returns (AIAssistantMessageSendResponse);
@@ -96,6 +97,7 @@ service Core {
   rpc GridViewDefinitionUpsert (GridViewDefinitionUpsertRequest) returns (GridViewDefinitionUpsertReply);
   rpc ImportLegacyStatuses(ImportLegacyStatusesReq) returns (ImportLegacyStatusesRes);
   rpc InvoiceScheduleConfigurationTotalsGet (InvoiceScheduleConfigurationTotalsGetRequest) returns (InvoiceScheduleConfigurationTotalsGetResponse);
+  rpc InvoiceScheduleMonthlySeriesGenerate (InvoiceScheduleMonthlySeriesGenerateRequest) returns (InvoiceScheduleMonthlySeriesGenerateResponse);
   rpc JobClosureDecision (JobClosureDecisionRequest) returns (JobClosureDecisionResponse);
   rpc JobInvoiceGenerateFromPendingTriggers (JobInvoiceGenerateFromPendingTriggersRequest) returns (google.protobuf.Empty);
   rpc JobInvoicePendingTriggerCountGet (JobInvoicePendingTriggerCountGetRequest) returns (JobInvoicePendingTriggerCountGetResponse);
@@ -111,6 +113,7 @@ service Core {
 
   rpc MetadataMigrationApply (MetadataMigrationApplyRequest) returns (MetadataMigrationApplyResponse);
   rpc MetadataMigrationApplyPreview (MetadataMigrationApplyPreviewRequest) returns (MetadataMigrationApplyPreviewResponse);
+  rpc MetadataMigrationApplyPreviewAccept (MetadataMigrationApplyPreviewAcceptRequest) returns (MetadataMigrationApplyPreviewAcceptResponse);
   rpc MetadataMigrationBuildIdentityMap (MetadataMigrationRunRequest) returns (MetadataMigrationBuildIdentityMapResponse);
   rpc MetadataMigrationIdentityMapReviewSet (MetadataMigrationRunRequest) returns (MetadataMigrationIdentityMapReviewResponse);
   rpc MetadataMigrationIdentityMapDetails (MetadataMigrationIdentityMapDetailsRequest) returns (MetadataMigrationIdentityMapDetailsResponse);
@@ -1109,6 +1112,31 @@ message DocumentsDownloadFileResponse {
   string errorReturned = 4;
 }
 
+message QuoteCreateJobsStageScheduleValidationGetRequest {
+	string QuoteGuid = 1;
+}
+
+message QuoteCreateJobsStageScheduleValidationFinding {
+	string SeverityCode = 1;
+	string ValidationCode = 2;
+	int32 QuoteItemStageId = 3;
+	int32 InvoiceScheduleId = 4;
+	string StageName = 5;
+	double QuoteItemStageTotal = 6;
+	double InvoiceScheduleStageTotal = 7;
+	bool HasInvoiceScheduleStageTotal = 8;
+	string Message = 9;
+}
+
+message QuoteCreateJobsStageScheduleValidationGetResponse {
+	bool HasBlockingFindings = 1;
+	bool RequiresConfirmation = 2;
+	string PromptMessage = 3;
+	string BlockingMessage = 4;
+	string ErrorReturned = 5;
+	repeated QuoteCreateJobsStageScheduleValidationFinding Findings = 6;
+}
+
 message DocumentsDownloadFileStreamRequest {
   string driveId = 1;
   string itemId = 2;
@@ -1550,6 +1578,7 @@ message ExecuteGridMenuItemResponse{
 message ExecuteMenuItemRequest {
 	string  EntityQueryGuid = 1;
 	DataObject DataObject = 2;
+	bool AllowQuoteItemStageFallback = 3;
 }
 
 message ExecuteMenuItemResponse {
@@ -1943,6 +1972,22 @@ message ImportLegacyStatusesRes {
     string errorReturned = 2;
 }
 
+message InvoiceScheduleMonthlySeriesGenerateRequest {
+  string invoiceScheduleGuid = 1;
+  string startDate = 2;       // yyyy-MM-dd
+  string endDate = 3;         // yyyy-MM-dd
+  string totalValueNet = 4;   // invariant DECIMAL(19,2)
+  bool overwriteExisting = 5;
+}
+
+message InvoiceScheduleMonthlySeriesGenerateResponse {
+  bool success = 1;
+  int32 insertedCount = 2;
+  int32 monthsCount = 3;
+  string message = 4;
+  string errorReturned = 99;
+}
+
 message InvoiceScheduleConfigurationTotalsGetRequest {
   int32 userId = 1;
   string invoiceScheduleGuid = 2;
@@ -2226,6 +2271,28 @@ message MetadataMigrationApplyPreviewResponse {
   int32 ignoredSkipCount = 5;
   int32 runValidationFailureCount = 6;
   repeated MetadataMigrationApplyPreviewRow rows = 7;
+  string previewFingerprint = 8;
+  bool isAccepted = 9;
+  string acceptedOnUtc = 10;
+  int32 acceptedByUserId = 11;
+}
+
+message MetadataMigrationApplyPreviewAcceptRequest {
+  string runGuid = 1;
+  string targetServerName = 2;
+  string targetDatabaseName = 3;
+  bool applySelectedOnly = 4;
+  string expectedPreviewFingerprint = 5;
+}
+
+message MetadataMigrationApplyPreviewAcceptResponse {
+  bool isAccepted = 1;
+  bool applySelectedOnly = 2;
+  string previewFingerprint = 3;
+  int32 applyCount = 4;
+  string acceptedOnUtc = 5;
+  int32 acceptedByUserId = 6;
+  string message = 7;
 }
 
 message MetadataMigrationApplyPreviewRow {

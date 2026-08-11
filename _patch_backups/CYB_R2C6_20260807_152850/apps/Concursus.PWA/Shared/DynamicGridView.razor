@@ -1,0 +1,755 @@
+@using System.Dynamic
+@using Concursus.API.Client.Models
+@using Concursus.API.Core
+@using Concursus.Components.Shared.Services
+@using Concursus.PWA.Classes
+@using Concursus.PWA.Helpers
+@using Concursus.PWA.Services
+
+@inject UserService userService
+@inject Core.CoreClient coreClient
+@inject NavigationManager NavManager
+@inject IJSRuntime JsRuntime
+@inject ModalService modalService
+@inject RefreshService refreshService
+@inject DeviceInfoService DeviceInfoService
+@inject UserInteractionTrackerService InteractionTracker
+@inject AiErrorReporter AiErrorReporter
+@inject IToastService Toast
+@inject IHttpClientFactory HttpClientFactory
+@inject Helpers.LocalStorageAccessor LocalStorageAccessor
+
+@attribute [Authorize]
+
+<MessageDisplay @ref="_messageDisplay"
+                ErrorMessage="@ErrorMessage"
+                PageMethod="@PageMethod"
+                MessageType="MessageType" />
+
+
+
+<script>
+    window.cymbuildDynamicGridView = window.cymbuildDynamicGridView || {};
+
+    window.cymbuildDynamicGridView.scrollIntoViewById = function (elementId) {
+        window.setTimeout(function () {
+            const element = document.getElementById(elementId);
+            if (!element) return;
+
+            element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        }, 75);
+    };
+
+    window.cymbuildDynamicGridView.ensureValidationObserver = function (elementId) {
+        const panel = document.getElementById(elementId);
+        if (!panel) return;
+
+        const validationSelector = [
+            '.validation-message:not(:empty)',
+            '.validation-errors',
+            '.invalid-feedback:not(:empty)',
+            '.field-validation-error:not(:empty)',
+            '.text-danger:not(:empty)',
+            'input.invalid',
+            'select.invalid',
+            'textarea.invalid',
+            '.input-validation-error',
+            '[aria-invalid="true"]'
+        ].join(',');
+
+        const redTokens = [
+            'the value is compulsory',
+            'is compulsory',
+            'field is required',
+            'is required',
+            'required field',
+            'mandatory',
+            'invalid',
+            'please enter',
+            'please select',
+            'must be'
+        ];
+
+        const isVisible = function (element) {
+            if (!element) return false;
+            const style = window.getComputedStyle(element);
+            return style.display !== 'none' && style.visibility !== 'hidden' && element.offsetParent !== null;
+        };
+
+        const getValidationRoot = function () {
+            return panel.querySelector('.dynamic-grid-view-v2-detail-panel-body') || panel;
+        };
+
+        const isSuccessOrInfoElement = function (element) {
+            return !!element.closest('.alert-success,.alert-info,.message-success,.toast-success,[data-message-type="Success"]');
+        };
+
+        const hasExplicitValidationMarker = function (root) {
+            const markers = root.querySelectorAll(validationSelector);
+            for (const marker of markers) {
+                if (!isVisible(marker) || isSuccessOrInfoElement(marker)) continue;
+
+                const text = (marker.textContent || '').trim();
+                if (text.length > 0 || marker.matches('input.invalid,select.invalid,textarea.invalid,.input-validation-error,[aria-invalid="true"]')) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        const hasValidationTextOrColour = function (root) {
+            const candidates = root.querySelectorAll('span, div, small, p, li, label');
+            for (const candidate of candidates) {
+                if (!isVisible(candidate) || isSuccessOrInfoElement(candidate)) continue;
+                if (candidate.closest('.dynamic-grid-view-v2-detail-panel-header')) continue;
+
+                const text = (candidate.textContent || '').trim().toLowerCase();
+                if (!text) continue;
+
+                if (redTokens.some(token => text.includes(token))) {
+                    return true;
+                }
+
+                const style = window.getComputedStyle(candidate);
+                const colour = (style.color || '').replace(/\s+/g, '').toLowerCase();
+                const hasRedColour = colour === 'red'
+                    || colour === '#ff0000'
+                    || colour.startsWith('rgb(255,0,0)')
+                    || colour.startsWith('rgb(220,38,38)')
+                    || colour.startsWith('rgb(185,28,28)')
+                    || colour.startsWith('rgb(239,68,68)')
+                    || colour.startsWith('rgb(220,53,69)');
+
+                if (hasRedColour && !text.includes('success') && !text.includes('saved successfully')) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        const applyPanelVisualState = function (hasValidation) {
+            const isEdit = panel.classList.contains('is-edit');
+            panel.classList.toggle('has-validation', hasValidation);
+
+            if (hasValidation) {
+                panel.style.borderColor = '#fca5a5';
+                panel.style.background = 'radial-gradient(circle at top left, rgba(239, 68, 68, .15), transparent 36%), linear-gradient(180deg, #ffffff 0%, #fff1f2 100%)';
+                panel.style.boxShadow = '0 14px 36px rgba(239, 68, 68, .12)';
+            } else if (isEdit) {
+                panel.style.borderColor = '#93c5fd';
+                panel.style.background = 'radial-gradient(circle at top left, rgba(59, 130, 246, .13), transparent 34%), linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)';
+                panel.style.boxShadow = '0 12px 32px rgba(59, 130, 246, .10)';
+            } else {
+                panel.style.borderColor = '#86efac';
+                panel.style.background = 'radial-gradient(circle at top left, rgba(34, 197, 94, .12), transparent 34%), linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%)';
+                panel.style.boxShadow = '0 12px 32px rgba(15, 23, 42, .08)';
+            }
+
+            const accent = panel.querySelector('.dynamic-grid-view-v2-detail-panel-accent');
+            if (accent) {
+                accent.style.background = hasValidation ? '#ef4444' : (isEdit ? '#3b82f6' : '#22c55e');
+            }
+
+            const icon = panel.querySelector('.dynamic-grid-view-v2-detail-panel-icon');
+            if (icon) {
+                if (hasValidation) {
+                    icon.style.color = '#b91c1c';
+                    icon.style.background = '#fee2e2';
+                    icon.style.boxShadow = 'inset 0 0 0 1px rgba(239, 68, 68, .22)';
+                } else if (isEdit) {
+                    icon.style.color = '#1d4ed8';
+                    icon.style.background = '#dbeafe';
+                    icon.style.boxShadow = 'inset 0 0 0 1px rgba(59, 130, 246, .18)';
+                } else {
+                    icon.style.color = '#15803d';
+                    icon.style.background = '#dcfce7';
+                    icon.style.boxShadow = 'inset 0 0 0 1px rgba(34, 197, 94, .18)';
+                }
+            }
+        };
+
+        const refreshState = function () {
+            const root = getValidationRoot();
+            const hasValidation = hasExplicitValidationMarker(root) || hasValidationTextOrColour(root);
+            applyPanelVisualState(hasValidation);
+        };
+
+        refreshState();
+
+        if (panel.dataset.cymbuildValidationObserved === 'true') return;
+
+        const observer = new MutationObserver(refreshState);
+        observer.observe(panel, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true,
+            attributeFilter: ['class', 'aria-invalid', 'style']
+        });
+
+        panel.addEventListener('input', function () { window.setTimeout(refreshState, 50); }, true);
+        panel.addEventListener('change', function () { window.setTimeout(refreshState, 50); }, true);
+        panel.dataset.cymbuildValidationObserved = 'true';
+    };
+</script>
+
+<ErrorBoundary>
+    <ChildContent>
+        @if (ViewDefinition is null)
+        {
+            <div class="alert alert-warning m-2" role="alert">
+                No grid view definition supplied.
+            </div>
+        }
+        else
+        {
+            <section class="cb-dynamic-grid-view dynamic-grid-view-v2-shell @(Disabled ? "is-disabled" : string.Empty)">
+                <div class="cb-v2-card dynamic-grid-view-v2-header">
+                    <div class="dynamic-grid-view-v2-header-body"
+                         style="display:flex !important; align-items:center !important; justify-content:space-between !important; gap:1rem; width:100%; padding:1rem 1.25rem;">
+                        <div class="dynamic-grid-view-v2-header-left"
+                             style="display:flex !important; align-items:center !important; gap:1rem; min-width:0; flex:1 1 auto;">
+                            <div class="cb-v2-icon-wrap" aria-hidden="true">
+                                <i class="bi bi-table"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h5 class="cb-v2-title dynamic-grid-view-v2-title">@ViewDefinition.Name</h5>
+                            </div>
+                        </div>
+
+                        <div class="dynamic-grid-view-v2-header-right"
+                             style="margin-left:auto !important; display:flex !important; align-items:center !important; justify-content:flex-end !important; gap:.75rem; flex-wrap:wrap; flex:0 0 auto;">
+                            @if (ViewDefinition.AllowBulkChange && (CurrentGridItems?.Any() ?? false))
+                            {
+                                <GridButtonMenu ViewDefinition="@ViewDefinition"
+                                                OnOpenBatchGrid="@OpenDynamicBatchGrid" />
+                            }
+
+                            @if (ShouldShowCsvExportButton)
+                            {
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-action-btn"
+                                        @onclick="ExportToCsvWithOptions"
+                                        disabled="@_isLoading">
+                                    <i class="bi bi-filetype-csv me-1" aria-hidden="true"></i>
+                                    Export CSV
+                                </button>
+                            }
+
+                            @if (IsInvoiceDrawdownGrid && _rows.Count > 0 && !Disabled)
+                            {
+                                @if (IsDrawdownInlineEditing)
+                                {
+                                    <button type="button"
+                                            class="btn btn-success btn-sm cb-v2-btn-primary dynamic-grid-view-v2-action-btn"
+                                            @onclick="SaveDrawdownInlineEditAsync"
+                                            disabled="@(IsDrawdownInlineSaving || _isLoading)">
+                                        <i class="bi bi-save me-1" aria-hidden="true"></i>
+                                        @(IsDrawdownInlineSaving ? "Saving..." : "Save Changes")
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-action-btn"
+                                            @onclick="CancelDrawdownInlineEdit"
+                                            disabled="@(IsDrawdownInlineSaving || _isLoading)">
+                                        Cancel
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="btn btn-primary btn-sm dynamic-grid-view-v2-action-btn"
+                                            @onclick="StartDrawdownInlineEditAsync"
+                                            disabled="@_isLoading">
+                                        <i class="bi bi-pencil-square me-1" aria-hidden="true"></i>
+                                        Edit Drawdowns
+                                    </button>
+                                }
+                            }
+
+                            @if (ViewDefinition.AllowNew && !Disabled)
+                            {
+                                <button class="btn btn-primary btn-sm dynamic-grid-view-v2-primary-btn" id="newBtn" type="button" @onclick="AddNew">
+                                    <i class="bi bi-plus-circle-fill me-1" aria-hidden="true"></i>
+                                    New
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cb-v2-card">
+                    <div class="cb-v2-toolbar dynamic-grid-view-v2-toolbar">
+                        <div class="cb-v2-toolbar-left dynamic-grid-view-v2-toolbar-left">
+                            <input class="cb-v2-input dynamic-grid-view-v2-search"
+                                   placeholder="@Placeholder"
+                                   value="@_searchText"
+                                   @oninput="OnSearchChanged"
+                                   disabled="@_isLoading" />
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ApplySearchAsync"
+                                    disabled="@_isLoading">
+                                Search
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary"
+                                    @onclick="ClearSearchAsync"
+                                    disabled="@_isLoading">
+                                Clear
+                            </button>
+
+                            <button type="button"
+                                    class="cb-v2-btn-secondary dynamic-grid-view-v2-filter-toggle @(_isFilterPanelOpen ? "is-active" : string.Empty)"
+                                    @onclick="ToggleFilterPanel"
+                                    disabled="@_isLoading">
+                                <i class="bi bi-funnel me-1" aria-hidden="true"></i>
+                                Filters
+                                @if (_filtersByColumn.Count > 0)
+                                {
+                                    <span class="dynamic-grid-view-v2-filter-count">@_filtersByColumn.Count</span>
+                                }
+                            </button>
+                        </div>
+
+                        <div class="cb-v2-toolbar-right dynamic-grid-view-v2-toolbar-right">
+                            @if (!string.IsNullOrWhiteSpace(_searchText))
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Search</span>
+                                    <span class="cb-v2-pill-value">Active</span>
+                                </div>
+                            }
+
+                            @if (_filtersByColumn.Count > 0)
+                            {
+                                <div class="cb-v2-stat-pill">
+                                    <span class="cb-v2-pill-label">Filters</span>
+                                    <span class="cb-v2-pill-value">@_filtersByColumn.Count</span>
+                                </div>
+                            }
+
+                            <div class="cb-v2-stat-pill">
+                                <span class="cb-v2-pill-label">Rows</span>
+                                <span class="cb-v2-pill-value">@_totalRows</span>
+                            </div>
+
+                            <label class="dynamic-grid-view-v2-page-size-label" for="dynamic-grid-view-page-size-@ViewDefinition.Code">
+                                Rows per page
+                            </label>
+                            <select id="dynamic-grid-view-page-size-@ViewDefinition.Code"
+                                    class="cb-v2-input dynamic-grid-view-v2-page-size-select"
+                                    value="@_pageSize"
+                                    @onchange="OnPageSizeChangedAsync"
+                                    disabled="@_isLoading">
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="250">250</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(DrawdownInlineError))
+                    {
+                        <div class="alert alert-danger mx-3 mt-3 mb-0" role="alert">
+                            @DrawdownInlineError
+                        </div>
+                    }
+
+                    @if (_isFilterPanelOpen)
+                    {
+                        <div class="dynamic-grid-view-v2-filter-panel cb-v2-card shadow-sm"
+                             style="margin:0 1.25rem 1rem 1.25rem; padding:1rem; border:1px solid #e5eaf3; border-radius:18px; background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);">
+                            <div class="dynamic-grid-view-v2-filter-panel-header d-flex align-items-center justify-content-between gap-3 pb-3 mb-3 border-bottom flex-wrap">
+                                <div class="dynamic-grid-view-v2-filter-panel-title d-flex align-items-center gap-3 min-w-0">
+                                    <span class="dynamic-grid-view-v2-filter-panel-icon d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                                          style="width:38px;height:38px;border-radius:12px;background:#eaf2ff;color:#2563eb;">
+                                        <i class="bi bi-funnel" aria-hidden="true"></i>
+                                    </span>
+                                    <div class="min-w-0">
+                                        <div class="dynamic-grid-view-v2-filter-panel-heading fw-bold">Column filters</div>
+                                        <div class="dynamic-grid-view-v2-filter-panel-subtitle text-muted small">Refine the current grid view, then apply when ready.</div>
+                                    </div>
+                                </div>
+
+                                <div class="dynamic-grid-view-v2-filter-panel-summary badge rounded-pill text-primary-emphasis bg-primary-subtle border border-primary-subtle px-3 py-2">
+                                    @_filtersByColumn.Count active
+                                </div>
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-grid row g-3">
+                                @foreach (var column in VisibleColumns.Where(c => c.IsFiltered))
+                                {
+                                    <div class="dynamic-grid-view-v2-filter-field col-12 col-sm-6 col-lg-4 col-xl-3">
+                                        <div class="dynamic-grid-view-v2-filter-field-card h-100 p-3 border rounded-4 bg-white">
+                                            <label class="form-label text-uppercase fw-bold small text-muted mb-2" for="filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                            <div class="dynamic-grid-view-v2-filter-input-shell input-group">
+                                                <span class="input-group-text bg-white border-end-0">
+                                                    <i class="bi bi-search" aria-hidden="true"></i>
+                                                </span>
+                                                <input id="filter-@ViewDefinition.Code-@column.Name"
+                                                       class="form-control cb-v2-input dynamic-grid-view-v2-filter border-start-0"
+                                                       placeholder="Filter @column.Title..."
+                                                       value="@GetColumnFilterValue(column.Name)"
+                                                       @oninput="args => OnColumnFilterChanged(column.Name, args)"
+                                                       disabled="@_isLoading" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="dynamic-grid-view-v2-filter-actions d-flex align-items-center justify-content-end gap-2 mt-3 pt-3 border-top flex-wrap">
+                                <button type="button"
+                                        class="btn btn-primary cb-v2-btn-primary d-inline-flex align-items-center gap-2"
+                                        @onclick="ApplyFiltersAsync"
+                                        disabled="@_isLoading">
+                                    <i class="bi bi-check2-circle" aria-hidden="true"></i>
+                                    Apply Filters
+                                </button>
+                                <button type="button"
+                                        class="btn btn-outline-secondary cb-v2-btn-secondary d-inline-flex align-items-center gap-2"
+                                        @onclick="ClearFiltersAsync"
+                                        disabled="@_isLoading">
+                                    <i class="bi bi-x-circle" aria-hidden="true"></i>
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (ViewDefinition.IsDetailWindowed && WindowIsVisible)
+                {
+                    <div id="@DetailPanelDomId"
+                         class="cb-v2-card dynamic-grid-view-v2-detail-panel @DetailWindowStateCss"
+                         style="@DetailPanelInlineStyle"
+                         data-dynamic-grid-detail-panel="true"
+                         role="region"
+                         aria-labelledby="detail-window-title">
+                        <div class="dynamic-grid-view-v2-detail-panel-accent" style="@DetailPanelAccentInlineStyle" aria-hidden="true"></div>
+                        <div class="dynamic-grid-view-v2-detail-panel-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem 1rem 1.5rem;border-bottom:1px solid rgba(148,163,184,.18);">
+                            <div class="dynamic-grid-view-v2-detail-panel-title-wrap" style="display:flex;align-items:center;gap:.85rem;min-width:0;">
+                                <span class="dynamic-grid-view-v2-detail-panel-icon" style="@DetailPanelIconInlineStyle" aria-hidden="true">
+                                    <i class="bi @DetailWindowIconCss"></i>
+                                </span>
+                                <div class="min-w-0">
+                                    <h5 id="detail-window-title" class="dynamic-grid-view-v2-detail-panel-title">@DetailWindowTitle</h5>
+                                    <div class="dynamic-grid-view-v2-detail-panel-subtitle">@DetailWindowSubtitle</div>
+                                </div>
+                            </div>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-detail-panel-close"
+                                    aria-label="Close"
+                                    @onclick="CloseWindow">
+                                <i class="bi bi-x-lg" aria-hidden="true"></i>
+                                Close
+                            </button>
+                        </div>
+
+                        <div class="dynamic-grid-view-v2-detail-panel-body" style="padding:1.25rem 1.5rem 1.5rem 1.5rem;background:rgba(255,255,255,.72);">
+                            @if (_detailPageType is not null)
+                            {
+                                <DynamicComponent Type="@_detailPageType" Parameters="@_detailPageParameters" />
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning mb-0">
+                                    Detail page could not be resolved for @ViewDefinition.DetailPageUri.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (ParentRowStatus != -1 && ParentRowStatus <= 0)
+                {
+                    <div class="alert alert-info" role="alert">
+                        <strong>Save First!</strong> You must save the record before you can access this area.
+                    </div>
+                }
+                else
+                {
+                    <div class="cb-v2-card dynamic-grid-view-v2-grid-card">
+                        <div class="cb-v2-table-wrap dynamic-grid-view-v2-grid-wrapper">
+                            <table class="cb-v2-table dynamic-grid-view-v2-grid-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var column in VisibleColumns)
+                                        {
+                                            <th scope="col"
+                                                class="dynamic-grid-view-v2-header-cell"
+                                                style="width:@GetCssWidth(column.Width); min-width:@GetCssWidth(column.Width);"
+                                                @onclick="() => ToggleSortAsync(column.Name)">
+                                                <span>@column.Title</span>
+
+                                                @if (string.Equals(_sortColumn, column.Name, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <span class="ms-1 dynamic-grid-view-v2-sort-indicator" aria-hidden="true">
+                                                        <i class="@(_sortDescending ? "bi bi-caret-down-fill" : "bi bi-caret-up-fill")"></i>
+                                                    </span>
+                                                }
+                                            </th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (_isLoading)
+                                    {
+                                        <tr>
+                                            <td colspan="@VisibleColumnCount">
+                                                <div class="d-flex align-items-center gap-2 py-3 text-muted">
+                                                    <div class="spinner-border spinner-border-sm" role="status" aria-label="Loading"></div>
+                                                    <span>Loading...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else if (_rows.Count == 0)
+                                    {
+                                        <tr>
+                                            <td colspan="@VisibleColumnCount" class="text-muted py-3">
+                                                No records found.
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var row in _rows)
+                                        {
+                                            <tr class="@GetRowCssClass(row)" @ondblclick="() => OnRowDoubleClickHandler(row)">
+                                                @foreach (var column in VisibleColumns)
+                                                {
+                                                    <td title="@(IsDrawdownInlineEditing && IsDrawdownEditableColumn(column) ? string.Empty : GetCellText(row, column.Name))">
+                                                        @if (IsDrawdownInlineEditing && IsDrawdownEditableColumn(column))
+                                                        {
+                                                            @if (IsDrawdownStageColumn(column))
+                                                            {
+                                                                <select class="form-select form-select-sm dynamic-grid-view-v2-inline-input"
+                                                                        value="@GetDrawdownStageGuid(row)"
+                                                                        @onchange="args => UpdateDrawdownStage(row, args.Value?.ToString())"
+                                                                        disabled="@IsDrawdownInlineSaving">
+                                                                    <option value="">-- None --</option>
+                                                                    @foreach (var stage in DrawdownStageOptions)
+                                                                    {
+                                                                        <option value="@stage.Guid">@stage.Name</option>
+                                                                    }
+                                                                </select>
+                                                            }
+                                                            else if (IsDrawdownDateColumn(column))
+                                                            {
+                                                                <input type="date"
+                                                                       class="form-control form-control-sm dynamic-grid-view-v2-inline-input"
+                                                                       value="@GetDrawdownDateInputValue(row, column.Name)"
+                                                                       @onchange="args => UpdateDrawdownCell(row, column.Name, args.Value?.ToString())"
+                                                                       disabled="@IsDrawdownInlineSaving" />
+                                                            }
+                                                            else if (IsDrawdownNumericColumn(column))
+                                                            {
+                                                                <input type="number"
+                                                                       step="0.01"
+                                                                       class="form-control form-control-sm dynamic-grid-view-v2-inline-input"
+                                                                       value="@GetCellText(row, column.Name)"
+                                                                       @onchange="args => UpdateDrawdownCell(row, column.Name, args.Value?.ToString())"
+                                                                       disabled="@IsDrawdownInlineSaving" />
+                                                            }
+                                                            else if (IsDrawdownDescriptionColumn(column))
+                                                            {
+                                                                <input type="text"
+                                                                       class="form-control form-control-sm dynamic-grid-view-v2-inline-input"
+                                                                       value="@GetCellText(row, column.Name)"
+                                                                       @onchange="args => UpdateDrawdownCell(row, column.Name, args.Value?.ToString())"
+                                                                       disabled="@IsDrawdownInlineSaving" />
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="cb-v2-ellipsis dynamic-grid-view-v2-cell">
+                                                                @GetCellText(row, column.Name)
+                                                            </div>
+                                                        }
+                                                    </td>
+                                                }
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="dynamic-grid-view-v2-footer d-flex align-items-center justify-content-between gap-3 flex-nowrap"
+                             style="display:flex !important; align-items:center !important; justify-content:space-between !important; gap:1rem; flex-wrap:nowrap !important; padding:1rem 1.25rem; border-top:1px solid #e5eaf3; background:#fff;">
+                            <div class="dynamic-grid-view-v2-footer-left text-muted fw-semibold" style="white-space:nowrap;">
+                                Showing @((_totalRows == 0) ? 0 : ((_page - 1) * _pageSize) + 1) to @Math.Min(_page * _pageSize, _totalRows) of @_totalRows
+                            </div>
+
+                            <nav class="dynamic-grid-view-v2-pager d-inline-flex align-items-center justify-content-end gap-2 flex-nowrap"
+                                 style="display:inline-flex !important; align-items:center !important; gap:.5rem; flex-wrap:nowrap !important; white-space:nowrap;"
+                                 aria-label="Grid pagination">
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn d-inline-flex align-items-center gap-1"
+                                        @onclick="PrevPageAsync"
+                                        disabled="@(_page <= 1 || _isLoading)">
+                                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                                    Previous
+                                </button>
+
+                                <div class="dynamic-grid-view-v2-page-pill badge rounded-pill text-dark bg-light border px-3 py-2" aria-live="polite">
+                                    Page <strong>@_page</strong> of <strong>@_totalPages</strong>
+                                </div>
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-pager-btn d-inline-flex align-items-center gap-1"
+                                        @onclick="NextPageAsync"
+                                        disabled="@(_page >= _totalPages || _isLoading)">
+                                    Next
+                                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                </button>
+                            </nav>
+                        </div>
+                    </div>
+
+                    <div class="back-to-top-button">
+                        <button class="btn btn-secondary btn-sm" @onclick="ScrollToTop">
+                            <i class="bi bi-arrow-up-circle" aria-hidden="true"></i>
+                            Back To Top
+                        </button>
+                    </div>
+                }
+
+                @if (IsMonthlySeriesModalVisible)
+                {
+                    <div class="cb-modal-backdrop" @onclick="CloseMonthlySeriesModal"></div>
+                    <div class="cb-modal-shell" role="dialog" aria-modal="true" aria-labelledby="monthly-series-title">
+                        <div class="cb-modal-window cb-modal-window-md dynamic-grid-view-v2-detail-panel dynamic-grid-view-v2-monthly-panel @MonthlySeriesPanelStateCss" style="@MonthlySeriesPanelInlineStyle" @onclick:stopPropagation="true">
+                            <div class="dynamic-grid-view-v2-detail-panel-accent" style="@MonthlySeriesAccentInlineStyle" aria-hidden="true"></div>
+                            <div class="cb-modal-header">
+                                <h5 id="monthly-series-title" class="mb-0">Generate Monthly Schedule</h5>
+                                <button type="button" class="btn-close" aria-label="Close" @onclick="CloseMonthlySeriesModal" disabled="@MonthlySeriesSaving"></button>
+                            </div>
+                            <div class="cb-modal-body">
+                                @if (!string.IsNullOrWhiteSpace(MonthlySeriesError))
+                                {
+                                    <div class="alert alert-danger">@MonthlySeriesError</div>
+                                }
+
+                                <div class="row g-3">
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label">Start Date (First Invoice)</label>
+                                        <input class="form-control"
+                                               type="date"
+                                               value="@FormatDateInput(MonthlySeries.StartDateFirstInvoice)"
+                                               @onchange="args => MonthlySeries.StartDateFirstInvoice = ParseDateInput(args.Value?.ToString())"
+                                               disabled="@MonthlySeriesSaving" />
+                                    </div>
+
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label">End Date (Final Invoice)</label>
+                                        <input class="form-control"
+                                               type="date"
+                                               value="@FormatDateInput(MonthlySeries.EndDateFinalInvoice)"
+                                               @onchange="args => MonthlySeries.EndDateFinalInvoice = ParseDateInput(args.Value?.ToString())"
+                                               disabled="@MonthlySeriesSaving" />
+                                    </div>
+
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label">Total Value (Net)</label>
+                                        <input class="form-control"
+                                               type="number"
+                                               step="0.01"
+                                               min="0"
+                                               value="@MonthlySeries.TotalValueNet"
+                                               @onchange="args => MonthlySeries.TotalValueNet = ParseDecimalInput(args.Value?.ToString())"
+                                               disabled="@MonthlySeriesSaving" />
+                                    </div>
+
+                                    <div class="col-12 col-md-6 d-flex align-items-end">
+                                        <div class="form-check">
+                                            <input class="form-check-input"
+                                                   id="overwrite-monthly-rows"
+                                                   type="checkbox"
+                                                   @bind="MonthlySeries.OverwriteExisting"
+                                                   disabled="@MonthlySeriesSaving" />
+                                            <label class="form-check-label" for="overwrite-monthly-rows">
+                                                Overwrite existing monthly rows
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="cb-modal-footer">
+                                <button class="btn btn-secondary" @onclick="CloseMonthlySeriesModal" disabled="@MonthlySeriesSaving">
+                                    Cancel
+                                </button>
+                                <button class="btn btn-success" @onclick="SaveMonthlySeriesAsync" disabled="@MonthlySeriesSaving">
+                                    @if (MonthlySeriesSaving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+                                        <span>Saving...</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Save</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+
+                @if (BatchGridVisible)
+                {
+                    <div class="dynamic-grid-view-v2-batch-modal-backdrop" @onclick="CloseBatchGridModal"></div>
+                    <div class="dynamic-grid-view-v2-batch-modal-shell" role="dialog" aria-modal="true" aria-labelledby="batch-edit-title">
+                        <div class="dynamic-grid-view-v2-batch-modal-window">
+                            <div class="dynamic-grid-view-v2-batch-modal-header">
+                                <div>
+                                    <div class="dynamic-grid-view-v2-batch-modal-kicker">Batch Edit</div>
+                                    <h5 id="batch-edit-title" class="mb-0">@ViewDefinition?.Name</h5>
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" aria-label="Close" @onclick="CloseBatchGridModal">
+                                    <i class="bi bi-x-lg me-1"></i>
+                                    Close
+                                </button>
+                            </div>
+                            <div class="dynamic-grid-view-v2-batch-modal-body">
+                                @if (ShouldUseActivityBulkUpdateGrid)
+                                {
+                                    <ActivityBulkUpdateGrid OnActionCompleted="CloseBatchGridModal"
+                                                            ViewDefinition="@ViewDefinition"
+                                                            GridCode="@GridCode"
+                                                            ParentDataObjectReference="@ParentDataObjectReference"
+                                                            ParentGuid="@ParentGuid"
+                                                            FullGrid="@FullGrid" />
+                                }
+                                else
+                                {
+                                    <DynamicBatchGridView Items="@CurrentGridItems"
+                                                          OnActionCompleted="CloseBatchGridModal"
+                                                          IsBulkProcessing="true"
+                                                          ViewDefinition="@ViewDefinition"
+                                                          GridCode="@GridCode"
+                                                          ParentDataObjectReferenceChanged="ParentDataObjectReferenceChanged"
+                                                          ParentDataObjectReference="@ParentDataObjectReference"
+                                                          ParentGuid="@ParentGuid"
+                                                          FullGrid="@FullGrid"
+                                                          TransientVirtualProperties="@TransientVirtualProperties" />
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </section>
+        }
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <ErrorDisplay ErrorMessage="@ex.Message" />
+    </ErrorContent>
+</ErrorBoundary>
+

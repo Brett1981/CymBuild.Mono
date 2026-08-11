@@ -12,6 +12,8 @@ PRINT (N'Create procedure [SMigration].[OnboardingLookup_BusinessUnitGroups]')
 GO
 PRINT (N'Create procedure [SMigration].[OnboardingLookup_BusinessUnitGroups]')
 GO
+PRINT (N'Create procedure [SMigration].[OnboardingLookup_BusinessUnitGroups]')
+GO
 
 CREATE PROCEDURE [SMigration].[OnboardingLookup_BusinessUnitGroups]
     @SourceDatabase SYSNAME

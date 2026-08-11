@@ -48,6 +48,7 @@
     <Compile Remove="Services\TextToSpeechService.cs" />
     <Compile Remove="Services\WhisperService.cs" />
     <Compile Remove="Shared\DynamicBatchGridView - Copy.razor.cs" />
+    <Compile Remove="Shared\ShoreInput_new.razor.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -58,6 +59,7 @@
     <Content Remove="Shared\FormButtons.razor" />
     <Content Remove="Shared\RadialGauge.razor" />
     <Content Remove="Shared\RedirectToLogin.razor" />
+    <Content Remove="Shared\ShoreInput_new.razor" />
     <Content Remove="Shared\SurveyPrompt.razor" />
     <Content Remove="Shared\TelerikLayout.razor" />
     <Content Remove="wwwroot\appsettings.Production.json" />
@@ -72,8 +74,10 @@
     <None Remove="Pages\Crm.razor.css" />
     <None Remove="Pages\DayMap.razor.css" />
     <None Remove="Shared\ButtonMenu.razor.css" />
+    <None Remove="Shared\DynamicGridView.razor.css" />
     <None Remove="Shared\ErrorDisplay.razor.css" />
     <None Remove="Shared\FlexPropertyGroups.razor.css" />
+    <None Remove="Shared\ShoreInput_new.razor.css" />
   </ItemGroup>
 
   <ItemGroup>

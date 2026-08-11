@@ -3,7 +3,6 @@ GO
 
 PRINT (N'Create function [SJob].[tvf_PurchaseOrders]')
 GO
-
 CREATE FUNCTION [SJob].[tvf_PurchaseOrders]
 (
 	@UserId INT,
@@ -30,7 +29,9 @@ JOIN	SJob.Jobs AS j ON (j.ID = root_hobt.JobId)
 JOIN	SJob.RibaStages as riba ON (riba.ID = root_hobt.StageId)
 JOIN    SJob.Assets as asset ON (asset.ID = root_hobt.SiteId)
 JOIN    SJob.Activities AS act ON (act.ID = root_hobt.ActivityId)
-WHERE   (root_hobt.RowStatus NOT IN (0, 254))
+WHERE   
+		(root_hobt.RowStatus NOT IN (0, 254))
+	AND (j.Guid = @ParentGuid)
 	AND	(root_hobt.ID > 0)
 	AND	(EXISTS
 			(

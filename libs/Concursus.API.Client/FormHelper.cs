@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using static Concursus.API.Core.Core;
 
@@ -757,6 +758,62 @@ public partial class FormHelper
             .Where(x => x.Guid != Guid.Empty)
             .OrderBy(x => x.Name)
             .ToList();
+    }
+
+    public async Task<InvoiceScheduleMonthlySeriesResultModel> InvoiceScheduleMonthlySeriesGenerateAsync(
+        Guid invoiceScheduleGuid,
+        DateOnly startDate,
+        DateOnly endDate,
+        decimal totalValueNet,
+        bool overwriteExisting,
+        CancellationToken ct = default)
+    {
+        if (invoiceScheduleGuid == Guid.Empty)
+        {
+            throw new ArgumentException("Invoice schedule guid is required.", nameof(invoiceScheduleGuid));
+        }
+
+        if (startDate > endDate)
+        {
+            throw new ArgumentException("Start date must be before or equal to end date.", nameof(startDate));
+        }
+
+        if (totalValueNet <= 0m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(totalValueNet),
+                totalValueNet,
+                "Total value must be greater than zero.");
+        }
+
+        var response = await _coreClient.InvoiceScheduleMonthlySeriesGenerateAsync(
+            new InvoiceScheduleMonthlySeriesGenerateRequest
+            {
+                InvoiceScheduleGuid = invoiceScheduleGuid.ToString(),
+                StartDate = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                EndDate = endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                TotalValueNet = totalValueNet.ToString(CultureInfo.InvariantCulture),
+                OverwriteExisting = overwriteExisting
+            },
+            cancellationToken: ct);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        if (!response.Success)
+        {
+            throw new Exception(string.IsNullOrWhiteSpace(response.Message)
+                ? "Monthly invoice schedule generation failed."
+                : response.Message);
+        }
+
+        return new InvoiceScheduleMonthlySeriesResultModel
+        {
+            InsertedCount = response.InsertedCount,
+            MonthsCount = response.MonthsCount
+        };
     }
 
     public async Task<int> InvoiceScheduleDrawdownsBulkUpdateAsync(
@@ -1658,17 +1715,26 @@ public partial class FormHelper
             cancellationToken: ct);
     }
 
-    public async Task<ExecuteMenuItemResponse> MenuItemPostAsync(string entityQueryGuid, DataObject dataObject)
+    public async Task<ExecuteMenuItemResponse> MenuItemPostAsync(string entityQueryGuid, DataObject dataObject, bool allowQuoteItemStageFallback = false)
     {
         ExecuteMenuItemResponse executeMenuItemResponse = new ExecuteMenuItemResponse();
 
         executeMenuItemResponse = await _coreClient.ExecuteMenuItemPostAsync(new ExecuteMenuItemRequest()
         {
             DataObject = dataObject,
-            EntityQueryGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityQueryGuid).ToString()
+            EntityQueryGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityQueryGuid).ToString(),
+            AllowQuoteItemStageFallback = allowQuoteItemStageFallback
         });
 
         return executeMenuItemResponse;
+    }
+
+    public async Task<QuoteCreateJobsStageScheduleValidationGetResponse> QuoteCreateJobsStageScheduleValidationGetAsync(string quoteGuid)
+    {
+        return await _coreClient.QuoteCreateJobsStageScheduleValidationGetAsync(new QuoteCreateJobsStageScheduleValidationGetRequest
+        {
+            QuoteGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(quoteGuid).ToString()
+        });
     }
 
     //CBLD-265
