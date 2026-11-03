@@ -39,6 +39,12 @@ public sealed class SchemaMigrationObjectComparisonModel
     public string Notes { get; set; } = string.Empty;
     public bool IsSelected { get; set; }
     public bool HasExplicitSelection { get; set; }
+    public bool CopyReferenceData { get; set; }
+
+    // CYB-566: only a brand-new table can carry its DEV rows as reference data.
+    public bool IsNewTable =>
+        ObjectType.Equals("Table", StringComparison.OrdinalIgnoreCase) &&
+        DifferenceType.Equals("MissingInTarget", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class SchemaMigrationExcludedObjectModel
@@ -80,6 +86,7 @@ public sealed class SchemaMigrationSelectionItemModel
     public string ObjectName { get; set; } = string.Empty;
     public string ParentObjectName { get; set; } = string.Empty;
     public bool IsSelected { get; set; }
+    public bool CopyReferenceData { get; set; }
 }
 
 public sealed class SchemaMigrationSelectionResultModel

@@ -1,0 +1,6 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"20507981-e4bc-43cc-b627-598375c5b2c9","Function","SCrm","tvf_AccountsCheckForDuplicate","","Different","True","False","True","True"
+"11e2cbba-fa23-4432-82db-ca25b96fc86b","Function","SCrm","tvf_ContactsCheckForDuplicate","","MissingInTarget","True","False","True","True"
+"d84477fd-8ff2-4c28-9288-03224ac88a75","Function","SFin","tvf_SageInboundDiagnostics","","Different","True","False","True","True"
+"c441c65d-f284-4fc0-8c46-e02b04ec926b","Function","SSop","tvf_QuotesValidate","","Different","True","False","True","True"
+"446e33fb-b4f3-42e7-b5ce-5228b387fda6","StoredProcedure","SSop","EnquiriesDuplicate","","Different","True","False","True","True"

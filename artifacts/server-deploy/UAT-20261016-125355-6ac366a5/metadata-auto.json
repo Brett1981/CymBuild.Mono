@@ -1,0 +1,14 @@
+{
+  "Mode": "nothing-to-do",
+  "Status": "Failed",
+  "RunGuid": "c7e45010-d642-4bd9-8167-0ddc87d42ade",
+  "SelectedCount": 0,
+  "DependencyCount": 0,
+  "ApplyCount": 0,
+  "SkippedUnsupportedCount": 0,
+  "SkippedUnsupportedTables": [],
+  "Issues": [
+    "QueryCallSignatureMismatch: \u0027[SJob].[ActivitiesValidate]\u0027 passes 9 argument(s) to function SJob.ActivitiesValidate, which takes 11."
+  ],
+  "Message": "Post-apply check failed: 1 target metadata query call(s) do not match the function or procedure they call, so those screens fail. Fix the queries in the source and re-run. Migration outcome: No metadata differences to apply."
+}

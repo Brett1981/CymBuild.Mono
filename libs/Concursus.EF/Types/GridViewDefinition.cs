@@ -51,6 +51,9 @@ public class GridViewDefinition : IntTypeBase
 
     public bool IsHidden { get; set; }
 
+    public bool ShowSearchBar { get; set; }
+    public bool IsSearchDefaultCollapsed { get; set; }
+
 
 
 

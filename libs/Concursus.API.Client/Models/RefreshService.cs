@@ -15,8 +15,9 @@
 
         public void RequestGridRefresh(string GridCode)
         {
-            GridRefreshRequested?.Invoke();
+            // Set before raising so subscribers can read which grid was requested.
             GridCodeSelected = GridCode;
+            GridRefreshRequested?.Invoke();
         }
     }
 }

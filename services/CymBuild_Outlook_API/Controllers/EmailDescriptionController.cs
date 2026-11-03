@@ -25,8 +25,8 @@ namespace CymBuild_Outlook_API.Controllers
         {
             try
             {
-                _logger.LogInformation("GenerateDescription called with subject length: {SubjectLength}, body length: {BodyLength}", 
-                    request.Subject?.Length ?? 0, request.Body?.Length ?? 0);
+                _logger.LogInformation("GenerateDescription called with subject length: {SubjectLength}, body length: {BodyLength}, attachmentName: {AttachmentName}",
+                    request.Subject?.Length ?? 0, request.Body?.Length ?? 0, request.AttachmentName ?? "(none)");
 
                 if (string.IsNullOrWhiteSpace(request.Subject) && string.IsNullOrWhiteSpace(request.Body))
                 {
@@ -39,7 +39,8 @@ namespace CymBuild_Outlook_API.Controllers
 
                 var description = await _blueGenService.GenerateEmailDescriptionAsync(
                     request.Subject ?? string.Empty,
-                    request.Body ?? string.Empty);
+                    request.Body ?? string.Empty,
+                    request.AttachmentName);
 
                 _logger.LogInformation("Description generated successfully, length: {Length}", description.Length);
 
@@ -65,6 +66,9 @@ namespace CymBuild_Outlook_API.Controllers
     {
         public string? Subject { get; set; }
         public string? Body { get; set; }
+
+        // When set, the description is generated for this attachment (by file name) rather than for the email itself.
+        public string? AttachmentName { get; set; }
     }
 
     public class GenerateDescriptionResponse

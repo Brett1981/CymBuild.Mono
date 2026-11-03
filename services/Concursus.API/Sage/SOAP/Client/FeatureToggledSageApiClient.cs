@@ -102,5 +102,29 @@ namespace Concursus.API.Sage.SOAP.Client
                 force,
                 cancellationToken);
         }
+
+        public Task<SageFetchSalesAllocationsResponse?> FetchSalesAllocationsAsync(
+            SageDataset dataset,
+            string accountReference,
+            string urn,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsEnabled)
+            {
+                _logger.LogInformation("Sage disabled - skipping FetchSalesAllocations");
+
+                return Task.FromResult<SageFetchSalesAllocationsResponse?>(new()
+                {
+                    Status = "Disabled",
+                    Sessions = new()
+                });
+            }
+
+            return _inner.FetchSalesAllocationsAsync(
+                dataset,
+                accountReference,
+                urn,
+                cancellationToken);
+        }
     }
 }

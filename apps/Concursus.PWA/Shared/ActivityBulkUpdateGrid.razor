@@ -91,7 +91,7 @@
                     </div>
                     <div class="cb-v2-stat-pill">
                         <span class="cb-v2-pill-label">Selected</span>
-                        <span class="cb-v2-pill-value">@_selectedRowKeys.Count</span>
+                        <span class="cb-v2-pill-value">@SelectedFilteredCount</span>
                     </div>
                 </div>
             </div>
@@ -115,8 +115,9 @@
                             <tr>
                                 <th class="activity-bulk-checkbox-col">
                                     <input type="checkbox"
-                                           checked="@IsCurrentPageFullySelected"
-                                           @onchange="ToggleSelectAllCurrentPage" />
+                                           title="Select all matching rows on every page"
+                                           checked="@AreAllFilteredRowsSelected"
+                                           @onchange="ToggleSelectAllFilteredRows" />
                                 </th>
                                 @foreach (var column in VisibleColumns)
                                 {
@@ -184,6 +185,10 @@
                 <div class="activity-bulk-footer">
                     <div class="activity-bulk-footer-left">
                         Showing @PageStartRow to @PageEndRow of @_filteredRows.Count rows
+                        @if (AreAllFilteredRowsSelected && TotalPages > 1)
+                        {
+                            <span class="ms-2 fw-semibold">All @_filteredRows.Count matching rows selected across @TotalPages pages.</span>
+                        }
                     </div>
                     <div class="activity-bulk-footer-right">
                         <button type="button" class="cb-v2-btn-secondary" @onclick="FirstPageAsync" disabled="@(_currentPage <= 1)">«</button>
@@ -195,7 +200,7 @@
                 </div>
 
                 <div class="activity-bulk-command-row">
-                    <button type="button" class="btn btn-primary" @onclick="MoveNextAsync" disabled="@(_selectedRowKeys.Count == 0)">
+                    <button type="button" class="btn btn-primary" @onclick="MoveNextAsync" disabled="@(SelectedFilteredCount == 0)">
                         Next
                     </button>
                     <button type="button" class="btn btn-danger" @onclick="CancelAsync">
@@ -401,13 +406,17 @@
     private int PageStartRow => _filteredRows.Count == 0 ? 0 : ((_currentPage - 1) * ClientPageSize) + 1;
     private int PageEndRow => Math.Min(_currentPage * ClientPageSize, _filteredRows.Count);
 
-    private bool IsCurrentPageFullySelected =>
-        _pageRows.Count > 0
-        && _pageRows.All(row =>
-        {
-            var rowKey = GetRowKey((IDictionary<string, object>)row);
-            return !string.IsNullOrWhiteSpace(rowKey) && _selectedRowKeys.Contains(rowKey);
-        });
+    // CYB-579: the header checkbox covers every row matching the current search/filters, not just
+    // the visible page. Rows hidden by a filter are never part of the bulk update.
+    private IEnumerable<string> FilteredRowKeys =>
+        _filteredRows
+            .Select(row => GetRowKey((IDictionary<string, object>)row))
+            .Where(rowKey => !string.IsNullOrWhiteSpace(rowKey));
+
+    private bool AreAllFilteredRowsSelected =>
+        FilteredRowKeys.Any() && FilteredRowKeys.All(_selectedRowKeys.Contains);
+
+    private int SelectedFilteredCount => FilteredRowKeys.Count(_selectedRowKeys.Contains);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -654,18 +663,12 @@
         ApplyClientSideView(resetPage: false);
     }
 
-    private void ToggleSelectAllCurrentPage(ChangeEventArgs args)
+    private void ToggleSelectAllFilteredRows(ChangeEventArgs args)
     {
         var shouldSelect = args.Value is bool boolValue && boolValue;
 
-        foreach (var row in _pageRows)
+        foreach (var rowKey in FilteredRowKeys.ToList())
         {
-            var rowKey = GetRowKey((IDictionary<string, object>)row);
-            if (string.IsNullOrWhiteSpace(rowKey))
-            {
-                continue;
-            }
-
             if (shouldSelect)
             {
                 _selectedRowKeys.Add(rowKey);
@@ -814,7 +817,7 @@
 
     private List<ExpandoObject> GetSelectedRows()
     {
-        return _allRows
+        return _filteredRows
             .Where(row =>
             {
                 var rowKey = GetRowKey((IDictionary<string, object>)row);

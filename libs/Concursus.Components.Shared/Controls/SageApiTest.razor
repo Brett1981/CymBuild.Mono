@@ -146,11 +146,15 @@
                     <label class="form-label">Account Reference</label>
                     <InputText class="form-control" @bind-Value="_accountReference" />
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">Document No</label>
                     <InputText class="form-control" @bind-Value="_documentNo" />
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">Tran Type (optional)</label>
+                    <InputNumber class="form-control" @bind-Value="_transactionsTranType" placeholder="1, 4 or 5" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
                     <div class="form-check">
                         <InputCheckbox class="form-check-input" @bind-Value="_transactionsForce" />
                         <label class="form-check-label">Force</label>
@@ -193,21 +197,38 @@
                                         <th>Tax</th>
                                         <th>Gross</th>
                                         <th>Outstanding</th>
+                                        <th>Allocated</th>
+                                        <th>Fully Paid</th>
+                                        <th>URN</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var tran in _transactionsResult.Transactions)
                                     {
+                                        var urn = GetAdditionalField(tran, "uniqueReferenceNumber");
+                                        var accountReference = string.IsNullOrWhiteSpace(tran.AccountReference)
+                                            ? GetAdditionalField(tran, "customerAccountNumber")
+                                            : tran.AccountReference;
                                         <tr>
                                             <td>@tran.TransactionReference</td>
-                                            <td>@tran.AccountReference</td>
+                                            <td>@accountReference</td>
                                             <td>@tran.SecondReference</td>
-                                            <td>@(tran.SysTraderTranType == 0 ? "" : tran.SysTraderTranType.ToString())</td>
+                                            <td>@FormatTranType(tran.SysTraderTranType)</td>
                                             <td>@tran.TransactionDate</td>
                                             <td>@tran.NetAmount</td>
                                             <td>@tran.TaxAmount</td>
                                             <td>@tran.GrossAmount</td>
                                             <td>@tran.OutstandingAmount</td>
+                                            <td>@GetAdditionalField(tran, "allocatedValue")</td>
+                                            <td>@GetAdditionalField(tran, "isFullyPaid")</td>
+                                            <td>@urn</td>
+                                            <td>
+                                                @if (!string.IsNullOrWhiteSpace(urn) && !string.IsNullOrWhiteSpace(accountReference))
+                                                {
+                                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => UseForAllocations(accountReference, urn)" disabled="@_busy">Allocations</button>
+                                                }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -221,6 +242,106 @@
                                 <pre class="mb-0">@_transactionsResult.RawJson</pre>
                             </details>
                         }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Fetch Sales Allocations (what settled an invoice)</div>
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label">Dataset</label>
+                    <InputText class="form-control" @bind-Value="_allocationsDataset" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Account Reference</label>
+                    <InputText class="form-control" @bind-Value="_allocationsAccountReference" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Invoice URN</label>
+                    <InputText class="form-control" @bind-Value="_allocationsUrn" />
+                </div>
+            </div>
+            <div class="form-text">
+                Both the account and the invoice's URN are required, so this can never ask Sage for every allocation.
+                Use the Allocations button on a transaction row above to fill them in.
+            </div>
+
+            <button class="btn btn-primary mt-3" @onclick="RunAllocationsAsync"
+                    disabled="@(_busy || string.IsNullOrWhiteSpace(_allocationsAccountReference) || string.IsNullOrWhiteSpace(_allocationsUrn))">
+                Fetch Allocations
+            </button>
+
+            @if (_allocationsResult is not null)
+            {
+                <div class="mt-3">
+                    <div><strong>Status:</strong> @_allocationsResult.Status</div>
+
+                    @if (!string.IsNullOrWhiteSpace(_allocationsResult.ErrorReturned))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <strong>Error:</strong> @_allocationsResult.ErrorReturned
+                        </div>
+                    }
+                    else if (_allocationsResult.Sessions.Count == 0)
+                    {
+                        <div class="alert alert-info mt-3 mb-0">No allocation sessions: the invoice has not been settled.</div>
+                    }
+                    else
+                    {
+                        <div class="mt-2"><strong>Sessions:</strong> @_allocationsResult.Sessions.Count</div>
+
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm table-bordered table-striped align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Session</th>
+                                        <th>Session Date</th>
+                                        <th>URN</th>
+                                        <th>Side</th>
+                                        <th>Settled By</th>
+                                        <th>Reference</th>
+                                        <th>Date</th>
+                                        <th>Allocated</th>
+                                        <th>Net</th>
+                                        <th>Tax</th>
+                                        <th>Gross</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var session in _allocationsResult.Sessions)
+                                    {
+                                        @foreach (var row in session.Rows)
+                                        {
+                                            <tr>
+                                                <td>@session.AllocationHeaderId</td>
+                                                <td>@session.SessionDate</td>
+                                                <td>@row.Urn</td>
+                                                <td>@(row.IsRequested ? "Invoice (requested)" : "Counterpart")</td>
+                                                <td>@(row.IsRequested ? "" : row.TypeResolved ? FormatTranType(row.SysTraderTranType) : "Not resolved")</td>
+                                                <td>@row.TransactionReference</td>
+                                                <td>@row.TransactionDate</td>
+                                                <td>@row.AllocationValue</td>
+                                                <td>@row.NetAmount</td>
+                                                <td>@row.TaxAmount</td>
+                                                <td>@row.GrossAmount</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @if (_showDebugSections && !string.IsNullOrWhiteSpace(_allocationsResult.RawJson))
+                    {
+                        <details class="mt-3">
+                            <summary>Raw JSON (debug only)</summary>
+                            <pre class="mb-0">@_allocationsResult.RawJson</pre>
+                        </details>
                     }
                 </div>
             }
@@ -372,8 +493,14 @@
     private string _transactionsDataset = "group";
     private string _accountReference = "DEV001";
     private string _documentNo = string.Empty;
+    private int? _transactionsTranType;
     private bool _transactionsForce;
     private SageFetchCustomerTransactionsResponse? _transactionsResult;
+
+    private string _allocationsDataset = "group";
+    private string _allocationsAccountReference = string.Empty;
+    private string _allocationsUrn = string.Empty;
+    private SageFetchSalesAllocationsResponse? _allocationsResult;
 
     private string _createDataset = "group";
     private string _createAccountReference = "DEV001";
@@ -391,7 +518,8 @@
     private string _lineNominalRef = "31010";
     private int _lineQuantity = 1;
     private double _lineUnitPrice = 100.00;
-    private int? _lineTaxCode = 22;
+    // Blank = standard VAT, as CymBuild sends it; 22 is the domestic reverse charge.
+    private int? _lineTaxCode;
 
     private SageCreateSalesOrderResponse? _createResult;
 
@@ -433,9 +561,60 @@
                 _transactionsDataset,
                 _accountReference,
                 _documentNo,
-                null,
+                _transactionsTranType,
                 _transactionsForce);
         });
+    }
+
+    private async Task RunAllocationsAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            _allocationsResult = await _formHelper!.SageFetchSalesAllocationsAsync(
+                _allocationsDataset,
+                _allocationsAccountReference.Trim(),
+                _allocationsUrn.Trim());
+        });
+    }
+
+    private async Task UseForAllocations(string accountReference, string urn)
+    {
+        _allocationsDataset = _transactionsDataset;
+        _allocationsAccountReference = accountReference;
+        _allocationsUrn = urn;
+        await RunAllocationsAsync();
+    }
+
+    // SFA (ticket #58103): 1 Receipt, 2 Payment (refund), 4 Invoice, 5 Credit Note,
+    // 6 Opening Balance Invoice, 7 Opening Balance Credit Note.
+    private static string FormatTranType(int? code) => code switch
+    {
+        null or 0 => string.Empty,
+        1 => "1 Receipt",
+        2 => "2 Payment",
+        4 => "4 Invoice",
+        5 => "5 Credit Note",
+        6 => "6 Opening Bal. Invoice",
+        7 => "7 Opening Bal. Credit Note",
+        _ => code.Value.ToString()
+    };
+
+    private static string GetAdditionalField(SageCustomerTransaction tran, string key)
+    {
+        if (tran.AdditionalFields is null ||
+            !tran.AdditionalFields.Fields.TryGetValue(key, out var value) ||
+            value is null)
+        {
+            return string.Empty;
+        }
+
+        return value.KindCase switch
+        {
+            Google.Protobuf.WellKnownTypes.Value.KindOneofCase.StringValue => value.StringValue,
+            Google.Protobuf.WellKnownTypes.Value.KindOneofCase.NumberValue => value.NumberValue.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Google.Protobuf.WellKnownTypes.Value.KindOneofCase.BoolValue => value.BoolValue ? "Yes" : "No",
+            _ => string.Empty
+        };
     }
 
     private async Task RunCreateSalesOrderAsync()

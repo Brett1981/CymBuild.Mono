@@ -1,0 +1,25 @@
+{
+  "mode": "created",
+  "runGuid": "82bff98c-92c4-4f82-8ac0-b391b25b809b",
+  "comparedOnUtc": "2026-10-29 17:06:41",
+  "selected": [
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SCore",
+      "objectName": "CreateUserSession",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SSop",
+      "objectName": "QuotesUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 82bff98c-92c4-4f82-8ac0-b391b25b809b: selected 2 row(s), skipped 0, validated and accepted."
+}

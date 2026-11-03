@@ -1,0 +1,12 @@
+{
+  "Mode": "created",
+  "Status": "Succeeded",
+  "RunGuid": "f34ce4eb-abe8-4740-8466-8c46922c2bca",
+  "SelectedCount": 2,
+  "DependencyCount": 0,
+  "ApplyCount": 2,
+  "SkippedUnsupportedCount": 0,
+  "SkippedUnsupportedTables": [],
+  "Issues": [],
+  "Message": "Applied 2 metadata row(s)."
+}

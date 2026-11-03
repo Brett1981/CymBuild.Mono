@@ -1,0 +1,403 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:socotec:cymbuild:test-case:1.0",
+  "title": "CymBuild test case",
+  "description": "Reviewable source contract for agent-assisted, deterministic CymBuild test creation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "requirement",
+    "layers",
+    "sources",
+    "environments",
+    "dataPolicy",
+    "invariants",
+    "preconditions",
+    "steps",
+    "assertions",
+    "automation",
+    "tags"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^CYB-TC-[A-Z0-9][A-Z0-9._-]*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 180
+    },
+    "requirement": {
+      "type": "string",
+      "minLength": 5
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "exampleOnly": {
+      "type": "boolean",
+      "default": false
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "architecture",
+          "component",
+          "form-helper",
+          "grpc-api",
+          "ef-sql",
+          "sql-contract",
+          "metadata-contract",
+          "schema-migration",
+          "metadata-migration",
+          "integration-outbox",
+          "e2e-smoke",
+          "e2e-functional"
+        ]
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref"],
+        "properties": {
+          "kind": {
+            "enum": [
+              "jira",
+              "code",
+              "metadata-manifest",
+              "sql",
+              "grpc",
+              "test",
+              "approved-requirement"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "guid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "metadataRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "manifestRef"],
+        "properties": {
+          "kind": {
+            "enum": ["screen", "form", "field", "grid", "view", "column", "action", "other"]
+          },
+          "manifestRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "guid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "anyOf": [
+          { "required": ["guid"] },
+          { "required": ["key"] }
+        ]
+      }
+    },
+    "environments": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["DEV", "QA", "UAT", "LIVE"]
+      }
+    },
+    "dataPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "createsManagedEntity", "cleanup", "liveWriteAllowed"],
+      "properties": {
+        "mode": {
+          "enum": ["none", "read-only", "synthetic-transactional", "seeded-disposable"]
+        },
+        "createsManagedEntity": {
+          "type": "boolean"
+        },
+        "cleanup": {
+          "enum": ["none", "transaction-rollback", "idempotent-retirement", "disposable-database"]
+        },
+        "liveWriteAllowed": {
+          "const": false
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "invariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["managedEntityInsert", "workflowStateChange", "integrationOutbox"],
+      "properties": {
+        "managedEntityInsert": {
+          "enum": ["not-applicable", "required"]
+        },
+        "workflowStateChange": {
+          "enum": ["not-applicable", "required"]
+        },
+        "integrationOutbox": {
+          "enum": ["not-applicable", "required"]
+        }
+      }
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["action", "via"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "via": {
+            "enum": [
+              "UI",
+              "renderer",
+              "FormHelper",
+              "gRPC API",
+              "EF/repository",
+              "SQL",
+              "metadata validator",
+              "deployment runner",
+              "test harness"
+            ]
+          },
+          "expected": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "expected"],
+        "properties": {
+          "type": {
+            "enum": [
+              "render",
+              "validation",
+              "transport",
+              "data",
+              "data-object",
+              "transition",
+              "security",
+              "idempotency",
+              "outbox",
+              "accessibility",
+              "performance",
+              "deployment",
+              "diagnostic"
+            ]
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "automation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["proposed", "implemented", "manual", "not-automatable"]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "implemented" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["target"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "enum": ["manual", "not-automatable"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["reason"]
+          }
+        }
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "environments": {
+            "contains": { "const": "LIVE" }
+          }
+        },
+        "required": ["environments"]
+      },
+      "then": {
+        "properties": {
+          "dataPolicy": {
+            "properties": {
+              "mode": { "enum": ["none", "read-only"] },
+              "cleanup": { "const": "none" },
+              "liveWriteAllowed": { "const": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "dataPolicy": {
+            "properties": {
+              "createsManagedEntity": { "const": true }
+            },
+            "required": ["createsManagedEntity"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "invariants": {
+            "properties": {
+              "managedEntityInsert": { "const": "required" }
+            }
+          },
+          "assertions": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "type": { "const": "data-object" }
+              },
+              "required": ["type"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "invariants": {
+            "properties": {
+              "workflowStateChange": { "const": "required" }
+            },
+            "required": ["workflowStateChange"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assertions": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "type": { "const": "transition" }
+              },
+              "required": ["type"]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "invariants": {
+            "properties": {
+              "integrationOutbox": { "const": "required" }
+            },
+            "required": ["integrationOutbox"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "assertions": {
+            "contains": {
+              "type": "object",
+              "properties": {
+                "type": { "const": "outbox" }
+              },
+              "required": ["type"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

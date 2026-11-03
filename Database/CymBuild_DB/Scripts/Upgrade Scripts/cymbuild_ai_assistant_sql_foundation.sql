@@ -123,8 +123,12 @@ BEGIN
 		,@IsRootEntity = 0
 		,@DetailPageUrl = @DetailPageUrl
 		,@IsMetaData = 0
+		,@IsDeletable = 1
 		,@Guid = @ResolvedEntityTypeGuid OUTPUT;
 END;
+GO
+-- CYB-577: the GO above ends the procedure. Without it, sections 3-6 below were compiled
+-- into SAi.Assistant_EnsureEntityType's body instead of running once as this script.
 
 /* =========================================================================================
        3. Seed EntityTypes for SAi major entities

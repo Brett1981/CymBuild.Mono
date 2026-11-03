@@ -13,7 +13,6 @@
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime jsRuntime
-@inject AiErrorReporter AiErrorReporter
 @inject IToastService Toast
 
 @attribute [Authorize]
@@ -249,18 +248,6 @@
                 </div>
             }
 
-            @if (SelectedDevV2AdvancedTab == "aierror")
-            {
-                <div class="cb-v2-card">
-                    <div class="cb-v2-card-body">
-                        <h3 class="cb-v2-title">AI Error Admin</h3>
-                        <div class="dev-v2-component-wrap">
-                            <Concursus.PWA.Shared.AiErrorAdmin OnError="HandleAiError" />
-                        </div>
-                    </div>
-                </div>
-            }
-
             @if (SelectedDevV2AdvancedTab == "sync")
             {
                 <div class="cb-v2-card">
@@ -346,7 +333,6 @@
         new("memory", "Memory Diagnostics"),
         new("waitstats", "Wait Stats"),
         new("sage", "Sage API Test"),
-        new("aierror", "AI Error Admin"),
         new("sync", "Sync Queue"),
         new("steplogs", "Step Logs"),
         new("postcode", "PostCode Lookup"),
@@ -935,59 +921,6 @@
     {
         var languageLabel = languageLabels.FirstOrDefault(lang => lang.Name == name);
         return languageLabel?.Guid ?? "Not Found";
-    }
-
-    private async Task HandleAiError(Exception ex)
-    {
-        Console.WriteLine("HandleAiError: Invoked with exception.");
-        Console.WriteLine($"HandleAiError: Exception.Message: {ex.Message}");
-        Console.WriteLine($"HandleAiError: Exception.StackTrace: {ex.StackTrace}");
-        foreach (System.Collections.DictionaryEntry kv in ex.Data)
-        {
-            Console.WriteLine($"HandleAiError: ex.Data[{kv.Key}] = {kv.Value}");
-        }
-
-        try
-        {
-            var result = await AiErrorReporter.ReportAsync(ex, userService);
-            Console.WriteLine("HandleAiError: Awaited AiErrorReporter.ReportAsync.");
-            if (result != null)
-            {
-                // Console.WriteLine($"HandleAiError: ReportResult: AlreadyExists={result.AlreadyExists}, JiraTicketKey={result.JiraTicketKey}, JiraStatus={result.JiraStatus}, ErrorMessage={result.ErrorMessage}");
-                // var message = result.AlreadyExists
-                //     ? $"📌 This issue has already been raised and logged.\n\n" +
-                //       $"🔖 Ticket: {result.JiraTicketKey}\n" +
-                //       $"📄 Title: {result.ErrorMessage}\n" +
-                //       $"📌 Status: {result.JiraStatus}"
-                //     : $"🧠 We have automatically logged this new issue on your behalf.\n\n" +
-                //       $"🔖 Ticket: {result.JiraTicketKey}\n" +
-                //       $"📄 Title: {result.ErrorMessage}\n" +
-                //       $"📌 Status: {result.JiraStatus}";
-                // messageDisplay?.SetMessage(message, result.AlreadyExists
-                //     ? MessageDisplay.ShowMessageType.Information
-                //     : MessageDisplay.ShowMessageType.Success);
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    Console.WriteLine("HandleAiError: Message set to MessageDisplay: " + result.ErrorMessage);
-                    messageDisplay?.SetMessage(result.UiMessage, result.MessageType);
-                    messageDisplay?.ShowError(true);
-                }
-            }
-            else
-            {
-                Console.WriteLine("HandleAiError: ReportAsync returned null result!");
-                messageDisplay?.SetMessage("❌ Failed to report AI error. Please raise a Help Desk ticket.", MessageDisplay.ShowMessageType.Error);
-                messageDisplay?.ShowError(true);
-            }
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"HandleAiError: Caught error in ReportAsync or display: {e.Message}\n{e.StackTrace}");
-            messageDisplay?.SetMessage($"❌ Unexpected error while reporting AI issue: {e.Message}", MessageDisplay.ShowMessageType.Error);
-            messageDisplay?.ShowError(true);
-        }
-        await InvokeAsync(StateHasChanged);
-        Console.WriteLine("HandleAiError: StateHasChanged called, function complete.");
     }
 
 

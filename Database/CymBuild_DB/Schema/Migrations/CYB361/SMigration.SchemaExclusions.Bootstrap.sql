@@ -403,16 +403,18 @@ BEGIN
         comparison.[TargetDefinition],
         comparison.[IsDeployable],
         comparison.[IsDestructiveRisk],
-        CASE
-            WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, CASE WHEN comparison.[IsDestructiveRisk] = 1 THEN 0 ELSE 1 END)
-            ELSE ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0))
-        END AS [IsSelected],
-        @HasExplicitSelection AS [HasExplicitSelection]
+        ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0)) AS [IsSelected],
+        @HasExplicitSelection AS [HasExplicitSelection],
+        -- CYB-566: a new table's "Copy reference data" choice and the DEV rows captured for it.
+        ISNULL(selectionState.[CopyReferenceData], CONVERT(BIT, 0)) AS [CopyReferenceData],
+        selectionState.[NewTableCaptureJson]
     FROM [SMigration].[Schema_ObjectComparisons] AS comparison
     OUTER APPLY
     (
         SELECT TOP (1)
-            selection.[IsSelected]
+            selection.[IsSelected],
+            selection.[CopyReferenceData],
+            selection.[NewTableCaptureJson]
         FROM [SMigration].[Schema_RunSelections] AS selection
         WHERE selection.[RunGuid] = comparison.[RunGuid]
           AND selection.[ObjectType] = comparison.[ObjectType]
@@ -428,16 +430,7 @@ BEGIN
       AND comparison.[RowStatus] <> 254
       AND comparison.[IsDeployable] = 1
       AND comparison.[DifferenceType] <> N'Equal'
-      AND
-      (
-          @HasExplicitSelection = 1
-          OR comparison.[IsDestructiveRisk] = 0
-      )
-      AND
-      (
-          @HasExplicitSelection = 0
-          OR ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0)) = 1
-      )
+      AND ISNULL(selectionState.[IsSelected], CONVERT(BIT, 0)) = 1
       AND NOT EXISTS
       (
           SELECT 1

@@ -1,0 +1,75 @@
+﻿{
+    "Contract":  "CYB_SCHEMA_SOURCE_SYNC_V1",
+    "SchemaSnapshotContract":  "R7C4",
+    "RunGuid":  "b80774c9-24e2-4399-a250-9468be8f3016",
+    "SourceEnvironment":  "DEV",
+    "SourceServerName":  "SOC-SQLDEVBRE01\\GENERAL",
+    "SourceDatabaseName":  "CymBuild_Dev",
+    "PlanDatabase":  "CymBuild_QA",
+    "Mode":  "VerifySource",
+    "SelectedObjectCount":  5,
+    "ArtifactCount":  5,
+    "GeneratedOnUtc":  "2026-08-13T20:15:12.8447120Z",
+    "Artifacts":  [
+                      {
+                          "ComparisonGuid":  "20507981-e4bc-43cc-b627-598375c5b2c9",
+                          "ObjectType":  "Function",
+                          "SchemaName":  "SCrm",
+                          "ObjectName":  "tvf_AccountsCheckForDuplicate",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "Different",
+                          "SourceHash":  "4CD32AAD9EC4FE94DF76200F7794221C25647128A42A115D2545E2329829BE3B",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Functions/SCrm.tvf_AccountsCheckForDuplicate.sql",
+                          "FileSha256":  "DF29DACC601E2670F3E8023681708E3DF6D53E24A055E5A75A83BB89C8C77879",
+                          "WasSynchronized":  false
+                      },
+                      {
+                          "ComparisonGuid":  "11e2cbba-fa23-4432-82db-ca25b96fc86b",
+                          "ObjectType":  "Function",
+                          "SchemaName":  "SCrm",
+                          "ObjectName":  "tvf_ContactsCheckForDuplicate",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "MissingInTarget",
+                          "SourceHash":  "F53ED55AE7829EDC59A3A5A8982BAE2FA68A6FD099E695FB8EC60D592B3CDE97",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Functions/SCrm.tvf_ContactsCheckForDuplicate.sql",
+                          "FileSha256":  "7C13FEB27B25C07B186337509DB6032194575E7FF0FA1D27AE6E51C00A4CCA3D",
+                          "WasSynchronized":  false
+                      },
+                      {
+                          "ComparisonGuid":  "d84477fd-8ff2-4c28-9288-03224ac88a75",
+                          "ObjectType":  "Function",
+                          "SchemaName":  "SFin",
+                          "ObjectName":  "tvf_SageInboundDiagnostics",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "Different",
+                          "SourceHash":  "BF95D6161C0B5966A2F0374B3C7CAE2D936E83EFCF3C15226901E4A93FA68A6C",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_SageInboundDiagnostics.sql",
+                          "FileSha256":  "A430F24587C707EC24A16103CC1F856013975B9845CEBA19B4A686565F3E6CFF",
+                          "WasSynchronized":  false
+                      },
+                      {
+                          "ComparisonGuid":  "c441c65d-f284-4fc0-8c46-e02b04ec926b",
+                          "ObjectType":  "Function",
+                          "SchemaName":  "SSop",
+                          "ObjectName":  "tvf_QuotesValidate",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "Different",
+                          "SourceHash":  "01FB93FCA8EB4AA60B5109AFDDEEBDFC2E89A3743534BB551831E0D851F30A57",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql",
+                          "FileSha256":  "59EE55A44E7302ECFF6BB35AA43D5D2FD578D4368CF5875C57F1BC153F2D2DC5",
+                          "WasSynchronized":  false
+                      },
+                      {
+                          "ComparisonGuid":  "446e33fb-b4f3-42e7-b5ce-5228b387fda6",
+                          "ObjectType":  "StoredProcedure",
+                          "SchemaName":  "SSop",
+                          "ObjectName":  "EnquiriesDuplicate",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "Different",
+                          "SourceHash":  "F2946FA5034B0907AE8448E5C0AD4725AE679E8918AEC40FB7B33AA71CE9DFCA",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.EnquiriesDuplicate.sql",
+                          "FileSha256":  "F01CD2B6114F5CB1C7713813B7CECC8FB4C9C0018AFD30CC307F0EF5B03CF9EF",
+                          "WasSynchronized":  false
+                      }
+                  ]
+}

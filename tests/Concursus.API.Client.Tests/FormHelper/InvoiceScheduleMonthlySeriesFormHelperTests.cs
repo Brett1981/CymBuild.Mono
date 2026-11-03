@@ -17,6 +17,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
                 new DateOnly(2026, 10, 1),
                 3000m,
                 overwriteExisting: false,
+                frequency: "Monthly",
                 ct: TestContext.Current.CancellationToken));
 
         Assert.Equal("invoiceScheduleGuid", exception.ParamName);
@@ -36,6 +37,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
                 new DateOnly(2026, 8, 1),
                 3000m,
                 overwriteExisting: false,
+                frequency: "Monthly",
                 ct: TestContext.Current.CancellationToken));
 
         Assert.Equal("startDate", exception.ParamName);
@@ -55,6 +57,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
                 new DateOnly(2026, 10, 1),
                 0m,
                 overwriteExisting: false,
+                frequency: "Monthly",
                 ct: TestContext.Current.CancellationToken));
 
         Assert.Equal("totalValueNet", exception.ParamName);
@@ -82,6 +85,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
             new DateOnly(2026, 10, 31),
             1234.56m,
             overwriteExisting: true,
+            frequency: "Monthly",
             ct: TestContext.Current.CancellationToken);
 
         var request = Assert.IsType<InvoiceScheduleMonthlySeriesGenerateRequest>(invoker.LastRequest);
@@ -90,6 +94,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
         Assert.Equal("2026-10-31", request.EndDate);
         Assert.Equal("1234.56", request.TotalValueNet);
         Assert.True(request.OverwriteExisting);
+        Assert.Equal("Monthly", request.Frequency);
         Assert.EndsWith(
             "/InvoiceScheduleMonthlySeriesGenerate",
             Assert.IsType<string>(invoker.LastMethodFullName));
@@ -116,6 +121,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
             new DateOnly(2026, 11, 1),
             4000m,
             overwriteExisting: false,
+            frequency: "Monthly",
             ct: TestContext.Current.CancellationToken);
 
         Assert.Equal(4, result.InsertedCount);
@@ -142,6 +148,7 @@ public sealed class InvoiceScheduleMonthlySeriesFormHelperTests
                 new DateOnly(2026, 10, 1),
                 3000m,
                 overwriteExisting: false,
+                frequency: "Monthly",
                 ct: TestContext.Current.CancellationToken));
 
         Assert.Equal("Monthly schedule rows already exist.", exception.Message);

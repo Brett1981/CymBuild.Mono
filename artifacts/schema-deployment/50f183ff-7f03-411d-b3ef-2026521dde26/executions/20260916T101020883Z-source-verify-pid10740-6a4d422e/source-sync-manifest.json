@@ -1,0 +1,112 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "50f183ff-7f03-411d-b3ef-2026521dde26",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_UAT",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 4,
+  "ArtifactCount": 8,
+  "GeneratedOnUtc": "2026-09-16T10:10:22.8192060Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "9bc90929-7cae-42b0-b4c6-da8b4edd76cb",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceRequests_InvoicePaymentStatus",
+      "ParentObjectName": "InvoiceRequests",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "AE03B3FE7ECA6800C6ABAB3CB1F295CA4C5ADE8855E92C795C1A630D50B8C75F",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceRequests.FK_InvoiceRequests_InvoicePaymentStatus.sql",
+      "FileSha256": "15AB618CAAD70F9E37C7BE56FCF3A871287EF34DACE1BA78EC62B782FDE93FB6",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "9bc90929-7cae-42b0-b4c6-da8b4edd76cb",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceRequests_InvoicePaymentStatus",
+      "ParentObjectName": "InvoiceRequests",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "AE03B3FE7ECA6800C6ABAB3CB1F295CA4C5ADE8855E92C795C1A630D50B8C75F",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceRequests.FK_InvoiceRequests_InvoicePaymentStatus.preflight.sql",
+      "FileSha256": "36BB70EE18ED0E9B0780C7B9D31005F4FC19E1552622E78605069570C6A48C9C",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "1046264f-a49d-44d3-a247-2d82914c8c7e",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_ActivityMilestoneConfigurationId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C9DCB48C29EABB00D90C878A32302F4D506B87483BB762763198C613D734832E",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_ActivityMilestoneConfigurationId.sql",
+      "FileSha256": "7C05B0E4762830F67517885524E555EF6DE50F75911E8CC939F4CBD1C8FC12AB",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "1046264f-a49d-44d3-a247-2d82914c8c7e",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_ActivityMilestoneConfigurationId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C9DCB48C29EABB00D90C878A32302F4D506B87483BB762763198C613D734832E",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_ActivityMilestoneConfigurationId.preflight.sql",
+      "FileSha256": "82BC4008260BFB8C6A047BC07B0856FDBFB0ADD0B91C666415EFC9F50A9798B5",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "29a1c687-bd03-480c-9b33-158f95e153f7",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_RibaConfigurationId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C6E9CFF53F7070817DA41F172901546E7C941B99C26B2BE1CD867F80300C6A52",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_RibaConfigurationId.sql",
+      "FileSha256": "86707C782D9C8BD48F4A0DD32CE09C4C11211C1707DF8C34700A9D63C490BBB6",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "29a1c687-bd03-480c-9b33-158f95e153f7",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_RibaConfigurationId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C6E9CFF53F7070817DA41F172901546E7C941B99C26B2BE1CD867F80300C6A52",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_RibaConfigurationId.preflight.sql",
+      "FileSha256": "D304DC1BA8509626207D4C38B26A23575B7082D8E043E4B9354B0F731BFE1131",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "f949796e-301f-4877-849f-2099e71b696a",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_TriggerId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C7BF78CC8B0CD967A9BE319815CBA07B2707ECF3040C5C2E93218074A4F0D86C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_TriggerId.sql",
+      "FileSha256": "961C98D3FBDB566FEDDD1AA4604A6F3FA33763D9BE1EB4A7BF2F9DBC35978AE3",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "f949796e-301f-4877-849f-2099e71b696a",
+      "ObjectType": "Constraint",
+      "SchemaName": "SFin",
+      "ObjectName": "FK_InvoiceSchedules_TriggerId",
+      "ParentObjectName": "InvoiceSchedules",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "C7BF78CC8B0CD967A9BE319815CBA07B2707ECF3040C5C2E93218074A4F0D86C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SFin.InvoiceSchedules.FK_InvoiceSchedules_TriggerId.preflight.sql",
+      "FileSha256": "39B7581278D5B4C8EE96F9F86E407B50034338E16962AE9281AEBE617A460BA1",
+      "WasSynchronized": false
+    }
+  ]
+}

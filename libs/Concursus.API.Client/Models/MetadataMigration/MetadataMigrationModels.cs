@@ -46,7 +46,19 @@ public sealed class MetadataMigrationValidationIssueModel
     public string IssueCode { get; set; } = string.Empty;
     public string IssueMessage { get; set; } = string.Empty;
     public string DetailsJson { get; set; } = string.Empty;
+    public bool CanIgnore { get; set; }
+    public bool IsIgnored { get; set; }
+    public string IgnoreReason { get; set; } = string.Empty;
+    public string IgnoredOnUtcText { get; set; } = string.Empty;
+    public int IgnoredByUserId { get; set; } = -1;
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
+}
+
+public sealed class MetadataMigrationValidationIssueIgnoreResultModel
+{
+    public int ActiveFailCount { get; set; }
+    public int IgnoredIssueCount { get; set; }
+    public string Message { get; set; } = string.Empty;
 }
 
 public sealed class MetadataMigrationIdentityMapModel
@@ -80,6 +92,7 @@ public sealed class MetadataMigrationIdentityMapDetailModel
     public Guid OverrideTargetRowGuid { get; set; }
     public string OverrideTargetDisplayName { get; set; } = string.Empty;
     public string OverrideReason { get; set; } = string.Empty;
+    public string OverrideColumnSourceSelectionJson { get; set; } = string.Empty;
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
     public bool NeedsReview => !IsResolved && !IsIgnoredIssue && !HasOverride;
 }
@@ -156,6 +169,10 @@ public sealed class MetadataMigrationDiffRowModel
     public bool IsIgnored { get; set; }
     public string IgnoreReason { get; set; } = string.Empty;
     public string IgnoredOnUtcText { get; set; } = string.Empty;
+    // "Manual" when the user ticked the row, "Dependency" when a selection save ticked it
+    // because a selected row depends on it or it belongs to one.
+    public string SelectionSource { get; set; } = string.Empty;
+    public bool IsDependencySelected => IsSelected && SelectionSource.Equals("Dependency", StringComparison.OrdinalIgnoreCase);
     public string EntityName => string.IsNullOrWhiteSpace(TableName) ? SchemaName : $"{SchemaName}.{TableName}";
 }
 
@@ -171,6 +188,7 @@ public sealed class MetadataMigrationSelectionItemModel
 public sealed class MetadataMigrationSelectionResultModel
 {
     public int SelectedCount { get; set; }
+    public int AutoSelectedCount { get; set; }
     public string Message { get; set; } = string.Empty;
 }
 

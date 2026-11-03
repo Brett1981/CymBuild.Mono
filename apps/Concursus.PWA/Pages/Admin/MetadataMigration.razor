@@ -158,6 +158,7 @@
 
 @code {
     private const string DifferenceInsert = "Insert";
+    private const string SelectionSourceManual = "Manual";
     private const string DifferenceUpdate = "Update";
     private const string DifferenceNoChange = "NoChange";
     private const string SectionSetup = "setup";
@@ -186,6 +187,7 @@
     private string TargetServerName { get; set; } = @"SOC-SQLDEVBRE01\GENERAL";
     private string TargetDatabaseName { get; set; } = "CymBuild_QA";
     private bool IsValidateOnly { get; set; }
+    private bool IncludeRetirements { get; set; }
     private bool ForceApply { get; set; }
     private string RunGuidText { get; set; } = string.Empty;
 
@@ -197,6 +199,8 @@
     private MetadataMigrationIdentityMapModel? SelectedIdentityMapSummary { get; set; }
     private MetadataMigrationIdentityMapDetailModel? SelectedIdentityMapDetail { get; set; }
     private MetadataMigrationIdentityMapCandidateModel? SelectedIdentityMapCandidate { get; set; }
+    private Dictionary<string, bool> IdentityMapColumnUseSource { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> IdentityMapNonSelectableColumns = new(StringComparer.OrdinalIgnoreCase) { "Guid", "ID" };
     private MetadataMigrationDiffRowModel? SelectedDiffRow { get; set; }
     private MetadataTableSummaryRow? SelectedTableSummary { get; set; }
     private List<MetadataMigrationIgnoredRecordModel> IgnoredRecords { get; set; } = new();
@@ -216,6 +220,7 @@
     private bool ShowNoChange { get; set; }
     private bool ShowIgnored { get; set; }
     private bool ShowInactiveIgnoredRecords { get; set; }
+    private bool ShowIgnoredValidationIssues { get; set; }
     private bool ShowMissingTargetsOnly { get; set; }
     private bool IdentityMapIncludeIgnoredIssues { get; set; } = true;
     private string IdentityMapSearchText { get; set; } = string.Empty;
@@ -223,6 +228,7 @@
     private string IdentityMapCandidateSearchText { get; set; } = string.Empty;
     private string IdentityMapOverrideReason { get; set; } = string.Empty;
     private string IgnoreReason { get; set; } = string.Empty;
+    private string ValidationIssueIgnoreReason { get; set; } = string.Empty;
     private string EntityTypeScopeSelectedDatabase { get; set; } = EntityTypeScopeSourceDatabase;
     private bool EntityTypeScopeShowMetadataOnly { get; set; } = true;
     private string EntityTypeScopeSearchText { get; set; } = string.Empty;
@@ -259,14 +265,41 @@
         && !string.IsNullOrWhiteSpace(EntityTypeScopeDatabaseName);
     private bool IsForceApplyDisabled => !TargetEnvironment.Equals("LIVE", StringComparison.OrdinalIgnoreCase);
     private bool CanApplyBase => HasRunGuid && !IsValidateOnly && (IsForceApplyDisabled || ForceApply) && (Dashboard?.FailCount ?? 0) == 0;
-    private bool CanApply => CanApplyBase && IsApplyPreviewReadyForScope(false);
-    private bool CanApplySelected => CanApplyBase && SelectedPersistedCount > 0 && IsApplyPreviewReadyForScope(true);
+    private bool CanApplySelected => CanApplyBase && SelectedPersistedCount > 0 && IsSelectedApplyPreviewReady;
 
     private int InsertCount => Dashboard?.InsertCount ?? 0;
     private int UpdateCount => Dashboard?.UpdateCount ?? 0;
     private int NoChangeCount => Dashboard?.NoChangeCount ?? 0;
     private int ValidationErrorCount => Dashboard?.FailCount ?? 0;
     private int WarningCount => Dashboard?.WarnCount ?? 0;
+    private int ActionableStagedCount => TableSummaryRows.Sum(row => row.InsertCount + row.UpdateCount);
+
+    // CYB-574: written by MetadataValidate_Run, one per table with unselected Insert/Update rows.
+    private List<MetadataMigrationValidationIssueModel> UnselectedActionableIssues => (Dashboard?.ValidationIssues ?? new List<MetadataMigrationValidationIssueModel>())
+        .Where(row => !row.IsIgnored && row.IssueCode.Equals("UnselectedActionableRows", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    private int IgnoredValidationIssueCount => Dashboard?.ValidationIssues?.Count(row => row.IsIgnored) ?? 0;
+
+    // Record-scoped conflicts a data owner must resolve manually (a duplicate Guid/natural key
+    // across environments, or a row orphaned by one of those exclusions cascading downstream).
+    // These are also Warn/Fail-severity Metadata_ValidationIssues rows, but they get lost among
+    // structural issues (RunNotFound, RegisteredTableMissing, ...) in the general list below.
+    private static readonly string[] ConflictIssueCodes =
+    [
+        "DuplicateSourceGuid",
+        "DuplicateTargetGuid",
+        "DuplicateTargetKey",
+        "UnresolvedReference"
+    ];
+
+    private static bool IsConflictIssue(MetadataMigrationValidationIssueModel row) =>
+        ConflictIssueCodes.Contains(row.IssueCode, StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<MetadataMigrationValidationIssueModel> ConflictValidationIssues =>
+        (Dashboard?.ValidationIssues ?? Enumerable.Empty<MetadataMigrationValidationIssueModel>())
+            .Where(row => IsConflictIssue(row) && (ShowIgnoredValidationIssues || !row.IsIgnored));
+
+    private int ConflictCount => Dashboard?.ValidationIssues?.Count(row => IsConflictIssue(row) && !row.IsIgnored) ?? 0;
     private int IgnoredCount => Dashboard?.IgnoredCount ?? 0;
     private int SelectedPersistedCount => Dashboard?.SelectedCount ?? 0;
     private int SelectedLoadedCount => DiffRows.Count(row => row.IsSelected);
@@ -302,7 +335,7 @@
     private int LoadedInactiveIgnoredRecordCount => IgnoredRecords.Count(row => !row.IsActive);
     private int LoadedEntityTypeMetadataCount => EntityTypeScopeRows.Count(row => row.IsMetaData);
     private int LoadedEntityTypeNonMetadataCount => EntityTypeScopeRows.Count(row => !row.IsMetaData);
-    private int PersistentRuleSignalCount => LoadedActiveIgnoredRecordCount + IdentityMapDetailIgnoredCount + IdentityMapDetailOverrideCount + EntityTypeScopePendingCount;
+    private int PersistentRuleSignalCount => LoadedActiveIgnoredRecordCount + IgnoredValidationIssueCount + IdentityMapDetailIgnoredCount + IdentityMapDetailOverrideCount + EntityTypeScopePendingCount;
     private string SelectedIdentityMapEntityName => SelectedIdentityMapSummary is null ? string.Empty : SelectedIdentityMapSummary.EntityName;
     private bool HasIdentityMapDetailRows => IdentityMapDetailRows.Count > 0;
     private bool HasIdentityMapCandidateRows => IdentityMapCandidateRows.Count > 0;
@@ -323,17 +356,17 @@
     private string IdentityMapReviewIconClass => $"bi {(IsIdentityMapReviewCurrent ? "bi-check-circle" : "bi-exclamation-circle")}";
     private string NextRunActionText => GetNextRunActionText();
     private bool HasPrioritySelectedScope => SelectedPersistedCount > 0;
-    private string RecommendedApplyPreviewScopeText => HasPrioritySelectedScope ? "Preview Selected" : "Preview All Valid";
+    private string RecommendedApplyPreviewScopeText => "Preview Selected";
     private string PriorityReviewScopeCss => HasPrioritySelectedScope ? "metadata-review-scope-selected" : "metadata-review-scope-all";
     private string PriorityReviewScopeTitle => HasPrioritySelectedScope
-        ? $"Selected records are the priority confirmation scope ({SelectedPersistedCount})"
-        : "No selected records - all valid records are the confirmation scope";
+        ? $"Selected records are the only confirmation scope ({SelectedPersistedCount})"
+        : "No selected records - validation, preview and apply are blocked";
     private string PriorityReviewScopeDetail => HasPrioritySelectedScope
-        ? "Identity Map and Release Artefacts still show the full-run context, but selected records should be reviewed and previewed first before Apply Selected."
-        : "Because no records are selected, review and preview should be based on all valid staged records before Apply All Valid.";
+        ? "Identity Map and Release Artefacts still show full-run context, but only selected records are validated, previewed and applied."
+        : "Select at least one non-ignored Insert or Update row before validation, preview or apply.";
     private string CurrentApplyPreviewScopeText => ApplyPreview is null
         ? $"Recommended next preview: {RecommendedApplyPreviewScopeText}"
-        : $"Current preview: {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}";
+        : "Current preview: selected records";
 
 
 
@@ -352,17 +385,14 @@
         .ThenBy(row => row.TableName)
         .ThenBy(row => row.SourceRowId);
 
-    private bool IsApplyPreviewReadyForScope(bool selectedOnly)
-    {
-        return CanConfirmApplyPreview
-            && ApplyPreviewReviewed
-            && ApplyPreview is not null
-            && ApplyPreview.ApplySelectedOnly == selectedOnly;
-    }
+    private bool IsSelectedApplyPreviewReady => CanConfirmApplyPreview
+        && ApplyPreviewReviewed
+        && ApplyPreview is not null
+        && ApplyPreview.ApplySelectedOnly;
 
     private string ApplyPreviewRequiredText(bool selectedOnly)
     {
-        var scopeName = selectedOnly ? "selected records" : "all valid records";
+        const string scopeName = "selected records";
 
         if (!HasRunGuid)
         {
@@ -381,7 +411,7 @@
 
         if (ApplyPreview.ApplySelectedOnly != selectedOnly)
         {
-            return $"Current preview is for {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}; generate a preview for {scopeName}.";
+            return $"Current preview is not selected-only; generate a new preview for {scopeName}.";
         }
 
         if (IsApplyPreviewBlocked)
@@ -439,7 +469,7 @@
             return "Generate an apply preview to review the exact records before running the guarded apply.";
         }
 
-        var scopeText = ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records";
+        const string scopeText = "selected records";
         if (ApplyPreview.Rows.Count == 0)
         {
             return $"Preview for {scopeText}: no records are currently in scope.";
@@ -506,6 +536,7 @@
             }
 
             var validationGroups = (Dashboard.ValidationIssues ?? new List<MetadataMigrationValidationIssueModel>())
+                .Where(x => !x.IsIgnored)
                 .GroupBy(x => x.EntityName, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(x => x.Key, x => x.Count(v => v.Severity.Equals("Fail", StringComparison.OrdinalIgnoreCase)), StringComparer.OrdinalIgnoreCase);
 
@@ -550,6 +581,7 @@
             || row.DifferingColumns.Any(v => v.Contains(RecordSearchText, StringComparison.OrdinalIgnoreCase)));
 
     private IEnumerable<MetadataMigrationValidationIssueModel> FilteredValidationIssues => (Dashboard?.ValidationIssues ?? Enumerable.Empty<MetadataMigrationValidationIssueModel>())
+        .Where(row => ShowIgnoredValidationIssues || !row.IsIgnored)
         .Where(row => string.IsNullOrWhiteSpace(SelectedAuditSeverity) || row.Severity.Equals(SelectedAuditSeverity, StringComparison.OrdinalIgnoreCase));
 
     private IEnumerable<MetadataMigrationIdentityMapModel> FilteredIdentityMap => (Dashboard?.IdentityMap ?? Enumerable.Empty<MetadataMigrationIdentityMapModel>())
@@ -588,6 +620,7 @@
         @SummaryCard("Ignored", IgnoredCount, "muted", () => SelectSectionAsync("ignored"))
         @SummaryCard("Validation Errors", ValidationErrorCount, "danger", () => OpenAuditSeverityAsync("Fail"))
         @SummaryCard("Warnings", WarningCount, "warning", () => OpenAuditSeverityAsync("Warn"))
+        @SummaryCard("Conflicts", ConflictCount, "danger", () => SelectSectionAsync(SectionAudit))
     </section>;
 
     private RenderFragment SummaryCard(string title, int count, string tone, Func<Task> onClick) => @<button type="button"
@@ -819,6 +852,7 @@
                     <p>@TableSummaryRows.Count table(s) staged for the selected run.</p>
                 </div>
                 <div class="metadata-section-actions">
+                    <label title="Also stage rows soft-deleted (RowStatus 254) in the source whose matching target row is still active, so the retirement is applied. Rows that exist only in the target are never touched."><input type="checkbox" @bind="IncludeRetirements" disabled="@IsBusy" /> Include retirements</label>
                     <button type="button" class="cb-v2-btn-secondary" @onclick="StageAsync" disabled="@(IsBusy || !HasRunGuid)">Stage</button>
                     <button type="button" class="cb-v2-btn-secondary" @onclick="ValidateAsync" disabled="@(IsBusy || !HasRunGuid)">Validate</button>
                     <button type="button" class="cb-v2-btn-secondary" @onclick="BuildIdentityMapAsync" disabled="@(IsBusy || !HasRunGuid)">Build Map</button>
@@ -930,6 +964,12 @@
                                         @if (row.IsSelected)
                                         {
                                             @Badge("Selected")
+                                            @if (row.IsDependencySelected)
+                                            {
+                                                <span class="metadata-badge muted" title="Selected automatically: a row you selected depends on this row or this row belongs to it. Deselect it here if it should not be applied.">
+                                                    <span class="bi bi-link-45deg" aria-hidden="true"></span> Auto
+                                                </span>
+                                            }
                                         }
                                         else
                                         {
@@ -1178,13 +1218,19 @@
                         <dt>Ignore Reason</dt><dd>@(string.IsNullOrWhiteSpace(SelectedIdentityMapDetail.IgnoreReason) ? "-" : SelectedIdentityMapDetail.IgnoreReason)</dd>
                         <dt>Manual Mapping</dt><dd>@(SelectedIdentityMapDetail.HasOverride ? SelectedIdentityMapDetail.OverrideTargetDisplayName : "None")</dd>
                     </dl>
+                    <div class="metadata-toolbar">
+                        <input class="cb-v2-input metadata-ignore-reason" placeholder="Ignore reason (optional)" @bind="IdentityMapIssueReason" disabled="@IsBusy" />
+                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="ToggleSelectedIdentityMapIssueIgnoreAsync" disabled="@IsBusy">
+                            @(SelectedIdentityMapDetail.IsIgnoredIssue ? "Unignore" : "Ignore Issue")
+                        </button>
+                    </div>
                     <input class="cb-v2-input" placeholder="Manual mapping reason (optional)" @bind="IdentityMapOverrideReason" />
                 </aside>
 
                 <div class="metadata-identity-json-area">
                     <div class="metadata-json-grid">
                         @IdentityJsonViewer("Source JSON", SelectedIdentitySourceValues, SelectedIdentityTargetValues, true)
-                        @IdentityJsonViewer("Selected Target Candidate JSON", SelectedIdentityTargetValues, SelectedIdentitySourceValues, false)
+                        @IdentityJsonViewer("Selected Target Candidate JSON", SelectedIdentityTargetValues, SelectedIdentitySourceValues, false, IdentityMapColumnUseSource)
                     </div>
                 </div>
             </div>
@@ -1237,13 +1283,25 @@
                 <p>Preview the apply scope before using the existing guarded backend apply path.</p>
             </div>
             <div class="metadata-section-actions">
-                <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadApplyPreviewAsync(true))" disabled="@(IsBusy || !HasRunGuid)">Preview Selected</button>
-                <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadApplyPreviewAsync(false))" disabled="@(IsBusy || !HasRunGuid)">Preview All Valid</button>
-                <button type="button" class="cb-v2-btn-secondary" @onclick="ApplySelectedAsync" disabled="@(IsBusy || !CanApplySelected)">Apply Selected (@SelectedPersistedCount)</button>
-                <button type="button" class="cb-v2-btn-primary" @onclick="ApplyAsync" disabled="@(IsBusy || !CanApply)">Apply All Valid</button>
+                <button type="button" class="cb-v2-btn-secondary" @onclick="SelectAllActionableRecordsAsync" disabled="@(IsBusy || !HasRunGuid || ActionableStagedCount == 0)" title="Select every Insert and Update row in every staged table that is not ignored.">Select All Actionable (@ActionableStagedCount)</button>
+                <button type="button" class="cb-v2-btn-secondary" @onclick="LoadApplyPreviewAsync" disabled="@(IsBusy || !HasRunGuid || SelectedPersistedCount == 0)">Preview Selected (@SelectedPersistedCount)</button>
+                <button type="button" class="cb-v2-btn-primary" @onclick="ApplySelectedAsync" disabled="@(IsBusy || !CanApplySelected)">Apply Selected (@SelectedPersistedCount)</button>
             </div>
         </div>
         @ReviewScopePanel(SectionApply)
+        @if (UnselectedActionableIssues.Count > 0)
+        {
+            <div class="metadata-notice metadata-notice-warning" role="alert">
+                <strong>Staged changes that will not be applied.</strong>
+                These Insert/Update rows are neither selected nor ignored (from the last Validate). Select them, ignore them, or confirm they should stay behind.
+                <ul>
+                    @foreach (var issue in UnselectedActionableIssues)
+                    {
+                        <li>@issue.IssueMessage</li>
+                    }
+                </ul>
+            </div>
+        }
 
         <dl class="metadata-definition-grid">
             <dt>Run</dt><dd>@(HasRunGuid ? RunGuidText : "No run selected")</dd>
@@ -1278,10 +1336,6 @@
                 <span>Apply Selected</span>
                 <strong>@ApplyPreviewRequiredText(true)</strong>
             </div>
-            <div class="metadata-apply-readiness-card @(CanApply ? "ready" : "pending")">
-                <span>Apply All Valid</span>
-                <strong>@ApplyPreviewRequiredText(false)</strong>
-            </div>
         </div>
 
         @if (ApplyPreview is not null)
@@ -1291,7 +1345,7 @@
                 <div>
                     <label class="metadata-apply-review-check">
                         <input type="checkbox" checked="@ApplyPreviewReviewed" disabled />
-                        <span>This exact @(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records") preview is accepted for deployment on the server.</span>
+                        <span>This exact selected-record preview is accepted for deployment on the server.</span>
                     </label>
                     <small>Preview generated: @ApplyPreviewGeneratedOnText. Accepted: @ApplyPreviewAcceptedOnText. Any stage, validation, selection, ignore, override, payload or scope change invalidates this acceptance.</small>
                 </div>
@@ -1539,7 +1593,10 @@
                 <h2>Audit</h2>
                 <p>Validation issues, identity map warnings and execution log for the selected run.</p>
             </div>
-            <button type="button" class="cb-v2-btn-secondary" @onclick="ClearAuditFiltersAsync" disabled="@IsBusy">Clear Filters</button>
+            <div class="metadata-section-actions">
+                <label><input type="checkbox" @bind="ShowIgnoredValidationIssues" /> Show ignored issues (@IgnoredValidationIssueCount)</label>
+                <button type="button" class="cb-v2-btn-secondary" @onclick="ClearAuditFiltersAsync" disabled="@IsBusy">Clear Filters</button>
+            </div>
         </div>
 
         <div class="metadata-audit-summary">
@@ -1552,18 +1609,45 @@
 
         @AuditQaPolishPanel()
 
+        @ConflictsPanel()
+
         <h3>Validation Issues</h3>
+        <div class="metadata-notice metadata-notice-info">
+            <span class="bi bi-info-circle"></span>
+            <span>Only record-scoped DuplicateSourceGuid/DuplicateTargetGuid/DuplicateTargetKey/UnresolvedReference issues can be ignored. Duplicate and orphaned records remain excluded from staging and apply and require manual correction upstream. Structural failures must be corrected.</span>
+        </div>
+        <div class="metadata-toolbar">
+            <input class="cb-v2-input metadata-ignore-reason" placeholder="Required reason for ignoring a validation issue" @bind="ValidationIssueIgnoreReason" disabled="@IsBusy" />
+        </div>
         <div class="metadata-table-wrap">
             <table class="metadata-table">
-                <thead><tr><th>Severity</th><th>Entity</th><th>Issue Code</th><th>Message</th></tr></thead>
+                <thead><tr><th>Severity</th><th>Entity</th><th>Issue Code</th><th>Message</th><th>Classification</th><th>Reason</th><th>Ignored UTC</th><th>User</th><th>Action</th></tr></thead>
                 <tbody>
                     @foreach (var row in FilteredValidationIssues)
                     {
-                        <tr>
+                        <tr class="@(row.IsIgnored ? "metadata-validation-issue-ignored" : string.Empty)">
                             <td>@Badge(row.Severity)</td>
                             <td>@row.EntityName</td>
                             <td>@row.IssueCode</td>
                             <td>@row.IssueMessage</td>
+                            <td>@(row.IsIgnored ? Badge("Ignored") : Badge("Active"))</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.IgnoreReason) ? "-" : row.IgnoreReason)</td>
+                            <td>@(string.IsNullOrWhiteSpace(row.IgnoredOnUtcText) ? "-" : row.IgnoredOnUtcText)</td>
+                            <td>@(row.IgnoredByUserId < 0 ? "-" : row.IgnoredByUserId.ToString())</td>
+                            <td>
+                                @if (row.IsIgnored)
+                                {
+                                    <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => ToggleValidationIssueIgnoreAsync(row))" disabled="@IsBusy">Restore</button>
+                                }
+                                else if (row.CanIgnore)
+                                {
+                                    <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => ToggleValidationIssueIgnoreAsync(row))" disabled="@(IsBusy || string.IsNullOrWhiteSpace(ValidationIssueIgnoreReason))">Ignore</button>
+                                }
+                                else
+                                {
+                                    <span>Resolve</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -1589,6 +1673,66 @@
         </div>
     </section>;
 
+
+    private RenderFragment ConflictsPanel() => @<div class="metadata-card metadata-conflicts-panel">
+        <div class="metadata-subsection-title compact">
+            <div>
+                <h3>Conflicts (@ConflictCount)</h3>
+                <p>Record-scoped duplicates and orphaned references that need manual correction in the affected database. These are excluded from staging and apply automatically - they do not block the run, but nothing else will resolve them for you.</p>
+            </div>
+        </div>
+
+        @if (!ConflictValidationIssues.Any())
+        {
+            <div class="metadata-empty-state">No conflicts for this run@(ShowIgnoredValidationIssues ? "." : " (or all are ignored - check \"Show ignored issues\" below).")</div>
+        }
+        else
+        {
+            <div class="metadata-toolbar">
+                <input class="cb-v2-input metadata-ignore-reason" placeholder="Required reason to acknowledge a conflict" @bind="ValidationIssueIgnoreReason" disabled="@IsBusy" />
+            </div>
+            <div class="metadata-table-wrap">
+                <table class="metadata-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Table</th>
+                            <th>Source Row Guid</th>
+                            <th>Detail</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in ConflictValidationIssues)
+                        {
+                            <tr class="@(row.IsIgnored ? "metadata-validation-issue-ignored" : string.Empty)">
+                                <td>@Badge(ConflictTypeLabel(row.IssueCode))</td>
+                                <td>@row.EntityName</td>
+                                <td><code>@row.SourceRowGuid</code></td>
+                                <td>@(string.IsNullOrWhiteSpace(ConflictDetail(row.DetailsJson)) ? row.IssueMessage : ConflictDetail(row.DetailsJson))</td>
+                                <td>@(row.IsIgnored ? Badge("Ignored") : Badge("Active"))</td>
+                                <td>
+                                    @if (row.IsIgnored)
+                                    {
+                                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => ToggleValidationIssueIgnoreAsync(row))" disabled="@IsBusy">Restore</button>
+                                    }
+                                    else if (row.CanIgnore)
+                                    {
+                                        <button type="button" class="cb-v2-btn-secondary compact" @onclick="@(() => ToggleValidationIssueIgnoreAsync(row))" disabled="@(IsBusy || string.IsNullOrWhiteSpace(ValidationIssueIgnoreReason))">Acknowledge</button>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>;
 
     private RenderFragment AuditQaPolishPanel() => @<div class="metadata-audit-polish">
         <div class="metadata-step-list metadata-audit-timeline-card">
@@ -1729,6 +1873,12 @@
                             <td>Skipped by future comparison/apply runs against that database.</td>
                         </tr>
                         <tr>
+                            <td><strong>Ignored validation issues</strong></td>
+                            <td>@TargetDatabaseName</td>
+                            <td>@IgnoredValidationIssueCount loaded for the selected run</td>
+                            <td>Excludes acknowledged DuplicateSourceGuid records from validation and deployment gates while preserving their audit history.</td>
+                        </tr>
+                        <tr>
                             <td><strong>Identity-map ignored issues</strong></td>
                             <td>@TargetDatabaseName</td>
                             <td>@IdentityMapDetailIgnoredCount loaded for selected identity entity</td>
@@ -1752,7 +1902,7 @@
                         <tr>
                             <td>Selected records</td>
                             <td>Current run only</td>
-                            <td>Only affects manual Apply Selected. It does not change Apply All Valid or CI/CD unless that path explicitly asks for selected-only apply.</td>
+                            <td>Controls the only permitted validation, preview and apply scope. CI/CD must consume the same selected-only contract.</td>
                         </tr>
                         <tr>
                             <td>Apply preview confirmation</td>
@@ -1893,7 +2043,11 @@
         @JsonViewer("Target JSON", SelectedDiffRow?.TargetValues, false)
     </div>;
 
-    private RenderFragment JsonViewer(string title, Dictionary<string, string>? values, bool isSource) => @<div class="metadata-json-panel">
+    private RenderFragment JsonViewer(string title, Dictionary<string, string>? values, bool isSource)
+    {
+        var keyOrder = BuildAlignedKeyOrder(SelectedDiffRow?.SourceValues, SelectedDiffRow?.TargetValues);
+
+        return @<div class="metadata-json-panel">
         <h3>@title</h3>
         @if (SelectedDiffRow is null || values is null || values.Count == 0)
         {
@@ -1902,7 +2056,7 @@
         else
         {
             <div class="metadata-json-lines" role="table" aria-label="@title">
-                @foreach (var line in PrettyJsonLines(values))
+                @foreach (var line in PrettyJsonLines(values, keyOrder))
                 {
                     <div class="@JsonLineClass(line, SelectedDiffRow, isSource)" role="row">
                         <span class="metadata-json-line-number" role="cell">@line.LineNumber</span>
@@ -1911,7 +2065,8 @@
                 }
             </div>
         }
-    </div>;
+        </div>;
+    }
 
     private RenderFragment SqlPreviewPanel() => @<div class="metadata-json-panel">
         <h3>SQL View</h3>
@@ -2046,6 +2201,7 @@
                 noChange = NoChangeCount,
                 onlyInTarget = OnlyInTargetCount,
                 ignored = IgnoredCount,
+                ignoredValidationIssues = IgnoredValidationIssueCount,
                 selected = SelectedPersistedCount,
                 validationErrors = ValidationErrorCount,
                 warnings = WarningCount,
@@ -2274,10 +2430,10 @@
         builder.AppendLine();
         builder.AppendLine("## Apply preview");
         builder.AppendLine();
-        builder.AppendLine($"- [ ] Priority confirmation scope: **{(HasPrioritySelectedScope ? $"selected records ({SelectedPersistedCount})" : "all valid records")}**.");
+        builder.AppendLine($"- [ ] Priority confirmation scope: **selected records ({SelectedPersistedCount})**.");
         builder.AppendLine(ApplyPreview is null
             ? "- [ ] Generate and review an apply preview before release artefacts are committed."
-            : $"- [ ] Preview generated for {(ApplyPreview.ApplySelectedOnly ? "selected records" : "all valid records")}: {ApplyPreviewApplyCount} apply, {ApplyPreviewSkipCount} skipped, {ApplyPreviewBlockedCount} blocked.");
+            : $"- [ ] Preview generated for selected records: {ApplyPreviewApplyCount} apply, {ApplyPreviewSkipCount} skipped, {ApplyPreviewBlockedCount} blocked.");
         builder.AppendLine($"- [ ] Exact preview fingerprint accepted for deployment on the server: {(ApplyPreviewReviewed ? "Yes" : "No")}");
         builder.AppendLine();
         builder.AppendLine("## Persistent decisions to capture in source control");
@@ -2403,7 +2559,7 @@
                 StatusText = ApplyPreview is null ? "Required" : IsApplyPreviewBlocked ? "Blocked" : ApplyPreviewReviewed ? "Confirmed" : "Review",
                 Tone = ApplyPreview is null ? "warning" : IsApplyPreviewBlocked ? "danger" : ApplyPreviewReviewed ? "ready" : "info",
                 TimestampText = ApplyPreviewGeneratedOnText,
-                Detail = ApplyPreview is null ? "Generate Preview Selected or Preview All Valid before manual apply." : ApplyPreviewSummaryText(),
+                Detail = ApplyPreview is null ? "Generate Preview Selected before manual apply." : ApplyPreviewSummaryText(),
                 Section = SectionApply
             },
             new()
@@ -2481,6 +2637,15 @@
             },
             new()
             {
+                Area = "Ignored Validation",
+                Check = "Ignored DuplicateSourceGuid issues are intentional, reasoned and persistent for the selected target database.",
+                StatusText = IgnoredValidationIssueCount > 0 ? "Review" : "None loaded",
+                Tone = IgnoredValidationIssueCount > 0 ? "warning" : "info",
+                Evidence = $"{IgnoredValidationIssueCount} persistent ignored validation issue(s) loaded.",
+                Section = SectionAudit
+            },
+            new()
+            {
                 Area = "Preview",
                 Check = "The exact apply preview fingerprint has been accepted for deployment on the server.",
                 StatusText = ApplyPreviewReviewed ? "Pass" : ApplyPreview is null ? "Pending" : "Review",
@@ -2501,9 +2666,9 @@
             {
                 Area = "Apply",
                 Check = "Apply remains guarded by validation, server-side preview acceptance and environment controls.",
-                StatusText = HasAppliedRun ? "Applied" : CanApply || CanApplySelected ? "Ready" : "Guarded",
-                Tone = HasAppliedRun ? "ready" : CanApply || CanApplySelected ? "ready" : "info",
-                Evidence = ApplyPreviewRequiredText(ApplyPreview?.ApplySelectedOnly ?? false),
+                StatusText = HasAppliedRun ? "Applied" : CanApplySelected ? "Ready" : "Guarded",
+                Tone = HasAppliedRun ? "ready" : CanApplySelected ? "ready" : "info",
+                Evidence = ApplyPreviewRequiredText(true),
                 Section = SectionApply
             }
         };
@@ -2849,10 +3014,12 @@
 
     private async Task StageAsync() => await ExecuteAsync(async () =>
     {
-        await CurrentFormHelper.MetadataMigrationStageAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
+        await CurrentFormHelper.MetadataMigrationStageAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName, IncludeRetirements);
         ClearApplyPreview();
         await RefreshDashboardCoreAsync(false);
-        Message = "Metadata staged successfully.";
+        Message = IncludeRetirements
+            ? "Metadata staged successfully, including source retirements."
+            : "Metadata staged successfully.";
     }, busyMessage: "Staging metadata for the selected run. This can take a while; please wait and do not refresh the page.");
 
     private async Task ValidateAsync() => await ExecuteAsync(async () =>
@@ -2860,7 +3027,30 @@
         var issues = await CurrentFormHelper.MetadataMigrationValidateAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
         ClearApplyPreview();
         await RefreshDashboardCoreAsync(false);
-        Message = issues.Count == 0 ? "Validation passed with no issues." : $"Validation completed with {issues.Count} issue(s).";
+        var activeIssueCount = issues.Count(issue => !issue.IsIgnored);
+        var ignoredIssueCount = issues.Count(issue => issue.IsIgnored);
+        Message = activeIssueCount == 0
+            ? ignoredIssueCount == 0
+                ? "Validation passed with no issues."
+                : $"Validation passed. {ignoredIssueCount} persistent ignored issue(s) remain excluded."
+            : $"Validation completed with {activeIssueCount} active issue(s) and {ignoredIssueCount} ignored issue(s).";
+    });
+
+    private async Task ToggleValidationIssueIgnoreAsync(MetadataMigrationValidationIssueModel row) => await ExecuteAsync(async () =>
+    {
+        var shouldIgnore = !row.IsIgnored;
+        var result = await CurrentFormHelper.MetadataMigrationValidationIssueIgnoreUpsertAsync(
+            CurrentRunGuid(),
+            row.Guid,
+            shouldIgnore,
+            shouldIgnore ? ValidationIssueIgnoreReason : string.Empty,
+            TargetServerName,
+            TargetDatabaseName);
+
+        ClearApplyPreview();
+        ValidationIssueIgnoreReason = string.Empty;
+        await RefreshDashboardCoreAsync(false);
+        Message = result.Message;
     });
 
     private async Task BuildIdentityMapAsync() => await ExecuteAsync(async () =>
@@ -2911,6 +3101,7 @@
         SelectedIdentityMapDetail = FilteredIdentityMapDetails.FirstOrDefault();
         IdentityMapCandidateRows.Clear();
         SelectedIdentityMapCandidate = null;
+        IdentityMapCandidateSearchText = string.Empty;
     }
 
     private void SelectIdentityMapDetail(MetadataMigrationIdentityMapDetailModel row)
@@ -2918,12 +3109,68 @@
         SelectedIdentityMapDetail = row;
         IdentityMapCandidateRows.Clear();
         SelectedIdentityMapCandidate = null;
+        IdentityMapCandidateSearchText = string.Empty;
         IdentityMapOverrideReason = row.OverrideReason ?? string.Empty;
+        IdentityMapColumnUseSource.Clear();
     }
 
     private void SelectIdentityMapCandidate(MetadataMigrationIdentityMapCandidateModel candidate)
     {
         SelectedIdentityMapCandidate = candidate;
+        InitializeIdentityMapColumnSelection();
+    }
+
+    private void InitializeIdentityMapColumnSelection()
+    {
+        IdentityMapColumnUseSource.Clear();
+        var storedSelection = ParseColumnSourceSelection(SelectedIdentityMapDetail?.OverrideColumnSourceSelectionJson);
+        foreach (var column in SelectedIdentityTargetValues.Keys)
+        {
+            if (IdentityMapNonSelectableColumns.Contains(column))
+            {
+                continue;
+            }
+
+            IdentityMapColumnUseSource[column] = storedSelection is null || storedSelection.Contains(column);
+        }
+    }
+
+    private void SetIdentityMapColumnUseSource(string columnName, bool useSource)
+    {
+        IdentityMapColumnUseSource[columnName] = useSource;
+    }
+
+    private static HashSet<string>? ParseColumnSourceSelection(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                var value = element.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    result.Add(value);
+                }
+            }
+
+            return result;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task LoadIdentityMapCandidatesAsync() => await ExecuteAsync(async () =>
@@ -2947,6 +3194,7 @@
 
         IdentityMapCandidateRows = result.Rows;
         SelectedIdentityMapCandidate = IdentityMapCandidateRows.FirstOrDefault();
+        InitializeIdentityMapColumnSelection();
         Message = IdentityMapCandidateRows.Count == 0
             ? "No target candidates found. Try a more specific search value."
             : $"Loaded {IdentityMapCandidateRows.Count} target candidate(s).";
@@ -2969,11 +3217,30 @@
             true,
             IdentityMapOverrideReason,
             TargetServerName,
-            TargetDatabaseName);
+            TargetDatabaseName,
+            BuildIdentityMapColumnSourceSelectionJson());
 
         await LoadIdentityMapDetailsCoreAsync();
         Message = result.Message;
     }, busyMessage: "Saving manual identity-map override. Please wait.");
+
+    private string BuildIdentityMapColumnSourceSelectionJson()
+    {
+        // Every column still checked "use source" is the default, unchanged behaviour - only
+        // persist a selection when at least one column has been unchecked to keep the target's
+        // current value.
+        if (IdentityMapColumnUseSource.Count == 0 || IdentityMapColumnUseSource.Values.All(useSource => useSource))
+        {
+            return string.Empty;
+        }
+
+        var selectedColumns = IdentityMapColumnUseSource
+            .Where(pair => pair.Value)
+            .Select(pair => pair.Key)
+            .ToList();
+
+        return JsonSerializer.Serialize(selectedColumns);
+    }
 
     private async Task ClearIdentityMapOverrideAsync() => await ExecuteAsync(async () =>
     {
@@ -2999,6 +3266,16 @@
         await LoadIdentityMapDetailsCoreAsync();
         Message = result.Message;
     }, busyMessage: "Clearing manual identity-map override. Please wait.");
+
+    private async Task ToggleSelectedIdentityMapIssueIgnoreAsync()
+    {
+        if (SelectedIdentityMapDetail is null)
+        {
+            return;
+        }
+
+        await ToggleIdentityMapIssueIgnoreAsync(SelectedIdentityMapDetail);
+    }
 
     private async Task ToggleIdentityMapIssueIgnoreAsync(MetadataMigrationIdentityMapDetailModel row) => await ExecuteAsync(async () =>
     {
@@ -3028,20 +3305,18 @@
     }, busyMessage: "Saving identity map review acknowledgement. Please wait.");
 
 
-    private async Task LoadApplyPreviewAsync(bool selectedOnly) => await ExecuteAsync(async () =>
+    private async Task LoadApplyPreviewAsync() => await ExecuteAsync(async () =>
     {
         ApplyPreview = await CurrentFormHelper.MetadataMigrationApplyPreviewAsync(
             CurrentRunGuid(),
-            selectedOnly,
+            true,
             TargetServerName,
             TargetDatabaseName,
             includeIgnored: true);
         ApplyPreviewGeneratedOn = DateTime.Now;
         ApplyPreviewReviewed = ApplyPreview.IsAccepted;
 
-        Message = selectedOnly
-            ? $"Selected apply preview loaded. {ApplyPreview.ApplyCount} record(s) would apply, {ApplyPreview.SkipCount} skipped, {ApplyPreview.BlockedCount} blocked."
-            : $"Apply all preview loaded. {ApplyPreview.ApplyCount} record(s) would apply, {ApplyPreview.SkipCount} skipped, {ApplyPreview.BlockedCount} blocked.";
+        Message = $"Selected apply preview loaded. {ApplyPreview.ApplyCount} record(s) would apply, {ApplyPreview.SkipCount} skipped, {ApplyPreview.BlockedCount} blocked.";
     }, busyMessage: "Building metadata apply preview. Please wait.");
 
     private async Task AcceptApplyPreviewAsync() => await ExecuteAsync(async () =>
@@ -3068,17 +3343,6 @@
         await RefreshDashboardCoreAsync(false);
         Message = acceptance.Message;
     }, busyMessage: "Accepting the reviewed metadata preview for deployment. Please wait.");
-
-    private async Task ApplyAsync() => await ExecuteAsync(async () =>
-    {
-        Message = await CurrentFormHelper.MetadataMigrationApplyAsync(CurrentRunGuid(), ForceApply, TargetServerName, TargetDatabaseName);
-        ClearApplyPreview();
-        await RefreshDashboardCoreAsync(false);
-        if (SelectedSection == "stage" && !string.IsNullOrWhiteSpace(SelectedEntityName))
-        {
-            await LoadRecordsCoreAsync(false);
-        }
-    });
 
     private async Task ApplySelectedAsync() => await ExecuteAsync(async () =>
     {
@@ -3180,6 +3444,8 @@
     {
         SelectedAuditSeverity = string.Empty;
         ShowMissingTargetsOnly = false;
+        ShowIgnoredValidationIssues = false;
+        ValidationIssueIgnoreReason = string.Empty;
         await RefreshDashboardAsync(false);
     }
 
@@ -3329,6 +3595,7 @@
         }))
         {
             row.IsSelected = isChecked;
+            row.SelectionSource = isChecked ? SelectionSourceManual : string.Empty;
             SyncSelectionKey(row);
         }
     }
@@ -3347,9 +3614,46 @@
             foreach (var row in rows)
             {
                 row.IsSelected = true;
+                row.SelectionSource = SelectionSourceManual;
                 SyncSelectionKey(row);
             }
         }
+    }
+
+    /// <summary>
+    /// CYB-574: selects every non-ignored Insert/Update row across all staged tables. Selecting
+    /// table by table from the Insert card left every Update behind on QA2.
+    /// </summary>
+    private async Task SelectAllActionableRecordsAsync()
+    {
+        var tables = TableSummaryRows.Where(row => row.InsertCount + row.UpdateCount > 0).ToList();
+
+        await ExecuteAsync(async () =>
+        {
+            var runGuid = CurrentRunGuid();
+            var items = new List<MetadataMigrationSelectionItemModel>();
+            foreach (var table in tables)
+            {
+                var rows = await CurrentFormHelper.MetadataMigrationDiffAsync(runGuid, table.SchemaName, table.TableName, string.Empty, TargetServerName, TargetDatabaseName, false);
+                items.AddRange(rows.Where(row => IsSelectableForApply(row) && !row.IsSelected).Select(row => ToSelectionItem(row, true)));
+            }
+
+            if (items.Count == 0)
+            {
+                Message = "Every Insert and Update row is already selected or ignored.";
+                return;
+            }
+
+            var result = await CurrentFormHelper.MetadataMigrationSelectionUpsertAsync(runGuid, items, TargetServerName, TargetDatabaseName);
+            ClearApplyPreview();
+            await RefreshDashboardCoreAsync(false);
+            if (!string.IsNullOrWhiteSpace(SelectedEntityName))
+            {
+                await LoadRecordsCoreAsync(false);
+            }
+
+            Message = $"Selected {items.Count} actionable row(s) across {tables.Count} table(s). {result.Message} Re-run Validate before applying.";
+        }, busyMessage: "Selecting every actionable row. Please wait.");
     }
 
     private async Task ClearTableSelectionAsync()
@@ -3389,6 +3693,12 @@
             var result = await CurrentFormHelper.MetadataMigrationSelectionUpsertAsync(CurrentRunGuid(), items, TargetServerName, TargetDatabaseName);
             ClearApplyPreview();
             await RefreshDashboardCoreAsync(false);
+            if (result.AutoSelectedCount > 0)
+            {
+                // Related rows were selected server-side; reload so the open table shows them.
+                await LoadRecordsCoreAsync(false);
+            }
+
             Message = result.Message;
             succeeded = true;
         });
@@ -3399,8 +3709,9 @@
     private static bool IsRecordSelected(MetadataMigrationDiffRowModel row) => row.IsSelected;
 
     private static bool IsSelectableForApply(MetadataMigrationDiffRowModel row) =>
-        row.DifferenceType.Equals(DifferenceInsert, StringComparison.OrdinalIgnoreCase)
-        || row.DifferenceType.Equals(DifferenceUpdate, StringComparison.OrdinalIgnoreCase);
+        !row.IsIgnored
+        && (row.DifferenceType.Equals(DifferenceInsert, StringComparison.OrdinalIgnoreCase)
+            || row.DifferenceType.Equals(DifferenceUpdate, StringComparison.OrdinalIgnoreCase));
 
     private static MetadataMigrationSelectionItemModel ToSelectionItem(MetadataMigrationDiffRowModel row, bool isSelected) => new()
     {
@@ -3571,7 +3882,7 @@
             {
                 Title = "Apply preview",
                 Detail = ApplyPreview is null
-                    ? "Generate Preview Selected or Preview All Valid before apply."
+                    ? "Generate Preview Selected before apply."
                     : ApplyPreviewSummaryText(),
                 StatusText = ApplyPreview is null ? "Required" : IsApplyPreviewBlocked ? "Blocked" : "Ready",
                 Tone = ApplyPreview is null ? "pending" : IsApplyPreviewBlocked ? "blocked" : "ready",
@@ -3669,7 +3980,9 @@
 
         if (ApplyPreview is null)
         {
-            return "Next: generate an apply preview for selected records or all valid records.";
+            return SelectedPersistedCount == 0
+                ? "Next: select at least one non-ignored Insert or Update record."
+                : "Next: generate an apply preview for the selected records.";
         }
 
         if (IsApplyPreviewBlocked)
@@ -3732,6 +4045,62 @@
         _ => "warning"
     };
 
+    private static string ConflictTypeLabel(string issueCode) => issueCode switch
+    {
+        "DuplicateSourceGuid" => "Duplicate Guid (source)",
+        "DuplicateTargetGuid" => "Duplicate Guid (target)",
+        "DuplicateTargetKey" => "Duplicate natural key (target)",
+        "UnresolvedReference" => "Orphaned reference",
+        _ => issueCode
+    };
+
+    /// <summary>
+    /// Renders a conflict issue's DetailsJson (shape varies by IssueCode) as one readable line,
+    /// instead of asking the reader to parse raw JSON in the Message column.
+    /// </summary>
+    private static string ConflictDetail(string detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            var root = document.RootElement;
+
+            string? Get(string name) =>
+                root.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null
+                    ? value.ToString()
+                    : null;
+
+            var foreignKeyColumn = Get("ForeignKeyColumn");
+            if (!string.IsNullOrWhiteSpace(foreignKeyColumn))
+            {
+                return $"{foreignKeyColumn} references {Get("ReferencedSchemaName")}.{Get("ReferencedTableName")} Guid {Get("ReferencedGuid")}, which is excluded from this run.";
+            }
+
+            var indexName = Get("IndexName");
+            if (!string.IsNullOrWhiteSpace(indexName))
+            {
+                return $"Unique key {indexName} ({Get("Columns")}) already matches a different target row (Guid {Get("ConflictingTargetGuid")}).";
+            }
+
+            var duplicateCount = Get("DuplicateCount");
+            if (!string.IsNullOrWhiteSpace(duplicateCount))
+            {
+                return $"{duplicateCount} active row(s) share this Guid.";
+            }
+
+            return string.Empty;
+        }
+        catch (JsonException)
+        {
+            return string.Empty;
+        }
+    }
+
     private static string GetValue(MetadataMigrationDiffRowModel row, string key)
     {
         if (row.SourceValues.TryGetValue(key, out var sourceValue) && !string.IsNullOrWhiteSpace(sourceValue))
@@ -3778,25 +4147,48 @@
         return string.IsNullOrWhiteSpace(id) ? "-" : id;
     }
 
-    private RenderFragment IdentityJsonViewer(string title, Dictionary<string, string>? values, Dictionary<string, string>? comparisonValues, bool isSource) => @<div class="metadata-json-panel">
+    private RenderFragment IdentityJsonViewer(string title, Dictionary<string, string>? values, Dictionary<string, string>? comparisonValues, bool isSource, Dictionary<string, bool>? columnSelection = null)
+    {
+        var keyOrder = isSource
+            ? BuildAlignedKeyOrder(values, comparisonValues)
+            : BuildAlignedKeyOrder(comparisonValues, values);
+
+        return @<div class="metadata-json-panel">
         <h3>@title</h3>
+        @if (columnSelection is not null && columnSelection.Count > 0)
+        {
+            <p class="metadata-json-column-selection-hint">Uncheck a column to keep this target record's current value for it instead of the source's; the row's own Guid/ID always stays the matched target's.</p>
+        }
         @if (values is null || values.Count == 0)
         {
             <pre>{}</pre>
         }
         else
         {
-            <div class="metadata-json-lines" role="table" aria-label="@title">
-                @foreach (var line in PrettyJsonLines(values))
+            <div class="metadata-json-lines @(columnSelection is not null ? "metadata-json-lines-selectable" : string.Empty)" role="table" aria-label="@title">
+                @foreach (var line in PrettyJsonLines(values, keyOrder))
                 {
                     <div class="@IdentityJsonLineClass(line, values, comparisonValues, isSource)" role="row">
                         <span class="metadata-json-line-number" role="cell">@line.LineNumber</span>
                         <code role="cell">@line.Text</code>
+                        @if (columnSelection is not null)
+                        {
+                            <span class="metadata-json-column-toggle-cell" role="cell">
+                                @if (columnSelection.TryGetValue(line.PropertyName, out var useSource))
+                                {
+                                    <label class="metadata-json-column-toggle">
+                                        <input type="checkbox" checked="@useSource" @onchange="@((ChangeEventArgs e) => SetIdentityMapColumnUseSource(line.PropertyName, (bool)(e.Value ?? false)))" />
+                                        Use source
+                                    </label>
+                                }
+                            </span>
+                        }
                     </div>
                 }
             </div>
         }
-    </div>;
+        </div>;
+    }
 
     private static Dictionary<string, string> ParseJsonValues(string? json)
     {
@@ -3863,19 +4255,69 @@
         return $"{baseClass} metadata-json-line-changed";
     }
 
-    private static string PrettyJson(Dictionary<string, string>? values)
+    private static string PrettyJson(Dictionary<string, string>? values, IReadOnlyList<string>? keyOrder = null)
     {
-        if (values is null || values.Count == 0)
+        if (keyOrder is null)
+        {
+            if (values is null || values.Count == 0)
+            {
+                return "{}";
+            }
+
+            return System.Text.Json.JsonSerializer.Serialize(values, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        if (keyOrder.Count == 0)
         {
             return "{}";
         }
 
-        return System.Text.Json.JsonSerializer.Serialize(values, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var ordered = new Dictionary<string, string?>();
+        foreach (var key in keyOrder)
+        {
+            ordered[key] = values != null && values.TryGetValue(key, out var value) ? value : null;
+        }
+
+        return System.Text.Json.JsonSerializer.Serialize(ordered, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static IReadOnlyList<JsonDisplayLine> PrettyJsonLines(Dictionary<string, string>? values)
+    /// <summary>
+    /// Builds a single key order shared by a source/target JSON pair so the two panels line up
+    /// row-for-row instead of each following its own record's original property order.
+    /// </summary>
+    private static IReadOnlyList<string> BuildAlignedKeyOrder(Dictionary<string, string>? primary, Dictionary<string, string>? secondary)
     {
-        var json = PrettyJson(values);
+        var order = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (primary != null)
+        {
+            foreach (var key in primary.Keys)
+            {
+                if (seen.Add(key))
+                {
+                    order.Add(key);
+                }
+            }
+        }
+
+        if (secondary != null)
+        {
+            foreach (var key in secondary.Keys)
+            {
+                if (seen.Add(key))
+                {
+                    order.Add(key);
+                }
+            }
+        }
+
+        return order;
+    }
+
+    private static IReadOnlyList<JsonDisplayLine> PrettyJsonLines(Dictionary<string, string>? values, IReadOnlyList<string>? keyOrder = null)
+    {
+        var json = PrettyJson(values, keyOrder);
         var lines = json.Replace("\r\n", "\n").Split('\n');
 
         return lines

@@ -1,0 +1,7 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"61b24b95-ef70-420c-89bd-148ba72d839d","Function","SFin","tvf_SageInboundDiagnostics","","Different","True","False","True","True"
+"a7a91d48-5c4e-47eb-947b-dac5ca0a2069","StoredProcedure","SFin","SageInbound_ReconcileInvoiceTransaction","","Different","True","False","True","True"
+"532d0dda-2513-4683-bbc0-68827f1726f8","StoredProcedure","SFin","SageInboundReceiptAndAllocation_Materialise","","Different","True","False","True","True"
+"686a95e4-45f6-4b09-8b9c-64fc84165ba9","StoredProcedure","SFin","SageInboundReceiptMaterialisation_AutoCorrect","","Different","True","False","True","True"
+"e1cae0d6-f849-49e4-bca9-303d5acc7c7f","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"
+"33646c0f-ce75-41c7-8473-583f8c7fc207","StoredProcedure","SMigration","MetadataValidate_Run","","Different","True","False","True","True"

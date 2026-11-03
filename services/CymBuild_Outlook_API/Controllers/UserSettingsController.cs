@@ -58,7 +58,7 @@ namespace CymBuild_Outlook_API.Controllers
 
                 var settings = await GetUserSettingsFromGraphAsync(email);
 
-                _loggingHelper.LogInfo($"[{corr}] Settings -> [MoveToCymBuildFiled] : {settings.MoveToCymBuildFiled}, [ExtractAttachments] : {settings.ExtractAttachments} ", "UserSettingsController.Get()");
+                _loggingHelper.LogInfo($"[{corr}] Settings -> [MoveToCymBuildFiled] : {settings.MoveToCymBuildFiled} ", "UserSettingsController.Get()");
 
                 _loggingHelper.LogInfo($"[{corr}] Get UserSettings END ", "UserSettingsController.Get()");
                 return Ok(settings);
@@ -142,8 +142,7 @@ namespace CymBuild_Outlook_API.Controllers
 
             var settingsToSave = new
             {
-                settings.MoveToCymBuildFiled,
-                settings.ExtractAttachments
+                settings.MoveToCymBuildFiled
             };
 
             var json = JsonConvert.SerializeObject(settingsToSave);

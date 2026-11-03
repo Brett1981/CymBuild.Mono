@@ -152,6 +152,89 @@ public partial class CoreService : Core.Core.CoreBase
         }
     }
 
+    public override async Task<ActivityFeeAmendmentEnsureResponse> ActivityFeeAmendmentEnsure(
+        ActivityFeeAmendmentEnsureRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.ActivityGuid, out var activityGuid) || activityGuid == Guid.Empty)
+            {
+                return new ActivityFeeAmendmentEnsureResponse
+                {
+                    FeeAmendmentGuid = Guid.Empty.ToString(),
+                    JobGuid = Guid.Empty.ToString(),
+                    JobEntityTypeGuid = Guid.Empty.ToString(),
+                    ErrorReturned = "A valid Activity Guid is required."
+                };
+            }
+
+            var result = await _serviceBase._entityFramework
+                .ActivityFeeAmendmentEnsureAsync(activityGuid, context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new ActivityFeeAmendmentEnsureResponse
+            {
+                FeeAmendmentGuid = result.FeeAmendmentGuid.ToString(),
+                JobGuid = result.JobGuid.ToString(),
+                JobEntityTypeGuid = result.JobEntityTypeGuid.ToString(),
+                WasCreated = result.WasCreated,
+                ErrorReturned = result.ErrorReturned ?? string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "ActivityFeeAmendmentEnsure failed.");
+            return new ActivityFeeAmendmentEnsureResponse
+            {
+                FeeAmendmentGuid = Guid.Empty.ToString(),
+                JobGuid = Guid.Empty.ToString(),
+                JobEntityTypeGuid = Guid.Empty.ToString(),
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
+    public override async Task<TransactionRejectBatchedResponse> TransactionRejectBatched(
+        TransactionRejectBatchedRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            if (!Guid.TryParse(request.TransactionGuid, out var transactionGuid) || transactionGuid == Guid.Empty)
+            {
+                const string invalidMessage = "A valid Transaction Guid is required to reject a batched transaction.";
+                return new TransactionRejectBatchedResponse
+                {
+                    Success = false,
+                    ErrorReturned = invalidMessage
+                };
+            }
+
+            var result = await _serviceBase._entityFramework
+                .TransactionRejectBatchedAsync(
+                    transactionGuid,
+                    request.RejectionReason ?? string.Empty,
+                    context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new TransactionRejectBatchedResponse
+            {
+                Success = result.Success,
+                ErrorReturned = result.ErrorReturned ?? string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogException(ex, "TransactionRejectBatched failed.");
+            return new TransactionRejectBatchedResponse
+            {
+                Success = false,
+                ErrorReturned = ex.Message
+            };
+        }
+    }
+
     public override async Task<GetWaitStatsDashboardResponse> GetWaitStatsDashboard(
     GetWaitStatsDashboardRequest request,
     ServerCallContext context)
@@ -745,7 +828,15 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     new EF.Types.ExecuteEntityQueryRequest
                     {
                         EntityQueryGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.EntityQueryGuid),
-                        DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject)
+                        DataObject = Converters.ConvertCoreDataObjectToEfDataObject(request.DataObject),
+                        EntityQueryParameterValues = new List<EF.Types.EntityQueryParameterValue>
+                        {
+                            new EF.Types.EntityQueryParameterValue
+                            {
+                                Name = "@CopyQuoteItems",
+                                Value = Any.Pack(new BoolValue { Value = request.CopyQuoteItems })
+                            }
+                        }
                     },
                     request.AllowQuoteItemStageFallback)
                 .ConfigureAwait(false);
@@ -851,6 +942,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                     endDate,
                     totalValueNet,
                     request.OverwriteExisting,
+                    request.Frequency,
                     context.CancellationToken)
                 .ConfigureAwait(false);
 
@@ -859,7 +951,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                 Success = true,
                 InsertedCount = result.InsertedCount,
                 MonthsCount = result.MonthsCount,
-                Message = $"Generated {result.InsertedCount} monthly periods.",
+                Message = $"Generated {result.InsertedCount} {(string.IsNullOrWhiteSpace(request.Frequency) ? "monthly" : request.Frequency.Trim().ToLowerInvariant())} invoice date(s).",
                 ErrorReturned = string.Empty
             };
         }
@@ -907,6 +999,7 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
                 PercentageTotalPercentage = Convert.ToDouble(totals.PercentageTotalPercentage),
                 PercentageTotalAmount = Convert.ToDouble(totals.PercentageTotalAmount),
                 ScheduleAmount = Convert.ToDouble(totals.ScheduleAmount),
+                Frequency = totals.Frequency ?? string.Empty,
                 ErrorReturned = string.Empty
             };
         }
@@ -2164,6 +2257,22 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
     {
         try
         {
+            // CYB-496: the client sends the template details, so hiding an inactive document
+            // from the list is not enough - refuse it here unless the user is SU/SYSADM.
+            var requestedMergeDocumentGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.MergeDocument?.Guid ?? string.Empty);
+            if (requestedMergeDocumentGuid == Guid.Empty)
+            {
+                requestedMergeDocumentGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(request.DocumentGuid);
+            }
+            if (requestedMergeDocumentGuid != Guid.Empty &&
+                await _serviceBase._entityFramework.IsMergeDocumentInactiveForUser(requestedMergeDocumentGuid))
+            {
+                return new SharepointDocumentsGetResponse()
+                {
+                    ErrorReturned = "This document template is currently inactive and cannot be generated."
+                };
+            }
+
             // Initialize SharePoint instance
             var sharePoint = new SharePoint(_config, _sharepointService);
 
@@ -2744,6 +2853,32 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
         }
     }
 
+    public override async Task<AuthorisationQueueCountsResponse> AuthorisationQueueCounts(
+        AuthorisationQueueCountsRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            var result = await _serviceBase._entityFramework.GetAuthorisationQueueCountsAsync(
+                userId: request.UserId,
+                myItemsOnly: request.MyItemsOnly,
+                ct: context.CancellationToken);
+
+            return new AuthorisationQueueCountsResponse
+            {
+                All = result.All,
+                Jobs = result.Jobs,
+                Quotes = result.Quotes,
+                Enquiries = result.Enquiries
+            };
+        }
+        catch (Exception ex)
+        {
+            _serviceBase.logger.LogError($"AuthorisationQueueCounts failed for userId={request.UserId}: {ex.Message}");
+            throw new RpcException(new Status(StatusCode.Internal, "Error retrieving authorisation queue counts."));
+        }
+    }
+
 
     public override async Task<PublicHolidayListResponse> GetHolidays(HolidayReq req, ServerCallContext context)
     {
@@ -2859,6 +2994,79 @@ WHERE Guid = @JobGuid AND RowStatus NOT IN (0,254);", cn))
 
         return string.IsNullOrWhiteSpace(dataObject.SharePointUrl)
             || string.IsNullOrWhiteSpace(dataObject.SharePointFolderPath);
+    }
+
+
+    public override async Task<DuplicateAssetsRes> DuplicateAssetsGet(DuplicateAssetsReq req, ServerCallContext context)
+    {
+        try
+        {
+            var duplicateAssets = await _serviceBase._entityFramework.DuplicateAssetsGet(req.Name, req.Number, req.Addressline1, req.Addressline2, req.Addressline3, req.Town, req.CountyGuid, req.Postcode);
+            var resp = new DuplicateAssetsRes();
+
+            if (duplicateAssets != null && duplicateAssets.Count > 0)
+            {
+                foreach(var i in duplicateAssets)
+                {
+                    resp.Duplicates.Add(Converters.ConvertEFDuplicateAssetsToCoreDuplicateAssets(i));
+                }
+            }
+           
+
+            return resp;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Error retrieving non-activity events for Schedule"));
+        }
+    }
+
+    public override async Task<DuplicateAccountsRes> DuplicateAccountsGet(DuplicateAccountsReq req, ServerCallContext context)
+    {
+        try
+        {
+            var duplicateAccounts = await _serviceBase._entityFramework.DuplicateAccountsGet(req.Displayname);
+            var resp = new DuplicateAccountsRes();
+
+            if (duplicateAccounts != null && duplicateAccounts.Count > 0)
+            {
+                foreach (var i in duplicateAccounts)
+                {
+                    resp.Duplicates.Add(Converters.ConvertEFDuplicateAccountsToCoreDuplicateAccounts(i));
+                }
+            }
+
+
+            return resp;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Error retrieving non-activity events for Schedule"));
+        }
+    }
+
+    public override async Task<DuplicateContactsRes> DuplicateContactsGet(DuplicateContactsReq req, ServerCallContext context)
+    {
+        try
+        {
+            var duplicateContacts = await _serviceBase._entityFramework.DuplicateContactsGet(req.Displayname, req.Firstname, req.Surname, req.Initials);
+            var resp = new DuplicateContactsRes();
+
+            if (duplicateContacts != null && duplicateContacts.Count > 0)
+            {
+                foreach (var i in duplicateContacts)
+                {
+                    resp.Duplicates.Add(Converters.ConvertEFDuplicateContactsToCoreDuplicateContacts(i));
+                }
+            }
+
+
+            return resp;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"Error retrieving non-activity events for Schedule"));
+        }
     }
 
     #endregion Public Methods

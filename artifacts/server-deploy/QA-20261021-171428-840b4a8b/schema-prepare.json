@@ -1,0 +1,10 @@
+{
+  "mode": "nothing-to-do",
+  "runGuid": "1073be8c-7941-4245-8e5d-2709071be18c",
+  "comparedOnUtc": "2026-10-21 16:26:01",
+  "selected": [],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Run 1073be8c-7941-4245-8e5d-2709071be18c found no selectable Different/MissingInTarget schema rows (0 skipped). Nothing to deploy; the run was left in Compared status."
+}

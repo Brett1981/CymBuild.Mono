@@ -1,0 +1,64 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "fe39f177-1eab-4532-ab66-51a62beb8b09",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev264",
+  "PlanDatabase": "CymBuild_QA2",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 4,
+  "ArtifactCount": 4,
+  "GeneratedOnUtc": "2026-10-08T15:02:01.8681296Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "f4097f0b-f099-4828-add8-4a71ef87123c",
+      "ObjectType": "Function",
+      "SchemaName": "SFin",
+      "ObjectName": "tvf_InvoiceRequestsWIP",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "9E126C03BCC151B0FB0E0D890DFAE564D602ADFAE3A39403F831EECBB76D3707",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_InvoiceRequestsWIP.sql",
+      "FileSha256": "3B7ADFFE2FA164F0B31249249836E717309A2471583E323EAFFEFFA8AE835BA5",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "55b861bb-0eaf-458d-87a7-b444a4dc6c62",
+      "ObjectType": "Function",
+      "SchemaName": "SJob",
+      "ObjectName": "FeeAmendmentsValidate",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "150A3C0F2F31A7D8A39C2F5B2B6BE1B94D33E503EDF8D8EDF213816852D0532A",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SJob.FeeAmendmentsValidate.sql",
+      "FileSha256": "5019902C3823DA0118F77EC7F5877A805F5322B8EE2FC9A0216D6ABF4DBB62B1",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "17e4204e-70ba-4d02-8768-725ff0a13a52",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "InvoiceScheduleMonthConfiguration_GenerateMonthlySeries",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "06B0C1D96592EABC1A68BC2E04881436F52355210F176DC4F259BAFD44A5C89C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.InvoiceScheduleMonthConfiguration_GenerateMonthlySeries.sql",
+      "FileSha256": "14ED56541AEC74F74B91B712587D0ED28BFA87B0CB98B65541B370113F048C3F",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "5533073d-6ba2-4cb2-a1e0-262df1bee04d",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SJob",
+      "ObjectName": "FeeAmendmentsUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "B12103823E77024DF1E09C6889EE5DD7A3291577915DFA8FA28341A813027F4D",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentsUpsert.sql",
+      "FileSha256": "1F2DA875A8FD7041E8AACB3658A87C5F8BB893EFA8442432025E3D9CA176D681",
+      "WasSynchronized": false
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 R4 establishes the first real SQL Server test suite for CymBuild's persistence invariants. It does not use EF InMemory or SQLite, and it must never target DEV, QA, UAT, LIVE, or another shared database.
 
-R4D completes the foundation by adding a controlled bootstrap path for an empty dedicated SQL Server database. The bootstrap is deliberately limited to the schema and deterministic reference data required by the 22 R4 cases.
+R4D completes the foundation by adding a controlled bootstrap path for an empty dedicated SQL Server database. The bootstrap is deliberately limited to the schema and deterministic reference data required by the R4 cases.
 
 ## Projects and tools
 
@@ -49,7 +49,7 @@ The manifest identifies the exact source files and batches required by R4 and lo
 
 The dedicated test database uses `PRIMARY` in place of the production `METADATA` filegroup because LocalDB and disposable test databases normally contain only `PRIMARY`. This is a physical-storage substitution only; logical columns, keys, indexes, filtered predicates, and procedure bodies remain source-derived.
 
-Seven empty compatibility tables are installed for deferred references in the unchanged canonical DataObject/workflow procedures. They contain no business fixtures and their branches are not exercised by R4.
+Fourteen empty compatibility tables are installed for deferred references in the unchanged canonical DataObject/workflow procedures, in `SFin.Transaction_InvoiceMergeInfo`'s LEFT JOIN/OUTER APPLY branches, and in `SCore.IntegrationOutbox_EnqueueJobCreatedFromProposal`'s optional client/project lookups (`SSop.Projects`). Only `SCrm.Accounts` and `SCore.OrganisationalUnits` receive a fixture row (see below); the rest stay empty and their branches are not exercised by R4.
 
 Audit and notification triggers are not installed by the minimal R4 bootstrap because the R4 suite disables those side effects and does not test their behaviour. A test-only `SCore.GetCurrentUserDefaultGroup` compatibility function is created only when the canonical function is absent. It returns `-1`; the exercised upsert path passes `@IncludeDefaultSecurity = 0`, so this compatibility dependency is never used for a business decision.
 
@@ -62,7 +62,8 @@ R4D seeds stable test-only rows for:
 - one Group;
 - one active Identity;
 - two WorkflowStatus rows;
-- one NonActivityType.
+- one NonActivityType;
+- one active Account (CYB-501-Finance, for the Sage/invoice-preview cases' Transactions.AccountID).
 
 All fixture inserts use explicit column lists. Every seeded entity and metadata row receives a matching active `SCore.DataObjects` row with the correct `EntityTypeId`.
 
@@ -70,7 +71,7 @@ The fixture script is idempotent by stable GUID. It never uses `MERGE`, `DELETE`
 
 ## Coverage
 
-R4 contains 22 executed SQL Server cases:
+R4 contains 37 executed SQL Server cases:
 
 | Area | Cases |
 |---|---:|
@@ -78,7 +79,34 @@ R4 contains 22 executed SQL Server cases:
 | DataObject identity and entity upsert invariants | 4 |
 | Workflow transition and latest-state invariants | 5 |
 | IntegrationOutbox persistence, leases, active-row filtering, and concurrency | 7 |
-| **Total** | **22** |
+| JobClosureDecision outbox atomicity (CYB-361-Outbox) | 2 |
+| Sage document-number pull-through and invoice preview fallback (CYB-501-Finance) | 6 |
+| Sage inbound receipt/allocation materialisation fallback (CYB-543) | 2 |
+| QuoteItems → Job outbox enqueue (real `tr_QuoteItems_EnqueueJobCreatedFromProposal`, first slice of the R5 business-process roadmap) | 2 |
+| Enquiry authorisation routing via real `SSop.EnquiriesUpsert`/`SSop.ProjectsUpsert` (Fire Engineering vs. CDM, R5 slice 2) | 2 |
+| AUTHOREVIEW lean-count regression guard (`SCore.tvf_WF_AuthorisationQueue` vs. `SCore.vw_WF_AuthorisationQueue_Display`) | 1 |
+| **Total** | **37** |
+
+## Automatic provisioning during `dotnet test`
+
+`tests/CymBuild.Database.IntegrationTests/Infrastructure/SqlTestDatabaseProvisioningFixture.cs` is
+registered as an xUnit v3 assembly fixture (`[assembly: AssemblyFixture(...)]` in
+`AssemblyInfo.cs`). It runs once, before any test in the assembly, whenever
+`CYMBUILD_SQL_TEST_CONNECTION_STRING` is set:
+
+1. It re-validates the `CymBuild_Test_*` safety boundary (same check as `SqlTestDatabase.FromEnvironment()`).
+2. It invokes `Initialize-CymBuildSqlTestDatabase.ps1 -VerifyOnly` against the target database.
+3. If verification fails, it invokes the same script with `-Apply` to create only the missing
+   schema objects and fixture rows, then re-verifies.
+4. If provisioning still fails, the assembly fails fast with the provisioner's own error output
+   instead of a raw `SqlException` partway through an unrelated test.
+
+This means a freshly cloned repository only needs an **empty** `CymBuild_Test_*` LocalDB database
+to already exist (the tools deliberately never create/drop a database — see Safety boundary
+above); running `dotnet test`, or running tests from Visual Studio/Test Explorer, provisions the
+required tables and deterministic fixtures automatically. The manual `-ProvisionDatabase` /
+`-Apply` steps below remain available for provisioning without running tests, for CI, and for
+troubleshooting.
 
 ## First run against an empty LocalDB database
 
@@ -120,7 +148,7 @@ Run without `-ProvisionDatabase` only after verification succeeds:
     -ConnectionString 'Server=(localdb)\MSSQLLocalDB;Database=CymBuild_Test_R4;Integrated Security=True;TrustServerCertificate=True;Connection Timeout=10'
 ```
 
-The runner requires exactly 22 passed, 0 failed, and 0 skipped, and writes TRX, Cobertura, and `sql-integration-test-run.json` beneath `TestResults/sql-integration`.
+The runner requires exactly 37 passed, 0 failed, and 0 skipped, and writes TRX, Cobertura, and `sql-integration-test-run.json` beneath `TestResults/sql-integration`.
 
 ## Deliberate exclusions
 

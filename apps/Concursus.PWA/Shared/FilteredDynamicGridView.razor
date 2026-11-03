@@ -13,7 +13,6 @@
 @inject RefreshService refreshService
 @inject DeviceInfoService DeviceInfoService
 @inject UserInteractionTrackerService InteractionTracker
-@inject AiErrorReporter AiErrorReporter
 @inject IToastService Toast
 @inject Helpers.LocalStorageAccessor LocalStorageAccessor
 
@@ -61,6 +60,17 @@
                                     <span class="cb-filtered-grid-filter-count">@NativeActiveFilterCount</span>
                                 }
                             </button>
+
+                            @if (ViewDefinition.AllowExcelExport)
+                            {
+                                <button type="button"
+                                        class="cb-v2-btn-secondary"
+                                        @onclick="ExportToExcelAsync"
+                                        disabled="@NativeIsLoading">
+                                    <i class="@ExportButtonIcon"></i> @ExportButtonTxt
+                                </button>
+                            }
+                          
 
                             @if (ViewDefinition.AllowBulkChange && CurrentGridItems is not null && CurrentGridItems.Any())
                             {
@@ -127,6 +137,18 @@
                                     disabled="@NativeIsLoading">
                                 Custom Range...
                             </button>
+
+                            @if (ViewDefinition.Code == "FILTEREDQUOTES")
+                            {
+                                <label for="ColumnToOrderBy">Column to search by:</label>
+                                <select id="ColumnToOrderBy" class="cb-v2-select" value="@ColumnToOrderBy" @onchange="ColumnToFilterByHasChanged" aria->
+                                    @foreach (var option in new Dictionary<string, string> { { "QuoteSentDate", "Date Sent" }, { "Date", "Date Created" } })
+                                    {
+                                        <option value="@option.Key">@option.Value</option>
+                                    }
+                                </select>
+                            } 
+                          
                         </div>
 
                         <div class="cb-filtered-grid-quick-right">
@@ -182,20 +204,50 @@
                             <div class="cb-filtered-grid-filter-grid">
                                 @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
                                 {
-                                    <div class="cb-filtered-grid-filter-field">
-                                        <label class="form-label" for="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
-                                        <div class="cb-filtered-grid-filter-input-shell input-group">
-                                            <i class="bi bi-search" aria-hidden="true"></i>
-                                            <input id="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name"
-                                                   class="form-control cb-v2-input cb-filtered-grid-filter-input"
-                                                   placeholder="Filter @column.Title..."
-                                                   value="@GetNativeFilterValue(column.Name)"
-                                                   aria-label="Filter @column.Title"
-                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
-                                                   @onkeydown="OnNativeFilterKeyDown"
-                                                   disabled="@NativeIsLoading" />
+                                    List<string> dateDisplayFormats = new List<string>()
+                                                {
+                                                "dd", "mm", "yyyy"
+                                                };
+
+                                    Console.WriteLine($"column: {column.Name}, format: {column.DisplayFormat}");
+
+                                    //[DATE ]
+                                    if (dateDisplayFormats.Contains(column.DisplayFormat))
+                                    {
+                                        <div class="cb-filtered-grid-filter-field">
+                                            <label class="form-label" for="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                            <div class="cb-filtered-grid-filter-input-shell input-group">
+                                                <i class="bi bi-search" aria-hidden="true"></i>
+                                                <input type="date"
+                                                       id="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                       class="form-control cb-v2-input cb-filtered-grid-filter-input"
+                                                       placeholder="Filter @column.Title..."
+                                                       value="@GetNativeFilterValue(column.Name)"
+                                                       aria-label="Filter @column.Title"
+                                                       @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                       @onkeydown="OnNativeFilterKeyDown"
+                                                       disabled="@NativeIsLoading" />
+                                            </div>
                                         </div>
-                                    </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="cb-filtered-grid-filter-field">
+                                            <label class="form-label" for="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                            <div class="cb-filtered-grid-filter-input-shell input-group">
+                                                <i class="bi bi-search" aria-hidden="true"></i>
+                                                <input id="legacy-filtered-native-filter-@ViewDefinition.Code-@column.Name"
+                                                       class="form-control cb-v2-input cb-filtered-grid-filter-input"
+                                                       placeholder="Filter @column.Title..."
+                                                       value="@GetNativeFilterValue(column.Name)"
+                                                       aria-label="Filter @column.Title"
+                                                       @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                       @onkeydown="OnNativeFilterKeyDown"
+                                                       disabled="@NativeIsLoading" />
+                                            </div>
+                                        </div>
+                                    }
+
                                 }
                             </div>
 
@@ -232,7 +284,7 @@
                         }
                     </div>
 
-                    <div class="cb-filtered-grid-scroll">
+                    <div id="@GridWrapperDomId" class="cb-filtered-grid-scroll">
                         <table class="cb-v2-table cb-filtered-grid-table">
                             <thead>
                                 <tr>

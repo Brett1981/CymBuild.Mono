@@ -1,0 +1,14 @@
+{
+  "Release": "QA-20261013-103217-b74b2b72",
+  "Environment": "QA",
+  "Branch": "feature/SB_ServerDeploy-26.4-qa-publish",
+  "Commit": "b74b2b72979db2eaa47756ceb7db273fe10f1f73",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-13T10:35:33.7734305+01:00",
+  "Components": [
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Pwa": 7061
+  }
+}

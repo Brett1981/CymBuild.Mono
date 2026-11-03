@@ -10,7 +10,7 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<div class="schema-workbench">
+<div class="schema-workbench" @ref="WorkbenchRootElement">
     <aside class="schema-workbench-sidebar">
         <div class="schema-workbench-brand">
             <span class="schema-workbench-brand-icon bi bi-hdd-network"></span>
@@ -92,6 +92,17 @@
             </div>
         }
 
+        @if (IsSourceSyncStaleError)
+        {
+            <div class="schema-exec-script-panel">
+                <div>
+                    <strong>Resynchronize the DEV source</strong>
+                    <span>The API cannot run PowerShell itself. Copy this command, run it from the repository root, then retry Run Compare.</span>
+                </div>
+                <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@DeploymentSyncSourcePowerShellScript</textarea>
+            </div>
+        }
+
         @if (IsBusy)
         {
             <div class="schema-notice schema-notice-processing" role="status" aria-live="polite">
@@ -101,7 +112,7 @@
         }
 
         <section class="schema-summary-grid">
-            @SummaryCard("Selected", SelectedPlanCountText, SelectedPlanSummaryDetail, SelectedPlanCount > 0 ? "info" : "success", SelectedCardAction)
+            @SummaryCard("Selected", SelectedPlanCountText, SelectedPlanSummaryDetail, SelectedPlanCount > 0 ? "info" : "warning", SelectedCardAction)
             @SummaryCard("Excluded", ExcludedCount.ToString("N0"), "Source-authoritative exclusions applied to every target dataset", ExcludedCount > 0 ? "info" : "success", ExcludedCardAction)
             @SummaryCard("Different", DifferentCount.ToString("N0"), "Objects whose source and target definitions differ", DifferentCount > 0 ? "warning" : "success")
             @SummaryCard("Missing Target", MissingInTargetCount.ToString("N0"), "Source-controlled objects not currently in target", MissingInTargetCount > 0 ? "info" : "success")
@@ -123,7 +134,7 @@
 
                     <div class="schema-lifecycle-grid">
                         @LifecycleCard("Create", "Create an auditable schema run tied to Jira and release references.")
-                        @LifecycleCard("Stage & Compare", "The API runs SCore.PreDeploymentScript on the target and on any non-DEV source before reading both catalog snapshots, then records object-level differences. DEV sources are skipped because schema binding is already disabled.")
+                        @LifecycleCard("Stage & Compare", "The API prepares the target and any non-DEV source, captures both catalog snapshots, restores every database it prepared, then records lifecycle-normalised object differences. DEV sources are not prepared because schema binding is already disabled.")
                         @LifecycleCard("Validate", "Target drift, missing objects, table differences and deployment-readiness risks are surfaced before review.")
                         @LifecycleCard("Deploy & Audit", "The controlled runner or future queued worker applies the accepted source-controlled plan. A future browser button will only enqueue the job; the worker performs deployment and runs SCore.PostDeploymentScript after confirmed success.")
                     </div>
@@ -237,7 +248,7 @@
                     <div class="schema-section-heading">
                         <div>
                             <h2>Stage & Compare</h2>
-                            <p>Through FormHelper and the gRPC API, the API runs SCore.PreDeploymentScript on the target and on a non-DEV source before reading catalog definitions and recording auditable comparison rows. The browser never executes SQL directly.</p>
+                            <p>Through FormHelper and the gRPC API, the API prepares the target and any non-DEV source, captures catalog definitions, restores every database it prepared and only then records auditable comparison rows. The browser never executes SQL directly.</p>
                         </div>
                         <div class="schema-actions-row compact">
                             <button type="button" class="cb-v2-btn-primary" @onclick="CompareAsync" disabled="@(IsBusy || !HasRunGuid)">Run Compare</button>
@@ -247,7 +258,7 @@
 
                     <div class="schema-maintenance-note">
                         <strong>Comparison preparation</strong>
-                        <span>Run Compare invokes <code>SCore.PreDeploymentScript</code> through the API on the target and on the source unless the run source environment is DEV. If preparation or comparison fails, the API attempts <code>SCore.PostDeploymentScript</code> recovery on every database it prepared.</span>
+                        <span>Run Compare invokes <code>SCore.PreDeploymentScript</code> through the API on the target and on the source unless the run source environment is DEV. After snapshot capture, <code>SCore.PostDeploymentScript</code> restores every database that was prepared on both success and failure. The comparison is not saved if restoration fails.</span>
                     </div>
 
                     @if (IsSelectedPlanView)
@@ -284,7 +295,7 @@
                         <div>
                             <strong>Deployment selection</strong>
                             <span>@SelectionStatusText</span>
-                            <small>The saved configuration is persistent for this run and can be consumed by the controlled runner or future worker. If no explicit selection is saved, all deployable differences are included.</small>
+                            <small>The saved configuration is persistent for this run and can be consumed by the controlled runner or future worker. Only explicitly selected rows are included.</small>
                         </div>
                         <div class="schema-actions-row compact">
                             <button type="button" class="cb-v2-btn-secondary" @onclick="SelectAllDeployableRows" disabled="@(IsBusy || !ObjectRows.Any(x => x.IsDeployable))">Select All</button>
@@ -300,6 +311,7 @@
                                 <thead>
                                     <tr>
                                         <th>Migrate</th>
+                                        <th class="schema-copy-data-col" title="New tables only. Copies the table's DEV rows (lookup/reference data) into the generated source. Every new table always gets its -1 row.">Copy data</th>
                                         <th>Difference</th>
                                         <th>Type</th>
                                         <th>Schema</th>
@@ -319,6 +331,18 @@
                                                        title="@(row.IsDeployable ? "Include in deployment plan" : "Not deployable from source to target")"
                                                        @onclick:stopPropagation="true"
                                                        @onchange="@((ChangeEventArgs args) => SetObjectSelection(row, args))" />
+                                            </td>
+                                            <td class="schema-copy-data-col">
+                                                @if (row.IsNewTable)
+                                                {
+                                                    <input type="checkbox"
+                                                           class="schema-selection-checkbox"
+                                                           checked="@row.CopyReferenceData"
+                                                           disabled="@(!row.IsDeployable || !row.IsSelected)"
+                                                           title="Copy this new table's DEV rows as reference data (lookup tables only). Leave unticked for transactional tables; the -1 row is always created."
+                                                           @onclick:stopPropagation="true"
+                                                           @onchange="@((ChangeEventArgs args) => SetCopyReferenceData(row, args))" />
+                                                }
                                             </td>
                                             <td><span class="schema-pill @DifferenceCss(row.DifferenceType)">@DifferenceLabel(row.DifferenceType)</span></td>
                                             <td>@row.ObjectType</td>
@@ -479,7 +503,7 @@
                     <div class="schema-section-heading">
                         <div>
                             <h2>Validate & Review</h2>
-                            <p>Validation is scoped to the saved deployment selection. If no explicit selection exists, all deployable differences are validated before review.</p>
+                            <p>Validation is scoped only to the saved deployment selection. No selection means nothing is validated or deployed.</p>
                         </div>
                         <div class="schema-actions-row compact">
                             <button type="button" class="cb-v2-btn-primary" @onclick="ValidateAsync" disabled="@(IsBusy || !HasRunGuid)">Validate</button>
@@ -573,7 +597,7 @@
                         <div>
                             <strong>Persistent deployment plan</strong>
                             <span>@DeploymentPlanStatusText</span>
-                            <small>The controlled PowerShell runner and future deployment worker read this configuration from <code>SMigration.SchemaDeploymentPlan_Get</code>. A run with no explicit selection deploys all deployable differences.</small>
+                            <small>The controlled PowerShell runner and future deployment worker read this configuration from <code>SMigration.SchemaDeploymentPlan_Get</code>. A run with no selected rows produces an empty, non-deployable plan.</small>
                         </div>
                         <button type="button" class="cb-v2-btn-secondary" @onclick="@(() => LoadDeploymentPlanAsync())" disabled="@(IsBusy || !HasRunGuid)">Refresh Plan</button>
                     </div>
@@ -589,7 +613,7 @@
                     <div class="schema-exec-script-panel">
                         <div>
                             <strong>PowerShell deployment commands</strong>
-                            <span>The commands are generated from this run's target server, target database, run Guid and release reference. Run the dry-run first, then use the apply command only after the preview succeeds.</span>
+                            <span>The commands are generated from this run's target server, target database, run Guid and release reference. DEV source runs generate and verify the package once; later environments reuse that committed package.</span>
                         </div>
 
                         <div class="schema-form-grid">
@@ -608,22 +632,40 @@
                             </div>
                         }
 
-                        @if (DeploymentPlan is not null && !DeploymentPlan.HasExplicitSelection && DeploymentPlan.DeployableCount > 0)
+                        @if (DeploymentPlan is not null && DeploymentPlan.SelectedCount == 0 && DeploymentPlan.DeployableCount > 0)
                         {
                             <div class="schema-warning-panel">
-                                <strong>Default safe deployment plan</strong>
-                                <span>No explicit selection is saved. The generated runner command will attempt the <strong>@DeploymentPlan.SelectedCount.ToString("N0")</strong> non-destructive differences selected by default out of <strong>@DeploymentPlan.DeployableCount.ToString("N0")</strong> deployable rows. Destructive-risk rows, including target-only constraint removals, require an explicit saved selection.</span>
+                                <strong>No rows selected</strong>
+                                <span>The deployment plan is empty. Select and save at least one of the <strong>@DeploymentPlan.DeployableCount.ToString("N0")</strong> deployable rows before validation, review or deployment.</span>
                             </div>
                         }
 
                         <div class="schema-command-grid">
+                            @if (IsAuthoritativeDevSource)
+                            {
+                                <label class="schema-command-block">
+                                    <strong>1. Generate source</strong>
+                                    <small>Runs <code>-SyncSource</code> once for an accepted DEV / CymBuild_Dev plan. It writes canonical SQL locally and does not preflight or change the target database.</small>
+                                    <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@DeploymentSyncSourcePowerShellScript</textarea>
+                                </label>
+                                <label class="schema-command-block">
+                                    <strong>2. Review and test</strong>
+                                    <small>Review the generated SQL, then run repository whitespace and fast-test gates before committing the exact package.</small>
+                                    <textarea class="schema-exec-script schema-powershell-script" rows="3" readonly>@DeploymentSourceTestPowerShellScript</textarea>
+                                </label>
+                                <label class="schema-command-block">
+                                    <strong>3. Verify committed source</strong>
+                                    <small>Runs <code>-VerifySource</code> after commit to prove the accepted DEV definitions match committed canonical SQL without changing the target.</small>
+                                    <textarea class="schema-exec-script schema-powershell-script" rows="6" readonly>@DeploymentVerifySourcePowerShellScript</textarea>
+                                </label>
+                            }
                             <label class="schema-command-block">
-                                <strong>1. Dry-run</strong>
+                                <strong>@(IsAuthoritativeDevSource ? "4. Dry-run" : "1. Dry-run")</strong>
                                 <small>Resolves and preflights the accepted source-controlled plan without deploying SQL or writing deployment audit rows.</small>
                                 <textarea class="schema-exec-script schema-powershell-script" rows="7" readonly>@DeploymentWhatIfPowerShellScript</textarea>
                             </label>
                             <label class="schema-command-block">
-                                <strong>2. Apply</strong>
+                                <strong>@(IsAuthoritativeDevSource ? "5. Apply" : "2. Apply")</strong>
                                 <small>Runs the controlled deployment after the dry-run succeeds. LIVE-looking targets remain protected by the runner and are not given an automatic <code>-AllowLive</code> override.</small>
                                 <textarea class="schema-exec-script schema-powershell-script" rows="7" readonly>@DeploymentApplyPowerShellScript</textarea>
                             </label>
@@ -747,6 +789,9 @@
     private string BusyMessage { get; set; } = string.Empty;
     private string Message { get; set; } = string.Empty;
     private string Error { get; set; } = string.Empty;
+    private bool IsSourceSyncStaleError =>
+        !string.IsNullOrWhiteSpace(Error)
+        && Error.Contains("-SyncSource for this RunGuid first", StringComparison.OrdinalIgnoreCase);
 
     private string SourceEnvironment { get; set; } = "DEV";
     private string TargetEnvironment { get; set; } = "QA";
@@ -783,6 +828,7 @@
     private SchemaMigrationObjectComparisonModel? SelectedObjectRow { get; set; }
     private bool IsSelectedPlanView { get; set; }
 
+    private ElementReference WorkbenchRootElement;
     private ElementReference SourceDefinitionScrollElement;
     private ElementReference TargetDefinitionScrollElement;
     private IJSObjectReference? schemaMigrationWorkbenchModule;
@@ -823,7 +869,12 @@
         {
             schemaMigrationWorkbenchModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
                 "import",
-                "/schemaMigrationWorkbench.js?v=13");
+                "/schemaMigrationWorkbench.js?v=14");
+        }
+
+        if (schemaMigrationWorkbenchModule is not null)
+        {
+            await schemaMigrationWorkbenchModule.InvokeVoidAsync("attachGridEdgeAutoScroll", WorkbenchRootElement);
         }
 
         if (shouldBindDefinitionScrollSync && schemaMigrationWorkbenchModule is not null && SelectedObjectRow is not null)
@@ -858,7 +909,8 @@
 
     private bool CanReview => HasRunGuid
         && IsCurrentPlanValidated
-        && !HasValidationFailures;
+        && !HasValidationFailures
+        && SelectedPlanCount > 0;
 
     private bool IsAcceptanceUpdateAvailable => HasRunGuid
         && IsRunAccepted
@@ -897,8 +949,14 @@
         : "Not yet accepted for deployment. Accept the run after validating the selected plan and recording any caveats.";
 
     private string DeploymentPlanSqlScript => BuildDeploymentPlanSqlScript();
+    private string DeploymentSyncSourcePowerShellScript => BuildSourcePowerShellScript(sync: true);
+    private string DeploymentVerifySourcePowerShellScript => BuildSourcePowerShellScript(sync: false);
+    private const string DeploymentSourceTestPowerShellScript = "git diff --check" + "\r\n" + @".\tools\Testing\Invoke-CymBuildFastTests.ps1";
     private string DeploymentWhatIfPowerShellScript => BuildDeploymentPowerShellScript(apply: false);
     private string DeploymentApplyPowerShellScript => BuildDeploymentPowerShellScript(apply: true);
+    private bool IsAuthoritativeDevSource =>
+        SourceEnvironment.Equals("DEV", StringComparison.OrdinalIgnoreCase)
+        && SourceDatabaseName.Equals("CymBuild_Dev", StringComparison.OrdinalIgnoreCase);
     private string EffectiveRunnerReleaseReference =>
         !string.IsNullOrWhiteSpace(RunnerReleaseReference)
             ? RunnerReleaseReference.Trim()
@@ -938,29 +996,29 @@
     private string SelectedPlanCountText => DeploymentPlan is null ? "—" : SelectedPlanCount.ToString("N0");
     private string SelectedPlanSummaryDetail => DeploymentPlan is null
         ? "Load or select a run to see its effective deployment plan"
-        : DeploymentPlan.HasExplicitSelection
+        : DeploymentPlan.SelectedCount > 0
             ? $"Explicit saved selection: {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable rows"
-            : $"Default safe plan: {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable rows are included; destructive-risk rows require explicit selection";
+            : $"No rows selected: 0 of {DeploymentPlan.DeployableCount:N0} deployable rows are included";
 
     private string SelectionStatusText => IsSelectedPlanView
         ? DeploymentPlanStatusText
         : DeployableRowsCount == 0
             ? "Load comparison rows to configure the deployment selection."
-            : ExplicitSelectionRowsCount == 0
-                ? $"No explicit selection saved. {SelectedRowsCount:N0} of {DeployableRowsCount:N0} loaded deployable differences are included by the default safe non-destructive plan."
+        : ExplicitSelectionRowsCount == 0
+                ? $"No selection saved. 0 of {DeployableRowsCount:N0} loaded deployable differences are included."
                 : $"{SelectedRowsCount:N0} of {DeployableRowsCount:N0} loaded deployable differences are selected. This selection is saved for the controlled deployment process.";
 
     private string DeploymentPlanStatusText => DeploymentPlan is null
         ? "Refresh the plan to see which selected objects the controlled deployment process will consume."
-        : DeploymentPlan.HasExplicitSelection
+        : DeploymentPlan.SelectedCount > 0
             ? $"{DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable differences are explicitly selected."
-            : $"No explicit selection exists. The default safe plan includes {DeploymentPlan.SelectedCount:N0} of {DeploymentPlan.DeployableCount:N0} deployable differences; destructive-risk rows require explicit selection.";
+            : $"No rows are selected. The deployment plan contains 0 of {DeploymentPlan.DeployableCount:N0} deployable differences.";
 
     private string ValidationScopeText => DeploymentPlan is null
         ? "Deployment plan has not been loaded. Refresh the plan before relying on the displayed count."
-        : DeploymentPlan.HasExplicitSelection
+        : DeploymentPlan.SelectedCount > 0
             ? $"Only the {DeploymentPlan.SelectedCount:N0} explicitly selected row(s) will be validated."
-            : $"No explicit selection is saved, so the {DeploymentPlan.SelectedCount:N0} default safe non-destructive row(s) will be validated. Destructive-risk rows are validated only after explicit selection.";
+            : "No rows are selected. Validation will fail closed until at least one deployable row is selected and saved.";
 
     private RenderFragment NavButton(string key, string iconCss, string text) => @<button type="button"
         class="schema-nav-button @(SelectedSection == key ? "selected" : string.Empty)"
@@ -1046,7 +1104,7 @@
         {
             Dashboard = await CurrentFormHelper.SchemaMigrationCompareAsync(CurrentRunGuid(), TargetServerName, TargetDatabaseName);
             ValidationIssues = new List<SchemaMigrationValidationIssueModel>();
-            Message = "Schema comparison completed after controlled pre-deployment preparation. Validation and acceptance must be completed for the refreshed plan.";
+            Message = "Schema comparison completed after controlled preparation, snapshot capture and verified post-deployment restoration. Validation and acceptance must be completed for the refreshed plan.";
             await LoadObjectsAsync(clearMessages: false);
             await LoadDeploymentPlanAsync(clearMessages: false);
             SelectedSection = "compare";
@@ -1209,6 +1267,20 @@
         row.IsSelected = args.Value is bool boolValue
             ? boolValue
             : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+
+        if (!row.IsSelected)
+        {
+            row.CopyReferenceData = false;
+        }
+    }
+
+    private static void SetCopyReferenceData(SchemaMigrationObjectComparisonModel row, ChangeEventArgs args)
+    {
+        var requested = args.Value is bool boolValue
+            ? boolValue
+            : bool.TryParse(args.Value?.ToString(), out var parsed) && parsed;
+
+        row.CopyReferenceData = requested && row.IsNewTable && row.IsDeployable && row.IsSelected;
     }
 
     private void SelectAllDeployableRows()
@@ -1247,14 +1319,19 @@
             var visibleSelectionByKey = ObjectRows
                 .Where(x => x.IsDeployable)
                 .GroupBy(SelectionKey)
-                .ToDictionary(x => x.Key, x => x.Last().IsSelected, StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
 
             var selections = allRows
                 .Where(x => x.IsDeployable)
-                .Select(row => new SchemaMigrationSelectionItemModel
+                .Select(row =>
                 {
-                    ComparisonGuid = row.ComparisonGuid,
-                    IsSelected = visibleSelectionByKey.TryGetValue(SelectionKey(row), out var selected) ? selected : row.IsSelected
+                    var effective = visibleSelectionByKey.TryGetValue(SelectionKey(row), out var visible) ? visible : row;
+                    return new SchemaMigrationSelectionItemModel
+                    {
+                        ComparisonGuid = row.ComparisonGuid,
+                        IsSelected = effective.IsSelected,
+                        CopyReferenceData = effective.IsSelected && effective.CopyReferenceData && row.IsNewTable
+                    };
                 })
                 .Where(x => x.IsSelected)
                 .ToList();
@@ -1392,6 +1469,28 @@ GO";
         }
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    private string BuildSourcePowerShellScript(bool sync)
+    {
+        var runGuid = HasRunGuid
+            ? CurrentRunGuid().ToString().ToUpperInvariant()
+            : "00000000-0000-0000-0000-000000000000";
+        var targetServer = string.IsNullOrWhiteSpace(TargetServerName)
+            ? "<TARGET-SERVER>"
+            : TargetServerName.Trim();
+        var targetDatabase = string.IsNullOrWhiteSpace(TargetDatabaseName)
+            ? "<TARGET-DATABASE>"
+            : TargetDatabaseName.Trim();
+
+        return string.Join(Environment.NewLine, new[]
+        {
+            @".\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `",
+            $"    -TargetServer {PowerShellQuote(targetServer)} `",
+            $"    -TargetDatabase {PowerShellQuote(targetDatabase)} `",
+            $"    -RunGuid {PowerShellQuote(runGuid)} `",
+            sync ? "    -SyncSource" : "    -VerifySource"
+        });
     }
 
     private static string PowerShellQuote(string value) =>
@@ -1932,15 +2031,8 @@ GO";
         Symbol
     }
 
-    private static string DefinitionPreview(string definition)
-    {
-        if (string.IsNullOrWhiteSpace(definition))
-        {
-            return string.Empty;
-        }
-
-        return definition.Length <= 8000 ? definition : definition[..8000] + "\n... truncated in UI preview ...";
-    }
+    private static string DefinitionPreview(string definition) =>
+        string.IsNullOrWhiteSpace(definition) ? string.Empty : definition;
 
     private static string NormalizeSchemaDefinition(string definition)
     {

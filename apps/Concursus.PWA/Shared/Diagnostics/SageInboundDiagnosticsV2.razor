@@ -32,7 +32,7 @@
                             <div class="cb-v2-subtitle">Finance Admin</div>
                             <h2 class="cb-v2-title">Sage Inbound Diagnostics</h2>
                             <p class="cb-v2-description mb-0">
-                                Monitor inbound payment allocation sync, receipt creation, matching status, and linked CymBuild transactions.
+                                Monitor inbound payment allocation sync, receipt and credit note creation, matching status, and linked CymBuild transactions.
                             </p>
                         </div>
                     </div>
@@ -42,7 +42,7 @@
                             Reset filters
                         </button>
 
-                        <button type="button" class="cb-v2-btn-secondary" @onclick="LoadAsync" disabled="@_isBusy">
+                        <button type="button" class="cb-v2-btn-secondary" @onclick="() => RefreshAsync()" disabled="@_isBusy">
                             @if (_isBusy)
                             {
                                 <span class="spinner-border spinner-border-sm me-2"></span>
@@ -58,7 +58,7 @@
                         class="cb-v2-summary-card @(GetSummaryCardClass(null))"
                         @onclick='() => ApplyStatusSummaryFilterAsync(null)'>
                     <div class="cb-v2-summary-title">Total</div>
-                    <div class="cb-v2-summary-value">@_rows.Count</div>
+                    <div class="cb-v2-summary-value">@_summary.TotalCount</div>
                     <div class="cb-v2-summary-subtitle">All records</div>
                 </button>
 
@@ -66,7 +66,7 @@
                         class="cb-v2-summary-card sage-inbound-summary-green @(GetSummaryCardClass("Succeeded"))"
                         @onclick='() => ApplyStatusSummaryFilterAsync("Succeeded")'>
                     <div class="cb-v2-summary-title">Succeeded</div>
-                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.StatusCode, "Succeeded", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-value">@_summary.SucceededCount</div>
                     <div class="cb-v2-summary-subtitle">Completed successfully</div>
                 </button>
 
@@ -74,7 +74,7 @@
                         class="cb-v2-summary-card sage-inbound-summary-amber @(GetSummaryCardClass("RetryPending"))"
                         @onclick='() => ApplyStatusSummaryFilterAsync("RetryPending")'>
                     <div class="cb-v2-summary-title">Retry Pending</div>
-                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.StatusCode, "RetryPending", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-value">@_summary.RetryPendingCount</div>
                     <div class="cb-v2-summary-subtitle">Can be retried</div>
                 </button>
 
@@ -82,7 +82,7 @@
                         class="cb-v2-summary-card sage-inbound-summary-blue @(GetPaymentSummaryCardClass("Paid"))"
                         @onclick='() => ApplyPaymentSummaryFilterAsync("Paid")'>
                     <div class="cb-v2-summary-title">Paid</div>
-                    <div class="cb-v2-summary-value">@_rows.Count(x => string.Equals(x.LastPaymentStateCode, "Paid", StringComparison.OrdinalIgnoreCase))</div>
+                    <div class="cb-v2-summary-value">@_summary.PaidCount</div>
                     <div class="cb-v2-summary-subtitle">Fully settled</div>
                 </button>
 
@@ -90,8 +90,16 @@
                         class="cb-v2-summary-card sage-inbound-summary-purple @(GetPaymentSummaryCardClass("Receipts"))"
                         @onclick='() => ApplyPaymentSummaryFilterAsync("Receipts")'>
                     <div class="cb-v2-summary-title">Receipts Created</div>
-                    <div class="cb-v2-summary-value">@_rows.Count(x => x.HasMaterialisedReceipt)</div>
+                    <div class="cb-v2-summary-value">@_summary.ReceiptsCreatedCount</div>
                     <div class="cb-v2-summary-subtitle">CymBuild receipts</div>
+                </button>
+
+                <button type="button"
+                        class="cb-v2-summary-card sage-inbound-summary-purple @(GetPaymentSummaryCardClass("CreditNotes"))"
+                        @onclick='() => ApplyPaymentSummaryFilterAsync("CreditNotes")'>
+                    <div class="cb-v2-summary-title">Credit Notes Created</div>
+                    <div class="cb-v2-summary-value">@_summary.CreditNotesCreatedCount</div>
+                    <div class="cb-v2-summary-subtitle">CymBuild credit notes</div>
                 </button>
             </div>
 
@@ -151,7 +159,7 @@
                             <th>Status</th>
                             <th>Amounts</th>
                             <th>Payment</th>
-                            <th>Receipt / Allocation</th>
+                            <th>Receipt or Credit Note / Allocation</th>
                             <th>Polling</th>
                             <th>Error</th>
                             <th class="text-end">Actions</th>
@@ -218,12 +226,16 @@
                                         @if (row.HasMaterialisedReceipt)
                                         {
                                             <button type="button" class="cb-v2-btn-link" @onclick="() => OpenReceiptAsync(row)">
-                                                Receipt: @DisplayText(row.DisplayReceiptTransactionNumber)
+                                                @row.MaterialisedTransactionLabel: @DisplayText(row.DisplayReceiptTransactionNumber)
                                             </button>
+                                        }
+                                        else if (row.IsSettledMethodUnknown)
+                                        {
+                                            <div class="small" title="Sage could not say whether a receipt or a credit note settled this invoice, so nothing was created.">Settled, method unknown</div>
                                         }
                                         else
                                         {
-                                            <div class="cb-v2-muted small">Receipt: -</div>
+                                            <div class="cb-v2-muted small">Receipt / Credit Note: -</div>
                                         }
 
                                         @if (row.HasMaterialisedAllocation)
@@ -261,7 +273,7 @@
                                             @if (row.HasMaterialisedReceipt)
                                             {
                                                 <button type="button" class="cb-v2-btn-secondary" @onclick="() => OpenReceiptAsync(row)" disabled="@IsRowBusy(row)">
-                                                    View Receipt
+                                                    View @row.MaterialisedTransactionLabel
                                                 </button>
                                             }
 
@@ -283,7 +295,7 @@
                                                 Force Requeue
                                             </button>
 
-                                            @if (row.LastAllocatedValue > 0 && !row.HasMaterialisedReceipt)
+                                            @if (row.CanFixReceipt)
                                             {
                                                 <button type="button"
                                                         class="cb-v2-btn-secondary"
@@ -299,6 +311,29 @@
                         }
                     </tbody>
                 </table>
+            </div>
+
+            <div class="cb-v2-toolbar sage-inbound-pager">
+                <div class="cb-v2-muted small">
+                    @if (_totalCount > 0)
+                    {
+                        <text>Showing @(((_pageNumber - 1) * PageSize) + 1)-@(Math.Min(_pageNumber * PageSize, _totalCount)) of @_totalCount</text>
+                    }
+                    else
+                    {
+                        <text>No records</text>
+                    }
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="() => GoToPageAsync(_pageNumber - 1)" disabled="@(_isBusy || _pageNumber <= 1)">
+                        Previous
+                    </button>
+                    <span class="cb-v2-muted small">Page @_pageNumber of @_totalPages</span>
+                    <button type="button" class="cb-v2-btn-secondary" @onclick="() => GoToPageAsync(_pageNumber + 1)" disabled="@(_isBusy || _pageNumber >= _totalPages)">
+                        Next
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -316,7 +351,13 @@
         }
 
     .sage-inbound-summary-grid {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .sage-inbound-pager {
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 12px;
     }
 
     .sage-inbound-v2-page .cb-v2-summary-card {
@@ -418,6 +459,7 @@
 
     private readonly List<SageInboundDiagnosticsRowModel> _rows = new();
     private readonly SageInboundDiagnosticsGetRequestModel _filters = new();
+    private SageInboundDiagnosticsSummaryModel _summary = new();
 
     private FormHelper? _formHelper;
     private bool _retryableOnlyChecked;
@@ -428,17 +470,37 @@
     private string? _activeSummaryStatus;
     private string? _activePaymentSummary;
 
+    private int _pageNumber = 1;
+    private const int PageSize = 50;
+    private long _totalCount;
+    private int _totalPages => _totalCount <= 0 ? 1 : (int)Math.Ceiling(_totalCount / (double)PageSize);
+
     [Parameter] public bool IsEmbedded { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
         EnsureFormHelper();
-        await LoadAsync();
+        await RefreshAsync();
     }
 
     private void EnsureFormHelper()
     {
         _formHelper ??= new FormHelper(CoreClient, Guid.Empty.ToString(), UserService);
+    }
+
+    // Refreshes both the current page of rows and the grand-total summary cards.
+    // Use after anything that changes which records match (a filter change, or a
+    // row action that could move a record between buckets). resetPage returns to
+    // page 1, which is correct for a filter change but wrong for "just reloading
+    // the page I'm already looking at" after a row action.
+    private async Task RefreshAsync(bool resetPage = true)
+    {
+        if (resetPage)
+        {
+            _pageNumber = 1;
+        }
+
+        await Task.WhenAll(LoadSummaryAsync(), LoadAsync());
     }
 
     private async Task LoadAsync()
@@ -456,19 +518,20 @@
             _filters.SageDocumentNo ??= string.Empty;
             _filters.TransactionNumber ??= string.Empty;
             _filters.OnlyRetryableFailures = _retryableOnlyChecked ? true : null;
+            _filters.PaymentFilter = _activePaymentSummary ?? string.Empty;
+            _filters.PageNumber = _pageNumber;
+            _filters.PageSize = PageSize;
 
-            var rows = await _formHelper!.SageInboundDiagnosticsGetAsync(_filters);
+            var page = await _formHelper!.SageInboundDiagnosticsGetAsync(_filters);
 
             _rows.Clear();
-
-            if (rows is not null && rows.Count > 0)
-            {
-                _rows.AddRange(ApplyClientPaymentFilter(rows));
-            }
+            _rows.AddRange(page.Rows);
+            _totalCount = page.TotalCount;
         }
         catch (Exception ex)
         {
             _rows.Clear();
+            _totalCount = 0;
             _isError = true;
             _message = $"Failed to load Sage inbound diagnostics: {ex.Message}";
         }
@@ -479,15 +542,42 @@
         }
     }
 
-    private IEnumerable<SageInboundDiagnosticsRowModel> ApplyClientPaymentFilter(IEnumerable<SageInboundDiagnosticsRowModel> rows)
+    private async Task LoadSummaryAsync()
     {
-        return _activePaymentSummary switch
+        EnsureFormHelper();
+
+        try
         {
-            "Paid" => rows.Where(x => string.Equals(x.LastPaymentStateCode, "Paid", StringComparison.OrdinalIgnoreCase)),
-            "Open" => rows.Where(x => !x.IsTerminalState),
-            "Receipts" => rows.Where(x => x.HasMaterialisedReceipt),
-            _ => rows
-        };
+            var summaryRequest = new SageInboundDiagnosticsSummaryRequestModel
+            {
+                SageAccountReference = _filters.SageAccountReference ?? string.Empty,
+                SageDocumentNo = _filters.SageDocumentNo ?? string.Empty,
+                TransactionNumber = _filters.TransactionNumber ?? string.Empty,
+                OnlyRetryableFailures = _retryableOnlyChecked ? true : null,
+                InvoiceRequestId = _filters.InvoiceRequestId,
+                TransactionId = _filters.TransactionId,
+                JobId = _filters.JobId
+            };
+
+            _summary = await _formHelper!.SageInboundDiagnosticsSummaryGetAsync(summaryRequest);
+        }
+        catch (Exception ex)
+        {
+            _summary = new SageInboundDiagnosticsSummaryModel();
+            _isError = true;
+            _message = $"Failed to load Sage inbound diagnostics summary: {ex.Message}";
+        }
+    }
+
+    private async Task GoToPageAsync(int pageNumber)
+    {
+        if (pageNumber < 1 || pageNumber > _totalPages || pageNumber == _pageNumber)
+        {
+            return;
+        }
+
+        _pageNumber = pageNumber;
+        await LoadAsync();
     }
 
     private async Task ApplyStatusSummaryFilterAsync(string? statusCode)
@@ -496,7 +586,7 @@
         _activePaymentSummary = null;
         _filters.StatusCode = statusCode ?? string.Empty;
 
-        await LoadAsync();
+        await RefreshAsync();
     }
 
     private async Task ApplyPaymentSummaryFilterAsync(string paymentSummary)
@@ -505,7 +595,7 @@
         _activeSummaryStatus = null;
         _filters.StatusCode = string.Empty;
 
-        await LoadAsync();
+        await RefreshAsync();
     }
 
     private async Task ResetFiltersAsync()
@@ -523,7 +613,7 @@
         _activeSummaryStatus = null;
         _activePaymentSummary = null;
 
-        await LoadAsync();
+        await RefreshAsync();
     }
 
     private async Task RequeueAsync(SageInboundDiagnosticsRowModel row, bool force)
@@ -549,7 +639,7 @@
                 ? $"Force requeue submitted for {DisplayText(row.DisplayTransactionNumber)}."
                 : $"Requeue submitted for {DisplayText(row.DisplayTransactionNumber)}.";
 
-            await LoadAsync();
+            await RefreshAsync(resetPage: false);
         }
         catch (Exception ex)
         {
@@ -601,7 +691,7 @@
                     ? $"Sage reference {DisplayText(row.LastSageTransactionReference)} applied to {DisplayText(row.DisplayTransactionNumber)}."
                     : $"No Sage reference update was required for {DisplayText(row.DisplayTransactionNumber)}.";
 
-                await LoadAsync();
+                await RefreshAsync(resetPage: false);
             }
             catch (Exception ex)
             {
@@ -636,7 +726,7 @@
 
             _message = $"Sync run requested for {DisplayText(row.DisplayTransactionNumber)}.";
 
-            await LoadAsync();
+            await RefreshAsync(resetPage: false);
         }
         catch (Exception ex)
         {
@@ -652,6 +742,11 @@
 
     private async Task AutoCorrectRowAsync(SageInboundDiagnosticsRowModel row)
     {
+        if (!row.LastMatchedExternalTransactionId.HasValue)
+        {
+            return;
+        }
+
         EnsureFormHelper();
 
         _rowActionGuid = row.CymBuildDocumentGuid;
@@ -660,8 +755,10 @@
 
         try
         {
+            // row.Id is SFin.SageInboundDocumentStatus.ID, not a SageExternalTransactions id -
+            // the auto-correct proc needs the actual matched external transaction's id.
             var result = await _formHelper!.SageInboundReceiptMaterialisationAutoCorrectAsync(
-                externalTransactionId: row.Id,
+                externalTransactionId: row.LastMatchedExternalTransactionId.Value,
                 batchSize: 1,
                 dryRun: false);
 
@@ -669,7 +766,7 @@
                 $"Auto correct complete for {DisplayText(row.DisplayTransactionNumber)}. " +
                 $"Corrected: {result.CorrectedCount}, Failed: {result.FailedCount}.";
 
-            await LoadAsync();
+            await RefreshAsync(resetPage: false);
         }
         catch (Exception ex)
         {
@@ -709,7 +806,7 @@
         await _modalHost.OpenWindowedEntityAsync<TransactionDetail>(
             recordGuid: row.MaterialisedReceiptTransactionGuid ?? Guid.Empty,
             entityTypeGuid: TransactionEntityTypeGuid,
-            title: "View Receipt",
+            title: $"View {row.MaterialisedTransactionLabel}",
             isInformationPage: true,
             isMainRecordContext: true);
     }

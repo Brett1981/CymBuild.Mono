@@ -10,7 +10,8 @@ CREATE PROCEDURE [SMigration].[SchemaDataObject_Ensure]
 (
     @Guid UNIQUEIDENTIFIER,
     @SchemeName NVARCHAR(255),
-    @ObjectName NVARCHAR(255)
+    @ObjectName NVARCHAR(255),
+    @RequireExactEntityType BIT = 0
 )
 AS
 BEGIN
@@ -18,6 +19,7 @@ BEGIN
     SET XACT_ABORT ON;
 
     DECLARE @EntityTypeId INT;
+    DECLARE @HasExactEntityType BIT = 0;
 
     SELECT TOP (1)
         @EntityTypeId = entityType.[ID]
@@ -31,6 +33,12 @@ BEGIN
       AND entityType.[RowStatus] <> 0
       AND entityType.[RowStatus] <> 254
     ORDER BY entityType.[ID];
+
+    IF @EntityTypeId IS NOT NULL
+        SET @HasExactEntityType = 1;
+
+    IF @EntityTypeId IS NULL AND @RequireExactEntityType = 1
+        THROW 51355, 'No active exact EntityHoBT and EntityType ownership exists for the requested Schema Migration object.', 1;
 
     IF @EntityTypeId IS NULL
     BEGIN
@@ -78,10 +86,21 @@ BEGIN
     END
     ELSE
     BEGIN
+        IF EXISTS
+        (
+            SELECT 1
+            FROM [SCore].[DataObjects] AS dataObject
+            WHERE dataObject.[Guid] = @Guid
+              AND (dataObject.[RowStatus] = 0 OR dataObject.[RowStatus] = 254)
+        )
+            THROW 51356, 'Schema Migration cannot reactivate a DataObject by updating RowStatus directly.', 1;
+
         UPDATE [SCore].[DataObjects]
         SET
-            [RowStatus] = CASE WHEN [RowStatus] = 0 OR [RowStatus] = 254 THEN 1 ELSE [RowStatus] END,
-            [EntityTypeId] = ISNULL([EntityTypeId], @EntityTypeId)
+            [EntityTypeId] = CASE
+                WHEN @HasExactEntityType = 1 THEN @EntityTypeId
+                ELSE ISNULL([EntityTypeId], @EntityTypeId)
+            END
         WHERE [Guid] = @Guid;
     END;
 END;

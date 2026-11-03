@@ -3,6 +3,7 @@ using Concursus.API.Client.Models;
 using Concursus.API.Core;
 using Concursus.Common.Shared.Models.Finance;
 using Concursus.Components.Shared.Classes;
+using Concursus.Components.Shared.Helpers;
 using Concursus.PWA.Classes;
 using Concursus.PWA.Helpers;
 using Concursus.PWA.Pages;
@@ -18,8 +19,11 @@ using static Concursus.PWA.Shared.MessageDisplay;
 
 namespace Concursus.PWA.Shared;
 
-public partial class DynamicBatchGridView : ComponentBase
+public partial class DynamicBatchGridView : ComponentBase, IDisposable
 {
+    private readonly string _gridWrapperInstanceId = Guid.NewGuid().ToString("N");
+    private bool _edgeAutoScrollAttached;
+
     #region Parameters
 
     [Parameter] public bool FullGrid { get; set; }
@@ -43,7 +47,11 @@ public partial class DynamicBatchGridView : ComponentBase
     private List<GridActionMenuItem> GridActionMenuItems { get; set; } = new();
     private bool IsActionMenuOpen { get; set; }
     private bool IsPerformingGridAction { get; set; }
-    private string ActionMenuButtonText => IsPerformingGridAction ? "Working..." : "Actions";
+    private BulkOperationProgress? GridActionProgress { get; set; }
+    private string ActionMenuButtonText =>
+        !IsPerformingGridAction ? "Actions"
+        : GridActionProgress is { Total: > 1 } progress ? $"Working... {Math.Min(progress.Processed + 1, progress.Total)} of {progress.Total}"
+        : "Working...";
 
     public bool HasChanges { get; private set; }
 
@@ -59,6 +67,8 @@ public partial class DynamicBatchGridView : ComponentBase
     #endregion
 
     #region Private state
+    private const int ServerFetchPageSize = 500;
+
     private SageFinanceTab ActiveTab { get; set; } = SageFinanceTab.PostingStatus;
 
     private List<ExpandoObject> AllRows { get; set; } = new();
@@ -265,11 +275,15 @@ public partial class DynamicBatchGridView : ComponentBase
             .ToList()
         ?? new List<GridViewColumnDefinition>();
 
-    private bool IsCurrentPageFullySelected =>
-        Rows.Count > 0
-        && Rows.Select(r => GetRowGuid((IDictionary<string, object>)r))
-               .Where(g => g != Guid.Empty)
-               .All(g => SelectedRowGuids.Contains(g));
+    // CYB-579: the header checkbox covers every row matching the current search/status filter,
+    // not just the visible page. Rows hidden by a filter are never part of SelectedItems.
+    private IEnumerable<Guid> FilteredRowGuids =>
+        FilteredRows
+            .Select(r => GetRowGuid((IDictionary<string, object>)r))
+            .Where(g => g != Guid.Empty);
+
+    private bool AreAllFilteredRowsSelected =>
+        FilteredRowGuids.Any() && FilteredRowGuids.All(SelectedRowGuids.Contains);
 
     #endregion
 
@@ -303,6 +317,43 @@ public partial class DynamicBatchGridView : ComponentBase
         base.OnAfterRender(firstRender);
     }
 
+    private string GridWrapperDomId => $"dynamic-batch-grid-view-wrapper-{_gridWrapperInstanceId}";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_edgeAutoScrollAttached && ViewDefinition is not null && !IsLoading)
+        {
+            _edgeAutoScrollAttached = true;
+            await AttachEdgeAutoScrollAsync();
+        }
+    }
+
+    private async Task AttachEdgeAutoScrollAsync()
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync("cymbuildGridEdgeAutoScroll.attach", GridWrapperDomId);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_edgeAutoScrollAttached)
+        {
+            _ = JsRuntime.InvokeVoidAsync("cymbuildGridEdgeAutoScroll.detach", GridWrapperDomId);
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
     #endregion
 
     #region Data loading
@@ -324,30 +375,43 @@ public partial class DynamicBatchGridView : ComponentBase
             if (ViewDefinition is null)
                 return;
 
-            var request = new GridDataListRequest
-            {
-                GridCode = GridCode,
-                GridViewCode = ViewDefinition.Code,
-                Page = 1,
-                PageSize = IsSageSubmissionMonitorView ? 500 : 100,
-                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
-            };
-
-            var reply = await coreClient.GridDataListAsync(request);
-
             AllRows = new List<ExpandoObject>();
 
-            foreach (var row in reply.DataTable)
-            {
-                IDictionary<string, object> expando = new ExpandoObject();
+            var page = 1;
+            var totalRows = 0;
 
-                foreach (var column in row.Columns)
+            do
+            {
+                var request = new GridDataListRequest
                 {
-                    expando[column.Name] = column.Value;
+                    GridCode = GridCode,
+                    GridViewCode = ViewDefinition.Code,
+                    Page = page,
+                    PageSize = ServerFetchPageSize,
+                    ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
+                };
+
+                var reply = await coreClient.GridDataListAsync(request);
+                totalRows = reply.TotalRows;
+
+                if (reply.DataTable.Count == 0)
+                    break;
+
+                foreach (var row in reply.DataTable)
+                {
+                    IDictionary<string, object> expando = new ExpandoObject();
+
+                    foreach (var column in row.Columns)
+                    {
+                        expando[column.Name] = column.Value;
+                    }
+
+                    AllRows.Add((ExpandoObject)expando);
                 }
 
-                AllRows.Add((ExpandoObject)expando);
+                page++;
             }
+            while (AllRows.Count < totalRows);
 
             ApplyClientSideView();
         }
@@ -385,6 +449,9 @@ public partial class DynamicBatchGridView : ComponentBase
             .Skip((CurrentPage - 1) * PageSize)
             .Take(PageSize)
             .ToList();
+
+        // Keep the selection in step with the filter so actions never touch rows the user can no longer see.
+        RefreshSelectedItems();
     }
 
     private IEnumerable<ExpandoObject> ApplyStatusFilter(IEnumerable<ExpandoObject> source)
@@ -476,16 +543,12 @@ public partial class DynamicBatchGridView : ComponentBase
         StateHasChanged();
     }
 
-    private void ToggleSelectAllCurrentPage(ChangeEventArgs args)
+    private void ToggleSelectAllFilteredRows(ChangeEventArgs args)
     {
         var selectAll = args.Value is bool b && b;
 
-        foreach (var row in Rows)
+        foreach (var guid in FilteredRowGuids.ToList())
         {
-            var guid = GetRowGuid((IDictionary<string, object>)row);
-            if (guid == Guid.Empty)
-                continue;
-
             if (selectAll)
                 SelectedRowGuids.Add(guid);
             else
@@ -496,7 +559,7 @@ public partial class DynamicBatchGridView : ComponentBase
         StateHasChanged();
     }
 
-    private async Task RaiseSelectedItemsChangedAsync()
+    private void RefreshSelectedItems()
     {
         SelectedItems = FilteredRows
             .Where(row =>
@@ -507,6 +570,11 @@ public partial class DynamicBatchGridView : ComponentBase
             .ToList();
 
         ShowInvoiceMergeButton = CanInvoiceRequestRecordsBeMerged(SelectedItems);
+    }
+
+    private async Task RaiseSelectedItemsChangedAsync()
+    {
+        RefreshSelectedItems();
 
         if (OnSelectedItemsChanged.HasDelegate)
             await OnSelectedItemsChanged.InvokeAsync(SelectedItems);
@@ -541,11 +609,11 @@ public partial class DynamicBatchGridView : ComponentBase
         }
 
         if (IsBatchedTransactionsGrid()
-            && !items.Any(x => string.Equals(x.Text, "Preview Invoice/s", StringComparison.OrdinalIgnoreCase)))
+            && !items.Any(x => string.Equals(x.Text, "Preview Invoice(s)", StringComparison.OrdinalIgnoreCase)))
         {
             items.Insert(0, new GridActionMenuItem
             {
-                Text = "Preview Invoice/s",
+                Text = "Preview Invoice(s)",
                 Query = string.Empty,
                 Icon = "bi bi-eye"
             });
@@ -563,9 +631,9 @@ public partial class DynamicBatchGridView : ComponentBase
         {
             "Create Invoice" => "bi bi-currency-dollar",
             "Invoice Request → Create Invoice (Batch)" => "bi bi-receipt",
-            "Batch Delete" => "bi bi-trash",
+            //"Batch Delete" => "bi bi-trash",
             "Approve Invoice(s)" => "bi bi-check2-circle",
-            "Preview Invoice/s" => "bi bi-eye",
+            "Preview Invoice(s)" => "bi bi-eye",
             _ => "bi bi-lightning-charge"
         };
     }
@@ -602,7 +670,7 @@ public partial class DynamicBatchGridView : ComponentBase
             return;
         }
 
-        if (string.Equals(item.Text, "Preview Invoice/s", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(item.Text, "Preview Invoice(s)", StringComparison.OrdinalIgnoreCase))
         {
             await OpenInvoicePreviewModalAsync();
             return;
@@ -618,15 +686,15 @@ public partial class DynamicBatchGridView : ComponentBase
                 return;
         }
 
-        if (string.Equals(item.Text, "Batch Delete", StringComparison.OrdinalIgnoreCase))
-        {
-            var confirmed = await JsRuntime.InvokeAsync<bool>(
-                "confirm",
-                $"Delete the selected {SelectedItems.Count()} record(s)?");
+        //if (string.Equals(item.Text, "Batch Delete", StringComparison.OrdinalIgnoreCase))
+        //{
+        //    var confirmed = await JsRuntime.InvokeAsync<bool>(
+        //        "confirm",
+        //        $"Delete the selected {SelectedItems.Count()} record(s)?");
 
-            if (!confirmed)
-                return;
-        }
+        //    if (!confirmed)
+        //        return;
+        //}
 
         await PerformActionAsync(item);
     }
@@ -648,28 +716,50 @@ public partial class DynamicBatchGridView : ComponentBase
 
             await OnError(infoMessage);
 
-            foreach (var selectedItem in SelectedItems ?? Enumerable.Empty<ExpandoObject>())
+            // CYB-579: report progress per record. Grid actions keep their existing behaviour of
+            // stopping at the first failed record.
+            var selectedItems = (SelectedItems ?? new List<ExpandoObject>()).ToList();
+            var result = await BulkOperationRunner.RunAsync(
+                selectedItems,
+                async (selectedItem, _) =>
+                {
+                    if (selectedItem is not IDictionary<string, object> expandoDict)
+                        return BulkItemOutcome.Skipped;
+
+                    var recordGuid = GetRowGuidValue(
+                        expandoDict,
+                        "Guid",
+                        "RecordGuid",
+                        "DataObjectGuid",
+                        "TransactionGuid",
+                        "InvoiceRequestGuid");
+
+                    if (recordGuid == Guid.Empty)
+                        return BulkItemOutcome.Skipped;
+
+                    var response = await formHelper.GridMenuItemPostAsync(
+                        item.Query ?? string.Empty,
+                        recordGuid.ToString());
+
+                    if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+                        throw new Exception(response.ErrorReturned);
+
+                    return BulkItemOutcome.Succeeded;
+                },
+                async progress =>
+                {
+                    GridActionProgress = progress;
+                    await InvokeAsync(StateHasChanged);
+                },
+                stopOnFirstFailure: true);
+
+            if (result.Failures.Count > 0)
             {
-                if (selectedItem is not IDictionary<string, object> expandoDict)
-                    continue;
+                var processedBefore = result.Succeeded > 0
+                    ? $" ({result.Succeeded} of {result.Total} record(s) were processed before the failure)"
+                    : string.Empty;
 
-                var recordGuid = GetRowGuidValue(
-                    expandoDict,
-                    "Guid",
-                    "RecordGuid",
-                    "DataObjectGuid",
-                    "TransactionGuid",
-                    "InvoiceRequestGuid");
-
-                if (recordGuid == Guid.Empty)
-                    continue;
-
-                var response = await formHelper.GridMenuItemPostAsync(
-                    item.Query ?? string.Empty,
-                    recordGuid.ToString());
-
-                if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
-                    throw new Exception(response.ErrorReturned);
+                throw new Exception($"{result.Failures[0].Message}{processedBefore}");
             }
 
             var successMessage = PWAFunctions.GetMessageDisplayFromGridViewAction(
@@ -695,6 +785,7 @@ public partial class DynamicBatchGridView : ComponentBase
         finally
         {
             IsPerformingGridAction = false;
+            GridActionProgress = null;
             StateHasChanged();
         }
     }
@@ -1268,10 +1359,10 @@ public partial class DynamicBatchGridView : ComponentBase
         var viewName = ViewDefinition?.Name?.Trim();
 
         if (IsSageSubmissionMonitorView)
-            return "Search transactions, statuses, responses, errors...";
+            return "Search transactions, responses, errors...";
 
         if (!string.IsNullOrWhiteSpace(viewName))
-            return $"Search {viewName.ToLowerInvariant()} records, statuses, references...";
+            return $"Search {viewName.ToLowerInvariant()} records, references...";
 
         return "Search records, statuses, references...";
     }

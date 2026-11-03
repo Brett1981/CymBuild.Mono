@@ -205,14 +205,14 @@ public partial class BatchButtonMenu
                 item.FormHelper = formHelper;
                 await PerformGridAction.InvokeAsync(item);
             }
-            else if (item.Text == "Batch Delete")
-            {
-                var infoMessage = PWAFunctions.GetMessageDisplayFromGridViewAction(item, new Exception(), ShowMessageType.Information);
-                await OnError.InvokeAsync(infoMessage);
+            //else if (item.Text == "Batch Delete")
+            //{
+            //    var infoMessage = PWAFunctions.GetMessageDisplayFromGridViewAction(item, new Exception(), ShowMessageType.Information);
+            //    await OnError.InvokeAsync(infoMessage);
 
-                item.FormHelper = formHelper;
-                await PerformGridAction.InvokeAsync(item);
-            }
+            //    item.FormHelper = formHelper;
+            //    await PerformGridAction.InvokeAsync(item);
+            //}
             else if (item.Text == "Approve Invoice(s)")
             {
                 bool isConfirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure? This will prevent the transaction from being modified.");
@@ -238,7 +238,7 @@ public partial class BatchButtonMenu
                     ModalWindowIsVisible = true;
                 }
             }
-            else if (item.Text == "Preview Invoice/s")
+            else if (item.Text == "Preview Invoice(s)")
             {
                 await OpenInvoicePreviewModalAsync();
             }
@@ -671,8 +671,8 @@ public partial class BatchButtonMenu
                             icon = "bi bi-currency-dollar";
                         else if (item.Title == "Invoice Request ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ Create Invoice (Batch)")
                             icon = "bi bi-receipt";
-                        else if (item.Title == "Batch Delete")
-                            icon = "bi bi-trash";
+                        //else if (item.Title == "Batch Delete")
+                        //    icon = "bi bi-trash";
                         else if (item.Title == "Approve Invoice(s)")
                             icon = "bi bi-link-45deg";
 
@@ -695,7 +695,7 @@ public partial class BatchButtonMenu
                 if (GridRef?.Code == "BATCHEDTRANSACTIONS")
                     MenuItems?[0].Items.Add(new GridActionMenuItem()
                     {
-                        Text = "Preview Invoice/s",
+                        Text = "Preview Invoice(s)",
                         Icon = "bi bi-eye",
                         Query = ""
                     });

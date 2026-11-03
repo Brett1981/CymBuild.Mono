@@ -1,0 +1,53 @@
+{
+  "mode": "created",
+  "runGuid": "82503e0f-f30b-4c39-a287-becd030a57a3",
+  "comparedOnUtc": "2026-10-13 12:50:06",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SFin",
+      "objectName": "tvf_SageInboundDiagnostics",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInbound_ReconcileInvoiceTransaction",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundReceiptAndAllocation_Materialise",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundReceiptMaterialisation_AutoCorrect",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataApply_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataValidate_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 82503e0f-f30b-4c39-a287-becd030a57a3: selected 6 row(s), skipped 0, validated and accepted."
+}

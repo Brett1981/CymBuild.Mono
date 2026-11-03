@@ -20,6 +20,10 @@ namespace Concursus.Common.Shared.Models.Finance
             long externalTransactionId,
             CancellationToken cancellationToken = default);
 
+        Task<SageAllocationRecordResult> RecordAllocationAsync(
+            SageAllocationRecordRequest request,
+            CancellationToken cancellationToken = default);
+
         Task<SageReconcileAllocationResult> ReconcileAllocationAsync(
             long externalAllocationId,
             CancellationToken cancellationToken = default);
@@ -40,6 +44,12 @@ namespace Concursus.Common.Shared.Models.Finance
 
         Task MaterialiseReceiptAndAllocationAsync(
             long externalTransactionId,
+            CancellationToken cancellationToken = default);
+
+        Task ApplySageInvoiceDocumentNumberAsync(
+            Guid transactionGuid,
+            string sageDocumentNo,
+            int updatedByUserId,
             CancellationToken cancellationToken = default);
     }
 }

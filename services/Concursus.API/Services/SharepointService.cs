@@ -15,6 +15,8 @@ namespace Concursus.API.Services
     public sealed class SharepointService : ISharepointService
     {
         private static readonly StringComparer FolderNameComparer = StringComparer.OrdinalIgnoreCase;
+        private const int ConflictStatusCode = 409;
+        private const int ConflictLookupAttempts = 6;
 
         private static readonly List<string> DefaultFireStructuralBuildingFolders =
         [
@@ -78,6 +80,25 @@ namespace Concursus.API.Services
                     ["Fees"] = ["Quotations"],
                     ["Fees/Quotations"] = ["POs"]
                 }
+            };
+        }
+
+        // CYB-405: Building Safety Consultancy uses the same folders for Enquiries, Quotes and Jobs.
+        public SharepointDirectory GetFoldersForBuildingSafetyConsultancy()
+        {
+            return new SharepointDirectory
+            {
+                FolderNames =
+                [
+                    "Drawings",
+                    "Incoming Emails",
+                    "Outgoing Emails",
+                    "Fees Proposals",
+                    "Photographs",
+                    "Reports",
+                    "Technical Documents"
+                ],
+                SubFoldersToCreate = new Dictionary<string, List<string>>(FolderNameComparer)
             };
         }
 
@@ -284,27 +305,55 @@ namespace Concursus.API.Services
                 return existingFolder;
             }
 
-            var requestBody = new DriveItem
-            {
-                Name = folderName,
-                Folder = new Folder(),
-                AdditionalData = new Dictionary<string, object>
-                {
-                    ["@microsoft.graph.conflictBehavior"] = "rename"
-                }
-            };
+            var requestBody = CreateCanonicalFolderRequest(folderName);
 
-            var createdFolder = await graphServiceClient
-                .Drives[drive.Id]
-                .Items[parentItemId]
-                .Children
-                .PostAsync(requestBody)
-                .ConfigureAwait(false);
+            DriveItem? createdFolder;
+
+            try
+            {
+                createdFolder = await graphServiceClient
+                    .Drives[drive.Id]
+                    .Items[parentItemId]
+                    .Children
+                    .PostAsync(requestBody)
+                    .ConfigureAwait(false);
+            }
+            catch (ApiException ex) when (ex.ResponseStatusCode == ConflictStatusCode)
+            {
+                var concurrentlyCreatedFolder = await FindCanonicalFolderAfterConflictAsync(
+                    graphServiceClient,
+                    drive.Id!,
+                    parentItemId,
+                    folderName)
+                    .ConfigureAwait(false);
+
+                if (concurrentlyCreatedFolder == null)
+                {
+                    throw new InvalidOperationException(
+                        $"SharePoint reported that canonical folder '{folderName}' already exists under " +
+                        $"parent '{parentItemId}', but it could not be resolved after retrying.",
+                        ex);
+                }
+
+                existingFolders[folderName] = concurrentlyCreatedFolder;
+                Console.WriteLine(
+                    $"SharePoint folder '{folderName}' was created concurrently; using the canonical folder.");
+
+                return concurrentlyCreatedFolder;
+            }
 
             if (createdFolder == null || string.IsNullOrWhiteSpace(createdFolder.Id))
             {
                 throw new InvalidOperationException(
                     $"SharePoint folder '{folderName}' could not be created under parent '{parentItemId}'.");
+            }
+
+            if (!IsFolder(createdFolder) ||
+                !FolderNameComparer.Equals(createdFolder.Name, folderName))
+            {
+                throw new InvalidOperationException(
+                    $"SharePoint returned '{createdFolder.Name}' while creating canonical folder " +
+                    $"'{folderName}' under parent '{parentItemId}'. Auto-renamed core folders are not accepted.");
             }
 
             await TryPatchRecordTitleAsync(graphServiceClient, siteId, drive, createdFolder, folderName).ConfigureAwait(false);
@@ -313,6 +362,58 @@ namespace Concursus.API.Services
 
             Console.WriteLine($"Created SharePoint folder '{folderName}'.");
             return createdFolder;
+        }
+
+        private static async Task<DriveItem?> FindCanonicalFolderAfterConflictAsync(
+            GraphServiceClient graphServiceClient,
+            string driveId,
+            string parentItemId,
+            string folderName)
+        {
+            for (var attempt = 1; attempt <= ConflictLookupAttempts; attempt++)
+            {
+                var children = await GetChildrenAsync(graphServiceClient, driveId, parentItemId)
+                    .ConfigureAwait(false);
+
+                var canonicalFolder = children.FirstOrDefault(item =>
+                    IsFolder(item) && FolderNameComparer.Equals(item.Name, folderName));
+
+                if (canonicalFolder != null && !string.IsNullOrWhiteSpace(canonicalFolder.Id))
+                {
+                    return canonicalFolder;
+                }
+
+                if (attempt < ConflictLookupAttempts)
+                {
+                    // SharePoint can briefly return stale child listings after
+                    // a concurrent create. Keep the retry bounded.
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt)).ConfigureAwait(false);
+                }
+            }
+
+            return null;
+        }
+
+        internal static DriveItem CreateCanonicalFolderRequest(string folderName)
+        {
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                throw new ArgumentException("A canonical folder name is required.", nameof(folderName));
+            }
+
+            return new DriveItem
+            {
+                Name = folderName,
+                Folder = new Folder(),
+                AdditionalData = new Dictionary<string, object>
+                {
+                    // Canonical CymBuild folders must never be auto-renamed by
+                    // SharePoint (for example, "Emails (Incoming) 1"). If
+                    // another worker creates the folder concurrently, Graph
+                    // returns a conflict and the canonical folder is re-read.
+                    ["@microsoft.graph.conflictBehavior"] = "fail"
+                }
+            };
         }
 
         private static async Task TryPatchRecordTitleAsync(

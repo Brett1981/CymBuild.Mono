@@ -4,7 +4,7 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataRunSelection_Upsert]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataRunSelection_Upsert]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataRunSelection_Upsert]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128),
@@ -21,7 +21,14 @@ BEGIN
     DECLARE
         @RegistryGuid UNIQUEIDENTIFIER,
         @StagedDifferenceType NVARCHAR(30),
+        @TargetDatabaseName SYSNAME,
         @SelectionGuid UNIQUEIDENTIFIER;
+
+    SELECT
+        @TargetDatabaseName = run.TargetDatabaseName
+    FROM SMigration.Metadata_Run AS run
+    WHERE run.Guid = @RunGuid
+      AND run.RowStatus NOT IN (0,254);
 
     SELECT TOP (1)
         @RegistryGuid = tr.Guid,
@@ -42,6 +49,18 @@ BEGIN
 
     IF @StagedDifferenceType NOT IN (N'Insert', N'Update') AND ISNULL(@IsSelected, 0) = 1
         THROW 52101, 'Only Insert and Update metadata rows can be selected for apply.', 1;
+
+    IF ISNULL(@IsSelected, 0) = 1
+       AND EXISTS
+       (
+           SELECT 1
+           FROM SMigration.Metadata_IgnoredRecords AS ignored
+           WHERE ignored.DatabaseName = @TargetDatabaseName
+             AND ignored.RegistryGuid = @RegistryGuid
+             AND ignored.SourceRowGuid = @SourceRowGuid
+             AND ignored.RowStatus NOT IN (0,254)
+       )
+        THROW 52102, 'Ignored metadata records cannot be selected. Unignore the record before selecting it.', 1;
 
     SELECT TOP (1)
         @SelectionGuid = sel.Guid
@@ -117,5 +136,12 @@ BEGIN
               AND RowStatus NOT IN (0,254);
         END;
     END;
+
+    UPDATE SMigration.Metadata_Run
+    SET
+        RunStatus = N'Staged',
+        ValidatedOnUtc = NULL
+    WHERE Guid = @RunGuid
+      AND RowStatus NOT IN (0,254);
 END
 GO

@@ -36,6 +36,12 @@ public partial class FlexPropertyGroup
 
     [Parameter] public EditPage editPageRef { get; set; }
 
+    [Parameter] public EventCallback UpdateValidateBtnCallback { get; set; }
+    [Parameter] public Func<Task<bool>>? ValidateAddressCallback { get; set; }
+
+    private string ValidateBtnText = "Validate";
+    private string ValidateBtnCSS = "btn btn-primary";
+
     #endregion Public Properties
 
     // Default to false unless set from outside
@@ -55,7 +61,32 @@ public partial class FlexPropertyGroup
         foreach (var shoreInput in ChildInputs) shoreInput.RebindFromPropertyChange(inputUpdatedArgs);
     }
 
+    public void ChangeValidationBtnText(string Text, string CSSClass = "btn btn-primary")
+    {
+        ValidateBtnText = Text;
+        ValidateBtnCSS = CSSClass;
+    }
+
     #endregion Public Methods
+
+    #region Validation Button
+
+    private async Task OnValidateClickAsync()
+    {
+        if (ValidateAddressCallback is null)
+        {
+            return;
+        }
+
+        var isValid = await ValidateAddressCallback.Invoke();
+
+        if (isValid)
+        {
+            ChangeValidationBtnText("Validated", "btn btn-success");
+        }
+    }
+
+    #endregion Validation Button
 
     #region Protected Methods
 
@@ -169,10 +200,9 @@ public partial class FlexPropertyGroup
 
     private string GetPropertyHostStyle(API.Core.EntityProperty entityProperty, DataProperty dataProperty)
     {
-        if (dataProperty.IsInvalid || !string.IsNullOrWhiteSpace(dataProperty.ValidationMessage))
-        {
-            return "grid-column: 1 / -1 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important;";
-        }
+        // CYB-575: a field showing validation keeps its normal width. Forcing it onto a full row made
+        // fields jump between half and full width as messages appeared and cleared; the CYB-575 wrap
+        // rule in FlexPropertyGroup.razor.css now drops the message below the control instead.
 
         // Only Row property groups use content-aware single-line text sizing.
         // Column property groups intentionally keep the stable full-width stacked behaviour.
@@ -423,8 +453,38 @@ public partial class FlexPropertyGroup
         };
     }
 
+    /// <summary>
+    /// The Enquiry page's "Enter New Agent/Client/Asset Details" checkbox EntityPropertyGuids,
+    /// mapped to the DuplicateCheckButton.EntityGroupSection key used to validate that section.
+    /// Kept in sync with DuplicateCheckButton.SectionCheckboxGuids.
+    /// </summary>
+    private static readonly Dictionary<string, string> EnquiryNewDetailsCheckboxGuids = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "9c333b64-2f44-4833-bd6b-68571178f195", "Agent" },
+        { "0279fba4-01d2-4c7c-aee9-a29cfe45174c", "Client" },
+        { "83730cf2-ac67-4064-9590-0a94800d03ce", "Asset" },
+    };
+
     private void HandleInputUpdated(InputUpdatedArgs inputUpdatedArgs)
     {
+        // Checking one of these boxes means the user is entering a brand new Agent/Client/Asset
+        // record inline, so that section must be validated (duplicate-checked) again before the
+        // page can be saved. Unchecking it means there's nothing left to validate for it.
+        if (editPageRef is not null
+            && inputUpdatedArgs.NewValue is not null
+            && EnquiryNewDetailsCheckboxGuids.TryGetValue(inputUpdatedArgs.EntityId.ToString(), out var validationSectionKey)
+            && inputUpdatedArgs.NewValue.Is(BoolValue.Descriptor))
+        {
+            if (inputUpdatedArgs.NewValue.Unpack<BoolValue>().Value)
+            {
+                editPageRef.ValidationRequired(validationSectionKey);
+            }
+            else
+            {
+                editPageRef.DataHasBeenValidated(validationSectionKey);
+            }
+        }
+
         inputUpdated.InvokeAsync(inputUpdatedArgs);
     }
 

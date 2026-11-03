@@ -1,0 +1,100 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "29d27954-87ba-4146-8a08-df45f8218593",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_UAT",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 7,
+  "ArtifactCount": 7,
+  "GeneratedOnUtc": "2026-09-18T13:48:08.1310320Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "aee8e248-d28c-4a7c-af6d-cbf64c6dc27a",
+      "ObjectType": "Function",
+      "SchemaName": "SSop",
+      "ObjectName": "tvf_QuotesValidate",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2A202AA174D6D851A9C3397AB5F3084C6CCBAE29A779086EA4EF6A62610DD0E7",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql",
+      "FileSha256": "6CBA6C44F689658409D6526D75D9AD5D188C297A1E11646531F6BC54402D36F2",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "3fdf2f0e-5984-4b7e-883e-aed479a944df",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SJob",
+      "ObjectName": "ActivityCreateInvoiceRequest",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "CBAD764B47FD52C9550D68090DD98143B45728AD3B29544B7C5CDABB0BBDCC6A",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.ActivityCreateInvoiceRequest.sql",
+      "FileSha256": "288AA1BA102F8C4299C565F6B9B934CC97D1BB3501A5635ED35766BFC5B93F94",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "6ce494a6-d185-41bc-ad6d-78ca0f217801",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "EnquiryCreateQuotes",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "A6CE064C567AB81A17BE05643ECC7719821B28F1963945D857CAC76D4723EF7E",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.EnquiryCreateQuotes.sql",
+      "FileSha256": "CAF72A6D6DEA68E40AD0A8982B22186367B4EF373E11017832C0E1706A14D3AB",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "f1a1c7fe-b5a3-4ece-a002-3dd6ad0cb56a",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuoteCreateJobs",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2D97A49F7C032824116D3F0DAA13A703C13B1D99C645007BB6B42C38C35C60B3",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuoteCreateJobs.sql",
+      "FileSha256": "6C547C41D8CD21A4B274620CAED073329950BA1495636717023DE39A57537342",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "b18be455-8f87-4089-bb14-c6ffce16a08f",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesRevise",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "EFBC0AD498805A80D3A79757B126DCE8B05A6605F5EF3AE7C557626A6A134151",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesRevise.sql",
+      "FileSha256": "563D37615857D29AA7D5E5A6A3A4226A718E3F22D26D42A1C85EDEAB22347A07",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "a9ccce06-9075-455e-afee-c21d58e1c09e",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "06F28C06463284872FB6A56E9F02DBB56B1D9D81CED23DDCCD49AA01E25453DC",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql",
+      "FileSha256": "9CE4A6BFD543E4C79F51399929313F8508F4B8770EBD77A17CC0CBD6BD081850",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "78c3514e-706b-4d45-b5a6-00de795379b0",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuoteTemplatesCreateQuote",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "AEF28D9E764B28A9F9FEAE66BB669B55A27421ED881F152E5107957C34E1005C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuoteTemplatesCreateQuote.sql",
+      "FileSha256": "A8434C3C3F7C0E89586E68F85579A3CBD3A59A58A6347B7C87BE97402B6C3138",
+      "WasSynchronized": false
+    }
+  ]
+}

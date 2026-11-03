@@ -77,51 +77,57 @@
 }
 
 .cb-job-summary-card--new {
+    /* Socotec brand cyan (matches the approved dp-finance-header gradient in DataPillRow.razor.css) */
     --cb-job-summary-gradient: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
     --cb-job-summary-border: #bae6fd;
-    --cb-job-summary-accent: #0284c7;
-    --cb-job-summary-orb: rgba(14, 165, 233, 0.12);
+    --cb-job-summary-accent: #1C8ED6;
+    --cb-job-summary-orb: rgba(28, 142, 214, 0.12);
     --cb-job-summary-label: #0369a1;
 }
 
 .cb-job-summary-card--active {
-    --cb-job-summary-gradient: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-    --cb-job-summary-border: #c7d2fe;
-    --cb-job-summary-accent: #4f46e5;
-    --cb-job-summary-orb: rgba(79, 70, 229, 0.12);
-    --cb-job-summary-label: #4338ca;
+    /* Socotec brand mid-blue, replacing the off-brand indigo */
+    --cb-job-summary-gradient: linear-gradient(135deg, #eaf3fb 0%, #d3e6f3 100%);
+    --cb-job-summary-border: #a9cbe3;
+    --cb-job-summary-accent: #0A5AA6;
+    --cb-job-summary-orb: rgba(10, 90, 166, 0.12);
+    --cb-job-summary-label: #0B2E4A;
 }
 
 .cb-job-summary-card--info {
-    --cb-job-summary-gradient: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    --cb-job-summary-border: var(--cb-v2-info-border, #bfdbfe);
-    --cb-job-summary-accent: var(--cb-v2-info, #1d4ed8);
-    --cb-job-summary-orb: rgba(37, 99, 235, 0.12);
-    --cb-job-summary-label: #1d4ed8;
+    /* Socotec brand teal ("Driving Performance"), replacing the off-brand Tailwind blue */
+    --cb-job-summary-gradient: linear-gradient(135deg, #effaf9 0%, #d6f1ef 100%);
+    --cb-job-summary-border: #a3dcd8;
+    --cb-job-summary-accent: #2FB3AC;
+    --cb-job-summary-orb: rgba(47, 179, 172, 0.14);
+    --cb-job-summary-label: #17726D;
 }
 
 .cb-job-summary-card--success {
-    --cb-job-summary-gradient: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-    --cb-job-summary-border: var(--cb-v2-success-border, #a7f3d0);
-    --cb-job-summary-accent: var(--cb-v2-success, #16a34a);
-    --cb-job-summary-orb: rgba(22, 163, 74, 0.12);
-    --cb-job-summary-label: var(--cb-v2-success-text, #047857);
+    /* Socotec brand lime green ("Straightforward"), replacing the off-brand Tailwind emerald */
+    --cb-job-summary-gradient: linear-gradient(135deg, #f5faec 0%, #e4f2cf 100%);
+    --cb-job-summary-border: #c5e19c;
+    --cb-job-summary-accent: #8DC63F;
+    --cb-job-summary-orb: rgba(141, 198, 63, 0.16);
+    --cb-job-summary-label: #4A7A1C;
 }
 
 .cb-job-summary-card--warning {
-    --cb-job-summary-gradient: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-    --cb-job-summary-border: var(--cb-v2-warning-border, #fde68a);
-    --cb-job-summary-accent: var(--cb-v2-warning, #b45309);
-    --cb-job-summary-orb: rgba(245, 158, 11, 0.14);
-    --cb-job-summary-label: #92400e;
+    /* Socotec brand orange, replacing the off-brand Tailwind amber */
+    --cb-job-summary-gradient: linear-gradient(135deg, #fff7ee 0%, #fde6cc 100%);
+    --cb-job-summary-border: #f9c88e;
+    --cb-job-summary-accent: #F7941D;
+    --cb-job-summary-orb: rgba(247, 148, 29, 0.14);
+    --cb-job-summary-label: #8F4E05;
 }
 
 .cb-job-summary-card--danger {
-    --cb-job-summary-gradient: linear-gradient(135deg, #fff1f2 0%, #fee2e2 100%);
-    --cb-job-summary-border: var(--cb-v2-danger-border, #fecaca);
-    --cb-job-summary-accent: var(--cb-v2-danger, #b91c1c);
-    --cb-job-summary-orb: rgba(220, 38, 38, 0.12);
-    --cb-job-summary-label: #991b1b;
+    /* Socotec brand coral ("Human"), replacing the off-brand Tailwind red */
+    --cb-job-summary-gradient: linear-gradient(135deg, #fef1f3 0%, #fbdbe0 100%);
+    --cb-job-summary-border: #f5a9b5;
+    --cb-job-summary-accent: #EC4863;
+    --cb-job-summary-orb: rgba(236, 72, 99, 0.12);
+    --cb-job-summary-label: #A21D37;
 }
 
 .cb-job-summary-card--neutral {
@@ -139,11 +145,12 @@
     --cb-job-summary-label: #475569;
 }
 .cb-job-summary-card--review {
-    --cb-job-summary-gradient: linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%);
-    --cb-job-summary-border: #ddd6fe;
-    --cb-job-summary-accent: #7c3aed;
-    --cb-job-summary-orb: rgba(124, 58, 237, 0.12);
-    --cb-job-summary-label: #6d28d9;
+    /* Socotec brand navy, replacing the off-brand violet */
+    --cb-job-summary-gradient: linear-gradient(135deg, #eef2f6 0%, #dde6ee 100%);
+    --cb-job-summary-border: #b7c8d6;
+    --cb-job-summary-accent: #0B2E4A;
+    --cb-job-summary-orb: rgba(11, 46, 74, 0.12);
+    --cb-job-summary-label: #0B2E4A;
 }
 
 

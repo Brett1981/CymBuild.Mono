@@ -1,12 +1,12 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[TransactionExportsToSageUpsert]')
+PRINT (N'Create or alter procedure [SFin].[TransactionExportsToSageUpsert]')
 GO
 
 
 
-CREATE PROCEDURE [SFin].[TransactionExportsToSageUpsert]
+CREATE OR ALTER PROCEDURE [SFin].[TransactionExportsToSageUpsert]
 	(	@InclusiveToDate DATE,
 		@OrganisationalUnitGuid UNIQUEIDENTIFIER,
 		@Guid UNIQUEIDENTIFIER
@@ -57,6 +57,12 @@ BEGIN
 			AND (tt.Name = N'Invoice')
 			AND (t.LegacyId IS NULL)
 			AND	(t.OrganisationalUnitId = @OrganisationalUnitId)
+			-- A populated Sage reference means Finance has already created the invoice
+			-- manually in Sage. Do not include it in this legacy export, otherwise the
+			-- export could create a duplicate Sage transaction.
+			AND (NULLIF(LTRIM(RTRIM(ISNULL(t.SageTransactionReference, N''))), N'') IS NULL)
+			AND (NULLIF(LTRIM(RTRIM(ISNULL(t.SageInvoiceNumber, N''))), N'') IS NULL)
+			AND (NULLIF(LTRIM(RTRIM(ISNULL(t.SageSalesOrderNumber, N''))), N'') IS NULL)
 			AND (NOT EXISTS
 			(
 				SELECT	1

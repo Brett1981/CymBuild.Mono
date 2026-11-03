@@ -96,6 +96,12 @@ SELECT TOP (1)
        CAST(t.Batched AS bit)                                     AS Batched,
        t.RowStatus                                                AS TransactionRowStatus,
 
+       CONVERT(int, tt.ID)                                       AS TransactionTypeId,
+       tt.Guid                                                    AS TransactionTypeGuid,
+       CAST(tt.Name AS nvarchar(50))                              AS TransactionTypeName,
+       CAST(tt.IsNegated AS bit)                                 AS TransactionTypeIsNegated,
+       CAST(tt.IsBank AS bit)                                    AS TransactionTypeIsBank,
+
        t.JobID                                                    AS JobId,
        j.Guid                                                     AS JobGuid,
        CAST(ISNULL(j.Number, N'') AS nvarchar(100))               AS JobNumber,
@@ -137,6 +143,10 @@ FROM   SFin.TransactionBatchTransitions AS tbt
 JOIN   SFin.Transactions AS t
        ON t.ID = tbt.TransactionID
       AND t.Guid = tbt.TransactionGuid
+JOIN   SFin.TransactionTypes AS tt
+       ON tt.ID = t.TransactionTypeID
+      AND tt.RowStatus NOT IN (0, 254)
+      AND tt.IsActive = 1
 LEFT JOIN SCrm.Accounts AS acc
        ON acc.ID = t.AccountID
       AND acc.RowStatus NOT IN (0, 254)
@@ -184,6 +194,12 @@ WHERE  tbt.Guid = @TransitionGuid
                 TransactionNumber = reader.GetString(reader.GetOrdinal("TransactionNumber")),
                 Batched = reader.GetBoolean(reader.GetOrdinal("Batched")),
                 RowStatus = reader.GetByte(reader.GetOrdinal("TransactionRowStatus")),
+
+                TransactionTypeId = reader.GetInt32(reader.GetOrdinal("TransactionTypeId")),
+                TransactionTypeGuid = reader.GetGuid(reader.GetOrdinal("TransactionTypeGuid")),
+                TransactionTypeName = reader.GetString(reader.GetOrdinal("TransactionTypeName")),
+                TransactionTypeIsNegated = reader.GetBoolean(reader.GetOrdinal("TransactionTypeIsNegated")),
+                TransactionTypeIsBank = reader.GetBoolean(reader.GetOrdinal("TransactionTypeIsBank")),
 
                 JobId = reader.IsDBNull(reader.GetOrdinal("JobId"))
                     ? null

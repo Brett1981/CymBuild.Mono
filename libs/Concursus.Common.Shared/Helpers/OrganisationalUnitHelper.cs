@@ -13,7 +13,9 @@ namespace Concursus.Common.Shared.Helpers
             { OrganisationalUnits.FireSafety, "FDB20506-DCB0-4911-BDD1-EED2C27225AF" },
             { OrganisationalUnits.FireEngineering, "E3F5F61F-0313-44D5-B47A-669408A067B1" },
             { OrganisationalUnits.StructuralEngineering, "AEBD6E67-7883-405D-A234-8377722281C1" },
-            { OrganisationalUnits.BuildingEnvelope, "1882472F-9976-4D25-8BF6-A91F7BE1AA3F" }
+            { OrganisationalUnits.BuildingEnvelope, "1882472F-9976-4D25-8BF6-A91F7BE1AA3F" },
+            { OrganisationalUnits.BuildingSafetyConsultancy, "FC76773B-841E-46EF-BCDD-511A7E38BE74" },
+            { OrganisationalUnits.FireEngineeringSIL, "5EE48AEB-B85F-4F2F-9010-B8C4B1C85DEB" }
             };
 
         // Reverse dictionary for lookup by ID

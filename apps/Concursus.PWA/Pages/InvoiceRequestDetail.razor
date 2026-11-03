@@ -17,7 +17,8 @@
           CloseWindow="@CloseWindow"
           GridUpdated="@GridUpdated"
           IsDetailWindowed="IsDetailWindowed"
-          TransientVirtualProperties="@TransientVirtualProperties">
+          TransientVirtualProperties="@TransientVirtualProperties"
+          DataObjectLoaded="@HandleDataObjectLoaded">
     <FormTitle>
         <i class="bi bi-person-fill-lock" style="font-size: 1.2rem;"></i>
     </FormTitle>
@@ -37,9 +38,12 @@
                             RecordGuid="@RecordGuid"
                             inputUpdated="@editPage.HandleInputUpdated"/>
 
+
         <DynamicGrid GridCode="INVOICEREQUESTITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
 
         <DynamicGrid GridCode="JOBFINANCEMEMO" ParentGuid="@JobFinanceMemoParentGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+
+        <DynamicGrid GridCode="WIPNOTES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
     </FormBody>
 </EditPage>
 
@@ -82,30 +86,25 @@
     }
 
 
-    protected override void OnAfterRender(bool firstRender)
+    // CYB-499: the InvoiceRequest's "JobId" property (see SCore.EntityQueries "Invoice Request
+    // Read") is actually the linked Job's Guid, selected as `j.Guid as JobId`.
+    private const string JobIdEntityPropertyGuid = "dddabd42-c753-48fa-800f-a73c88fcadcd";
+
+    public static string? ResolveJobFinanceMemoParentGuid(DataObject dataObject)
     {
-        /*
-        *  [CBLD-514]
-        *
-        * Instead of writing a new table-value function, we simply
-         * extract the job guid from the invoice request and then pass it to the grid as the ParentGuid.
-         *
-         */
-        if(!firstRender){
-            //Handling for the finance memo grid - we need the jobID.
-            if (editPage.dataObject != null)
-            {
-                var DataObject = editPage.dataObject;
-                var JobIdProperty = DataObject.DataProperties.Where(x => x.EntityPropertyGuid == "dddabd42-c753-48fa-800f-a73c88fcadcd").FirstOrDefault();
+        var jobIdProperty = dataObject.DataProperties.FirstOrDefault(x => x.EntityPropertyGuid == JobIdEntityPropertyGuid);
+        return jobIdProperty?.Value.Unpack<StringValue>().Value;
+    }
 
-                if (JobIdProperty != null && JobFinanceMemoParentGuid == null)
-                {
-
-                    JobFinanceMemoParentGuid = JobIdProperty.Value.Unpack<StringValue>().Value;
-                    StateHasChanged();
-                }
-            }
+    // CYB-499: must hook EditPage's DataObjectLoaded event, not OnAfterRender - OnAfterRender only
+    // fires when this component re-renders, not when the child EditPage finishes its own async load.
+    private void HandleDataObjectLoaded(DataObject dataObject)
+    {
+        var jobGuid = ResolveJobFinanceMemoParentGuid(dataObject);
+        if (jobGuid != null)
+        {
+            JobFinanceMemoParentGuid = jobGuid;
+            StateHasChanged();
         }
-        base.OnAfterRender(firstRender);
     }
 }

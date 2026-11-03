@@ -66,7 +66,7 @@
             }
 
             <div class="invoice-schedule-total-panel">
-                <div class="invoice-schedule-total-title">Monthly Drawdowns</div>
+                <div class="invoice-schedule-total-title">@GetMonthlyDrawdownsTitle()</div>
 
                 @if (_totalsLoading)
                 {
@@ -275,6 +275,17 @@
                 _totalsRefreshQueued = false;
             }
         });
+    }
+
+    private string GetMonthlyDrawdownsTitle() => FormatMonthlyDrawdownsTitle(_totals?.Frequency);
+
+    /// <summary>
+    /// Extracted as a pure, internal function so the CYB-279 frequency-persistence heading
+    /// can be unit tested directly (apps/Concursus.PWA.Tests) without rendering the page.
+    /// </summary>
+    internal static string FormatMonthlyDrawdownsTitle(string? frequency)
+    {
+        return string.IsNullOrWhiteSpace(frequency) ? "Monthly Drawdowns" : $"{frequency} Drawdowns";
     }
 
     private static string FormatCurrency(decimal value)

@@ -95,14 +95,7 @@
                                 <td class="detail-header-cell center">QTY</td>
                                 <td class="detail-header-cell center">UNIT<br />PRICE</td>
                                 <td class="detail-header-cell center">AMOUNT<br />EXC. VAT</td>
-                                <td class="detail-header-cell center detail-header-cell--vertical">
-                                    <span class="detail-header-cell--stacked">
-                                        <span>C</span>
-                                        <span>O</span>
-                                        <span>D</span>
-                                        <span>E</span>
-                                    </span>
-                                </td>
+                                <td class="detail-header-cell center">CODE</td>
                                 <td class="detail-header-cell center">VAT<br />AMOUNT</td>
                             </tr>
 
@@ -176,9 +169,9 @@
                         <div class="invoice-footer__col preserve-lines">
                             Cheques should be crossed and made payable to
                             SOCOTEC UK Limited. Quoting the following:
-                            CUSTOMER REFERENCE:
+                            CUSTOMER REFERENCE: @Model.CustomerReference
 
-                            INVOICE No.
+                            INVOICE No. @Model.InvoiceNumber
                         </div>
 
                         <div class="invoice-footer__col preserve-lines">

@@ -1,0 +1,146 @@
+@using Concursus.PWA.Classes
+@using Concursus.API.Client.Models
+@using Concursus.API.Client
+@using Newtonsoft.Json
+@using System.Web
+
+<button class="@ButtonCss ms-2"
+        disabled="@(IsBusy || ButtonText == "Validated")"
+        @onclick:stopPropagation
+        @onclick="OnValidateClickAsync">
+    @ButtonText
+</button>
+
+@if (ShowModal)
+{
+    <div class="shore-input-modal-backdrop"></div>
+    <div class="shore-input-modal-shell" role="dialog" aria-modal="true">
+        <div class="shore-input-modal-card">
+            <div class="shore-input-modal-header">
+                <div class="shore-input-modal-title-wrap">
+                    <div class="shore-input-modal-title">
+                        <i class="bi bi-arrow-up-right-square"></i>
+                        <span>Possible @EntityGroupSection Duplicates</span>
+                    </div>
+                    <div class="shore-input-modal-subtitle">
+                        Please check whether this @EntityGroupSection.ToLowerInvariant() already exists before saving.
+                    </div>
+                </div>
+
+                <div class="shore-input-modal-actions">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-light"
+                            title="Close"
+                            @onclick="CloseModal">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="shore-input-modal-body">
+
+                @if (HasDuplicates)
+                {
+                    <div class="alert alert-info small mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Possible duplicate @DuplicateNounPlural found.</strong><br />
+                        We have identified one or more existing @DuplicateNounPlural that closely match the details you have entered.
+                        Please review the list below before continuing.
+                        <br /><br />
+                        If you find the @DuplicateNounSingular you are creating in the list, select it and click
+                        <strong>Use Selected</strong>. This will use the existing record instead of creating a duplicate.
+                        <br /><br />
+                        If none of the listed @DuplicateNounPlural match, click <strong>Cancel</strong> to continue creating the new record.
+                    </div>
+
+                    <div class="d-flex flex-row justify-content-around">
+                        <ShoreLookupInput Value="@DuplicateSelection"
+                                          ValueChanged="@OnNativeLookupValueChangedAsync"
+                                          LoadItems="@LoadDuplicateValues"
+                                          Placeholder="Select possible duplicate"
+                                          ReadOnly="false"
+                                          IsInvalid="false"
+                                          CssClass="w-100" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="HandleModelOnClick">
+                            <span class="bi bi bi-info-circle"></span>
+                        </button>
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button"
+                                class="btn btn-success"
+                                @onclick="DuplicatePresent">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            Use Selected
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-danger"
+                                @onclick="DuplicateNotPresent">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                            Cancel
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-success small mb-3">
+                        <i class="bi bi-check-circle me-2"></i>
+                        <strong>No potential duplicates found.</strong><br />
+                        The details you have entered do not closely match any existing @DuplicateNounPlural.
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button"
+                                class="btn btn-success"
+                                @onclick="CloseModal">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            Continue
+                        </button>
+                    </div>
+                }
+
+            </div>
+        </div>
+    </div>
+
+    @if (SecondaryModalIsVisible)
+    {
+        var informationComponentType = InformationPageComponentType;
+
+        <!-- Secondary modal for inspecting the selected duplicate record -->
+        <div class="shore-input-modal-backdrop"></div>
+        <div class="shore-input-modal-shell" role="dialog" aria-modal="true">
+            <div class="shore-input-modal-card">
+                <div class="shore-input-modal-header">
+                    <div class="shore-input-modal-title-wrap">
+                        <div class="shore-input-modal-title">
+                            <i class="bi bi-info-circle"></i>
+                            <span>Information</span>
+                        </div>
+                    </div>
+                    <div class="shore-input-modal-actions">
+                        <button type="button" class="btn btn-sm btn-outline-light" title="Maximise" @onclick="() => { SecondaryModalIsVisible = !SecondaryModalIsVisible; }">
+                            <i class="bi bi-arrows-fullscreen"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-light" title="Close" @onclick="() => { SecondaryModalIsVisible = !SecondaryModalIsVisible; }">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="shore-input-modal-body">
+                    @if (informationComponentType is not null)
+                    {
+                        <DynamicComponent Type="@informationComponentType" Parameters="@_detailPageParameters" />
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning mb-0">
+                            Could not resolve information component: @TargetPageUri
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+}

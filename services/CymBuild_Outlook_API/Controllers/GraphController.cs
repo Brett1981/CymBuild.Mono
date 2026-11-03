@@ -1113,7 +1113,7 @@ namespace CymBuild_Outlook_API.Controllers
                 // ---------------------------------------------------------------------
                 // ATTACHMENT UPLOAD (best effort)
 
-                if (request.ExtractAttachments)
+                if (request.Attachments?.Count > 0)
                 {
                     try
                     {

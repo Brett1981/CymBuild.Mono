@@ -1,0 +1,5 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"9bc90929-7cae-42b0-b4c6-da8b4edd76cb","Constraint","SFin","FK_InvoiceRequests_InvoicePaymentStatus","InvoiceRequests","MissingInTarget","True","False","True","True"
+"1046264f-a49d-44d3-a247-2d82914c8c7e","Constraint","SFin","FK_InvoiceSchedules_ActivityMilestoneConfigurationId","InvoiceSchedules","MissingInTarget","True","False","True","True"
+"29a1c687-bd03-480c-9b33-158f95e153f7","Constraint","SFin","FK_InvoiceSchedules_RibaConfigurationId","InvoiceSchedules","MissingInTarget","True","False","True","True"
+"f949796e-301f-4877-849f-2099e71b696a","Constraint","SFin","FK_InvoiceSchedules_TriggerId","InvoiceSchedules","MissingInTarget","True","False","True","True"

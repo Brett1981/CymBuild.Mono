@@ -1,0 +1,18 @@
+{
+  "mode": "accepted",
+  "runGuid": "8392429a-a1d2-4105-ada4-91bf52faffbb",
+  "comparedOnUtc": "2026-10-16 11:47:08",
+  "selected": [
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataQuerySignature_Check",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Reusing accepted run 8392429a-a1d2-4105-ada4-91bf52faffbb, compared 2026-10-16 11:47:08 UTC (within 25 minutes)."
+}

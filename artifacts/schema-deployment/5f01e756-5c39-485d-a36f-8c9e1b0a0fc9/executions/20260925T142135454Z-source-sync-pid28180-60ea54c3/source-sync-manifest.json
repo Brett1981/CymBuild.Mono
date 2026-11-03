@@ -1,0 +1,76 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "5f01e756-5c39-485d-a36f-8c9e1b0a0fc9",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 5,
+  "ArtifactCount": 5,
+  "GeneratedOnUtc": "2026-09-25T14:21:39.6124958Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "1e7968e9-d943-4dd8-bd10-2a7db121d554",
+      "ObjectType": "View",
+      "SchemaName": "SJob",
+      "ObjectName": "Job_FeeDrawdown",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "9179C597A69859BABE9BD5D8C09D3D0D9358A11FC1AC1F0F4368139509DDE866",
+      "RelativePath": "Database/CymBuild_DB/Schema/Views/SJob.Job_FeeDrawdown.sql",
+      "FileSha256": "9BD7325FB91A69EB95B40FCFEEC8FA2266596B3299D786C3FA8316F93FEA76D5",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "ef5bb756-6180-402b-b71c-3c365a2cca4e",
+      "ObjectType": "Function",
+      "SchemaName": "SJob",
+      "ObjectName": "FeeAmendmentsValidate",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "099A20339908E249E28D7A703665D1F93302ADF5C0D9129CD62401330A5FCA48",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SJob.FeeAmendmentsValidate.sql",
+      "FileSha256": "094900C3712BC9DA2EE07DA904887CBB210037498F80CBDEA30F7074B13CB6C2",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "80adb2ba-ae66-4f69-949d-6252d535288a",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SJob",
+      "ObjectName": "FeeAmendmentChaseUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "46F23FC5E8DDD918ED33FD0E45A3F24EDB3B3B39B95F2970EA46DA3E32C17802",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentChaseUpsert.sql",
+      "FileSha256": "DD1F42B4C71E1A0F5147CF2EA8D870DFA51C74DE6B248280D188B77B9D217023",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "c3dfe5b2-b176-44e8-81ec-2d53e6c64fdd",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SJob",
+      "ObjectName": "FeeAmendmentsUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "8CC6193EC2D573D3B13C756E795618E5D4B2B135B10C7ED5470B2AB0F81BEAE8",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentsUpsert.sql",
+      "FileSha256": "D03284F504F68EF42302AD44E799CB75165FBD595E69A9B89F5C558B49383893",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "cae1f0df-8983-4d93-937c-d35f594b85c6",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataApply_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "9342B9B6F9893FCAF088F990C787756B47CE1158A37499FF876F21ECE886C7AD",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataApply_Run.sql",
+      "FileSha256": "BBED092401C1C02B92C4EFEDC1264D6F219E26409FB91E093FFB8209ABEB2139",
+      "WasSynchronized": false
+    }
+  ]
+}

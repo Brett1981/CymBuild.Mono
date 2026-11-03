@@ -347,7 +347,6 @@
 .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-date ::deep .input-group:not(.shore-input-multiline-group),
 .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-datetime ::deep .input-group:not(.shore-input-multiline-group) {
     display: flex !important;
-    flex-wrap: nowrap !important;
     align-items: stretch !important;
     width: 100% !important;
     min-width: 0 !important;
@@ -597,7 +596,7 @@
 .flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-singleline-text ::deep .input-group:not(.shore-input-multiline-group) > .form-control {
     flex: 1 1 auto !important;
     width: 1% !important;
-    min-width: 6rem !important;
+    min-width: 20rem !important;
     max-width: 100% !important;
 }
 
@@ -710,23 +709,9 @@
 /* END 14T-R2 row group full-width responsive grid */
 
 /* BEGIN 15C-R1 validation and lookup stacking repair */
-/* A required field needs the full row while its feedback is visible. This prevents the feedback
-   text becoming an accidental third inline control and gives the user a stable correction area. */
-.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.invalid-feedback:not(:empty)),
-.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.field-validation-error:not(:empty)),
-.flexpropertygroup-fields.is-row > .flexpropertygroup-field:has(.validation-message:not(:empty)) {
-    grid-column: 1 / -1 !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-}
-
-.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-validation-visible {
-    grid-column: 1 / -1 !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-}
+/* CYB-575: a field showing validation no longer takes the full row (that made fields jump between
+   half and full width as messages appeared and cleared). The CYB-554/575 wrap rule below drops the
+   feedback underneath the control within the field's normal width instead. */
 
 /* Raise the complete active field and group stacking contexts, not only the menu itself. */
 .flexpropertygroup:has(.shore-lookup.is-open),
@@ -742,3 +727,13 @@
     z-index: 2147481200 !important;
 }
 /* END 15C-R1 validation and lookup stacking repair */
+
+/* BEGIN CYB-554 row validation feedback wrap fix */
+/* R20/R21 (DATE) and R22 (single-line text) force the Row-group input-group to nowrap so the label
+   and control stay on one line. That also traps ShoreInput's full-width invalid-feedback child on
+   the same line, so the "Required" message squeezes the control to nothing. Let only fields that
+   are showing validation wrap, so the feedback drops below the label and control. */
+.flexpropertygroup-fields.is-row > .flexpropertygroup-field.is-validation-visible ::deep .input-group:not(.shore-input-multiline-group) {
+    flex-wrap: wrap !important;
+}
+/* END CYB-554 row validation feedback wrap fix */

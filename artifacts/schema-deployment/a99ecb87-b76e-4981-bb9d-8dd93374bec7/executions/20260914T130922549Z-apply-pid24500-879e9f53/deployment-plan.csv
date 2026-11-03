@@ -1,0 +1,7 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"eece2550-d6fc-415c-83a5-920e1fc3620a","Table","SMigration","Metadata_IdentityMapOverrides","","Different","True","True","True","True"
+"aa512753-1b25-4846-8dc5-61bb6a984cb9","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"
+"8ba13523-68cf-4cfd-94f4-136b3643465f","StoredProcedure","SMigration","MetadataApplyPreviewFingerprint_Get","","Different","True","False","True","True"
+"75d8c22d-4d27-476d-9b76-1f08ab07b856","StoredProcedure","SMigration","MetadataIdentityMapDetails_List","","Different","True","False","True","True"
+"be024a1c-ceb5-463a-b513-59d66b8981a0","StoredProcedure","SMigration","MetadataIdentityMapOverride_Upsert","","Different","True","False","True","True"
+"cb776e7e-ca36-4d8c-9a81-229e892e1377","StoredProcedure","SMigration","MetadataRegistry_Seed","","Different","True","False","True","True"

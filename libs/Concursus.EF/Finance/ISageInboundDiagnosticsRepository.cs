@@ -7,8 +7,12 @@ namespace Concursus.EF.Finance
 {
     public interface ISageInboundDiagnosticsRepository
     {
-        Task<List<SageInboundDiagnosticsRowModel>> GetAsync(
+        Task<SageInboundDiagnosticsPageResult> GetAsync(
             SageInboundDiagnosticsGetRequestModel request,
+            CancellationToken cancellationToken = default);
+
+        Task<SageInboundDiagnosticsSummaryModel> GetSummaryAsync(
+            SageInboundDiagnosticsSummaryRequestModel request,
             CancellationToken cancellationToken = default);
 
         Task<SageInboundReceiptMaterialisationAutoCorrectResult> AutoCorrectReceiptMaterialisationAsync(

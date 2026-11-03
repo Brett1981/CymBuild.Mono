@@ -7,16 +7,31 @@ PRINT (N'Create procedure [SCore].[PostDeploymentScript]')
 GO
 
 
-CREATE PROCEDURE [SCore].[PostDeploymentScript]
+CREATE OR ALTER PROCEDURE [SCore].[PostDeploymentScript]
 (
-    @ThrowOnIssues BIT = 0
+      @ThrowOnIssues BIT = 0
+    , @RunGuid UNIQUEIDENTIFIER = NULL
 )
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT OFF;
 
-    DECLARE @RunGuid UNIQUEIDENTIFIER = NEWID();
+    IF @RunGuid IS NULL
+        SET @RunGuid = NEWID();
+
+    /*
+        A schema comparison may call post-deployment recovery more than once with
+        the same correlated schema RunGuid.  Preserve every audit row, but scope
+        this invocation's output and strict result to rows created by this call.
+        Historical errors must never make a later successful recovery fail.
+    */
+    DECLARE @InvocationStartLogId INT = 0;
+
+    SELECT
+        @InvocationStartLogId = ISNULL(MAX(logEntry.ID), 0)
+    FROM SCore.PostDeploymentRunLog AS logEntry
+    WHERE logEntry.RunGuid = @RunGuid;
 
     INSERT INTO SCore.PostDeploymentRunLog
     (
@@ -424,7 +439,9 @@ SET @InsertedRows = @@ROWCOUNT;
     PRINT N'Rebuild triggers';
 
     BEGIN TRY
-        EXEC SCore.RebuildRecordHistoryTriggers;
+        EXEC SCore.RebuildRecordHistoryTriggers
+              @RunGuid = @RunGuid
+            , @ThrowOnError = 1;
 
         INSERT INTO SCore.PostDeploymentRunLog
         (
@@ -438,7 +455,7 @@ SET @InsertedRows = @@ROWCOUNT;
               @RunGuid
             , N'Rebuild record history triggers'
             , N'Info'
-            , N'RebuildRecordHistoryTriggers completed. Review SQL messages for any non-throwing dynamic SQL errors.'
+            , N'RebuildRecordHistoryTriggers completed with physical-column validation and non-destructive CREATE OR ALTER trigger compilation.'
         );
     END TRY
     BEGIN CATCH
@@ -477,6 +494,17 @@ SET @InsertedRows = @@ROWCOUNT;
             , @SchemaBoundBefore             BIGINT = 0
             , @SchemaBoundAfter              BIGINT = 0
             , @SchemaBindingMadeProgress     BIT = 1;
+
+        DECLARE @SchemaBindingPreparedWork TABLE
+        (
+              WorkId   INT NOT NULL PRIMARY KEY
+            , ObjectId INT NOT NULL
+        );
+
+        DECLARE
+              @SchemaBindingPreparedWorkId INT = 0
+            , @SchemaBindingPreparedMaxWorkId INT = 0
+            , @SchemaBindingPreparedObjectId INT;
 
         /*
             SCore.SCHEMABINDING is a stored procedure, not a table.
@@ -540,6 +568,66 @@ SET @InsertedRows = @@ROWCOUNT;
                 , @Apply = 1
                 , @MaxPasses = 4
                 , @ThrowOnError = 0;
+
+            /*
+                Apply the defensive parser to every remaining prepared module,
+                not only dependencies already reachable from a bound module.
+                Repeating this inside the outer loop resolves dependency order
+                while keeping unsupported definitions as diagnostic warnings.
+            */
+            DELETE FROM @SchemaBindingPreparedWork;
+
+            INSERT INTO @SchemaBindingPreparedWork
+            (
+                  WorkId
+                , ObjectId
+            )
+            SELECT
+                  ROW_NUMBER() OVER
+                  (
+                      ORDER BY
+                            s.name
+                          , o.name
+                  ) AS WorkId
+                , o.object_id
+            FROM sys.sql_modules AS sm
+            JOIN sys.objects AS o
+                ON o.object_id = sm.object_id
+            JOIN sys.schemas AS s
+                ON s.schema_id = o.schema_id
+            WHERE o.is_ms_shipped = 0
+              AND o.type IN
+              (
+                    N'V'
+                  , N'FN'
+                  , N'IF'
+                  , N'TF'
+              )
+              AND sm.is_schema_bound = 0
+              AND sm.definition LIKE N'%--WITH SCHEMABINDING%';
+
+            SET @SchemaBindingPreparedWorkId = 0;
+
+            SELECT
+                @SchemaBindingPreparedMaxWorkId = ISNULL(MAX(prepared.WorkId), 0)
+            FROM @SchemaBindingPreparedWork AS prepared;
+
+            WHILE @SchemaBindingPreparedWorkId < @SchemaBindingPreparedMaxWorkId
+            BEGIN
+                SELECT TOP (1)
+                      @SchemaBindingPreparedWorkId = prepared.WorkId
+                    , @SchemaBindingPreparedObjectId = prepared.ObjectId
+                FROM @SchemaBindingPreparedWork AS prepared
+                WHERE prepared.WorkId > @SchemaBindingPreparedWorkId
+                ORDER BY
+                    prepared.WorkId;
+
+                EXEC SCore.SchemaBindingApplySingleObject
+                      @ObjectId = @SchemaBindingPreparedObjectId
+                    , @RunGuid = @RunGuid
+                    , @Apply = 1
+                    , @ThrowOnError = 0;
+            END;
 
             EXEC SCore.SchemaBindingApplyUntilStable
                   @MaxPasses = 8
@@ -620,6 +708,138 @@ SET @InsertedRows = @@ROWCOUNT;
             );
         END;
 
+        /*
+            A dependency-discovery pass can successfully add an active
+            WITH SCHEMABINDING clause while retaining the prepared comment marker.
+            Clean those stale markers from modules SQL Server confirms are bound.
+        */
+        DECLARE @SchemaBindingCleanupWork TABLE
+        (
+              WorkId       INT NOT NULL PRIMARY KEY
+            , ObjectId     INT NOT NULL
+        );
+
+        INSERT INTO @SchemaBindingCleanupWork
+        (
+              WorkId
+            , ObjectId
+        )
+        SELECT
+              ROW_NUMBER() OVER
+              (
+                  ORDER BY
+                        s.name
+                      , o.name
+              ) AS WorkId
+            , o.object_id
+        FROM sys.sql_modules AS sm
+        JOIN sys.objects AS o
+            ON o.object_id = sm.object_id
+        JOIN sys.schemas AS s
+            ON s.schema_id = o.schema_id
+        WHERE o.is_ms_shipped = 0
+          AND o.type IN
+          (
+                N'V'
+              , N'FN'
+              , N'IF'
+              , N'TF'
+          )
+          AND sm.is_schema_bound = 1
+          AND sm.definition LIKE N'%--WITH SCHEMABINDING%';
+
+        DECLARE
+              @SchemaBindingCleanupWorkId INT = 0
+            , @SchemaBindingCleanupMaxWorkId INT = 0
+            , @SchemaBindingCleanupObjectId INT;
+
+        SELECT
+            @SchemaBindingCleanupMaxWorkId = MAX(cleanup.WorkId)
+        FROM @SchemaBindingCleanupWork AS cleanup;
+
+        WHILE @SchemaBindingCleanupWorkId < ISNULL(@SchemaBindingCleanupMaxWorkId, 0)
+        BEGIN
+            SELECT TOP (1)
+                  @SchemaBindingCleanupWorkId = cleanup.WorkId
+                , @SchemaBindingCleanupObjectId = cleanup.ObjectId
+            FROM @SchemaBindingCleanupWork AS cleanup
+            WHERE cleanup.WorkId > @SchemaBindingCleanupWorkId
+            ORDER BY
+                cleanup.WorkId;
+
+            EXEC SCore.SchemaBindingApplySingleObject
+                  @ObjectId = @SchemaBindingCleanupObjectId
+                , @RunGuid = @RunGuid
+                , @Apply = 1
+                , @ThrowOnError = 0;
+        END;
+
+        /*
+            A prepared marker is not itself proof that schema binding failed.
+            SQL Server's is_schema_bound flag is authoritative.  Cleanup can be
+            blocked when another schema-bound module depends on the object, so a
+            residual marker is diagnostic in both states and never a strict error.
+        */
+        INSERT INTO SCore.PostDeploymentRunLog
+        (
+              RunGuid
+            , StepName
+            , ObjectName
+            , Severity
+            , Message
+        )
+        SELECT
+              @RunGuid
+            , N'Schema binding verification'
+            , QUOTENAME(s.name) + N'.' + QUOTENAME(o.name)
+            , N'Warning'
+            , N'The module is schema-bound and operational, but still contains the prepared --WITH SCHEMABINDING marker after best-effort cleanup. SQL Server is_schema_bound is authoritative.'
+        FROM sys.sql_modules AS sm
+        JOIN sys.objects AS o
+            ON o.object_id = sm.object_id
+        JOIN sys.schemas AS s
+            ON s.schema_id = o.schema_id
+        WHERE o.is_ms_shipped = 0
+          AND o.type IN
+          (
+                N'V'
+              , N'FN'
+              , N'IF'
+              , N'TF'
+          )
+          AND sm.is_schema_bound = 1
+          AND sm.definition LIKE N'%--WITH SCHEMABINDING%';
+
+        INSERT INTO SCore.PostDeploymentRunLog
+        (
+              RunGuid
+            , StepName
+            , ObjectName
+            , Severity
+            , Message
+        )
+        SELECT
+              @RunGuid
+            , N'Schema binding verification'
+            , QUOTENAME(s.name) + N'.' + QUOTENAME(o.name)
+            , N'Warning'
+            , N'The module remains unbound after best-effort restoration. Review its dependency diagnostics; the prepared marker alone does not fail deployment.'
+        FROM sys.sql_modules AS sm
+        JOIN sys.objects AS o
+            ON o.object_id = sm.object_id
+        JOIN sys.schemas AS s
+            ON s.schema_id = o.schema_id
+        WHERE o.is_ms_shipped = 0
+          AND o.type IN
+          (
+                N'V'
+              , N'FN'
+              , N'IF'
+              , N'TF'
+          )
+          AND sm.is_schema_bound = 0
+          AND sm.definition LIKE N'%--WITH SCHEMABINDING%';
+
         INSERT INTO SCore.PostDeploymentRunLog
         (
               RunGuid
@@ -632,7 +852,7 @@ SET @InsertedRows = @@ROWCOUNT;
               @RunGuid
             , N'Schema binding'
             , N'Info'
-            , N'Schema-binding outer loop completed. Review returned schema-binding diagnostics for unresolved objects.'
+            , N'Schema-binding outer loop completed. Residual prepared markers were recorded as best-effort warnings; SQL Server is_schema_bound remains authoritative.'
         );
     END TRY
     BEGIN CATCH
@@ -901,6 +1121,7 @@ SET @InsertedRows = @@ROWCOUNT;
         , IssueCount = COUNT_BIG(1)
     FROM SCore.PostDeploymentRunLog
     WHERE RunGuid = @RunGuid
+      AND ID > @InvocationStartLogId
     GROUP BY
         Severity
     ORDER BY
@@ -924,6 +1145,7 @@ SET @InsertedRows = @@ROWCOUNT;
         , CreatedUtc
     FROM SCore.PostDeploymentRunLog
     WHERE RunGuid = @RunGuid
+      AND ID > @InvocationStartLogId
       AND Severity IN (N'Error', N'Warning')
     ORDER BY
         ID;
@@ -937,6 +1159,7 @@ SET @InsertedRows = @@ROWCOUNT;
         , CreatedUtc
     FROM SCore.PostDeploymentRunLog
     WHERE RunGuid = @RunGuid
+      AND ID > @InvocationStartLogId
     ORDER BY
         ID;
 
@@ -946,6 +1169,7 @@ SET @InsertedRows = @@ROWCOUNT;
            SELECT 1
            FROM SCore.PostDeploymentRunLog
            WHERE RunGuid = @RunGuid
+             AND ID > @InvocationStartLogId
              AND Severity = N'Error'
        )
     BEGIN

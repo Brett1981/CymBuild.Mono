@@ -1,0 +1,372 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>CymBuild Server Deploy Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: operations runbook — sticky contents rail on wide screens, single reading column, command blocks with copy. */
+:root {
+  --bg: #f6f8f9;
+  --surface: #ffffff;
+  --ink: #17232b;
+  --muted: #55656f;
+  --line: #d6dee3;
+  --accent: #0a6c86;
+  --accent-soft: #e2f1f5;
+  --code-bg: #eef3f5;
+  --ok: #1f7a4a;
+  --ok-soft: #e3f3ea;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0d9;
+  --bad: #a3262a;
+  --bad-soft: #f9e3e3;
+  --font-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f171c; --surface: #152129; --ink: #e3ebef; --muted: #9aabb5; --line: #2a3a44;
+    --accent: #5cc3dd; --accent-soft: #143440; --code-bg: #1b2a33;
+    --ok: #6fd39c; --ok-soft: #15322a; --warn: #f0c060; --warn-soft: #3a2f14; --bad: #f08a8d; --bad-soft: #3d1c1f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f171c; --surface: #152129; --ink: #e3ebef; --muted: #9aabb5; --line: #2a3a44;
+  --accent: #5cc3dd; --accent-soft: #143440; --code-bg: #1b2a33;
+  --ok: #6fd39c; --ok-soft: #15322a; --warn: #f0c060; --warn-soft: #3a2f14; --bad: #f08a8d; --bad-soft: #3d1c1f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.6; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 64px; display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } nav.toc { position: static; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 15px; }
+nav.toc .label { font-family: var(--font-display); text-transform: uppercase; letter-spacing: .08em; font-size: 13px; color: var(--muted); font-weight: 600; }
+nav.toc ol { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; border-left: 2px solid var(--line); }
+nav.toc a { display: block; padding: 2px 0 2px 12px; margin-left: -2px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); border-left-color: var(--accent); outline: none; }
+main { min-width: 0; max-width: 780px; }
+header.top { display: grid; gap: 10px; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(32px, 5vw, 44px); font-weight: 700; letter-spacing: .005em; }
+h2 { font-size: 28px; font-weight: 600; margin-top: 48px; padding-top: 8px; scroll-margin-top: 24px; }
+h3 { font-size: 21px; font-weight: 600; margin-top: 28px; }
+p, li { max-width: 68ch; }
+p { margin: 12px 0; }
+.lede { font-size: 19px; color: var(--muted); margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--muted); }
+.meta code { font-size: 13px; }
+a { color: var(--accent); }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.cmd { position: relative; margin: 14px 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; }
+.cmd .cap { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 8px 6px 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.cmd pre { margin: 0; padding: 12px 14px; overflow-x: auto; font-family: var(--font-mono); font-size: 14px; line-height: 1.55; }
+.cmd pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.copy { font: 600 12px var(--font-body); color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.copy:hover { border-color: var(--accent); }
+.copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--font-display); font-weight: 600; font-size: 14px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.steps { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 12px; counter-reset: step; }
+.steps > li { counter-increment: step; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 14px; max-width: none; }
+.steps > li::before { content: counter(step); font-family: var(--font-display); font-weight: 700; font-size: 18px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.steps > li > div { min-width: 0; }
+.steps strong { display: block; }
+.note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+.note.warn { border-color: var(--warn); background: var(--warn-soft); }
+.note.bad { border-color: var(--bad); background: var(--bad-soft); }
+.note p { margin: 4px 0; }
+.note .tag { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: 13px; }
+.note.warn .tag { color: var(--warn); } .note.bad .tag { color: var(--bad); } .note .tag { color: var(--accent); }
+.status { display: inline-block; font: 600 12px var(--font-mono); padding: 1px 8px; border-radius: 999px; }
+.status.ok { color: var(--ok); background: var(--ok-soft); }
+.status.bad { color: var(--bad); background: var(--bad-soft); }
+.status.skip { color: var(--warn); background: var(--warn-soft); }
+.flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 18px 0; font-size: 14px; }
+.flow span { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+.flow span.db { border-color: var(--accent); color: var(--accent); }
+.flow i { font-style: normal; color: var(--muted); }
+dl.faq { margin: 16px 0; display: grid; gap: 18px; }
+dl.faq dt { font-weight: 700; }
+dl.faq dd { margin: 4px 0 0; }
+dl.faq dd p:first-child { margin-top: 0; }
+footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <div class="label">Contents</div>
+    <ol>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#before">Before you start</a></li>
+      <li><a href="#commands">Commands</a></li>
+      <li><a href="#databases">Where database names come from</a></li>
+      <li><a href="#stages">What a deploy does</a></li>
+      <li><a href="#database-phase">Database phase</a></li>
+      <li><a href="#output">Reading the output</a></li>
+      <li><a href="#rollback">Rolling back</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><a href="#rules">Safety rules</a></li>
+      <li><a href="#risks">Known limits</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="top">
+      <div class="eyebrow">tools/Deployment/Publish-CymBuildServer.ps1</div>
+      <h1>CymBuild Server Deploy Guide</h1>
+      <p class="lede">How to deploy the CymBuild API and PWA, and migrate the database, to QA or UAT on SOC-CONIIS with one PowerShell command.</p>
+      <div class="meta"><span>Written 13 Oct 2026</span><span>Branch <code>feature/SB_ServerDeploy-26.4-qa-publish</code></span><span>Up to commit <code>f3bea4de</code></span></div>
+    </header>
+
+    <section>
+      <h2 id="overview">Overview</h2>
+      <p>CymBuild is not deployed through a pipeline. This script replaces the old manual process of publishing to a folder, backing up by hand and copying files over RDP. It builds once from your clean checkout, copies a hash-verified package to the server, migrates the database, switches the live folders, checks they answer, and rolls back automatically if they don't.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Environment</th><th>API (Windows service)</th><th>PWA (IIS site and pool)</th><th>Database</th></tr></thead>
+          <tbody>
+            <tr><td><strong>QA</strong> (default)</td><td><code>Concursus.API_dev</code><br><code>https://cymbuild-dev.socotec.co.uk:9401/</code></td><td><code>Concursus.PWA_Dev</code><br><code>https://cymbuild-dev.socotec.co.uk/</code></td><td>From <code>appsettings.QA.json</code>, migrated from DEV</td></tr>
+            <tr><td><strong>UAT</strong></td><td><code>Concursus.API_Test</code><br><code>https://cymbuild-uat.socotec.co.uk:9501/</code></td><td><code>Concursus.PWA_Test</code><br><code>https://cymbuild-uat.socotec.co.uk/</code></td><td>From <code>appsettings.Test.json</code>, migrated from QA</td></tr>
+            <tr><td><strong>LIVE</strong></td><td colspan="3">Not configured. LIVE stays manual and the script refuses any database that looks like LIVE.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Each environment keeps its files under its own deploy root on the server: <code>C:\CymBuildDeploy\QA</code> or <code>C:\CymBuildDeploy\UAT</code>.</p>
+    </section>
+
+    <section>
+      <h2 id="before">Before you start</h2>
+      <ul>
+        <li><strong>PowerShell 7.2+ and the .NET 10 SDK</strong> on your machine.</li>
+        <li><strong>An admin account on SOC-CONIIS</strong>, such as <code>ESGL\stephen.brett_adm</code> or <code>ESGL\Oliver.Eros_adm</code>. Open PowerShell as that account and the script uses your login without prompting. Otherwise it prompts for <code>&lt;you&gt;_adm</code>.</li>
+        <li><strong>A clean, committed working tree.</strong> The script refuses to build anything that isn't committed. Deploy from a <code>release/*</code> branch where you can; any other branch gets a warning.</li>
+        <li><strong>SQL rights for your <code>_adm</code> account</strong> on the target database: BACKUP DATABASE, DDL, and read and write on the <code>SMigration</code> tables. You also need CREATE DATABASE on the target instance, because the backup check (<code>RESTORE VERIFYONLY</code>) requires it.</li>
+        <li><strong>Nobody using a schema workbench</strong> on the source or target database while the database phase runs.</li>
+      </ul>
+      <div class="note warn"><p class="tag">UAT permission still pending</p><p>On the SQL instance named in <code>appsettings.Test.json</code>, your <code>_adm</code> account can back up the UAT database but not verify the backup. Until the DBA runs <code>GRANT CREATE DATABASE</code> in <code>master</code> on that instance for the deploy accounts, UAT deploys the application but skips schema and metadata.</p></div>
+    </section>
+
+    <section>
+      <h2 id="commands">Commands</h2>
+      <p>Run these from the repository root. Always preview with <code>-WhatIf</code> first. It runs the local checks and the read-only server checks, prints the plan and both databases, and changes nothing.</p>
+
+      <div class="cmd"><div class="cap"><span>Preview a deploy (no changes)</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1 -WhatIf
+./tools/Deployment/Publish-CymBuildServer.ps1 -Environment UAT -WhatIf</code></pre></div>
+
+      <div class="cmd"><div class="cap"><span>Deploy API, PWA and database to QA</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1</code></pre></div>
+
+      <div class="cmd"><div class="cap"><span>Deploy to UAT (database migrated from QA)</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1 -Environment UAT</code></pre></div>
+
+      <div class="cmd"><div class="cap"><span>Deploy one component only</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1 -Component Api
+./tools/Deployment/Publish-CymBuildServer.ps1 -Component Pwa</code></pre></div>
+
+      <div class="cmd"><div class="cap"><span>Application only, no database phase</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1 -SkipDatabase</code></pre></div>
+
+      <div class="cmd"><div class="cap"><span>Put back the previous files</span><button class="copy" type="button">Copy</button></div><pre><code>./tools/Deployment/Publish-CymBuildServer.ps1 -RestoreBackup latest
+./tools/Deployment/Publish-CymBuildServer.ps1 -Environment UAT -RestoreBackup latest</code></pre></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Parameter</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>-Environment</code></td><td><code>QA</code> (default) or <code>UAT</code>.</td></tr>
+            <tr><td><code>-Component</code></td><td><code>Api</code>, <code>Pwa</code> or both (default).</td></tr>
+            <tr><td><code>-SkipDatabase</code></td><td>Deploy the application without backup, schema or metadata.</td></tr>
+            <tr><td><code>-WhatIf</code></td><td>Checks and plan only. Nothing is built, backed up, migrated or copied.</td></tr>
+            <tr><td><code>-RestoreBackup</code></td><td><code>latest</code> or a backup folder name. The current files are backed up first, so a restore can itself be undone.</td></tr>
+            <tr><td><code>-ReleaseName</code></td><td>Override the release label. The default is <code>&lt;env&gt;-&lt;yyyyMMdd-HHmmss&gt;-&lt;commit&gt;</code>, for example <code>UAT-20261013-143944-616884af</code>.</td></tr>
+            <tr><td><code>-KeepReleases</code></td><td>How many releases and backups to keep on the server (default 3).</td></tr>
+            <tr><td><code>-Credential</code></td><td>Pass an admin credential instead of using your login or the prompt.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A real deploy asks for confirmation once. It asks again only if the new build would remove files from the server, other than Blazor's renamed <code>_framework</code> files.</p>
+    </section>
+
+    <section>
+      <h2 id="databases">Where database names come from</h2>
+      <p>Database names change between releases, so the script never hard-codes them. It reads the server and database from the committed <code>services/Concursus.API/appsettings.&lt;Env&gt;.json</code> in the commit you're deploying. It checks the connection strings in the same order the API does: <code>DefaultConnection</code>, then <code>ShoreDB</code>, then <code>CymBuild</code>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Deploying to</th><th>Target database read from</th><th>Source database read from</th></tr></thead>
+          <tbody>
+            <tr><td>QA</td><td><code>appsettings.QA.json</code></td><td><code>appsettings.Development.json</code> (DEV)</td></tr>
+            <tr><td>UAT</td><td><code>appsettings.Test.json</code></td><td><code>appsettings.QA.json</code> (QA)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Server and database are never written into the script, this guide or the deploy docs. To see which databases a deploy will use right now, run <code>-WhatIf</code>. Both are printed before the confirmation prompt, along with the file and key each came from:</p>
+      <div class="cmd"><div class="cap"><span>Example -WhatIf lines</span><button class="copy" type="button">Copy</button></div><pre><code>    Target DB : &lt;server&gt; / &lt;database&gt;  (appsettings.Test.json ConnectionStrings:ShoreDB)
+    Source DB : &lt;server&gt; / &lt;database&gt;  (QA, appsettings.QA.json ConnectionStrings:ShoreDB)</code></pre></div>
+      <p><strong>When a database is renamed</strong>, update that file so it matches the server's own appsettings, commit it, then deploy.</p>
+      <p>The script stops before doing anything if:</p>
+      <ul>
+        <li>the file has no connection string, or the string has no Data Source or Initial Catalog;</li>
+        <li>the target looks like LIVE: a database called <code>Concursus</code>, or a name or server containing <code>live</code>, <code>prod</code> or <code>production</code>;</li>
+        <li>the source and target are the same database.</li>
+      </ul>
+      <p>The base <code>appsettings.json</code> is never used as a fallback. Only the named per-environment file counts.</p>
+    </section>
+
+    <section>
+      <h2 id="stages">What a deploy does</h2>
+      <ol class="steps">
+        <li><div><strong>Local checks</strong>The working tree must be clean. The script records the branch and commit and resolves both databases.</div></li>
+        <li><div><strong>Server preflight (read-only)</strong>Connects to SOC-CONIIS over WinRM and checks that the service, IIS site and app pool exist and point at the expected folders. It also checks that the server-owned config files are present, at least 10 GB is free, and no other deploy holds the lock.</div></li>
+        <li><div><strong>Build</strong>Runs <code>dotnet publish -c Release</code> for each component, writes a SHA-256 manifest of every file, and zips the lot under <code>artifacts/server-deploy/&lt;release&gt;/</code>.</div></li>
+        <li><div><strong>Transfer and stage</strong>Copies the zip to the server, checks its hash, extracts it to <code>&lt;deploy root&gt;\releases\&lt;release&gt;</code> and re-verifies every file. Lists config keys the build expects but the server lacks, by name only, and any server files the build would remove.</div></li>
+        <li><div><strong>Database phase</strong>Backup, then schema, then metadata. See <a href="#database-phase">Database phase</a>. A failure here is reported but never stops the application deploy.</div></li>
+        <li><div><strong>Switch</strong>Backs up the live folders to <code>&lt;deploy root&gt;\backups\before-&lt;release&gt;</code>. For the API: stop the service, mirror the files, verify hashes, start it, wait 30 s, and check the URL answers. For the PWA: stop the pool, mirror, verify, start, and check the home page and <code>appsettings.json</code>.</div></li>
+        <li><div><strong>Roll back on failure</strong>If anything fails after a live folder changed, that component is restored from the backup taken in the previous step and restarted.</div></li>
+        <li><div><strong>Record</strong>Appends to <code>history.log</code>, writes <code>current.json</code>, and prunes releases and backups beyond <code>-KeepReleases</code>.</div></li>
+      </ol>
+      <div class="note"><p class="tag">Files the server owns</p><p>These are never copied from the build, overwritten or deleted: <code>appsettings*.json</code> in any folder, <code>web.config</code>, <code>nlog.config</code> and the <code>logs\</code> folder. When a build needs a new config key, the deploy warns with the key name. Add it to the server's <code>appsettings.json</code> yourself.</p></div>
+    </section>
+
+    <section>
+      <h2 id="database-phase">Database phase</h2>
+      <div class="flow" aria-label="Database phase order">
+        <span class="db">Back up target</span><i>→</i><span class="db">Schema</span><i>→</i><span class="db">Metadata</span><i>→</i><span>Switch the application</span>
+      </div>
+      <h3>The rules</h3>
+      <ul>
+        <li><strong>A verified backup comes first.</strong> The script takes a <code>COPY_ONLY, CHECKSUM</code> backup to the target instance's default backup folder, named <code>&lt;database&gt;_&lt;release&gt;.bak</code>, then runs <code>RESTORE VERIFYONLY</code>. If either fails, schema and metadata are skipped.</li>
+        <li><strong>Schema runs next.</strong> If it fails, metadata is skipped.</li>
+        <li><strong>Metadata runs only after schema succeeds,</strong> or after schema finds nothing to do.</li>
+        <li><strong>Database failures never stop the application deploy.</strong> They appear in the summary, and you complete schema and metadata yourself through the workbenches.</li>
+      </ul>
+      <h3>How runs are chosen</h3>
+      <p>For both schema and metadata, an <strong>accepted run that hasn't been applied</strong> takes priority. If there isn't one, the script creates a new run with every <em>Different</em> and <em>Missing in Target</em> item selected.</p>
+      <ul>
+        <li><strong>Schema.</strong> Objects that would fail validation are skipped and listed with the reason. The selected definitions are synced from the source into <code>Database\CymBuild_DB\Schema</code> and <strong>committed to your current branch, not pushed</strong>, because the runner only applies committed files. The runner then applies the run, refusing any run compared more than 30 minutes earlier.</li>
+        <li><strong>Metadata.</strong> Only <em>Insert</em> and <em>Update</em> rows in tables with an apply handler are selected, plus their dependencies. Retirements are never selected. Rows in tables without a handler are listed but not selected.</li>
+      </ul>
+      <div class="note warn"><p class="tag">Push the schema commit</p><p>If the summary says a schema sync commit was created, review it and push it with the release. For UAT the source is QA, which was deployed from committed files, so normally no files change.</p></div>
+      <h3>Protection against overlapping runs</h3>
+      <p>Since commit <code>f3bea4de</code>, the bootstrap only re-creates a lifecycle procedure if its definition has actually changed. While <code>SCore.PreDeploymentScript</code> or <code>SCore.PostDeploymentScript</code> is running, the bootstrap also waits on the <code>CymBuild.SchemaLifecycle</code> lock instead of replacing the procedure mid-run. The QA and UAT APIs get this protection only once they're redeployed from that commit or later.</p>
+    </section>
+
+    <section>
+      <h2 id="output">Reading the output</h2>
+      <p>The run ends with a database summary, then a final line. Each step is <span class="status ok">Succeeded</span>, <span class="status bad">Failed</span> or <span class="status skip">Skipped</span>, with the log path.</p>
+      <div class="cmd"><div class="cap"><span>Example: application deployed, database needs attention</span><button class="copy" type="button">Copy</button></div><pre><code>==&gt; Database summary
+    Backup    Failed    ... CREATE DATABASE permission denied in database 'master'.
+    Schema    Skipped   Skipped: no verified backup.
+    Metadata  Skipped   Skipped: no verified backup.
+    Complete the schema and metadata deployment manually through the workbenches.
+
+==&gt; Done: UAT-20261013-143944-616884af is live on UAT - database steps need manual attention (see summary above).</code></pre></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Where</th><th>What you'll find</th></tr></thead>
+          <tbody>
+            <tr><td><code>artifacts/server-deploy/&lt;release&gt;/deploy.log</code></td><td>Full transcript of the run</td></tr>
+            <tr><td><code>artifacts/server-deploy/&lt;release&gt;/schema.log</code>, <code>schema-prepare.json</code></td><td>Schema run selection and runner output</td></tr>
+            <tr><td><code>artifacts/server-deploy/&lt;release&gt;/metadata.log</code>, <code>metadata-auto.json</code></td><td>Metadata selection, validation and apply</td></tr>
+            <tr><td><code>&lt;deploy root&gt;\history.log</code>, <code>current.json</code> (server)</td><td>Who deployed which release and commit, and when</td></tr>
+            <tr><td><code>&lt;deploy root&gt;\backups\before-&lt;release&gt;</code> (server)</td><td>The files that were live before this release</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2 id="rollback">Rolling back</h2>
+      <p><strong>Application.</strong> Run <code>-RestoreBackup latest</code> for the environment, or name a specific backup folder. The current files are backed up before the restore.</p>
+      <p><strong>Database.</strong> Restore the <code>.bak</code> file the deploy took, from the target instance's default backup folder. The file is named <code>&lt;database&gt;_&lt;release&gt;.bak</code> and its full path is printed in the deploy output. Database restores are done by hand, never by the script.</p>
+    </section>
+
+    <section>
+      <h2 id="troubleshooting">Troubleshooting</h2>
+      <dl class="faq">
+        <dt>"Working tree has uncommitted changes"</dt>
+        <dd>Commit or stash your changes. A deploy has to map to one commit. <code>-WhatIf</code> still runs, with a warning.</dd>
+
+        <dt>"Remote preflight failed; nothing was changed"</dt>
+        <dd>The lines marked BLOCKED say why: a service or site pointing somewhere unexpected, low disk space, or a deploy lock. Delete <code>deploy.lock</code> in the deploy root only if you're sure no other deploy is running.</dd>
+
+        <dt>Backup failed: "CREATE DATABASE permission denied"</dt>
+        <dd>The backup was written, but <code>RESTORE VERIFYONLY</code> needs CREATE DATABASE permission, which your account lacks on that instance. Ask the DBA for <code>GRANT CREATE DATABASE</code> in <code>master</code>. The application still deploys.</dd>
+
+        <dt>Schema or metadata failed</dt>
+        <dd>Open the log named in the summary. Finish the step in the Schema or Metadata Management workbench, or fix the cause and redeploy. The script has no database-only option, so a redeploy also redeploys the same application build, which is harmless.</dd>
+
+        <dt>"A schema pre/post-deployment step is running … lifecycle procedures cannot be replaced now"</dt>
+        <dd>Another deploy or workbench run is mid-lifecycle on that database. Wait for it to finish, then try again.</dd>
+
+        <dt>SQL 2801 "definition of object … has changed since it was compiled"</dt>
+        <dd><p>Before <code>f3bea4de</code>, opening a workbench during a deploy could re-create the lifecycle procedures while they ran. That happened on the QA database on 13 Oct 2026 and left every foreign key to <code>SCore.DataObjects</code> disabled. To check a database, count the keys that are still disabled. The result should be 0:</p>
+          <div class="cmd"><div class="cap"><span>Read-only check</span><button class="copy" type="button">Copy</button></div><pre><code>SELECT COUNT(*) FROM sys.foreign_keys
+WHERE referenced_object_id = OBJECT_ID(N'SCore.DataObjects')
+  AND (is_disabled = 1 OR is_not_trusted = 1);</code></pre></div>
+          <p>If it isn't 0, re-run <code>EXEC SCore.PostDeploymentScript @ThrowOnIssues = 1;</code> on that database as your <code>_adm</code> account, while nobody is using a workbench.</p></dd>
+
+        <dt>"PowerShell is in NonInteractive mode" at the credential prompt</dt>
+        <dd>Run the script from an interactive PowerShell opened as your <code>_adm</code> account, or pass <code>-Credential</code>.</dd>
+
+        <dt>"Deploying from '…', not a release/* branch"</dt>
+        <dd>A warning only. Prefer <code>release/*</code>, because any schema sync commit lands on the branch you deploy from.</dd>
+      </dl>
+    </section>
+
+    <section>
+      <h2 id="rules">Safety rules the script enforces</h2>
+      <ul>
+        <li>QA and UAT only. LIVE is not configured, and LIVE-looking databases are refused.</li>
+        <li>Builds only from committed source. Each file is hash-checked after transfer and again after the switch.</li>
+        <li>The live files are backed up before every switch, and failures roll back automatically.</li>
+        <li>Server-owned config and logs are never touched.</li>
+        <li>The database is migrated only after a verified backup, and schema is applied only through the controlled runner from committed files.</li>
+        <li>No credentials are kept in the script; connections use Windows authentication.</li>
+      </ul>
+      <p>Contract tests in <code>tests/CymBuild.Architecture.Tests</code> (<code>ServerDeploymentScriptSourceContractTests</code>, <code>MigrationBootstrapSourceContractTests</code>) fail the build if any of these rules is removed. Offline tests: <code>pwsh -File tools/Deployment/Tests/Invoke-PublishCymBuildServerTests.ps1</code>.</p>
+    </section>
+
+    <section>
+      <h2 id="risks">Known limits</h2>
+      <ul>
+        <li><strong>DEV contains unreleased work from every branch.</strong> All of it reaches QA, and then UAT.</li>
+        <li><strong>A source that's behind can regress the target.</strong> If the source holds an older definition than the target, the older one is applied and committed. Check any schema sync commit before pushing it.</li>
+        <li><strong>An accepted run keeps its original selection</strong> when it's refreshed.</li>
+        <li><strong>More than 5,000 differing metadata rows</strong> fails the metadata step.</li>
+        <li><strong>Metadata identity-map review is not performed</strong> unattended.</li>
+        <li><strong>QA to UAT crosses SQL instances.</strong> The two-connection metadata path has had gaps before, so read <code>metadata.log</code> after the first UAT run.</li>
+        <li><strong>There's no API health endpoint.</strong> The check only proves that Kestrel answers on the port.</li>
+      </ul>
+    </section>
+
+    <footer>Source of truth: <code>tools/Deployment/README.md</code> and <code>docs/ci-cd-and-environments.md</code> in the CymBuild monorepo. If this page and the repository disagree, the repository is right.</footer>
+  </main>
+</div>
+
+<script>
+document.querySelectorAll('.cmd').forEach(function (block) {
+  var button = block.querySelector('.copy');
+  var code = block.querySelector('pre code');
+  if (!button || !code) return;
+  button.addEventListener('click', function () {
+    var text = code.innerText;
+    var done = function () { button.textContent = 'Copied'; setTimeout(function () { button.textContent = 'Copy'; }, 1500); };
+    var fallback = function () {
+      var range = document.createRange(); range.selectNodeContents(code);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      button.textContent = 'Selected - press Ctrl+C';
+      setTimeout(function () { button.textContent = 'Copy'; }, 2500);
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch (e) { fallback(); }
+  });
+});
+</script>
+
+</body></html>

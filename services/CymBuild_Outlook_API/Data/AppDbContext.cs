@@ -33,6 +33,8 @@ namespace CymBuild_Outlook_API.Data
         public DbSet<OutlookEmailSysReadyToFile> OutlookEmailsSysReadyToFile { get; set; }
         public DbSet<SharePointDetail> SharePointDetails { get; set; }
         public DbSet<FilingRecordSearchResult> FilingRecordSearchResults { get; set; }
+        public DbSet<SuggestedFilingLocationResult> SuggestedFilingLocations { get; set; }
+        public DbSet<FrequentFilingRecordResult> FrequentFilingRecords { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -63,6 +65,12 @@ namespace CymBuild_Outlook_API.Data
 
             // Define FilingRecordSearchResult as a keyless entity
             modelBuilder.Entity<FilingRecordSearchResult>().HasNoKey();
+
+            // Define SuggestedFilingLocationResult as a keyless entity
+            modelBuilder.Entity<SuggestedFilingLocationResult>().HasNoKey();
+
+            // Define FrequentFilingRecordResult as a keyless entity
+            modelBuilder.Entity<FrequentFilingRecordResult>().HasNoKey();
         }
 
         public async Task<List<SharePointDetail>> GetSharePointDetailsForObject(DataObject dataObject)
@@ -346,6 +354,27 @@ namespace CymBuild_Outlook_API.Data
         {
             return await FilingRecordSearchResults
                 .FromSqlInterpolated($"SELECT * FROM SOffice.tvf_FiledRecordSearch({messageId})")
+                .ToListAsync();
+        }
+
+        public async Task<List<SuggestedFilingLocationResult>> GetSuggestedFilingLocationsAsync(long targetObjectId, int entityTypeId, DateTime windowStart)
+        {
+            return await SuggestedFilingLocations
+                .FromSqlRaw(
+                    "SELECT * FROM SOffice.tvf_SuggestedFilingLocations(@TargetObjectID, @EntityTypeId, @WindowStart)",
+                    new SqlParameter("@TargetObjectID", targetObjectId),
+                    new SqlParameter("@EntityTypeId", entityTypeId),
+                    new SqlParameter("@WindowStart", windowStart))
+                .ToListAsync();
+        }
+
+        public async Task<List<FrequentFilingRecordResult>> GetFrequentFilingRecordsAsync(string mailbox, DateTime windowStart)
+        {
+            return await FrequentFilingRecords
+                .FromSqlRaw(
+                    "SELECT ID, Guid, EntityTypeName, Name, FiledCount, LastFiledDateTime FROM SOffice.tvf_FrequentFilingRecords(@Mailbox, @WindowStart)",
+                    new SqlParameter("@Mailbox", mailbox),
+                    new SqlParameter("@WindowStart", windowStart))
                 .ToListAsync();
         }
     }

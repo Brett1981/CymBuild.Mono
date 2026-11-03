@@ -22,7 +22,7 @@
           @bind-ParentDataObjectReference="@ParentDataObjectReference"
           ReturnUrl="@ReturnUrl"
           CloseWindow="@CloseWindow"
-          GridUpdated="@GridUpdated"
+          GridUpdated="@HandleGridUpdated"
           IsDetailWindowed="IsDetailWindowed"
           EnableBrowserTabTitle="true"
           BrowserTabTitlePropertyName="Number"
@@ -74,7 +74,7 @@
                     inputUpdated="@editPage.HandleInputUpdated"
                     editPageRef="@editPage" />
 
-                <DynamicGrid FormHelper="@_formHelper" GridCode="ENQUIRYSERVICES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                <DynamicGrid @ref="_enquiryServicesGrid" FormHelper="@_formHelper" GridCode="ENQUIRYSERVICES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
             </section>
 
             <section class="cb-native-tab-panel" role="tabpanel" hidden="@(!IsNativeTabActive(EnquiryDetailTab.ProjectDetails))">
@@ -183,6 +183,18 @@
 
     private API.Client.FormHelper? _formHelper;
     private ErrorBoundary? _docsBoundary;
+    private DynamicGrid? _enquiryServicesGrid;
+
+    // CYB-235: the Tasks-menu "Create Quote(s) from enquiry" action updates data behind the
+    // Enquiry Services grid without touching editPage.dataObject, so the grid must be told to
+    // reload itself here rather than relying on a page reload.
+    private async Task HandleGridUpdated()
+    {
+        _enquiryServicesGrid?.RefreshGrid();
+
+        if (GridUpdated.HasDelegate)
+            await GridUpdated.InvokeAsync();
+    }
 
     private bool ShowDocumentsTab =>
         Config.Value.Environment.ShowDocumentsTab;

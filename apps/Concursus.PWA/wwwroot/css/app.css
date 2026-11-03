@@ -1,14 +1,6 @@
 @import url('open-iconic/font/css/open-iconic-bootstrap.min.css');
 
-.telerik-chart-wrapper {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden; /* prevents vertical scrollbars */
-}
+/* CYB-537: removed unused .telerik-chart-wrapper rule - no component referenced it */
 
 html {
     font-size: 13px;
@@ -429,4 +421,35 @@ a, .btn-link {
     .responsive-window {
         width: 50% !important;
     }
+}
+
+/* Compact "possible duplicates" selection dialog (CYB-312). It reuses the shore-input-modal-*
+   shell, which is otherwise sized for embedding a full detail page (up to 1320px wide, 600px
+   min-height) - these modifiers shrink it down to fit its actual content: a short message, a
+   lookup field, and two buttons.
+   overflow is switched from hidden/auto to visible so the ShoreLookupInput dropdown (absolutely
+   positioned below the field) isn't clipped by the now much-shorter card/body - QA found the
+   dropdown hidden behind the modal once it was made compact. The header/body corners get their
+   own matching radius so removing the card's clip doesn't leave square corners poking out. */
+.dup-select-modal-card {
+    width: 70% !important;
+    overflow: visible !important;
+}
+
+.dup-select-modal-card .shore-input-modal-header {
+    border-top-left-radius: var(--cb-v2-radius-lg, 1.1rem);
+    border-top-right-radius: var(--cb-v2-radius-lg, 1.1rem);
+}
+
+.dup-select-modal-body {
+    min-height: 0 !important;
+    overflow: visible !important;
+    border-bottom-left-radius: var(--cb-v2-radius-lg, 1.1rem);
+    border-bottom-right-radius: var(--cb-v2-radius-lg, 1.1rem);
+}
+
+/* CYB-333: the fee amendment raised from a saved activity opens in the app-level CymBuild modal.
+   Keep it above the grid's in-page detail panel (z-index up to 2600), which the activity may be open in. */
+.cb-v2-modal-backdrop:has(> .cb-v2-modal-activity-fee-amendment) {
+    z-index: 2700;
 }

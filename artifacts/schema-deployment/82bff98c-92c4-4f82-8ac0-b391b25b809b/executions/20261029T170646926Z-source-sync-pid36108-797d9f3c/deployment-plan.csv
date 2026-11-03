@@ -1,0 +1,3 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"22e0857a-617c-42ea-b5f4-8241495c08fb","StoredProcedure","SCore","CreateUserSession","","Different","True","False","True","True"
+"dfe202f2-fc15-4be1-b29a-ab258f2b998c","StoredProcedure","SSop","QuotesUpsert","","Different","True","False","True","True"

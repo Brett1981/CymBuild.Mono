@@ -1,0 +1,28 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "7e236586-fe7b-4603-9cba-aa4a7308718c",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 1,
+  "ArtifactCount": 1,
+  "GeneratedOnUtc": "2026-09-16T08:25:46.5111003Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "be679d74-6371-4d99-a485-9c5d6d8ef122",
+      "ObjectType": "View",
+      "SchemaName": "SSop",
+      "ObjectName": "FireEngineering_Fee_Proposal_MergeInfo",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "43A977E4B5BBE13E8DBF67BAD2B2EBC3FC773904FF4B3111713849C6BAB9206C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Views/SSop.FireEngineering_Fee_Proposal_MergeInfo.sql",
+      "FileSha256": "CD2ED445CF6955C19B9E796855B83938D1FCD53649689BB788785054D8532E46",
+      "WasSynchronized": false
+    }
+  ]
+}

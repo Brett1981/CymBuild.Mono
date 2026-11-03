@@ -3,7 +3,7 @@
 //    auth: {
 //        clientId: "e551c05f-19f7-435c-9842-c039ab8a4e0c",
 //        authority: "https://login.microsoftonline.com/260244d9-d475-4990-9550-997fbd6ade67",
-//        redirectUri: "https://bre.socotec.co.uk:9603/authentication/login-callback",
+//        redirectUri: "https://cymbuild.socotec.co.uk/authentication/login-callback",
 //        navigateToLoginRequestUrl: false,
 //    },
 //    cache: {

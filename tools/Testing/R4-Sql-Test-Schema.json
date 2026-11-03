@@ -48,6 +48,78 @@
       ]
     },
     {
+      "path": "Security/Schemas/SOffice.sql",
+      "sha256": "CB98DBFA967881B2B9402CFF5ADD819048D80DFFDF839334FB77BF80026BE19A",
+      "kind": "Schema",
+      "schema": "SOffice",
+      "name": "SOffice",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SOffice\\]"
+        }
+      ]
+    },
+    {
+      "path": "Security/Schemas/SFin.sql",
+      "sha256": "F13EDC5AC897D70B042B3BE7E916F3877AD9FED6EDF88E8ED8D21DDAAE8B1CE4",
+      "kind": "Schema",
+      "schema": "SFin",
+      "name": "SFin",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SFin\\]"
+        }
+      ]
+    },
+    {
+      "path": "Security/Schemas/SProd.sql",
+      "sha256": "1BA09FDA0098EF68C0F97376FCE0442F21D150635B7568DAFCCA0E0B116FABBA",
+      "kind": "Schema",
+      "schema": "SProd",
+      "name": "SProd",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SProd\\]"
+        }
+      ]
+    },
+    {
+      "path": "Security/Schemas/SCrm.sql",
+      "sha256": "1A1BCA2CBFAD105EB03B819626864702C86F04FB6EBC2C58F3AA9BE6ADB9B0BC",
+      "kind": "Schema",
+      "schema": "SCrm",
+      "name": "SCrm",
+      "batches": [
+        {
+          "kind": "Schema",
+          "matchRegex": "(?im)^\\s*CREATE\\s+SCHEMA\\s+\\[SCrm\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/User Types/Table Types/SCore.GuidUniqueList.sql",
+      "sha256": "ACAE7076799FDAEC0A01D1485A22D6CB6D3F6E098C975493A11B61304239CA04",
+      "kind": "TableType",
+      "schema": "SCore",
+      "name": "GuidUniqueList",
+      "batches": [
+        { "kind": "TableType", "matchRegex": "(?im)^\\s*CREATE\\s+TYPE\\s+\\[SCore\\]\\.\\[GuidUniqueList\\]\\s+AS\\s+TABLE" }
+      ]
+    },
+    {
+      "path": "Programmability/User Types/Table Types/SCore.TwoGuidUniqueList.sql",
+      "sha256": "BCFDB269227CEBE14DD4728ECDA8A84E2BD8CFCB7F306B44190144F64249CD30",
+      "kind": "TableType",
+      "schema": "SCore",
+      "name": "TwoGuidUniqueList",
+      "batches": [
+        { "kind": "TableType", "matchRegex": "(?im)^\\s*CREATE\\s+TYPE\\s+\\[SCore\\]\\.\\[TwoGuidUniqueList\\]\\s+AS\\s+TABLE" }
+      ]
+    },
+    {
       "path": "Tables/SCore.EntityTypes.sql",
       "sha256": "14B8C5DC458ED403DE8C0C866E22E78FA86FBB956AD4E0971EE63AFD76E9EC44",
       "kind": "Table",
@@ -471,15 +543,1248 @@
     },
     {
       "path": "Programmability/Procedures/SCore.DataObjectTransitionUpsert.sql",
-      "sha256": "BDFAB4432CF955A724A7CE113F1376A19E1B9607C4448A046751AC787243C561",
+      "sha256": "EF3F23851211CCDA233F6710AA8413FA22FD04C88430EAFA62C3E60C7058ECBA",
       "kind": "Procedure",
       "schema": "SCore",
       "name": "DataObjectTransitionUpsert",
       "batches": [
         {
           "kind": "Procedure",
-          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SCore\\]\\.\\[DataObjectTransitionUpsert\\]"
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SCore\\]\\.\\[DataObjectTransitionUpsert\\]"
         }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.usp_JobClosureDecision.sql",
+      "sha256": "28EA420370398507FC23ADFD2FD765044D6593EF46FCAAF23AEF78FF05B9D7EB",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "usp_JobClosureDecision",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SJob\\]\\.\\[usp_JobClosureDecision\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SFin.Transactions.sql",
+      "sha256": "4F5C1C30D2313BA7578B07083F48D6485AC874C3A6C4ECE944D1672E865A9709",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "Transactions",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[Transactions\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_Transactions\\]\\ PRIMARY\\ KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SFin.TransactionDetails.sql",
+      "sha256": "9F6BE3C38174A97F4E95DBC8D10882229A2BD822BFA58F59B08635ECD84EAA58",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "TransactionDetails",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[TransactionDetails\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_TransactionDetails\\]\\ PRIMARY\\ KEY"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SFin.TransactionSageSubmissionStatus.sql",
+      "sha256": "CA8A5921290CAE8751F2540FB4FAED9632197F67FC3A49D45A799E8C8C65C8EA",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "TransactionSageSubmissionStatus",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[TransactionSageSubmissionStatus\\]"
+        },
+        {
+          "kind": "PrimaryKey",
+          "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\ \\[PK_TransactionSageSubmissionStatus\\]\\ PRIMARY\\ KEY"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionSageInvoiceDetails_Upsert.sql",
+      "sha256": "F9F796A08331713C0BCDCED7303C57DC59A4A4414287FCE68D6DDAB719612B04",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionSageInvoiceDetails_Upsert",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionSageInvoiceDetails_Upsert\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionSageSubmissionStatus_MarkSentLegacy.sql",
+      "sha256": "43C9CE3D20E179C4AEB83A353400BE6102D0C7785CB6E85071EB8439CB6E676A",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionSageSubmissionStatus_MarkSentLegacy",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionSageSubmissionStatus_MarkSentLegacy\\]"
+        }
+      ]
+    },
+    {
+      "path": "Views/SFin.Transaction_InvoiceMergeInfo.sql",
+      "sha256": "318E770C22528AD6AC8AA3EBF0BC45BC6C290ADD62FEE9BD37CB599F1BA7DF72",
+      "kind": "View",
+      "schema": "SFin",
+      "name": "Transaction_InvoiceMergeInfo",
+      "batches": [
+        {
+          "kind": "View",
+          "matchRegex": "(?im)^\\s*CREATE\\s+VIEW\\s+\\[SFin\\]\\.\\[Transaction_InvoiceMergeInfo\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SCore.GetCurrentUserId.sql",
+      "sha256": "392E685143986427217DB7FEB42C33DD150CB3E39C35B7287343C272095AD1DC",
+      "kind": "Function",
+      "schema": "SCore",
+      "name": "GetCurrentUserId",
+      "batches": [
+        {
+          "kind": "Function",
+          "matchRegex": "(?im)^\\s*CREATE\\s+FUNCTION\\s+\\[SCore\\]\\.\\[GetCurrentUserId\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.IntegrationOutbox_EnqueueJobCreatedFromProposal.sql",
+      "sha256": "F0CB07E29C30CBAC6584ED6C9F26A71612720ECC14F32C9EC3108506E0BEE9D6",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "IntegrationOutbox_EnqueueJobCreatedFromProposal",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SCore\\]\\.\\[IntegrationOutbox_EnqueueJobCreatedFromProposal\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Triggers/SSop.tr_QuoteItems_EnqueueJobCreatedFromProposal.sql",
+      "sha256": "B45859D1DF50DF7CB7030195AD652A83EDA5D5BC31EF74697BF6008421D3E9DC",
+      "kind": "Trigger",
+      "schema": "SSop",
+      "name": "tr_QuoteItems_EnqueueJobCreatedFromProposal",
+      "batches": [
+        {
+          "kind": "Trigger",
+          "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+TRIGGER\\s+\\[SSop\\]\\.\\[tr_QuoteItems_EnqueueJobCreatedFromProposal\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SCore.Workflow.sql",
+      "sha256": "F9CA7A2CAB9E1509E15B3F4C7E6AA101C43011B494B76BF8CBA29435869028CA",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "Workflow",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[Workflow\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.WorkflowTransition.sql",
+      "sha256": "FB6EB303B5F7A2E40F8A6333F0E9D48188C196BD3DE1A79C96CC6B6EF722AF88",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "WorkflowTransition",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[WorkflowTransition\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.WorkflowStatusNotificationGroups.sql",
+      "sha256": "C7F0D8B8B906E98EBECA5F81F4B40B0ACFE6296C0D40BFE40B680BB1CEA30315",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "WorkflowStatusNotificationGroups",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[WorkflowStatusNotificationGroups\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.UserGroups.sql",
+      "sha256": "1EA32284A2BFCE447ADEA5A4DA52BC23AD248A33DE0DA84ED5457F9E35F5770A",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "UserGroups",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[UserGroups\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.JobTypes.sql",
+      "sha256": "89AA2FFD0F57BBB4CF3D0F99B9C54F96E35E500087BD28C16EEE18B043CDBEEB",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "JobTypes",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[JobTypes\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.Assets.sql",
+      "sha256": "9E4C70BA458F62745A679CA50638EC589F56E0C310B4BE8A41C6BEA2254528C3",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "Assets",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[Assets\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCrm.Counties.sql",
+      "sha256": "2BED8271471AB780C8512897A0B41A99AC84C8FF44374E30C38E866CE21A3283",
+      "kind": "Table",
+      "schema": "SCrm",
+      "name": "Counties",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCrm\\]\\.\\[Counties\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCrm.AccountContacts.sql",
+      "sha256": "05563142EA9C8F8B42179A254D73A1F0BE38F8DFB17C1D2F01F71AFA6C07915B",
+      "kind": "Table",
+      "schema": "SCrm",
+      "name": "AccountContacts",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCrm\\]\\.\\[AccountContacts\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCrm.Contacts.sql",
+      "sha256": "04D3B702E0F46CC8235D22EBC076260F079093A2FABA344C5BAC8E0BD69F034F",
+      "kind": "Table",
+      "schema": "SCrm",
+      "name": "Contacts",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCrm\\]\\.\\[Contacts\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.RibaStages.sql",
+      "sha256": "612EA9490B4934E809D0C24F368C2F48B1A203F931211555F32A2477EDAD6A4D",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "RibaStages",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[RibaStages\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SProd.Products.sql",
+      "sha256": "86843F9DED019D35528273A03828067B600123FDA6A910D6AAA183ACD8FE35CB",
+      "kind": "Table",
+      "schema": "SProd",
+      "name": "Products",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SProd\\]\\.\\[Products\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SSop.Contracts.sql",
+      "sha256": "90788C78699E48933A4437F9A829CA1925CE6B6D5288895E0B57D0503A06665F",
+      "kind": "Table",
+      "schema": "SSop",
+      "name": "Contracts",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SSop\\]\\.\\[Contracts\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.JobRibaStageFees.sql",
+      "sha256": "690B2A33CABF6BD0989A1AECF71BC4327393A54C80EEB3C89AC1686EA9CC24B9",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "JobRibaStageFees",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[JobRibaStageFees\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.CustomFeeAmendment.sql",
+      "sha256": "991750CE42EE77F8D173591D9F7B369A795C1B3E686373CC498152D79C91F989",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "CustomFeeAmendment",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[CustomFeeAmendment\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.FeeAmendment.sql",
+      "sha256": "C3674D7E6EF1D1DB940C2DDC6950B4C8395B0052907ABD94CB029607F3EE75FE",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "FeeAmendment",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[FeeAmendment\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.FeeAmendmentRibaStages.sql",
+      "sha256": "4BBA0C0A3B3B36A4AC03525E51483828F8A047DAF480025483292FD104A7DCDC",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "FeeAmendmentRibaStages",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[FeeAmendmentRibaStages\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.TransactionDetails.sql",
+      "sha256": "9F6BE3C38174A97F4E95DBC8D10882229A2BD822BFA58F59B08635ECD84EAA58",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "TransactionDetails",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[TransactionDetails\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.Transactions.sql",
+      "sha256": "4F5C1C30D2313BA7578B07083F48D6485AC874C3A6C4ECE944D1672E865A9709",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "Transactions",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[Transactions\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.TransactionTypes.sql",
+      "sha256": "9669ABA93A6BE2D588FA8D01612798DC29E403B1127F9ED2090A74CD27E0BE21",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "TransactionTypes",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[TransactionTypes\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.Activities.sql",
+      "sha256": "B2AFEDA2BD69CDAAE3E79A0602B3837CA0CC1130964E6DC0E3EDC2844BEEC6C4",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "Activities",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[Activities\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.SubContractorInvoices.sql",
+      "sha256": "FA663648DF7248C2CAE4CE17B0C3120E2880849E82E8F69D7D946510F83F5D52",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "SubContractorInvoices",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[SubContractorInvoices\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.ActivityTypes.sql",
+      "sha256": "BE4C1B02D8F001553E3B56C287F2F71238ED5155326657049C896FC4A1E933BD",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "ActivityTypes",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[ActivityTypes\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.ActivityStatus.sql",
+      "sha256": "05F78CB0A758082075D0DCBC0FEFA79F1FEECA793C6205FBB66FDA52ACE8B2FD",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "ActivityStatus",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[ActivityStatus\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceRequestItems.sql",
+      "sha256": "E2C00FDC3E68506324CF2783DE1E22AACB003A9045AE934434274CEA5F98E5A4",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceRequestItems",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceRequestItems\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceRequests.sql",
+      "sha256": "94DE1956B59F22965F8BC48D79A108BE384F8AF9A8FE5C4C83156CBC33B1CB14",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceRequests",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceRequests\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoicePaymentStatus.sql",
+      "sha256": "D4BF9967397517254E1688AAEBF6AF0D73E28511DE485037988FC5683A66F9A7",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoicePaymentStatus",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoicePaymentStatus\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.TransactionAllocations.sql",
+      "sha256": "64C4690CD7EEADEDEFC5925FF6B58644AEE8E89BB16BBB38950EF08389C088E2",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "TransactionAllocations",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[TransactionAllocations\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.SageExternalTransactions.sql",
+      "sha256": "9656E4A5F3DA06EC2A802361EA71DD496C6AF1A7D698FDF5D5D5ABC6CB69DCC2",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "SageExternalTransactions",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[SageExternalTransactions\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.SageExternalAllocations.sql",
+      "sha256": "68A319D242304E8FF6CDE1E197A373C3244725954691B63FF67266219FD986AE",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "SageExternalAllocations",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[SageExternalAllocations\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.SageInboundDocumentStatus.sql",
+      "sha256": "8B2A0279BBF51BFD8565C0677F47E6CA17FA1EB2B18BF63DD013BD9E98A2F1C3",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "SageInboundDocumentStatus",
+      "batches": [
+        {
+          "kind": "Table",
+          "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[SageInboundDocumentStatus\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.SageInbound_ReconcileInvoiceTransaction.sql",
+      "sha256": "D036865C934F393B75907EF35B9152CC37D0EDF4D2195574FB6C06F1236D6AFA",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "SageInbound_ReconcileInvoiceTransaction",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[SageInbound_ReconcileInvoiceTransaction\\]"
+        }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.SageInbound_ApplyAggregatePaymentState.sql",
+      "sha256": "C77A19081BAAD95DDB8B05CD7AF2D4E670E20EF8862EC6C00379A9A1DB982301",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "SageInbound_ApplyAggregatePaymentState",
+      "batches": [
+        {
+          "kind": "Procedure",
+          "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[SageInbound_ApplyAggregatePaymentState\\]"
+        }
+      ]
+    },
+    {
+      "path": "Tables/SJob.Milestones.sql",
+      "sha256": "19C35B037DF53F7E44EF8292635C03CAD91B6525D390031ACC3D2CDF2D57D457",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "Milestones",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[Milestones\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.JobPaymentStages.sql",
+      "sha256": "6DE4D14CEE29478AA8D0F64D1E4345BEA9C327509FDE6FB679CFD1E7310519E5",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "JobPaymentStages",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[JobPaymentStages\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SOffice.EntityTypes.sql",
+      "sha256": "7D984F0E6410EA4E36601C6E068804C13C42C56BB54C5D811EB5E5DB0CED2434",
+      "kind": "Table",
+      "schema": "SOffice",
+      "name": "EntityTypes",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SOffice\\]\\.\\[EntityTypes\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SOffice.TargetObjects.sql",
+      "sha256": "5E437FD88764E75C019DC9940DE35EB53F1145A6B0AAB42063FBF3689A741E8E",
+      "kind": "Table",
+      "schema": "SOffice",
+      "name": "TargetObjects",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SOffice\\]\\.\\[TargetObjects\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.DataClassifications.sql",
+      "sha256": "723DBFE7C52880F5DAE636840E33B59D28A20176AD60D809FEF2BF9C19FA89EE",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "DataClassifications",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[DataClassifications\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.SecurityClassifications.sql",
+      "sha256": "C81793A41AF16E69597BA0A4E94DDC6849BC7B0524664D213F5067C4F5F7497D",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "SecurityClassifications",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[SecurityClassifications\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Sequences/SFin.TransactionNumber.sql",
+      "sha256": "8576AC4D2CE5586600DCCA314695FA0FC17B7C9C701D116BBB1048056B2064D5",
+      "kind": "Sequence",
+      "schema": "SFin",
+      "name": "TransactionNumber",
+      "batches": [
+        { "kind": "Sequence", "matchRegex": "(?im)^\\s*CREATE\\s+SEQUENCE\\s+\\[SFin\\]\\.\\[TransactionNumber\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Sequences/SSop.ProjectNumber.sql",
+      "sha256": "AEA07AC994DB395B3E844926D244D46BD9C4677860BD4774D418725E93C21D77",
+      "kind": "Sequence",
+      "schema": "SSop",
+      "name": "ProjectNumber",
+      "batches": [
+        { "kind": "Sequence", "matchRegex": "(?im)^\\s*CREATE\\s+SEQUENCE\\s+\\[SSop\\]\\.\\[ProjectNumber\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Sequences/SSop.EnquiryNumber.sql",
+      "sha256": "B5CDFD4F6B12D1070BC8ACA3BBDF17991E0FE2A1F58EFA5F7F22BFE4272C6BA5",
+      "kind": "Sequence",
+      "schema": "SSop",
+      "name": "EnquiryNumber",
+      "batches": [
+        { "kind": "Sequence", "matchRegex": "(?im)^\\s*CREATE\\s+SEQUENCE\\s+\\[SSop\\]\\.\\[EnquiryNumber\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SCore.GetCurrentUserGuid.sql",
+      "sha256": "C765DE4B89519E3B2880C8A5FBAA0FAD4AE337FD511EE84A444AD85B2B8A0706",
+      "kind": "Function",
+      "schema": "SCore",
+      "name": "GetCurrentUserGuid",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+FUNCTION\\s+\\[SCore\\]\\.\\[GetCurrentUserGuid\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionsUpsert.sql",
+      "sha256": "9A20D3E9C4D27EEBB0FBE4C7056FADAD9E6FF956F4320134BD9155D07EA03654",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceScheduleMonthConfiguration_GenerateMonthlySeries.sql",
+      "sha256": "3D6029ABE518228CCFEA972F7ED09E7163D29F8C70633919B0230FD97C36E62E",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceScheduleMonthConfiguration_GenerateMonthlySeries",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceScheduleMonthConfiguration_GenerateMonthlySeries\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.FeeAmendmentsUpsert.sql",
+      "sha256": "EBC846A656168D46D2A57D026E721653EE8D75331F9801BFADE53212EDF98DD3",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "FeeAmendmentsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SJob\\]\\.\\[FeeAmendmentsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionDetailsUpsert.sql",
+      "sha256": "0F217DF7BB1182A028547CFB775CF8145052E95290F0B5AE8283725274171CD5",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionDetailsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionDetailsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionAllocationsUpsert.sql",
+      "sha256": "CA90F8A8C198755C5C25540178DC46BA64856D6F65C0030571ED0CD52EEB6C02",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionAllocationsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionAllocationsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionSageSubmission_EnsureQueued.sql",
+      "sha256": "83F0EEB0195AE9B2C54755BC91A48F1D22123DE755236F5124495847A04A082D",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionSageSubmission_EnsureQueued",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionSageSubmission_EnsureQueued\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.SageExternalTransaction_Upsert.sql",
+      "sha256": "450F2A8DEDA0C49B91A9DDB417CC8C91A772FDF0561DD82361A44752366C0E04",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "SageExternalTransaction_Upsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[SageExternalTransaction_Upsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.SageInboundReceiptAndAllocation_Materialise.sql",
+      "sha256": "3910765CBE052D396BDD241E8D0570D50B42B122BEB9198F267667E67332A402",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "SageInboundReceiptAndAllocation_Materialise",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[SageInboundReceiptAndAllocation_Materialise\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.SageInboundReceiptMaterialisation_AutoCorrect.sql",
+      "sha256": "7A5B30875321383AF44CD198BE3123FBCD003683CB9894582AAFDDB7275B3485",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "SageInboundReceiptMaterialisation_AutoCorrect",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+OR\\s+ALTER\\s+PROCEDURE\\s+\\[SFin\\]\\.\\[SageInboundReceiptMaterialisation_AutoCorrect\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.ProjectsUpsert.sql",
+      "sha256": "F043121FAD8F447B32667F4F41DD90A51094653C1B1690DB1BF02254A99244CF",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "ProjectsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SSop\\]\\.\\[ProjectsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SOffice.TargetObjectUpsert.sql",
+      "sha256": "589D5783597DB82AE5F8B694F72D0FAB028AEDCFB0FD4FB2DF23F71A5808B669",
+      "kind": "Procedure",
+      "schema": "SOffice",
+      "name": "TargetObjectUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+PROCEDURE\\s+\\[SOffice\\]\\.\\[TargetObjectUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.EnquiriesUpsert.sql",
+      "sha256": "E9EBBAFE249002049768D31283B403D2B1F4A4C5187D5CC97FD2967E1F00F887",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "EnquiriesUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SSop\\]\\.\\[EnquiriesUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Views/SCore.WF_Auth_DataObjectRouting.sql",
+      "sha256": "B3614F7790FEEDC67A075D6060AD09D5E0603B17B44D7F45687E8FDA3A86A93A",
+      "kind": "View",
+      "schema": "SCore",
+      "name": "WF_Auth_DataObjectRouting",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SCore\\]\\.\\[WF_Auth_DataObjectRouting\\]" }
+      ]
+    },
+    {
+      "path": "Views/SSop.EnquiryService_ExtendedInfo.sql",
+      "sha256": "A440A19FB9899E3128A9A1D7803762A027114C231023BF4B1044BE24C32CF688",
+      "kind": "View",
+      "schema": "SSop",
+      "name": "EnquiryService_ExtendedInfo",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SSop\\]\\.\\[EnquiryService_ExtendedInfo\\]" }
+      ]
+    },
+    {
+      "path": "Views/SSop.Enquiry_MergeInfo.sql",
+      "sha256": "6256350593BA32472486A59AB885FDE971790DF6B2EFACE9FF2AFC65C0F4EEC1",
+      "kind": "View",
+      "schema": "SSop",
+      "name": "Enquiry_MergeInfo",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SSop\\]\\.\\[Enquiry_MergeInfo\\]" }
+      ]
+    },
+    {
+      "path": "Views/SSop.Quote_JobsSummary.sql",
+      "sha256": "F97C55BFE34905D259502D829640194243F4522F189E40405902670C3CE182FB",
+      "kind": "View",
+      "schema": "SSop",
+      "name": "Quote_JobsSummary",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SSop\\]\\.\\[Quote_JobsSummary\\]" }
+      ]
+    },
+    {
+      "path": "Views/SSop.Quote_CalculatedFields.sql",
+      "sha256": "A238F01C1FBA55BD175299351EC68B0D3C9F4B44CC81B60A1DA5FE77DC5A459B",
+      "kind": "View",
+      "schema": "SSop",
+      "name": "Quote_CalculatedFields",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SSop\\]\\.\\[Quote_CalculatedFields\\]" }
+      ]
+    },
+    {
+      "path": "Views/SSop.Enquiry_CalculatedFields.sql",
+      "sha256": "AC0394011CA6DEDAD8C22295552B1D8FA3898AF472B65E214E413FA0AC2232E2",
+      "kind": "View",
+      "schema": "SSop",
+      "name": "Enquiry_CalculatedFields",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SSop\\]\\.\\[Enquiry_CalculatedFields\\]" }
+      ]
+    },
+    {
+      "path": "Views/SFin.TransactionCalculations.sql",
+      "sha256": "3077DE8CFE0DE89142194862CE50FC07272E440F8E0A7CA8B1DBE039FAE2A251",
+      "kind": "View",
+      "schema": "SFin",
+      "name": "TransactionCalculations",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SFin\\]\\.\\[TransactionCalculations\\]" }
+      ]
+    },
+    {
+      "path": "Views/SJob.JobFinance.sql",
+      "sha256": "53CC4DCCBD80F7A9AB12273EEB931D8C19685779935164172C01ECADB7E3B99F",
+      "kind": "View",
+      "schema": "SJob",
+      "name": "JobFinance",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SJob\\]\\.\\[JobFinance\\]" }
+      ]
+    },
+    {
+      "path": "Views/SJob.Job_FeeDrawdown.sql",
+      "sha256": "3BC964BBF89AB833A530BD59A1570422D88CE37168904F0BD2C47370E9EC7218",
+      "kind": "View",
+      "schema": "SJob",
+      "name": "Job_FeeDrawdown",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SJob\\]\\.\\[Job_FeeDrawdown\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SCore.tvf_WF_AuthorisationQueue.sql",
+      "sha256": "AC2EE4A80D6DA65D3BF52BB3B79B3319CAF19F6AC95CEAE222E82A257546DE80",
+      "kind": "Function",
+      "schema": "SCore",
+      "name": "tvf_WF_AuthorisationQueue",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SCore\\]\\.\\[tvf_WF_AuthorisationQueue\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.FeeAmendmentStatus.sql",
+      "sha256": "1C7DA53B71E8429F46E1A7A0C6AC7E65A46A412FBBDAEA794C1110E46902A4AC",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "FeeAmendmentStatus",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[FeeAmendmentStatus\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.EntityProperties.sql",
+      "sha256": "5B3C3A4AF6F6F51C2C59BB0383F84CA5FBC1CB4C24CD4336336944A0FCAE6F9D",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "EntityProperties",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[EntityProperties\\]" },
+        { "kind": "PrimaryKey", "matchRegex": "(?ims)^\\s*ALTER\\s+TABLE.*?CONSTRAINT\\s+\\[PK_EntityProperties\\]\\s+PRIMARY\\s+KEY" },
+        { "kind": "Index", "name": "IX_UQ_EntityProperties_Hobt_Name", "matchRegex": "(?im)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\[IX_UQ_EntityProperties_Hobt_Name\\]" }
+      ]
+    },
+    {
+      "path": "Views/SCore.EntityPropertiesForValidationV.sql",
+      "sha256": "96650CDCE6D296BCDB507680A3238F1709F087737E3653C5A1096A4B5E6F7C7E",
+      "kind": "View",
+      "schema": "SCore",
+      "name": "EntityPropertiesForValidationV",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SCore\\]\\.\\[EntityPropertiesForValidationV\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SFin.tvf_InvoiceRequestItemsValidate.sql",
+      "sha256": "B33F37D7A79F2CADF065BF8A4889F6ABBDEC0F803A34EE7F73BCD12BA88E246B",
+      "kind": "Function",
+      "schema": "SFin",
+      "name": "tvf_InvoiceRequestItemsValidate",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SFin\\]\\.\\[tvf_InvoiceRequestItemsValidate\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SFin.tvf_InvoiceRequestItemFeeCheck.sql",
+      "sha256": "5CF885E4FEFF9F27C9D43D8A6B7BD0866701DE255E7147D6AB8788E66A2CDF9C",
+      "kind": "Function",
+      "schema": "SFin",
+      "name": "tvf_InvoiceRequestItemFeeCheck",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SFin\\]\\.\\[tvf_InvoiceRequestItemFeeCheck\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SFin.tvf_InvoiceAutomation_Phase3Detections.sql",
+      "sha256": "0259BF97581FAA50A7F0410B61BDA2008008FAE05CA5F608408C86B689466F27",
+      "kind": "Function",
+      "schema": "SFin",
+      "name": "tvf_InvoiceAutomation_Phase3Detections",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SFin\\]\\.\\[tvf_InvoiceAutomation_Phase3Detections\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SSop.tvf_QuotesValidate.sql",
+      "sha256": "3755C995E3F05A5B179FB9464E2F03E7D5C88D8DB6CAA9C7299379E31C2F7CAD",
+      "kind": "Function",
+      "schema": "SSop",
+      "name": "tvf_QuotesValidate",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SSop\\]\\.\\[tvf_QuotesValidate\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SCore.ObjectSecurityForUser_CanRead.sql",
+      "sha256": "008015D634787204512C23F1CFC8EED50DF48121412CF2B41CF1FB1D2AFC4B9A",
+      "kind": "Function",
+      "schema": "SCore",
+      "name": "ObjectSecurityForUser_CanRead",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SCore\\]\\.\\[ObjectSecurityForUser_CanRead\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SCore.tvf_UserCanUseInactiveMergeDocuments.sql",
+      "sha256": "6B4C17C3D02D2CAF7121D9EAAE71A63CE9D5F34B3E669ACF51EC61109EEB8951",
+      "kind": "Function",
+      "schema": "SCore",
+      "name": "tvf_UserCanUseInactiveMergeDocuments",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SCore\\]\\.\\[tvf_UserCanUseInactiveMergeDocuments\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SJob.tvf_UnBilledActivities.sql",
+      "sha256": "490C96E4BBAC0BEB8857927DF5604C3792773783AE559D0CF2C4937997C462C3",
+      "kind": "Function",
+      "schema": "SJob",
+      "name": "tvf_UnBilledActivities",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SJob\\]\\.\\[tvf_UnBilledActivities\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Functions/SJob.tvf_JobFeeDrawdown.sql",
+      "sha256": "927623E8E97DF0BFEBB3FF12F84C73A52C4CB83EFF9997ED667E7CC2AFF6E55F",
+      "kind": "Function",
+      "schema": "SJob",
+      "name": "tvf_JobFeeDrawdown",
+      "batches": [
+        { "kind": "Function", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?FUNCTION\\s+\\[SJob\\]\\.\\[tvf_JobFeeDrawdown\\]" }
+      ]
+    },
+    {
+      "path": "Views/SCore.vw_WF_AuthorisationQueue_Display.sql",
+      "sha256": "DA7C3EDE1A31EA03BE670BB72D486DF3430A8FA4EED871F189A326A3BC673005",
+      "kind": "ViewDeferred",
+      "schema": "SCore",
+      "name": "vw_WF_AuthorisationQueue_Display",
+      "batches": [
+        { "kind": "View", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?VIEW\\s+\\[SCore\\]\\.\\[vw_WF_AuthorisationQueue_Display\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.ExpireOverdueQuotesAndEnquiries.sql",
+      "sha256": "816F3F921F4057A5FFDBDD24F061078F9C748293B5B196C1B3DF19755661EACA",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "ExpireOverdueQuotesAndEnquiries",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SSop\\]\\.\\[ExpireOverdueQuotesAndEnquiries\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.DeleteDataObject.sql",
+      "sha256": "30631A132B5652DB052379D50348C1717C8B0641D03922D82ACF176AFD66A592",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "DeleteDataObject",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SCore\\]\\.\\[DeleteDataObject\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.TransactionBatchDelete.sql",
+      "sha256": "BEA1A5D8647F53BBA3CD813DA08A38182806E708D5955CC96401D11AAC448770",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "TransactionBatchDelete",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[TransactionBatchDelete\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceRequestItemsDelete.sql",
+      "sha256": "732F2CCB19D773C130E35A18B82D8F8B76580BB37E5E187BB57D7FC6D5ECAC82",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceRequestItemsDelete",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceRequestItemsDelete\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceRequestsDelete.sql",
+      "sha256": "BA69216E19928F34C84B8804DC47189EBC01848DE07B146892AA820CADB9C345",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceRequestsDelete",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceRequestsDelete\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceRequestUpsert.sql",
+      "sha256": "3B62018EB51E3CC1AB87FB2BFF9DA5D2C42802FAAE3DEFBC71FDE78D8D7A79AA",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceRequestUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceRequestUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances.sql",
+      "sha256": "8080A2C7FE35A12C6E186CEEA0582AEE89C8FAF35EF1EC8D8C163172514EB831",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceRequestCreateInvoice.sql",
+      "sha256": "A692EE73888651828EC6F7A8CE8901836561D6DF9A98C4BF80E11059D370F266",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceRequestCreateInvoice",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceRequestCreateInvoice\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.InvoiceRequestItemsUpsert.sql",
+      "sha256": "C2930B18BE3854815018FC13855B4C634627211CFCD5FBF2CBE3CC552952BB7B",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "InvoiceRequestItemsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[InvoiceRequestItemsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.ActivityCreateInvoiceRequest.sql",
+      "sha256": "69BF5126E1D3F91D105888752D3A83EBA43AA14B05F4DED86618D03B3073F012",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "ActivityCreateInvoiceRequest",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SJob\\]\\.\\[ActivityCreateInvoiceRequest\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.ActivitiesUpsert.sql",
+      "sha256": "E757841F9DEA5B9C5D73596B555BABB16DC587B2A29860EAA37C9742BCD1FFD4",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "ActivitiesUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SJob\\]\\.\\[ActivitiesUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.CustomFeeAmendmentUpsert.sql",
+      "sha256": "CD8762B5AAB9E937A18CF6223371AB6363C39C8ABCEC67F33E8DE4E56EF50751",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "CustomFeeAmendmentUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SJob\\]\\.\\[CustomFeeAmendmentUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.ActivityFeeAmendmentEnsure.sql",
+      "sha256": "D48B48AFB1888452EC8A326D1F414B47A7A16571A9D95DFE9B24DD4DD0A3938A",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "ActivityFeeAmendmentEnsure",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SJob\\]\\.\\[ActivityFeeAmendmentEnsure\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SFin.StagePaymentCreateInvoice.sql",
+      "sha256": "BAD893B05EC145C55A2B336711E34CD877F142DD9DD1F451448223EEB8FFBC16",
+      "kind": "Procedure",
+      "schema": "SFin",
+      "name": "StagePaymentCreateInvoice",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SFin\\]\\.\\[StagePaymentCreateInvoice\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.Markets.sql",
+      "sha256": "D1390C47D3B02168734FF2E632298E53C74019E85CE1B0A716B78993453BEA23",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "Markets",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[Markets\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCore.Sectors.sql",
+      "sha256": "52C25D2F9B54A2E1411368CDAF1129E0A4C6E64F1C1549BDF7B8FED0678765D3",
+      "kind": "Table",
+      "schema": "SCore",
+      "name": "Sectors",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCore\\]\\.\\[Sectors\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SSop.QuoteTemplates.sql",
+      "sha256": "DB729F7B5D7788DA115BEDFB52B554BFC416D7FC5C49CF0F45853616490EDE87",
+      "kind": "Table",
+      "schema": "SSop",
+      "name": "QuoteTemplates",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SSop\\]\\.\\[QuoteTemplates\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SSop.QuoteTemplateSections.sql",
+      "sha256": "10348EEA5AC6BFE2D707123A9A51B84493916A2695D34F37776582B83C7B90AA",
+      "kind": "Table",
+      "schema": "SSop",
+      "name": "QuoteTemplateSections",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SSop\\]\\.\\[QuoteTemplateSections\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SSop.QuoteTemplateItems.sql",
+      "sha256": "713BA2B7BD2B5615E88E97DFC60E35BBBDF7A80B120DB238B4AD209938902B13",
+      "kind": "Table",
+      "schema": "SSop",
+      "name": "QuoteTemplateItems",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SSop\\]\\.\\[QuoteTemplateItems\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceSchedules.sql",
+      "sha256": "80E8E0E7DB7BD395A65AE5FFACFB1A5468748E5BCE734C651488024D18DD39BC",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceSchedules",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceSchedules\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceScheduleTriggerInstances.sql",
+      "sha256": "BC0532711B95F57F8E61FFE9AAD33F8BFC8E878C1A8C5A2E8DBE016D9CAC1ABE",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceScheduleTriggerInstances",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceScheduleTriggerInstances\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceScheduleActivityMilestoneConfiguration.sql",
+      "sha256": "5D3C8731F992D3F4578D2F9523B32F16A1258AECE1EC05ABCEE68B3CCC7F2C61",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceScheduleActivityMilestoneConfiguration",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceScheduleActivityMilestoneConfiguration\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SJob.JobStages.sql",
+      "sha256": "14E97E449BEA9FD5270E9DB74A973F848741554ADE0EECAB534FE4574245588C",
+      "kind": "Table",
+      "schema": "SJob",
+      "name": "JobStages",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SJob\\]\\.\\[JobStages\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SCrm.AccountStatus.sql",
+      "sha256": "75F5A82F0DCA1062DC9964FFA720E8E2B917D22772E3C111AB0AAB60D28C587E",
+      "kind": "Table",
+      "schema": "SCrm",
+      "name": "AccountStatus",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SCrm\\]\\.\\[AccountStatus\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceScheduleMonthConfiguration.sql",
+      "sha256": "B16E719BA4921C3043F5FA621C81D5AD3510647D4648A31DC2598DFB828620A5",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceScheduleMonthConfiguration",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceScheduleMonthConfiguration\\]" }
+      ]
+    },
+    {
+      "path": "Tables/SFin.InvoiceSchedulePercentageConfiguration.sql",
+      "sha256": "F605F88A2CD008B84FAE9BFA3AEFA4D715D4A77DF365B31B4B6D58A778EB9B77",
+      "kind": "Table",
+      "schema": "SFin",
+      "name": "InvoiceSchedulePercentageConfiguration",
+      "batches": [
+        { "kind": "Table", "matchRegex": "(?im)^\\s*CREATE\\s+TABLE\\s+\\[SFin\\]\\.\\[InvoiceSchedulePercentageConfiguration\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Sequences/SSop.QuoteNumber.sql",
+      "sha256": "A1D991DA9169AEFC31A1048EE030BF52FA438409181F5A0BF2340D634B8329D3",
+      "kind": "Sequence",
+      "schema": "SSop",
+      "name": "QuoteNumber",
+      "batches": [
+        { "kind": "Sequence", "matchRegex": "(?im)^\\s*CREATE\\s+SEQUENCE\\s+\\[SSop\\]\\.\\[QuoteNumber\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.QuotesUpsert.sql",
+      "sha256": "BF4AAB2DD357D94EE72C8E722CFA235608F950FACFAA5D4E8F79FC09D884AFA8",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "QuotesUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SSop\\]\\.\\[QuotesUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.QuoteItemsUpsert.sql",
+      "sha256": "4F9622A5EF28E3996878BDDFD00B434965E0D141CFA3B2F79BA787D997022DD5",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "QuoteItemsUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SSop\\]\\.\\[QuoteItemsUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SSop.QuoteTemplatesCreateQuote.sql",
+      "sha256": "307490338CF87F2EDA29B6A0EAD21AE46CA32EC700FBE6CC14CABB643A5B0DF1",
+      "kind": "Procedure",
+      "schema": "SSop",
+      "name": "QuoteTemplatesCreateQuote",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SSop\\]\\.\\[QuoteTemplatesCreateQuote\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SCore.DataObjectBulkUpsert.sql",
+      "sha256": "3C33BD510D1B13976C494182F2E0F03CDBDF4934836F7A4408C41D5903E329A9",
+      "kind": "Procedure",
+      "schema": "SCore",
+      "name": "DataObjectBulkUpsert",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SCore\\]\\.\\[DataObjectBulkUpsert\\]" }
+      ]
+    },
+    {
+      "path": "Programmability/Procedures/SJob.JobRibaStageFees_UpsertFromCreatedQuoteItems.sql",
+      "sha256": "11E6BF3556E3C31713703B74904AB6A55EF08E00398812DA28E2A6646AA1EEAA",
+      "kind": "Procedure",
+      "schema": "SJob",
+      "name": "JobRibaStageFees_UpsertFromCreatedQuoteItems",
+      "batches": [
+        { "kind": "Procedure", "matchRegex": "(?im)^\\s*CREATE\\s+(?:OR\\s+ALTER\\s+)?PROCEDURE\\s+\\[SJob\\]\\.\\[JobRibaStageFees_UpsertFromCreatedQuoteItems\\]" }
       ]
     }
   ]

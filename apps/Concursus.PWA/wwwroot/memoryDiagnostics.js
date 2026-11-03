@@ -18,9 +18,8 @@ export async function getBlazorComponentCount() {
     return document.querySelectorAll(".telerik-blazor").length;
 }
 
-export async function getTelerikGridCount() {
-    return document.querySelectorAll('.k-grid').length;
-}
+// CYB-537: getTelerikGridCount() removed - Telerik.Blazor is no longer part of the app,
+// so ".k-grid" elements can never exist.
 
 export async function getServiceWorkerCacheSizeMB() {
     if (!('caches' in window)) return 0;

@@ -1,0 +1,2949 @@
+﻿/* =====================================================================================
+   CymBuild_Dev - 26.4 catch-up (single script)              generated 2026-10-14
+   Source: release/26.4 (= main) at d03e5df2, branch chore/SB_26.4-dev-sql-sync
+
+   CymBuild_Dev was compared object-by-object with the release/26.4 schema source:
+     941 procedures/functions/views/triggers: 921 identical, 6 behind (below),
+     14 audit triggers DEV-ahead (more audited columns - left untouched), 0 missing;
+     every table and column present; 1 default constraint missing (below);
+     2 unique indexes missing - NOT included (duplicate data, see end of script).
+   Plus metadata the QA migration needs from DEV: the Enquiry Town save statement.
+
+   What this applies (all CREATE OR ALTER / guarded - safe to re-run):
+     01 SSop.EnquiriesUpsert                     Enquiry inline Town save (#889)
+     02 SFin.TransactionDetailsUpsert            CYB-445 keep invoice request link
+     03 SFin.InvoiceRequestItemsUpsert           no NULL RIBA stage (-1 sentinel)
+     04 SFin.InvoiceRequestCreateInvoice         no NULL stage/milestone/activity
+     05 SJob.tvf_Jobs_TeamF10ExpiryList          CYB-261 Department / BusinessUnit
+     06 SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification   CYB-515 outcomes
+     07 2 x SCore.DataObjectTransition notification triggers        CYB-515 diagnostics
+     08 DF_FeeAmendmentChase_DateChased          missing default constraint
+     09 Enquiry Town metadata                    EntityQuery 64b03f27 statement + 4 params
+
+   Run (SSMS or sqlcmd) against CymBuild_Dev only:
+     sqlcmd -S "10.100.34.114\general" -d CymBuild_Dev -E -C -b -f 65001 -i <this file>
+   Rollback for 01-07: ROLLBACK_CymBuild_Dev_before_26.4_catchup.sql (same folder).
+   Afterwards: schema workbench Compare / -SyncSource from CymBuild_Dev (picks up the
+   CYB-515 triggers and the DEV-ahead audit triggers), then the QA migration.
+   ===================================================================================== */
+SET NOCOUNT ON;
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
+GO
+
+IF DB_NAME() <> N'CymBuild_Dev'
+    THROW 60700, N'This catch-up script is for CymBuild_Dev only - nothing changed.', 1;
+IF COL_LENGTH(N'SSop.Enquiries', N'PropertyTown') IS NULL OR COL_LENGTH(N'SSop.Enquiries', N'AgentTown') IS NULL
+    THROW 60701, N'SSop.Enquiries Town columns missing - nothing changed.', 1;
+IF OBJECT_ID(N'SCore.WorkflowNotificationQueueErrorLog', N'U') IS NULL
+    THROW 60702, N'SCore.WorkflowNotificationQueueErrorLog missing - nothing changed.', 1;
+GO
+
+PRINT N'01. SSop.EnquiriesUpsert (Enquiry inline Town save)';
+GO
+/* =========================================================================================
+   SSop.EnquiriesUpsert  (instrumented)
+   - Adds step-level TRY/CATCH + PRINT logging (shows exactly which call fails)
+   - Ensures DataObjects rows exist BEFORE calling DataObjectTransitionUpsert
+   - Uses UpsertDataObject for the Enquiry + Transition
+   - Does NOT change business logic except for:
+       * GUID hardening for @Guid
+       * Safe/diagnostic wrappers around ProjectsUpsert, UpsertDataObject, TransitionUpsert
+   ========================================================================================= */
+CREATE OR ALTER PROCEDURE [SSop].[EnquiriesUpsert]
+(
+    @OrganisationalUnitGuid UNIQUEIDENTIFIER,
+    @Date DATETIME2,
+    @CreatedByUserGuid UNIQUEIDENTIFIER,
+    @PropertyGuid UNIQUEIDENTIFIER,
+    @PropertyNameNumber NVARCHAR(100),
+    @PropertyAddressLine1 NVARCHAR(255),
+    @PropertyAddressLine2 NVARCHAR(255),
+    @PropertyAddressLine3 NVARCHAR(255),
+    @PropertyCountyGuid UNIQUEIDENTIFIER,
+    @PropertyPostCode NVARCHAR(30),
+    @PropertyCountryGuid UNIQUEIDENTIFIER,
+
+    @ClientAccountGuid UNIQUEIDENTIFIER,
+    @ClientAddressGuid UNIQUEIDENTIFIER,
+    @ClientAccountContactGuid UNIQUEIDENTIFIER,
+    @ClientName NVARCHAR(250),
+    @ClientAddressNameNumber NVARCHAR(100),
+    @ClientAddressLine1 NVARCHAR(255),
+    @ClientAddressLine2 NVARCHAR(255),
+    @ClientAddressLine3 NVARCHAR(255),
+    @ClientAddressCountyGuid UNIQUEIDENTIFIER,
+    @ClientAddressPostCode NVARCHAR(30),
+    @ClientAddressCountryGuid UNIQUEIDENTIFIER,
+    @ClientContactDisplayName NVARCHAR(250),
+    @ClientContactDetailTypeGuid UNIQUEIDENTIFIER,
+    @ClientContactDetailTypeName NVARCHAR(100),
+    @ClientContactDetailTypeValue NVARCHAR(250),
+
+    @AgentAccountGuid UNIQUEIDENTIFIER,
+    @AgentAddressGuid UNIQUEIDENTIFIER,
+    @AgentAccountContactGuid UNIQUEIDENTIFIER,
+    @AgentName NVARCHAR(250),
+    @AgentAddressNameNumber NVARCHAR(100),
+    @AgentAddressLine1 NVARCHAR(255),
+    @AgentAddressLine2 NVARCHAR(255),
+    @AgentAddressLine3 NVARCHAR(255),
+    @AgentAddressCountyGuid UNIQUEIDENTIFIER,
+    @AgentAddressPostCode NVARCHAR(30),
+    @AgentAddressCountryGuid UNIQUEIDENTIFIER,
+    @AgentContactDisplayName NVARCHAR(250),
+    @AgentContactDetailTypeGuid UNIQUEIDENTIFIER,
+    @AgentContactDetailTypeName NVARCHAR(100),
+    @AgentContactDetailTypeValue NVARCHAR(250),
+
+    @DescriptionOfWorks NVARCHAR(4000),
+    @ValueOfWork DECIMAL(19,2),
+    @CurrentProjectRobaStageGuid UNIQUEIDENTIFIER,
+    @RibaStage0Months INT,
+    @RibaStage1Months INT,
+    @RibaStage2Months INT,
+    @RibaStage3Months INT,
+    @RibaStage4Months INT,
+    @RibaStage5Months INT,
+    @RibaStage6Months INT,
+    @RibaStage7Months INT,
+    @PreConstructionStageMonths INT,
+    @ConstructionStageMonths INT,
+    @SendInfoToClient BIT,
+    @SendInfoToAgent BIT,
+    @KeyDates NVARCHAR(2000),
+    @ExpectedProcurementRoute NVARCHAR(200),
+    @Notes NVARCHAR(MAX),
+    @EnquirySourceGuid UNIQUEIDENTIFIER,
+    @IsReadyForQuoteReview BIT,
+    @QuotingDeadlineDate DATE,
+    @DeclinedToQuoteDate DATE,
+    @DeclinedToQuoteReason NVARCHAR(4000),
+    @ExternalReference NVARCHAR(50),
+    @ProjectGuid UNIQUEIDENTIFIER,
+    @IsSubjectToNDA BIT,
+    @DeadDate DATE,
+    @ChaseDate1 DATE,
+    @ChaseDate2 DATE,
+
+    @FinanceAccountGuid UNIQUEIDENTIFIER,
+    @FinanceAddressGuid UNIQUEIDENTIFIER,
+    @FinanceContactGuid UNIQUEIDENTIFIER,
+    @FinanceAccountName NVARCHAR(250),
+    @FinanceAddressNameNumber NVARCHAR(100),
+    @FinanceAddressLine1 NVARCHAR(255),
+    @FinanceAddressLine2 NVARCHAR(255),
+    @FinanceAddressLine3 NVARCHAR(255),
+    @FinanceCountyGuid UNIQUEIDENTIFIER,
+    @FinancePostCode NVARCHAR(30),
+    @FinanceContactDisplayName NVARCHAR(250),
+    @FinanceContactDetailTypeGuid UNIQUEIDENTIFIER,
+    @FinanceContactDetailTypeName NVARCHAR(100),
+    @FinanceContactDetailTypeValue NVARCHAR(250),
+
+    @EnterNewClientDetails BIT,
+    @EnterNewAgentDetails BIT,
+    @EnterNewFinanceDetails BIT,
+    @EnterNewStructureDetails BIT,
+    @IsClientFinanceAccount BIT,
+    @SignatoryIdentityGuid UNIQUEIDENTIFIER,
+    @ProposalLetter NVARCHAR(MAX),
+    @Guid UNIQUEIDENTIFIER,
+
+    @ContractGuid UNIQUEIDENTIFIER,
+    @AgentContractGuid UNIQUEIDENTIFIER,
+
+	@AssetJSONDetails NVARCHAR(500),
+
+    -- Inline "enter new … details" Town fields. Defaulted so the save statement
+    -- keeps working until the metadata that passes them has been applied.
+    @PropertyTown NVARCHAR(255) = N'',
+    @ClientAddressTown NVARCHAR(255) = N'',
+    @AgentTown NVARCHAR(255) = N'',
+    @FinanceTown NVARCHAR(255) = N''
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE
+        @TraceId UNIQUEIDENTIFIER = NEWID(),
+        @ProcName SYSNAME = OBJECT_SCHEMA_NAME(@@PROCID) + N'.' + OBJECT_NAME(@@PROCID);
+
+    BEGIN TRY
+        PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId) + N' START';
+
+        -------------------------------------------------------------------------
+        -- FIX: Ensure a new record has a real GUID before any DataObject upsert.
+        -------------------------------------------------------------------------
+        IF (@Guid IS NULL OR @Guid = '00000000-0000-0000-0000-000000000000')
+        BEGIN
+            SET @Guid = NEWID();
+            PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                + N' Generated new Enquiry Guid=' + CONVERT(NVARCHAR(36), @Guid);
+        END
+
+        SET @PropertyTown = ISNULL(@PropertyTown, N'');
+        SET @ClientAddressTown = ISNULL(@ClientAddressTown, N'');
+        SET @AgentTown = ISNULL(@AgentTown, N'');
+        SET @FinanceTown = ISNULL(@FinanceTown, N'');
+
+        DECLARE @OrganisationalUnitId INT = -1,
+                @CreatedByUserId INT = -1,
+                @PropertyId INT = -1,
+                @PropertyCountyId INT = -1,
+                @PropertyCountryId INT = -1,
+                @ClientAccountId INT = -1,
+                @ClientAddressId INT = -1,
+                @ClientAccountContactId INT = -1,
+                @ClientAddressCountyId INT = -1,
+                @ClientAddressCountryId INT = -1,
+                @AgentAccountId INT = -1,
+                @AgentAddressId INT = -1,
+                @AgentAccountContactId INT = -1,
+                @AgentAddressCountyId INT = -1,
+                @AgentAddressCountryId INT = -1,
+                @FinanceAccountId INT = -1,
+                @FinanceAddressId INT = -1,
+                @FinanceAccountContactId INT = -1,
+                @FinanceAddressCountyId INT = -1,
+                @CurrentProjectRibaStageId INT = -1,
+                @IsInsert BIT = 0,
+                @EnquiryId INT = NULL,
+                @EnquiryNumber INT = NULL,
+                @EnquirySourceId INT = -1,
+                @ProjectId INT = -1,
+                @SignatoryIdentityId INT = -1,
+                @NewProject BIT = 0,
+                @ProjectDescription NVARCHAR(MAX) = N'Auto Generated Project for Enquiry ' + N'[[number]] - ' + @DescriptionOfWorks,
+                @ClientContactDetailTypeId INT = -1,
+                @AgentContactDetailTypeId INT = -1,
+                @FinanceContactDetailTypeId INT = -1,
+                @ContractId INT = -1,
+                @AgentContractId INT = -1;
+
+        -------------------------------------------------------------------------
+        -- Resolve IDs
+        -------------------------------------------------------------------------
+        SELECT @OrganisationalUnitId = ID
+        FROM SCore.OrganisationalUnits
+        WHERE (Guid = @OrganisationalUnitGuid);
+
+        -------------------------------------------------------------------------
+        -- Auto-create Project (instrumented)
+        -------------------------------------------------------------------------
+        IF (@ProjectGuid = '00000000-0000-0000-0000-000000000000')
+        BEGIN
+            SET @ProjectGuid = NEWID();
+            SET @NewProject = 1;
+
+            PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                + N' Creating Project. ProjectGuid=' + CONVERT(NVARCHAR(36), @ProjectGuid);
+
+            BEGIN TRY
+                EXEC SSop.ProjectsUpsert
+                     @ExternalReference = N'',
+                     @ProjectDescription = @ProjectDescription,
+                     @ProjectProjectedStartDate = NULL,
+                     @ProjectProjectedEndDate = NULL,
+                     @ProjectCompleted = NULL,
+                     @IsSubjectToNDA = @IsSubjectToNDA,
+                     @DataClassificationGuid = '31e24091-52b4-480e-9a85-7052f614567a',
+                     @SecurityClassificationGuid = 'b4ef7a4d-454b-4c4b-af3d-5996312fd038',
+                     @Guid = @ProjectGuid;
+
+                PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                    + N' ProjectsUpsert OK. ProjectGuid=' + CONVERT(NVARCHAR(36), @ProjectGuid);
+            END TRY
+            BEGIN CATCH
+                DECLARE @m_proj NVARCHAR(MAX) =
+                    N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                    + N' ProjectsUpsert FAILED. ProjectGuid=' + CONVERT(NVARCHAR(36), @ProjectGuid)
+                    + N' | ' + ERROR_MESSAGE();
+                ;THROW 60001, @m_proj, 1;
+            END CATCH
+        END
+
+        SELECT @ContractId = ID
+        FROM SSop.Contracts
+        WHERE (Guid = @ContractGuid);
+
+        SELECT @AgentContractId = ID
+        FROM SSop.Contracts
+        WHERE (Guid = @AgentContractGuid);
+
+        SELECT @ProjectId = ID
+        FROM SSop.Projects
+        WHERE (Guid = @ProjectGuid);
+
+        SELECT @SignatoryIdentityId = ID
+        FROM SCore.Identities AS i
+        WHERE (Guid = @SignatoryIdentityGuid);
+
+        SELECT @CreatedByUserId = ID
+        FROM SCore.Identities
+        WHERE (Guid = @CreatedByUserGuid);
+
+        SELECT @ClientAccountId = ID
+        FROM SCrm.Accounts
+        WHERE (Guid = @ClientAccountGuid);
+
+        SELECT @ClientAddressId = ID
+        FROM SCrm.AccountAddresses
+        WHERE (Guid = @ClientAddressGuid);
+
+        SELECT @ClientAccountContactId = ID
+        FROM SCrm.AccountContacts
+        WHERE (Guid = @ClientAccountContactGuid);
+
+        SELECT @AgentAccountId = ID
+        FROM SCrm.Accounts
+        WHERE (Guid = @AgentAccountGuid);
+
+        SELECT @AgentAddressId = ID
+        FROM SCrm.AccountAddresses
+        WHERE (Guid = @AgentAddressGuid);
+
+        SELECT @AgentAccountContactId = ID
+        FROM SCrm.AccountContacts
+        WHERE (Guid = @AgentAccountContactGuid);
+
+        SELECT @FinanceAccountId = ID
+        FROM SCrm.Accounts
+        WHERE (Guid = @FinanceAccountGuid);
+
+        SELECT @FinanceAddressId = ID
+        FROM SCrm.AccountAddresses
+        WHERE (Guid = @FinanceAddressGuid);
+
+        SELECT @FinanceAccountContactId = ID
+        FROM SCrm.AccountContacts
+        WHERE (Guid = @FinanceContactGuid);
+
+        SELECT @PropertyId = ID
+        FROM SJob.Assets
+        WHERE (Guid = @PropertyGuid);
+
+        SELECT @CurrentProjectRibaStageId = ID
+        FROM SJob.RibaStages
+        WHERE (Guid = @CurrentProjectRobaStageGuid);
+
+        SELECT @EnquirySourceId = ID
+        FROM SSop.QuoteSources
+        WHERE (Guid = @EnquirySourceGuid);
+
+        -------------------------------------------------------------------------
+        -- Preserve existing “enter new … details” blocks
+        -------------------------------------------------------------------------
+        IF (@EnterNewStructureDetails = 0)
+        BEGIN
+            SET @PropertyNameNumber = N'';
+            SET @PropertyAddressLine1 = N'';
+            SET @PropertyAddressLine2 = N'';
+            SET @PropertyAddressLine3 = N'';
+            SET @PropertyTown = N'';
+            SET @PropertyPostCode = N'';
+            SET @PropertyCountyId = -1;
+            SET @PropertyCountryId = -1;
+        END
+        ELSE
+        BEGIN
+            SELECT @PropertyCountyId = ID
+            FROM SCrm.Counties
+            WHERE (Guid = @PropertyCountyGuid);
+
+            SELECT @PropertyCountryId = ID
+            FROM SCrm.Countries
+            WHERE (Guid = @PropertyCountryGuid);
+        END
+
+        IF (@EnterNewClientDetails = 0)
+        BEGIN
+            SET @ClientName = N'';
+            SET @ClientAddressNameNumber = N'';
+            SET @ClientAddressLine1 = N'';
+            SET @ClientAddressLine2 = N'';
+            SET @ClientAddressLine3 = N'';
+            SET @ClientAddressTown = N'';
+            SET @ClientAddressPostCode = N'';
+            SET @ClientAddressCountyId = -1;
+            SET @ClientAddressCountryId = -1;
+            SET @ClientContactDisplayName = N'';
+            SET @ClientContactDetailTypeGuid = '00000000-0000-0000-0000-000000000000';
+            SET @ClientContactDetailTypeName = N'';
+            SET @ClientContactDetailTypeValue = N'';
+        END
+        ELSE
+        BEGIN
+            SELECT @ClientAddressCountyId = ID
+            FROM SCrm.Counties
+            WHERE (Guid = @ClientAddressCountyGuid);
+
+            SELECT @ClientAddressCountryId = ID
+            FROM SCrm.Countries
+            WHERE (Guid = @ClientAddressCountryGuid);
+
+            SELECT @ClientContactDetailTypeId = ID
+            FROM SCrm.ContactDetailTypes
+            WHERE (Guid = @ClientContactDetailTypeGuid);
+        END
+
+        IF (@EnterNewAgentDetails = 0)
+        BEGIN
+            SET @AgentName = N'';
+            SET @AgentAddressNameNumber = N'';
+            SET @AgentAddressLine1 = N'';
+            SET @AgentAddressLine2 = N'';
+            SET @AgentAddressLine3 = N'';
+            SET @AgentTown = N'';
+            SET @AgentAddressPostCode = N'';
+            SET @AgentAddressCountyId = -1;
+            SET @AgentAddressCountryId = -1;
+            SET @AgentContactDisplayName = N'';
+            SET @AgentContactDetailTypeGuid = '00000000-0000-0000-0000-000000000000';
+            SET @AgentContactDetailTypeName = N'';
+            SET @AgentContactDetailTypeValue = N'';
+        END
+        ELSE
+        BEGIN
+            SELECT @AgentAddressCountyId = ID
+            FROM SCrm.Counties
+            WHERE (Guid = @AgentAddressCountyGuid);
+
+            SELECT @AgentAddressCountryId = ID
+            FROM SCrm.Countries
+            WHERE (Guid = @AgentAddressCountryGuid);
+
+            SELECT @AgentContactDetailTypeId = ID
+            FROM SCrm.ContactDetailTypes
+            WHERE (Guid = @AgentContactDetailTypeGuid);
+        END
+
+        IF (@EnterNewFinanceDetails = 0)
+        BEGIN
+            SET @FinanceAccountName = N'';
+            SET @FinanceAddressNameNumber = N'';
+            SET @FinanceAddressLine1 = N'';
+            SET @FinanceAddressLine2 = N'';
+            SET @FinanceAddressLine3 = N'';
+            SET @FinanceTown = N'';
+            SET @FinancePostCode = N'';
+            SET @FinanceAddressCountyId = -1;
+            SET @FinanceContactDisplayName = N'';
+            SET @FinanceContactDetailTypeGuid = '00000000-0000-0000-0000-000000000000';
+            SET @FinanceContactDetailTypeName = N'';
+            SET @FinanceContactDetailTypeValue = N'';
+        END
+        ELSE
+        BEGIN
+            SELECT @FinanceAddressCountyId = ID
+            FROM SCrm.Counties
+            WHERE (Guid = @FinanceCountyGuid);
+
+            SELECT @FinanceContactDetailTypeId = ID
+            FROM SCrm.ContactDetailTypes
+            WHERE (Guid = @FinanceContactDetailTypeGuid);
+        END
+
+        -------------------------------------------------------------------------
+        -- Upsert DataObject for Enquiry (instrumented)
+        -------------------------------------------------------------------------
+        PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+            + N' Calling SCore.UpsertDataObject for Enquiry. EnquiryGuid=' + CONVERT(NVARCHAR(36), @Guid);
+
+        BEGIN TRY
+            EXEC SCore.UpsertDataObject
+                 @Guid = @Guid,
+                 @SchemeName = N'SSop',
+                 @ObjectName = N'Enquiries',
+                 @IsInsert = @IsInsert OUTPUT;
+
+            PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                + N' SCore.UpsertDataObject OK. IsInsert=' + CONVERT(NVARCHAR(5), @IsInsert);
+        END TRY
+        BEGIN CATCH
+            DECLARE @m_do NVARCHAR(MAX) =
+                N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                + N' SCore.UpsertDataObject FAILED (Enquiry). EnquiryGuid=' + CONVERT(NVARCHAR(36), @Guid)
+                + N' | ' + ERROR_MESSAGE();
+            ;THROW 60002, @m_do, 1;
+        END CATCH
+
+        -------------------------------------------------------------------------
+        -- Insert / Update SSop.Enquiries
+        -------------------------------------------------------------------------
+        IF (@IsInsert = 1)
+        BEGIN
+            INSERT SSop.Enquiries
+            (
+                RowStatus,
+                Guid,
+                OrganisationalUnitID,
+                Date,
+                CreatedByUserId,
+                Number,
+                PropertyId,
+                PropertyNameNumber,
+                PropertyAddressLine1,
+                PropertyAddressLine2,
+                PropertyAddressLine3,
+                PropertyCountyId,
+                PropertyPostCode,
+                PropertyCountryId,
+                ClientAccountId,
+                ClientAddressId,
+                ClientAccountContactId,
+                ClientName,
+                ClientAddressNameNumber,
+                ClientAddressLine1,
+                ClientAddressLine2,
+                ClientAddressLine3,
+                ClientAddressCountyId,
+                ClientAddressPostCode,
+                ClientAddressCountryId,
+                ClientContactDisplayName,
+                ClientContactDetailType,
+                ClientContactDetailTypeName,
+                ClientContactDetailTypeValue,
+                AgentAccountId,
+                AgentAddressId,
+                AgentAccountContactId,
+                AgentName,
+                AgentAddressNameNumber,
+                AgentAddressLine1,
+                AgentAddressLine2,
+                AgentAddressLine3,
+                AgentCountyId,
+                AgentAddressPostCode,
+                AgentCountryId,
+                AgentContactDisplayName,
+                AgentContactDetailType,
+                AgentContactDetailTypeName,
+                AgentContactDetailTypeValue,
+                DescriptionOfWorks,
+                ValueOfWork,
+                CurrentProjectRibaStageID,
+                RibaStage0Months,
+                RibaStage1Months,
+                RibaStage2Months,
+                RibaStage3Months,
+                RibaStage4Months,
+                RibaStage5Months,
+                RibaStage6Months,
+                RibaStage7Months,
+                PreConstructionStageMonths,
+                ConstructionStageMonths,
+                SendInfoToClient,
+                SendInfoToAgent,
+                KeyDates,
+                ExpectedProcurementRoute,
+                Notes,
+                IsReadyForQuoteReview,
+                EnquirySourceId,
+                QuotingDeadlineDate,
+                DeclinedToQuoteDate,
+                DeclinedToQuoteReason,
+                ExternalReference,
+                ProjectId,
+                IsSubjectToNDA,
+                DeadDate,
+                ChaseDate1,
+                ChaseDate2,
+                FinanceAccountId,
+                FinanceAddressId,
+                FinanceContactId,
+                FinanceAccountName,
+                FinanceAddressNameNumber,
+                FinanceAddressLine1,
+                FinanceAddressLine2,
+                FinanceAddressLine3,
+                FinanceCountyId,
+                FinancePostCode,
+                FinanceContactDisplayName,
+                FinanceContactDetailType,
+                FinanceContactDetailTypeName,
+                FinanceContactDetailTypeValue,
+                EnterNewClientDetails,
+                EnterNewAgentDetails,
+                EnterNewFinanceDetails,
+                EnterNewStructureDetails,
+                IsClientFinanceAccount,
+                SignatoryIdentityId,
+                ProposalLetter,
+                ContractID,
+                AgentContractID,
+				AssetJSONDetails,
+                PropertyTown,
+                ClientAddressTown,
+                AgentTown,
+                FinanceTown
+            )
+            VALUES
+            (
+                1,
+                @Guid,
+                @OrganisationalUnitId,
+                @Date,
+                @CreatedByUserId,
+                0,
+                @PropertyId,
+                @PropertyNameNumber,
+                @PropertyAddressLine1,
+                @PropertyAddressLine2,
+                @PropertyAddressLine3,
+                @PropertyCountyId,
+                @PropertyPostCode,
+                @PropertyCountryId,
+                @ClientAccountId,
+                @ClientAddressId,
+                @ClientAccountContactId,
+                @ClientName,
+                @ClientAddressNameNumber,
+                @ClientAddressLine1,
+                @ClientAddressLine2,
+                @ClientAddressLine3,
+                @ClientAddressCountyId,
+                @ClientAddressPostCode,
+                @ClientAddressCountryId,
+                @ClientContactDisplayName,
+                @ClientContactDetailTypeId,
+                @ClientContactDetailTypeName,
+                @ClientContactDetailTypeValue,
+                @AgentAccountId,
+                @AgentAddressId,
+                @AgentAccountContactId,
+                @AgentName,
+                @AgentAddressNameNumber,
+                @AgentAddressLine1,
+                @AgentAddressLine2,
+                @AgentAddressLine3,
+                @AgentAddressCountyId,
+                @AgentAddressPostCode,
+                @AgentAddressCountryId,
+                @AgentContactDisplayName,
+                @AgentContactDetailTypeId,
+                @AgentContactDetailTypeName,
+                @AgentContactDetailTypeValue,
+                @DescriptionOfWorks,
+                @ValueOfWork,
+                @CurrentProjectRibaStageId,
+                @RibaStage0Months,
+                @RibaStage1Months,
+                @RibaStage2Months,
+                @RibaStage3Months,
+                @RibaStage4Months,
+                @RibaStage5Months,
+                @RibaStage6Months,
+                @RibaStage7Months,
+                @PreConstructionStageMonths,
+                @ConstructionStageMonths,
+                @SendInfoToClient,
+                @SendInfoToAgent,
+                @KeyDates,
+                @ExpectedProcurementRoute,
+                @Notes,
+                @IsReadyForQuoteReview,
+                @EnquirySourceId,
+                @QuotingDeadlineDate,
+                @DeclinedToQuoteDate,
+                @DeclinedToQuoteReason,
+                @ExternalReference,
+                @ProjectId,
+                @IsSubjectToNDA,
+                @DeadDate,
+                @ChaseDate1,
+                @ChaseDate2,
+                @FinanceAccountId,
+                @FinanceAddressId,
+                @FinanceAccountContactId,
+                @FinanceAccountName,
+                @FinanceAddressNameNumber,
+                @FinanceAddressLine1,
+                @FinanceAddressLine2,
+                @FinanceAddressLine3,
+                @FinanceAddressCountyId,
+                @FinancePostCode,
+                @FinanceContactDisplayName,
+                @FinanceContactDetailTypeId,
+                @FinanceContactDetailTypeName,
+                @FinanceContactDetailTypeValue,
+                @EnterNewClientDetails,
+                @EnterNewAgentDetails,
+                @EnterNewFinanceDetails,
+                @EnterNewStructureDetails,
+                @IsClientFinanceAccount,
+                @SignatoryIdentityId,
+                @ProposalLetter,
+                @ContractId,
+                @AgentContractId,
+				@AssetJSONDetails,
+                @PropertyTown,
+                @ClientAddressTown,
+                @AgentTown,
+                @FinanceTown
+            );
+
+            UPDATE SSop.Projects
+            SET IsSubjectToNDA = @IsSubjectToNDA
+            WHERE ID = @ProjectId;
+
+            ---------------------------------------------------------------------
+            -- Add "New" workflow status to the record upon creation (instrumented)
+            ---------------------------------------------------------------------
+            DECLARE @DynamicNewStatusForEnquiries UNIQUEIDENTIFIER = NULL;
+            DECLARE @DataObjectTransitionGuid UNIQUEIDENTIFIER = NEWID();
+
+            SELECT @DynamicNewStatusForEnquiries = Guid
+            FROM SCore.WorkflowStatus
+            WHERE (RowStatus NOT IN (0,254))
+              AND (ShowInEnquiries = 1)
+              AND (Name = N'New')
+              AND (Description = N'Automatically generated status');
+
+            PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                + N' Preparing initial status. TransitionGuid=' + CONVERT(NVARCHAR(36), @DataObjectTransitionGuid)
+                + N' NewStatusGuid=' + ISNULL(CONVERT(NVARCHAR(36), @DynamicNewStatusForEnquiries), N'<NULL>');
+
+            IF (@DynamicNewStatusForEnquiries IS NOT NULL)
+            BEGIN
+                -- DataObject must exist BEFORE transition upsert.
+                DECLARE @IsTransitionInsert BIT = 0;
+
+                BEGIN TRY
+                    PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' Calling SCore.UpsertDataObject for Transition. TransitionGuid=' + CONVERT(NVARCHAR(36), @DataObjectTransitionGuid);
+
+                    EXEC SCore.UpsertDataObject
+                        @Guid       = @DataObjectTransitionGuid,
+                        @SchemeName = N'SCore',
+                        @ObjectName = N'DataObjectTransition',
+                        @IsInsert   = @IsTransitionInsert OUTPUT;
+
+                    PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' Transition DataObject OK. IsInsert=' + CONVERT(NVARCHAR(5), @IsTransitionInsert);
+                END TRY
+                BEGIN CATCH
+                    DECLARE @m_trdo NVARCHAR(MAX) =
+                        N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' SCore.UpsertDataObject FAILED (Transition). TransitionGuid=' + CONVERT(NVARCHAR(36), @DataObjectTransitionGuid)
+                        + N' | EnquiryGuid=' + CONVERT(NVARCHAR(36), @Guid)
+                        + N' | ' + ERROR_MESSAGE();
+                    ;THROW 60004, @m_trdo, 1;
+                END CATCH
+
+                BEGIN TRY
+                    PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' Calling SCore.DataObjectTransitionUpsert. TransitionGuid=' + CONVERT(NVARCHAR(36), @DataObjectTransitionGuid)
+                        + N' EnquiryGuid=' + CONVERT(NVARCHAR(36), @Guid);
+
+                    EXEC SCore.DataObjectTransitionUpsert
+                        @Guid = @DataObjectTransitionGuid,
+                        @OldStatusGuid = '00000000-0000-0000-0000-000000000000',
+                        @StatusGuid = @DynamicNewStatusForEnquiries,
+                        @Comment = N'System Imported.',
+                        @CreatedByUserGuid = '00000000-0000-0000-0000-000000000000',
+                        @SurveyorUserGuid = '00000000-0000-0000-0000-000000000000',
+                        @DataObjectGuid = @Guid,
+                        @IsImported = 1;
+
+                    PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' DataObjectTransitionUpsert OK.';
+                END TRY
+                BEGIN CATCH
+                    DECLARE @m_tr NVARCHAR(MAX) =
+                        N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                        + N' DataObjectTransitionUpsert FAILED. TransitionGuid=' + CONVERT(NVARCHAR(36), @DataObjectTransitionGuid)
+                        + N' | EnquiryGuid=' + CONVERT(NVARCHAR(36), @Guid)
+                        + N' | ' + ERROR_MESSAGE();
+                    ;THROW 60003, @m_tr, 1;
+                END CATCH
+            END
+            ELSE
+            BEGIN
+                PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+                    + N' WARNING: Could not resolve "New" workflow status GUID. No initial transition inserted.';
+            END
+
+            SELECT @EnquiryId = SCOPE_IDENTITY();
+        END
+        ELSE
+        BEGIN
+            UPDATE SSop.Enquiries
+            SET
+                OrganisationalUnitID = @OrganisationalUnitId,
+                PropertyId = @PropertyId,
+                PropertyNameNumber = @PropertyNameNumber,
+                PropertyAddressLine1 = @PropertyAddressLine1,
+                PropertyAddressLine2 = @PropertyAddressLine2,
+                PropertyAddressLine3 = @PropertyAddressLine3,
+                PropertyCountyId = @PropertyCountyId,
+                PropertyPostCode = @PropertyPostCode,
+                PropertyCountryId = @PropertyCountryId,
+                ClientAccountId = @ClientAccountId,
+                ClientAddressId = @ClientAddressId,
+                ClientAccountContactId = @ClientAccountContactId,
+                ClientName = @ClientName,
+                ClientAddressNameNumber = @ClientAddressNameNumber,
+                ClientAddressLine1 = @ClientAddressLine1,
+                ClientAddressLine2 = @ClientAddressLine2,
+                ClientAddressLine3 = @ClientAddressLine3,
+                ClientAddressCountyId = @ClientAddressCountyId,
+                ClientAddressPostCode = @ClientAddressPostCode,
+                ClientAddressCountryId = @ClientAddressCountryId,
+                ClientContactDisplayName = @ClientContactDisplayName,
+                ClientContactDetailType = @ClientContactDetailTypeId,
+                ClientContactDetailTypeName = @ClientContactDetailTypeName,
+                ClientContactDetailTypeValue = @ClientContactDetailTypeValue,
+                AgentAccountId = @AgentAccountId,
+                AgentAddressId = @AgentAddressId,
+                AgentAccountContactId = @AgentAccountContactId,
+                AgentName = @AgentName,
+                AgentAddressNameNumber = @AgentAddressNameNumber,
+                AgentAddressLine1 = @AgentAddressLine1,
+                AgentAddressLine2 = @AgentAddressLine2,
+                AgentAddressLine3 = @AgentAddressLine3,
+                AgentCountyId = @AgentAddressCountyId,
+                AgentAddressPostCode = @AgentAddressPostCode,
+                AgentCountryId = @AgentAddressCountryId,
+                AgentContactDisplayName = @AgentContactDisplayName,
+                AgentContactDetailType = @AgentContactDetailTypeId,
+                AgentContactDetailTypeName = @AgentContactDetailTypeName,
+                AgentContactDetailTypeValue = @AgentContactDetailTypeValue,
+                DescriptionOfWorks = @DescriptionOfWorks,
+                ValueOfWork = @ValueOfWork,
+                CurrentProjectRibaStageID = @CurrentProjectRibaStageId,
+                RibaStage0Months = @RibaStage0Months,
+                RibaStage1Months = @RibaStage1Months,
+                RibaStage2Months = @RibaStage2Months,
+                RibaStage3Months = @RibaStage3Months,
+                RibaStage4Months = @RibaStage4Months,
+                RibaStage5Months = @RibaStage5Months,
+                RibaStage6Months = @RibaStage6Months,
+                RibaStage7Months = @RibaStage7Months,
+                PreConstructionStageMonths = @PreConstructionStageMonths,
+                ConstructionStageMonths = @ConstructionStageMonths,
+                SendInfoToClient = @SendInfoToClient,
+                SendInfoToAgent = @SendInfoToAgent,
+                KeyDates = @KeyDates,
+                ExpectedProcurementRoute = @ExpectedProcurementRoute,
+                Notes = @Notes,
+                IsReadyForQuoteReview = @IsReadyForQuoteReview,
+                EnquirySourceId = @EnquirySourceId,
+                QuotingDeadlineDate = @QuotingDeadlineDate,
+                DeclinedToQuoteDate = @DeclinedToQuoteDate,
+                DeclinedToQuoteReason = @DeclinedToQuoteReason,
+                ExternalReference = @ExternalReference,
+                ProjectId = @ProjectId,
+                IsSubjectToNDA = @IsSubjectToNDA,
+                DeadDate = @DeadDate,
+                ChaseDate1 = @ChaseDate1,
+                ChaseDate2 = @ChaseDate2,
+                FinanceAccountId = @FinanceAccountId,
+                FinanceAddressId = @FinanceAddressId,
+                FinanceContactId = @FinanceAccountContactId,
+                FinanceAccountName = @FinanceAccountName,
+                FinanceAddressNameNumber = @FinanceAddressNameNumber,
+                FinanceAddressLine1 = @FinanceAddressLine1,
+                FinanceAddressLine2 = @FinanceAddressLine2,
+                FinanceAddressLine3 = @FinanceAddressLine3,
+                FinanceCountyId = @FinanceAddressCountyId,
+                FinancePostCode = @FinancePostCode,
+                FinanceContactDisplayName = @FinanceContactDisplayName,
+                FinanceContactDetailType = @FinanceContactDetailTypeId,
+                FinanceContactDetailTypeName = @FinanceContactDetailTypeName,
+                FinanceContactDetailTypeValue = @FinanceContactDetailTypeValue,
+                EnterNewClientDetails = @EnterNewClientDetails,
+                EnterNewAgentDetails = @EnterNewAgentDetails,
+                EnterNewFinanceDetails = @EnterNewFinanceDetails,
+                EnterNewStructureDetails = @EnterNewStructureDetails,
+                IsClientFinanceAccount = @IsClientFinanceAccount,
+                SignatoryIdentityId = @SignatoryIdentityId,
+                ProposalLetter = @ProposalLetter,
+                ContractID = @ContractId,
+                AgentContractID = @AgentContractId,
+				AssetJSONDetails = @AssetJSONDetails,
+                PropertyTown = @PropertyTown,
+                ClientAddressTown = @ClientAddressTown,
+                AgentTown = @AgentTown,
+                FinanceTown = @FinanceTown
+            WHERE (Guid = @Guid);
+
+            UPDATE SSop.Projects
+            SET IsSubjectToNDA = @IsSubjectToNDA
+            WHERE ID = @ProjectId;
+        END
+
+        -------------------------------------------------------------------------
+        -- Post-insert number assignment
+        -------------------------------------------------------------------------
+        IF (@IsInsert = 1)
+        BEGIN
+            SELECT @EnquiryNumber = NEXT VALUE FOR SSop.EnquiryNumber;
+
+            UPDATE SSop.Enquiries
+            SET
+                Number = @EnquiryNumber,
+                RowStatus = 1
+                --QuotingDeadlineDate =
+                --    CASE
+                --        WHEN DATENAME(WEEKDAY, GETDATE()) IN ('Monday','Tuesday','Wednesday','Thursday') THEN DATEADD(DAY, 6, GETDATE())
+                --        WHEN DATENAME(WEEKDAY, GETDATE()) = 'Friday' THEN DATEADD(DAY, 6, GETDATE())
+                --        WHEN DATENAME(WEEKDAY, GETDATE()) = 'Saturday' THEN DATEADD(DAY, 5, GETDATE())
+                --        WHEN DATENAME(WEEKDAY, GETDATE()) = 'Sunday' THEN DATEADD(DAY, 5, GETDATE())
+                --    END
+            WHERE (ID = @EnquiryId);
+
+            IF (@NewProject = 1)
+            BEGIN
+                UPDATE SSop.Projects
+                SET ProjectDescription = REPLACE(@ProjectDescription, '[[number]]', CONVERT(NVARCHAR(MAX), @EnquiryNumber))
+                WHERE (Guid = @ProjectGuid);
+            END
+        END
+
+        -------------------------------------------------------------------------
+        -- TargetObjectUpsert
+        -------------------------------------------------------------------------
+        DECLARE @FilingObjectName NVARCHAR(250),
+                @FilingLocation NVARCHAR(MAX);
+
+        SELECT
+            @FilingLocation =
+            (
+                SELECT ss.SiteIdentifier, spf.FolderPath
+                FROM SCore.ObjectSharePointFolder AS spf
+                JOIN SCore.SharepointSites ss ON (ss.ID = spf.SharepointSiteId)
+                WHERE (spf.ObjectGuid = @Guid)
+                FOR JSON PATH
+            );
+
+        DECLARE @EnquiryNumberString NVARCHAR(30);
+
+        SELECT
+            @FilingObjectName =
+                e.Number + N' ' +
+                CASE WHEN p.Id > 0 THEN p.FormattedAddressComma ELSE e.PropertyNameNumber + N' ' + e.PropertyAddressLine1 END +
+                N' - ' +
+                CASE WHEN client.ID > 0 THEN client.Name ELSE e.ClientName END +
+                N' / ' +
+                CASE WHEN agent.ID > 0 THEN agent.Name ELSE e.AgentName END +
+                N' - ' + e.DescriptionOfWorks,
+            @EnquiryNumberString = e.Number
+        FROM SSop.Enquiries AS e
+        JOIN SJob.Assets AS p ON (p.ID = e.PropertyId)
+        JOIN SCrm.Accounts AS client ON (client.ID = e.ClientAccountId)
+        JOIN SCrm.Accounts AS agent ON (agent.ID = e.AgentAccountId)
+        WHERE (e.Guid = @Guid);
+
+        EXEC SOffice.TargetObjectUpsert
+            @EntityTypeGuid = N'3B4F2DF9-B6CF-4A49-9EED-2206473867A1',
+            @RecordGuid     = @Guid,
+            @Number         = @EnquiryNumberString,
+            @Name           = @FilingObjectName,
+            @FilingLocation = @FilingLocation;
+
+        PRINT N'[' + @ProcName + N'] TraceId=' + CONVERT(NVARCHAR(36), @TraceId) + N' END OK';
+    END TRY
+    BEGIN CATCH
+        DECLARE @FinalMessage NVARCHAR(MAX) =
+            N'[' + OBJECT_SCHEMA_NAME(@@PROCID) + N'.' + OBJECT_NAME(@@PROCID) + N'] '
+            + N'TraceId=' + CONVERT(NVARCHAR(36), @TraceId)
+            + N' FAILED | ' + ERROR_MESSAGE();
+
+        -- Preserve the original error number if it is one of our thrown ones,
+        -- otherwise raise a consistent wrapper.
+        IF (ERROR_NUMBER() BETWEEN 60000 AND 60099)
+        BEGIN
+            ;THROW;
+        END
+        ELSE
+        BEGIN
+            ;THROW 60099, @FinalMessage, 1;
+        END
+    END CATCH
+END;
+GO
+
+PRINT N'02. SFin.TransactionDetailsUpsert (CYB-445)';
+GO
+CREATE OR ALTER PROCEDURE [SFin].[TransactionDetailsUpsert]
+(
+      @TransactionGuid          UNIQUEIDENTIFIER
+    , @MilestoneGuid            UNIQUEIDENTIFIER
+    , @ActivityGuid             UNIQUEIDENTIFIER
+    , @Net                      DECIMAL(9, 2)
+    , @Vat                      DECIMAL(9, 2)
+    , @Gross                    DECIMAL(9, 2)
+    , @VatRate                  DECIMAL(9, 2)
+    , @Description              NVARCHAR(2000)
+    , @JobPaymentStageGuid      UNIQUEIDENTIFIER
+    , @Guid                     UNIQUEIDENTIFIER
+    , @RIBAStageGuid            UNIQUEIDENTIFIER
+    , @InvoiceRequestItemGuid   UNIQUEIDENTIFIER = NULL
+    , @Qty                      DECIMAL(18, 4) = 1
+    , @VatCodeGuid              UNIQUEIDENTIFIER = NULL
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE
+          @TransactionID              BIGINT
+        , @MilestoneID                BIGINT = -1
+        , @ActivityID                 BIGINT = -1
+        , @JobPaymentStageID          INT    = -1
+        , @RIBAStageID                INT    = -1
+        , @InvoiceRequestItemID       BIGINT = NULL
+        , @HasInvoiceRequestItemGuid  BIT    = 0
+        , @VatCodeID                  INT
+        , @ResolvedVatRate            DECIMAL(9, 4)
+        , @IsInsert                   BIT
+        , @TransactionTypeName        NVARCHAR(50)
+        , @TransactionTypeIsNegated   BIT = 0
+        , @TransactionTypeIsBank      BIT = 0
+        , @JobNumber                  NVARCHAR(2000)
+        , @JobDescription             NVARCHAR(2000)
+        , @JobType                    NVARCHAR(2000)
+        , @UprnFormattedAddressComma  NVARCHAR(2000);
+
+    IF @Guid IS NULL OR @Guid = '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        ;THROW 60070, N'A valid Guid is required for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    IF @TransactionGuid IS NULL OR @TransactionGuid = '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        ;THROW 60071, N'A valid TransactionGuid is required for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    IF @VatCodeGuid IS NULL OR @VatCodeGuid = '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        ;THROW 60072, N'A valid VatCodeGuid is required for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    IF @Qty IS NULL OR @Qty <= 0
+    BEGIN
+        SET @Qty = 1;
+    END;
+
+    SELECT
+          @TransactionID = t.ID
+        , @TransactionTypeName = tt.Name
+        , @TransactionTypeIsNegated = ISNULL(tt.IsNegated, 0)
+        , @TransactionTypeIsBank = ISNULL(tt.IsBank, 0)
+    FROM SFin.Transactions AS t
+    INNER JOIN SFin.TransactionTypes AS tt
+        ON tt.ID = t.TransactionTypeID
+       AND tt.RowStatus NOT IN (0, 254)
+    WHERE t.Guid = @TransactionGuid
+      AND t.RowStatus NOT IN (0, 254);
+
+    IF @TransactionID IS NULL
+    BEGIN
+        ;THROW 60073, N'Transaction could not be resolved for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    IF @MilestoneGuid IS NOT NULL
+       AND @MilestoneGuid <> '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        SELECT
+            @MilestoneID = m.ID
+        FROM SJob.Milestones AS m
+        WHERE m.Guid = @MilestoneGuid
+          AND m.RowStatus NOT IN (0, 254);
+    END;
+
+    IF @ActivityGuid IS NOT NULL
+       AND @ActivityGuid <> '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        SELECT
+            @ActivityID = a.ID
+        FROM SJob.Activities AS a
+        WHERE a.Guid = @ActivityGuid
+          AND a.RowStatus NOT IN (0, 254);
+    END;
+
+    IF @RIBAStageGuid IS NOT NULL
+       AND @RIBAStageGuid <> '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        SELECT
+            @RIBAStageID = rs.ID
+        FROM SJob.RibaStages AS rs
+        WHERE rs.Guid = @RIBAStageGuid
+          AND rs.RowStatus NOT IN (0, 254);
+    END;
+
+    IF @JobPaymentStageGuid IS NOT NULL
+       AND @JobPaymentStageGuid <> '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        SELECT
+            @JobPaymentStageID = jps.ID
+        FROM SJob.JobPaymentStages AS jps
+        WHERE jps.Guid = @JobPaymentStageGuid
+          AND jps.RowStatus NOT IN (0, 254);
+    END;
+
+    /*
+        CYB-445: InvoiceRequestItemGuid is optional because Transaction Details can be
+        created independently of Invoice Requests. On update, an omitted or empty Guid
+        means "not supplied" and must preserve the existing source link. A supplied
+        non-empty Guid must resolve to an active item.
+    */
+    IF @InvoiceRequestItemGuid IS NOT NULL
+       AND @InvoiceRequestItemGuid <> '00000000-0000-0000-0000-000000000000'
+    BEGIN
+        SET @HasInvoiceRequestItemGuid = 1;
+
+        SELECT
+            @InvoiceRequestItemID = iri.ID
+        FROM SFin.InvoiceRequestItems AS iri
+        WHERE iri.Guid = @InvoiceRequestItemGuid
+          AND iri.RowStatus NOT IN (0, 254);
+
+        IF @InvoiceRequestItemID IS NULL
+        BEGIN
+            ;THROW 60076, N'InvoiceRequestItem could not be resolved for SFin.TransactionDetailsUpsert.', 1;
+        END;
+    END;
+
+    SELECT
+          @VatCodeID = vc.ID
+        , @ResolvedVatRate = vc.VatPercentage
+    FROM SFin.VatCodes AS vc
+    WHERE vc.Guid = @VatCodeGuid
+      AND vc.RowStatus NOT IN (0, 254)
+      AND vc.Active = 1;
+
+    IF @VatCodeID IS NULL
+    BEGIN
+        ;THROW 60074, N'VatCode could not be resolved for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    IF @ResolvedVatRate IS NULL
+    BEGIN
+        ;THROW 60075, N'VatCode selected does not contain a valid VAT percentage for SFin.TransactionDetailsUpsert.', 1;
+    END;
+
+    /*
+        VAT rate is now owned by the selected VatCode.
+        Ignore caller-supplied @VatRate / @Vat / @Gross and recalculate deterministically.
+    */
+    SET @VatRate = CONVERT(DECIMAL(9, 2), @ResolvedVatRate);
+    SET @Vat = ROUND(@Net * (@ResolvedVatRate / 100.0), 2);
+    SET @Gross = ROUND(@Net + @Vat, 2);
+
+    /*
+        Fee-cap validation must only apply to finance transactions that consume
+        job fee drawdown. Inbound Sage receipt materialisation also uses this
+        upsert to create bank-side receipt details, but receipts must not be
+        blocked by invoice fee-cap remaining values.
+
+        TransactionTypes.IsBank keeps the logic data-driven and preserves the
+        existing accounting sign convention, where TransactionCalculations uses
+        IsNegated rather than storing negative line values directly.
+
+        The explicit Receipt/Payment exclusion protects the inbound path even
+        if historic reference data has not marked a bank-side transaction type
+        as IsBank = 1 yet.
+    */
+    IF ISNULL(@TransactionTypeIsBank, 0) = 0
+       AND ISNULL(@TransactionTypeIsNegated, 0) = 0
+       AND ISNULL(@TransactionTypeName, N'') NOT IN (N'Receipt', N'Payment')
+       AND ISNULL(@Net, 0) > 0
+    BEGIN
+        DECLARE @JobGuid UNIQUEIDENTIFIER;
+        DECLARE @RemainingAmount DECIMAL(19,2);
+        DECLARE @ExistingDetailNetForGuard DECIMAL(19,2) = 0;
+        DECLARE @FeeCapGuardAvailableAmount DECIMAL(19,2);
+
+        SELECT
+            @JobGuid = j.Guid
+        FROM SFin.Transactions AS root_hobt
+        LEFT JOIN SJob.Jobs AS j
+            ON root_hobt.JobID = j.ID
+           AND j.RowStatus NOT IN (0, 254)
+        WHERE root_hobt.ID = @TransactionID
+          AND root_hobt.RowStatus NOT IN (0, 254);
+
+        SELECT
+            @RemainingAmount = fd.Remaining
+        FROM SJob.Job_FeeDrawdown AS fd
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = fd.JobId
+           AND j.RowStatus NOT IN (0, 254)
+        WHERE j.Guid = @JobGuid
+          AND fd.StageLabel = N'Total (inc. Fee Cap)';
+
+        SELECT
+            @ExistingDetailNetForGuard = ISNULL(SUM(ISNULL(td.Net, 0)), 0)
+        FROM SFin.TransactionDetails AS td
+        WHERE td.Guid = @Guid
+          AND td.TransactionID = @TransactionID
+          AND td.RowStatus NOT IN (0, 254);
+
+        SET @FeeCapGuardAvailableAmount = @RemainingAmount + ISNULL(@ExistingDetailNetForGuard, 0);
+
+        IF @RemainingAmount IS NOT NULL
+           AND @Net > @FeeCapGuardAvailableAmount
+        BEGIN
+            DECLARE @ErrorMessageDirect NVARCHAR(500);
+
+            SET @ErrorMessageDirect =
+                      N'Cannot save this transaction because only the total of £'
+                    + CONVERT(NVARCHAR(50), @FeeCapGuardAvailableAmount)
+                    + N' remains'
+                    + N', but the transaction Net is £'
+                    + CONVERT(NVARCHAR(50), @Net)
+                    + N'.';
+
+            THROW 51003, @ErrorMessageDirect, 1;
+        END;
+    END;
+
+    EXEC SCore.UpsertDataObject
+          @Guid       = @Guid
+        , @SchemeName = N'SFin'
+        , @ObjectName = N'TransactionDetails'
+        , @IsInsert   = @IsInsert OUTPUT;
+
+    IF @IsInsert = 1
+    BEGIN
+        SELECT
+              @JobNumber = j.Number
+            , @JobDescription = j.JobDescription
+            , @JobType = jt.Name
+            , @UprnFormattedAddressComma = p.FormattedAddressComma
+        FROM SJob.Jobs AS j
+        INNER JOIN SJob.JobTypes AS jt
+            ON jt.ID = j.JobTypeID
+        INNER JOIN SJob.Assets AS p
+            ON p.ID = j.UprnID
+        INNER JOIN SFin.Transactions AS t
+            ON t.JobID = j.ID
+        WHERE t.Guid = @TransactionGuid
+          AND j.RowStatus NOT IN (0, 254)
+          AND jt.RowStatus NOT IN (0, 254)
+          AND p.RowStatus NOT IN (0, 254)
+          AND t.RowStatus NOT IN (0, 254);
+
+        IF @@ROWCOUNT > 0
+        BEGIN
+            SET @Description =
+                ISNULL(@Description, N'')
+                + N'
+Our project ref.: ' + ISNULL(@JobNumber, N'')
+                + N'
+Project description: ' + ISNULL(@JobDescription, N'')
+                + N'
+Property: ' + ISNULL(@UprnFormattedAddressComma, N'')
+                + N'
+Appointed role: ' + ISNULL(@JobType, N'');
+        END;
+
+        SET @Description = REPLACE(@Description, CHAR(34), CHAR(39));
+
+        INSERT INTO SFin.TransactionDetails
+        (
+              RowStatus
+            , Guid
+            , TransactionID
+            , MilestoneID
+            , ActivityID
+            , Net
+            , Vat
+            , Gross
+            , VatRate
+            , Description
+            , JobPaymentStageId
+            , InvoiceRequestItemId
+            , RIBAStageId
+            , Qty
+            , VatCodeID
+        )
+        VALUES
+        (
+              1
+            , @Guid
+            , @TransactionID
+            , ISNULL(@MilestoneID, -1)
+            , ISNULL(@ActivityID, -1)
+            , @Net
+            , @Vat
+            , @Gross
+            , @VatRate
+            , ISNULL(@Description, N'')
+            , ISNULL(@JobPaymentStageID, -1)
+            , CASE
+                  WHEN @HasInvoiceRequestItemGuid = 1 THEN @InvoiceRequestItemID
+                  ELSE -1
+              END
+            , ISNULL(@RIBAStageID, -1)
+            , @Qty
+            , @VatCodeID
+        );
+    END
+    ELSE
+    BEGIN
+        UPDATE td
+        SET
+              td.MilestoneID = ISNULL(@MilestoneID, -1)
+            , td.ActivityID = ISNULL(@ActivityID, -1)
+            , td.Net = @Net
+            , td.Vat = @Vat
+            , td.Gross = @Gross
+            , td.VatRate = @VatRate
+            , td.Description = ISNULL(@Description, N'')
+            , td.JobPaymentStageId = ISNULL(@JobPaymentStageID, -1)
+            , td.InvoiceRequestItemId =
+                CASE
+                    WHEN @HasInvoiceRequestItemGuid = 1 THEN @InvoiceRequestItemID
+                    ELSE td.InvoiceRequestItemId
+                END
+            , td.RIBAStageId = ISNULL(@RIBAStageID, -1)
+            , td.Qty = @Qty
+            , td.VatCodeID = @VatCodeID
+        FROM SFin.TransactionDetails AS td
+        WHERE td.Guid = @Guid
+          AND td.RowStatus NOT IN (0, 254);
+    END;
+END;
+GO
+
+PRINT N'03. SFin.InvoiceRequestItemsUpsert (no NULL RIBA stage)';
+GO
+CREATE OR ALTER PROCEDURE [SFin].[InvoiceRequestItemsUpsert]
+(
+      @InvoiceRequestGuid UNIQUEIDENTIFIER
+    , @MilestoneGuid      UNIQUEIDENTIFIER
+    , @ActivityGuid       UNIQUEIDENTIFIER
+    , @Net                DECIMAL(19,2)
+    , @Guid               UNIQUEIDENTIFIER
+    , @ShortDescription   NVARCHAR(200)
+	, @RIBAStageGuid	  UNIQUEIDENTIFIER
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE
+		  @UserId					INT
+        , @InvoiceRequestID			INT
+        , @MilestoneId				BIGINT = -1
+        , @ActivityId				BIGINT = -1
+        , @DataObjectWasInserted	BIT
+		, @RIBAStageId				INT;
+
+    -- Null safety
+    SET @ShortDescription = ISNULL(@ShortDescription, N'');
+    SET @Net = ISNULL(@Net, 0);
+
+	SET @UserId = ISNULL(CONVERT(INT, SESSION_CONTEXT(N'user_id')), -1);
+
+	--Get RIBA Stage. No stage supplied resolves to the -1 no-RIBA-stage sentinel so a NULL
+	--RIBAStageId is never written; a supplied stage must resolve (LIVE 26.2 fix dce858c4).
+	SET @RIBAStageId = -1;
+
+	IF (@RIBAStageGuid IS NOT NULL AND @RIBAStageGuid <> '00000000-0000-0000-0000-000000000000')
+	BEGIN
+		SET @RIBAStageId = NULL;
+
+		SELECT @RIBAStageId = ID
+		FROM SJob.RibaStages
+		WHERE [Guid] = @RIBAStageGuid
+		  AND RowStatus NOT IN (0,254);
+
+		IF (@RIBAStageId IS NULL)
+			THROW 60000, N'InvoiceRequestItemsUpsert: RIBAStageGuid not found.', 1;
+	END;
+
+    -- Resolve InvoiceRequest
+    SELECT @InvoiceRequestID = ID
+    FROM SFin.InvoiceRequests
+    WHERE [Guid] = @InvoiceRequestGuid
+      AND RowStatus NOT IN (0,254);
+
+
+    IF (@InvoiceRequestID IS NULL)
+        THROW 60000, N'InvoiceRequestItemsUpsert: InvoiceRequestGuid not found.', 1;
+
+
+    -- Milestone only if supplied (and not empty-guid)
+    IF (@MilestoneGuid IS NOT NULL AND @MilestoneGuid <> '00000000-0000-0000-0000-000000000000')
+    BEGIN
+        SELECT @MilestoneId = ID
+        FROM SJob.Milestones
+        WHERE [Guid] = @MilestoneGuid
+          AND RowStatus NOT IN (0,254);
+
+        IF (@MilestoneId IS NULL)
+            THROW 60000, N'InvoiceRequestItemsUpsert: MilestoneGuid not found.', 1;
+    END
+
+
+
+    -- Activity only if supplied (and not empty-guid)
+    IF (@ActivityGuid IS NOT NULL AND @ActivityGuid <> '00000000-0000-0000-0000-000000000000')
+    BEGIN
+
+		DECLARE 
+				@ActivityValue					DECIMAL(19,2),
+				@ActivityQuantity				INT,
+				@ActivityAssigneeGuid			UNIQUEIDENTIFIER,
+				@InvoiceRequestAssignee			UNIQUEIDENTIFIER,
+				
+				@RIBASetOnActivityId			INT,
+				@JobIdForActivity				INT;
+				
+
+        SELECT 
+			@ActivityId				= root_hobt.ID,
+			@ActivityValue			= InvoicingValue,
+			@ActivityQuantity		= InvoicingQuantity,
+			@ActivityAssigneeGuid	= I.Guid,
+			@RIBASetOnActivityId	= root_hobt.RibaStageId,
+			@JobIdForActivity		= root_hobt.JobID
+        FROM SJob.Activities AS root_hobt
+		JOIN SCore.Identities as I ON (I.ID = SurveyorID)
+        WHERE root_hobt.Guid = @ActivityGuid
+          AND root_hobt.RowStatus NOT IN (0,254);
+
+
+		--Ensures we do not try to multiply by 0 (in case user error when inputing figures)
+		IF(@ActivityValue > 0.0 AND @ActivityQuantity = 0)
+		SET @ActivityQuantity = 1;
+
+		--Assign the value of the activity here
+		IF(@ActivityValue > 0.0)
+			SET @Net = @ActivityValue * @ActivityQuantity;
+
+		--Ensure that the consultant is the same as on the activity (CYB-291)
+		SELECT @InvoiceRequestAssignee = I.Guid
+		FROM SFin.InvoiceRequests AS root_hobt
+		JOIN SCore.Identities AS I ON (I.ID = root_hobt.RequesterUserId)
+		WHERE root_hobt.Guid = @InvoiceRequestGuid
+
+		IF(@InvoiceRequestAssignee <> @ActivityAssigneeGuid)
+		BEGIN
+				
+			DECLARE @ActivityAssigneeId INT;
+
+			SELECT @ActivityAssigneeId = ID
+			FROM SCore.Identities
+			WHERE Guid = @ActivityAssigneeGuid;
+
+			UPDATE SFin.InvoiceRequests
+			SET RequesterUserId = @ActivityAssigneeId 
+			WHERE Guid = @InvoiceRequestGuid;
+
+		END;
+
+		--Get the remaining fee for the RIBA stage (If set on the activity)
+		IF(ISNULL(@RIBASetOnActivityId, -1) <> -1)
+		BEGIN
+					
+			--CYB-580: an item linked to a staged Activity is allocated to that Activity's stage.
+			--No stage supplied defaults to it; a different stage is refused, otherwise the item
+			--was saved against a stage that was never fee-checked (e.g. one with no agreed fee).
+			IF(ISNULL(@RIBAStageId, -1) = -1)
+				SET @RIBAStageId = @RIBASetOnActivityId;
+			ELSE IF(@RIBAStageId <> @RIBASetOnActivityId)
+				THROW 51004, N'Cannot save this invoice item because its RIBA stage must match the RIBA stage of the selected Activity.', 1;
+
+
+			DECLARE 
+					@JobGuidForActivity			UNIQUEIDENTIFIER,
+					@RIBAStageLabel			NVARCHAR(100),
+					@RemainingStageValue	DECIMAL(19,2);
+
+			--Get the job GUID.
+			SELECT 
+					@JobGuidForActivity = root_hobt.Guid
+			FROM SJob.Jobs AS root_hobt
+			WHERE root_hobt.ID = @JobIdForActivity;
+
+			
+
+			--Get the RIBA stage label.
+			SELECT 
+				@RIBAStageLabel  = Description
+			FROM SJob.RibaStages
+			WHERE ID = @RIBASetOnActivityId;
+
+			
+			--Get the remaining value for the stage from SJob.tvf_JobFeeDrawdown.
+			SELECT @RemainingStageValue = root_hobt.Remaining
+			FROM SJob.Job_FeeDrawdown   AS root_hobt
+			JOIN SJob.Jobs AS j ON (j.ID = root_hobt.JobId)
+			WHERE 
+					(j.Guid = @JobGuidForActivity)
+				AND (root_hobt.StageLabel = @RIBAStageLabel)
+
+			--DECLARE @M NVARCHAR(MAX)
+			--SET @M = N'@Remaining => ' + CONVERT(NVARCHAR(50), @UserId);
+
+			--THROW 60001, @M, 1;
+
+
+
+			--Throw an error message.
+			IF(ISNULL(@RemainingStageValue, 0) < @Net)
+				BEGIN
+
+					DECLARE @ErrorMessage1 NVARCHAR(4000);
+
+					IF (ISNULL(@RemainingStageValue, 0) <= 0)
+                    BEGIN
+                        SET @ErrorMessage1 =
+                            N'Cannot specify invoice item because there is no remaining fee available for RIBA stage "'
+                            + ISNULL(@RIBAStageLabel, N'Unknown')
+                            + N'". The invoice item is £'
+                            + CONVERT(NVARCHAR(50), @Net)
+                            + N'.';
+                    END
+                    ELSE
+                    BEGIN
+                        SET @ErrorMessage1 =
+                            N'Cannot specify invoice item because only £'
+                            + CONVERT(NVARCHAR(50), ISNULL(@RemainingStageValue, 0))
+                            + N' remains for RIBA stage "'
+                            + ISNULL(@RIBAStageLabel, N'Unknown')
+                            + N'", but the invoice item is £'
+                            + CONVERT(NVARCHAR(50), @Net)
+                            + N'.';
+                    END;
+
+					THROW 51003, @ErrorMessage1, 1;
+				END;		
+		END;
+
+        IF (@ActivityId IS NULL)
+            THROW 60000, N'InvoiceRequestItemsUpsert: ActivityGuid not found.', 1;
+    END
+
+
+	 DECLARE
+              @JobGuidForRequest     UNIQUEIDENTIFIER
+            , @RIBAStageLabelDirect  NVARCHAR(100)
+            , @RemainingStageValueDirect DECIMAL(19,2);
+
+
+	/* Direct RIBA-stage validation.
+   This covers Invoice Request Items where the user selects a RIBA stage
+   without selecting an Activity. Existing activity behaviour remains unchanged. 
+    without selecting an Activity, or with an Activity that has no RIBA stage (CYB-580).
+   An Activity with a RIBA stage is validated against that stage above. */
+       IF (
+           @RIBAStageGuid IS NOT NULL
+       AND @RIBAStageGuid <> '00000000-0000-0000-0000-000000000000'
+       AND ISNULL(@RIBASetOnActivityId, -1) = -1	
+    )
+    BEGIN
+       
+
+        SELECT
+            @JobGuidForRequest = j.Guid
+        FROM SFin.InvoiceRequests AS ir
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = ir.JobId
+           AND j.RowStatus NOT IN (0,254)
+        WHERE ir.ID = @InvoiceRequestID
+          AND ir.RowStatus NOT IN (0,254);
+
+        IF (@JobGuidForRequest IS NULL)
+            THROW 51001, N'Cannot validate RIBA stage fee because the Invoice Request job could not be resolved.', 1;
+
+        SELECT
+            @RIBAStageId = rs.ID,
+            @RIBAStageLabelDirect = rs.Description
+        FROM SJob.RibaStages AS rs
+        WHERE rs.Guid = @RIBAStageGuid
+          AND rs.RowStatus NOT IN (0,254);
+
+        IF (@RIBAStageId IS NULL)
+            THROW 51002, N'Cannot save Invoice Request Item because the selected RIBA stage could not be found.', 1;
+
+        SELECT
+            @RemainingStageValueDirect = fd.Remaining
+        FROM SJob.Job_FeeDrawdown AS fd
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = fd.JobId
+           AND j.RowStatus NOT IN (0,254)
+        WHERE j.Guid = @JobGuidForRequest
+          AND fd.StageLabel = @RIBAStageLabelDirect;
+
+        SET @RemainingStageValueDirect = ISNULL(@RemainingStageValueDirect, 0);
+
+        IF (@Net > @RemainingStageValueDirect)
+        BEGIN
+            DECLARE @ErrorMessageDirect NVARCHAR(4000);
+
+            IF (ISNULL(@RemainingStageValueDirect, 0) <= 0)
+            BEGIN
+                SET @ErrorMessageDirect =
+                    N'Cannot save this invoice item because there is no remaining fee available for RIBA stage "'
+                    + ISNULL(@RIBAStageLabelDirect, N'Unknown')
+                    + N'". The invoice item is £'
+                    + CONVERT(NVARCHAR(50), @Net)
+                    + N'.';
+            END
+            ELSE
+            BEGIN
+                SET @ErrorMessageDirect =
+                    N'Cannot save this invoice item because only £'
+                    + CONVERT(NVARCHAR(50), @RemainingStageValueDirect)
+                    + N' remains for RIBA stage "'
+                    + ISNULL(@RIBAStageLabelDirect, N'Unknown')
+                    + N'", but the invoice item is £'
+                    + CONVERT(NVARCHAR(50), @Net)
+                    + N'.';
+            END;
+
+            THROW 51003, @ErrorMessageDirect, 1;
+        END;
+    END
+	ELSE
+		BEGIN
+
+		SELECT
+            @JobGuidForRequest = j.Guid
+        FROM SFin.InvoiceRequests AS ir
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = ir.JobId
+           AND j.RowStatus NOT IN (0,254)
+        WHERE ir.ID = @InvoiceRequestID
+          AND ir.RowStatus NOT IN (0,254);
+
+		SELECT
+            @RemainingStageValueDirect = fd.Remaining
+        FROM SJob.Job_FeeDrawdown AS fd
+        INNER JOIN SJob.Jobs AS j
+            ON j.ID = fd.JobId
+           AND j.RowStatus NOT IN (0,254)
+        WHERE 
+				(j.Guid = @JobGuidForRequest)
+			AND (fd.StageLabel = N'Total (inc. Fee Cap)')
+         
+
+        SET @RemainingStageValueDirect = ISNULL(@RemainingStageValueDirect, 0);
+
+		 IF (@Net > @RemainingStageValueDirect)
+			BEGIN
+           
+
+                SET @ErrorMessageDirect =
+                    N'Cannot save this invoice item because only the total of £'
+                    + CONVERT(NVARCHAR(50), @RemainingStageValueDirect)
+                    + N' remains'
+                    + N',but the invoice item is £'
+                    + CONVERT(NVARCHAR(50), @Net)
+                    + N'.';
+
+				THROW 51003, @ErrorMessageDirect, 1;
+            END;
+
+		END;
+
+    -- Ensure DataObject exists
+    EXEC SCore.UpsertDataObject
+          @Guid = @Guid
+        , @SchemeName = N'SFin'
+        , @ObjectName = N'InvoiceRequestItems'
+        , @IncludeDefaultSecurity = 0
+        , @IsInsert = @DataObjectWasInserted OUTPUT;
+
+    -- Decide insert/update based on SFin.InvoiceRequestItems
+    IF NOT EXISTS (SELECT 1 FROM SFin.InvoiceRequestItems WITH (UPDLOCK, HOLDLOCK) WHERE [Guid] = @Guid)
+    BEGIN
+        INSERT SFin.InvoiceRequestItems
+            (RowStatus, Guid, InvoiceRequestId, MilestoneId, ActivityId, Net, ShortDescription, RIBAStageId)
+        VALUES
+            (1, @Guid, @InvoiceRequestID, @MilestoneId, @ActivityId, @Net, @ShortDescription, @RIBAStageId);
+    END
+    ELSE
+    BEGIN
+        UPDATE iri
+        SET
+              iri.InvoiceRequestId  = @InvoiceRequestID
+            , iri.MilestoneId      = @MilestoneId
+            , iri.ActivityId       = @ActivityId
+            , iri.Net              = @Net
+            , iri.ShortDescription = @ShortDescription
+			, iri.RIBAStageId	   = @RIBAStageId
+        FROM SFin.InvoiceRequestItems iri
+        WHERE iri.[Guid] = @Guid;
+    END
+END
+GO
+
+PRINT N'04. SFin.InvoiceRequestCreateInvoice (no NULL stage)';
+GO
+CREATE OR ALTER PROCEDURE [SFin].[InvoiceRequestCreateInvoice]
+	(
+		@Guid UNIQUEIDENTIFIER
+	)
+AS
+	BEGIN
+		SET NOCOUNT ON 
+
+		DECLARE	@AccountGuid UNIQUEIDENTIFIER, 
+				@JobGuid UNIQUEIDENTIFIER,
+				@TransactionTypeGuid UNIQUEIDENTIFIER,
+				@Date DATE = GETUTCDATE(), 
+				@PurchaseOrderNumber NVARCHAR(28),
+				@OrganisationalUnitGuid UNIQUEIDENTIFIER,
+				@CreatedByUserGuid UNIQUEIDENTIFIER,
+				@SurveyorGuid UNIQUEIDENTIFIER,
+				@CreditTermsGuid UNIQUEIDENTIFIER,
+				@TransactionGuid UNIQUEIDENTIFIER = NEWID(),
+				@InvoiceRequestId INT,
+				@TransactionId INT,
+				@Description NVARCHAR(MAX) = N'',
+				@JobDescription NVARCHAR(MAX),
+				@JobNumber NVARCHAR(30),
+				@UprnFormattedAddressComma NVARCHAR(MAX),
+				@JobType NVARCHAR(MAX),
+				@IsRejected BIT;
+
+		SELECT	@AccountGuid = fa.Guid,
+				@InvoiceRequestId = ir.ID, 
+				@JobGuid = j.Guid,
+				@SurveyorGuid = r.Guid,
+				@JobDescription = j.JobDescription,
+				@JobNumber = j.Number,
+				@JobType = jt.Name,
+				@PurchaseOrderNumber = j.PurchaseOrderNumber,
+				@OrganisationalUnitGuid = ou.Guid,
+				@CreditTermsGuid = ct.Guid,
+				@UprnFormattedAddressComma = uprn.FormattedAddressComma,
+				@IsRejected = ir.IsRejected
+		FROM	SFin.InvoiceRequests ir
+		JOIN	SJob.Jobs j ON (j.ID = ir.JobId)
+		JOIN	SJob.JobTypes jt ON (jt.ID = j.JobTypeID)
+		JOIN	SJob.Assets uprn ON (uprn.ID = j.UprnID)
+		JOIN	SCrm.Accounts fa ON (fa.ID = j.FinanceAccountID)
+		JOIN	SCore.Identities r ON (r.ID = ir.RequesterUserId)
+		JOIN	SCore.OrganisationalUnits ou ON (ou.Id = j.OrganisationalUnitID)
+		JOIN	SFin.CreditTerms ct on (ct.ID = fa.DefaultCreditTermsId)
+		WHERE ir.Guid = @Guid
+
+
+		IF(@IsRejected = 1)
+		BEGIN
+			UPDATE SFin.InvoiceRequests
+			SET IsRejected = 0
+			WHERE Guid = @Guid
+		END;
+
+
+		IF (NOT EXISTS
+		(
+			SELECT	1
+			FROM	SCrm.Accounts AS a 
+			WHERE	(a.Guid = @AccountGuid)
+				AND	(a.Code <> N'')
+		)
+			)
+		BEGIN 
+			;THROW 60000, N'The finance account on the job is invalid.', 1
+		END
+
+		SELECT	@CreatedByUserGuid = SCore.GetCurrentUserGuid()
+
+		SELECT	@TransactionTypeGuid = tt.Guid 
+		FROM	SFin.TransactionTypes tt
+		WHERE	(tt.Name = N'Invoice')
+
+		DECLARE @ExpectedDateOnInvoiceRequest DATE;
+
+		SELECT @ExpectedDateOnInvoiceRequest = ir.ExpectedDate
+		FROM SFin.InvoiceRequests AS ir
+		WHERE ir.Guid = @Guid;
+
+
+		-- Create the invoice header
+		EXEC SFin.TransactionsUpsert @AccountGuid = @AccountGuid,				-- uniqueidentifier
+									 @JobGuid = @JobGuid,					-- uniqueidentifier
+									 @TransactionTypeGuid = @TransactionTypeGuid,		-- uniqueidentifier
+									 @Date = @Date,				-- date
+									 @PurchaseOrderNumber = @PurchaseOrderNumber,		-- nvarchar(28)
+									 @SageTransactionReference = N'',	-- nvarchar(50)
+									 @OrganisationalUnitGuid = @OrganisationalUnitGuid,	-- uniqueidentifier
+									 @CreatedByUserGuid = @CreatedByUserGuid,			-- uniqueidentifier
+									 @SurveyorGuid = @SurveyorGuid,				-- uniqueidentifier
+									 @CreditTermsGuid = @CreditTermsGuid,			-- uniqueidentifier
+									 @Guid = @TransactionGuid,						-- uniqueidentifier
+									 @Batched = 1,									-- Set it to 1
+									 @ExpectedDate = @ExpectedDateOnInvoiceRequest
+
+		SELECT	@TransactionId = ID
+		FROM	SFin.Transactions t
+		WHERE	(Guid = @TransactionGuid)
+
+		SET @Description = @Description + N'	
+Our project ref.: ' + @JobNumber + N'
+Project description: ' + @JobDescription + N'
+Property: ' + @UprnFormattedAddressComma + N'
+Appointed role: ' + @JobType
+
+		DECLARE	@DetailList SCore.TwoGuidUniqueList,
+				@NewDetailRecords SCore.GuidUniqueList
+
+		INSERT	@DetailList
+			 (GuidValue, GuidValueTwo)
+		SELECT	iri.Guid,
+				NEWID()
+		FROM	SFin.InvoiceRequestItems iri
+		WHERE	(iri.InvoiceRequestId = @InvoiceRequestId)
+			AND	(iri.RowStatus NOT IN (0, 254))
+
+
+		INSERT	@NewDetailRecords (GuidValue)
+		SELECT	GuidValueTwo
+		FROM	@DetailList
+
+		DECLARE	@IsInsert BIT 
+
+		EXEC SCore.DataObjectBulkUpsert 
+			@GuidList = @NewDetailRecords,
+			@SchemeName = N'SFin',
+			@ObjectName = N'TransactionDetails',
+			@IncludeDefaultSecurity = 0,
+			@IsInsert = @IsInsert OUT 
+
+		INSERT	SFin.TransactionDetails
+			 (RowStatus,
+			  Guid,
+			  TransactionID,
+			  MilestoneID,
+			  ActivityID,
+			  Net,
+			  Vat,
+			  Gross,
+			  VatRate,
+			  Description,
+			  LegacyId,
+			  JobPaymentStageId,
+			  InvoiceRequestItemId,
+			  RIBAStageId)
+		SELECT	1,
+				dl.GuidValueTwo,
+				@TransactionId,
+				COALESCE(iri.MilestoneId, -1),
+				COALESCE(iri.ActivityId, -1),
+				iri.Net,
+				iri.Net * 0.2,
+				iri.Net * 1.2,
+				20,
+				@Description, 
+				NULL,
+				-1,
+				iri.Id,
+				-- Legacy items can hold NULL; transactions always carry the -1 no-stage sentinel (26.2 dce858c4).
+				COALESCE(iri.RIBAStageId, -1)
+		FROM	@DetailList dl
+		JOIN	SFin.InvoiceRequestItems iri ON (iri.Guid = dl.GuidValue)
+		
+
+	END;
+GO
+
+PRINT N'05. SJob.tvf_Jobs_TeamF10ExpiryList (CYB-261)';
+GO
+CREATE OR ALTER FUNCTION [SJob].[tvf_Jobs_TeamF10ExpiryList]
+(
+    @UserId INT
+)
+RETURNS TABLE
+             --WITH SCHEMABINDING
+AS
+RETURN
+(
+    SELECT
+        j.ID,
+        j.RowStatus,
+        j.RowVersion,
+        j.Guid,
+        j.Number,
+        j.JobDescription,
+        j.JobTypeID,
+        client.Name + N' / ' + agent.Name AS ClientAgent,
+        jt.Name AS JobTypeName,
+        i.FullName AS Consultant,
+        js.IsSubjectToNDA,
+        p.FormattedAddressComma,
+        F10.Reference,
+        js.JobStatus,
+        j.ExternalReference,
+        CONVERT(NVARCHAR(19), F10.SubmissionExpiryDate, 120) AS F10Range,
+        org.Name AS Department,      -- CYB-261 (LIVE 26.2 dce858c4): the TEAMF10EXPIRYLIST grid
+        org2.Name AS BusinessUnit    -- has Department/BusinessUnit columns and filters.
+    FROM SJob.Jobs AS j
+    JOIN SJob.JobStatus AS js ON (js.ID = j.ID)
+    JOIN SJob.JobTypes AS jt ON (j.JobTypeID = jt.ID)
+    JOIN SCore.Identities AS i ON (j.SurveyorID = i.ID)
+    JOIN SCrm.Accounts AS client ON (client.ID = j.ClientAccountID)
+    JOIN SJob.Assets AS p ON (p.ID = j.UprnID)
+    JOIN SCrm.Accounts AS agent ON (agent.ID = j.AgentAccountID)
+    JOIN SCore.OrganisationalUnits AS org ON (j.OrganisationalUnitID = org.ID)
+    JOIN SCore.OrganisationalUnits AS org2 ON (org.ParentID = org2.ID)
+
+    -- Latest workflow status for this job (if any) - rowstatus safe
+    OUTER APPLY
+    (
+        SELECT TOP (1)
+            wfs.Guid AS LatestWorkflowStatusGuid,
+            wfs.IsActiveStatus AS LatestIsActiveStatus
+        FROM SCore.DataObjectTransition AS dot
+        JOIN SCore.WorkflowStatus AS wfs ON (wfs.ID = dot.StatusID)
+        WHERE (dot.RowStatus NOT IN (0, 254))
+          AND (dot.DataObjectGuid = j.Guid)
+        ORDER BY dot.ID DESC
+    ) AS wf
+
+    CROSS APPLY
+    (
+        SELECT ou1.OrgNode
+        FROM SCore.OrganisationalUnits AS ou1
+        JOIN SCore.Identities AS i1 ON (i1.OriganisationalUnitId = ou1.ID)
+        WHERE (i1.ID = @UserId)
+    ) AS CurrentUser
+
+    CROSS APPLY
+    (
+        SELECT
+            m.SubmissionExpiryDate,
+            m.StartDateTimeUTC,
+            m.DueDateTimeUTC,
+            m.Reference
+        FROM SJob.Milestones AS m
+        JOIN SJob.MilestoneTypes AS mt ON (mt.ID = m.MilestoneTypeID)
+        WHERE (m.JobID = j.ID)
+          AND (mt.Code = N'F10')
+          AND (m.CompletedDateTimeUTC IS NULL)
+          AND (m.IsNotApplicable = 0)
+          AND (m.SubmissionExpiryDate IS NOT NULL)
+
+          -- ✅ DUE WITHIN 14 DAYS (NOT EXPIRED)
+          AND (m.SubmissionExpiryDate >= GETUTCDATE())
+          AND (m.SubmissionExpiryDate <  DATEADD(DAY, 14, GETUTCDATE()))
+
+          AND (m.RowStatus NOT IN (0, 254))
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM SJob.Milestones AS m1
+              WHERE (m1.RowStatus NOT IN (0, 254))
+                AND (m1.JobID = j.ID)
+                AND (m1.MilestoneTypeID = m.MilestoneTypeID)
+                AND (m1.SubmittedDateTimeUTC IS NOT NULL)
+                AND (m1.SubmissionExpiryDate < m.SubmissionExpiryDate)
+          )
+    ) AS F10
+
+    WHERE (j.RowStatus NOT IN (0, 254))
+
+      AND EXISTS
+      (
+          SELECT 1
+          FROM SCore.ObjectSecurityForUser_CanRead(j.Guid, @UserId) AS oscr
+      )
+
+      /* --------------------------------------------------------------------
+         ACTIVE: legacy OR workflow (latest only)
+      -------------------------------------------------------------------- */
+      AND
+      (
+          CASE
+              WHEN wf.LatestWorkflowStatusGuid IS NULL
+                  THEN ISNULL(j.IsActive, 0)
+              ELSE ISNULL(wf.LatestIsActiveStatus, 0)
+          END
+      ) = 1
+
+      /* --------------------------------------------------------------------
+         NOT CANCELLED: legacy OR workflow (latest only)
+         Cancelled workflow status GUID: 18D8E36B-43BE-4BDE-9D0B-1F34B460AD64
+      -------------------------------------------------------------------- */
+      AND
+      (
+          CASE
+              WHEN wf.LatestWorkflowStatusGuid IS NULL
+                  THEN CASE WHEN ISNULL(j.IsCancelled, 0) = 0 THEN 1 ELSE 0 END
+              ELSE
+                  CASE
+                      WHEN wf.LatestWorkflowStatusGuid = '18D8E36B-43BE-4BDE-9D0B-1F34B460AD64' THEN 0
+                      ELSE 1
+                  END
+          END
+      ) = 1
+
+      /* --------------------------------------------------------------------
+         NOT COMPLETE: legacy OR workflow (latest only)
+         Completed workflow status GUID: 20D22623-283B-4088-9CEB-D944AC3E6516
+      -------------------------------------------------------------------- */
+      AND
+      (
+          CASE
+              WHEN wf.LatestWorkflowStatusGuid IS NULL
+                  THEN CASE WHEN (ISNULL(j.IsComplete, 0) = 0) AND (j.JobCompleted IS NULL) THEN 1 ELSE 0 END
+              ELSE
+                  CASE
+                      WHEN wf.LatestWorkflowStatusGuid = '20D22623-283B-4088-9CEB-D944AC3E6516' THEN 0
+                      ELSE 1
+                  END
+          END
+      ) = 1
+
+      /* --------------------------------------------------------------------
+         NOT COMPLETE FOR REVIEW: legacy OR workflow (latest only)
+         CompleteForReview workflow status GUID: 4BFDB215-3E27-4829-BB44-0468C92DAC82
+      -------------------------------------------------------------------- */
+      AND
+      (
+          CASE
+              WHEN wf.LatestWorkflowStatusGuid IS NULL
+                  THEN CASE WHEN ISNULL(j.IsCompleteForReview, 0) = 0 THEN 1 ELSE 0 END
+              ELSE
+                  CASE
+                      WHEN wf.LatestWorkflowStatusGuid = '4BFDB215-3E27-4829-BB44-0468C92DAC82' THEN 0
+                      ELSE 1
+                  END
+          END
+      ) = 1
+
+      AND (j.ReviewedByUserID < 0)
+
+      -- Team scope via org node descendant check (unchanged)
+      AND EXISTS
+      (
+          SELECT 1
+          FROM SCore.OrganisationalUnits AS ou2
+          WHERE (ou2.ID = i.OriganisationalUnitId)
+            AND (ou2.OrgNode.IsDescendantOf(CurrentUser.OrgNode) = 1)
+      )
+);
+GO
+
+PRINT N'06. SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification (CYB-515)';
+GO
+/* =============================================================================
+   SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification
+
+   Writes:
+   - One SCore.IntegrationOutbox row per transition IF:
+       WorkflowStatus.SendNotification = 1
+       AND workflow can be resolved for (EntityTypeId, OU or OU=-1(All), StatusId)
+       AND at least one target notification group exists for (WorkflowId, StatusGuid)
+
+   NOTE:
+   - PayloadJson uses camelCase keys (important for JSON_VALUE and Kafka contracts)
+============================================================================= */
+CREATE OR ALTER PROCEDURE [SCore].[IntegrationOutbox_EnqueueWorkflowStatusNotification]
+(
+    @TransitionGuid UNIQUEIDENTIFIER,
+    @OutcomeCode NVARCHAR(64) = NULL OUTPUT,
+    @OutcomeMessage NVARCHAR(2000) = NULL OUTPUT,
+    @OutboxId BIGINT = NULL OUTPUT
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SET @OutcomeCode = N'Unknown';
+    SET @OutcomeMessage = NULL;
+    SET @OutboxId = NULL;
+
+    /* ------------------------------------------------------------
+       1) Load transition (the inserted row)
+    ------------------------------------------------------------ */
+    DECLARE
+        @TransitionId       INT,
+        @DataObjectGuid     UNIQUEIDENTIFIER,
+        @StatusId           INT,
+        @OldStatusId        INT,
+        @Comment            NVARCHAR(MAX),
+        @CreatedByUserId    INT,
+        @SurveyorUserId     INT,
+        @DateTimeUtc        DATETIME2(7);
+
+    SELECT TOP (1)
+        @TransitionId      = dot.ID,
+        @DataObjectGuid    = dot.DataObjectGuid,
+        @StatusId          = dot.StatusID,
+        @OldStatusId       = dot.OldStatusID,
+        @Comment           = dot.Comment,
+        @CreatedByUserId   = dot.CreatedByUserId,
+        @SurveyorUserId    = ISNULL(dot.SurveyorUserId, -1),
+        @DateTimeUtc       = dot.DateTimeUTC
+    FROM SCore.DataObjectTransition dot
+    WHERE dot.Guid = @TransitionGuid
+      AND dot.RowStatus NOT IN (0,254);
+
+    IF @DataObjectGuid IS NULL OR @StatusId IS NULL
+    BEGIN
+        SET @OutcomeCode = N'TransitionNotFound';
+        SET @OutcomeMessage = N'The transition was not found or is inactive.';
+        RETURN;
+    END;
+
+    /* ------------------------------------------------------------
+       1b) LATEST-ONLY rule (strict):
+           Only enqueue if THIS transition is the latest for the record
+           AND the latest status is marked SendNotification=1.
+    ------------------------------------------------------------ */
+    DECLARE
+        @LatestTransitionGuid UNIQUEIDENTIFIER,
+        @LatestStatusId INT,
+        @LatestSendNotification BIT;
+
+    SELECT TOP (1)
+        @LatestTransitionGuid = dot2.Guid,
+        @LatestStatusId = dot2.StatusID,
+        @LatestSendNotification = ISNULL(ws2.SendNotification, 0)
+    FROM SCore.DataObjectTransition dot2
+    JOIN SCore.WorkflowStatus ws2
+        ON ws2.ID = dot2.StatusID
+       AND ws2.RowStatus NOT IN (0,254)
+    WHERE dot2.RowStatus NOT IN (0,254)
+      AND dot2.DataObjectGuid = @DataObjectGuid
+    ORDER BY dot2.DateTimeUTC DESC, dot2.ID DESC;
+
+    IF @LatestTransitionGuid IS NULL
+    BEGIN
+        SET @OutcomeCode = N'LatestTransitionNotFound';
+        SET @OutcomeMessage = N'No active latest transition could be resolved for the data object.';
+        RETURN;
+    END;
+
+    IF @LatestTransitionGuid <> @TransitionGuid
+    BEGIN
+        SET @OutcomeCode = N'NotLatestTransition';
+        SET @OutcomeMessage = CONCAT(
+            N'The transition is not current. LatestTransitionGuid=',
+            CONVERT(NVARCHAR(36), @LatestTransitionGuid),
+            N'.');
+        RETURN;
+    END;
+
+    IF ISNULL(@LatestSendNotification, 0) = 0
+    BEGIN
+        SET @OutcomeCode = N'NotificationDisabled';
+        SET @OutcomeMessage = N'The latest workflow status is not configured to send a notification.';
+        RETURN;
+    END;
+
+    /* ------------------------------------------------------------
+       1c) IDEMPOTENCY rule:
+           If we've already enqueued an outbox item for this transition,
+           do nothing (prevents double Kafka notifications).
+    ------------------------------------------------------------ */
+    SELECT TOP (1)
+        @OutboxId = o.ID
+    FROM SCore.IntegrationOutbox o
+    WHERE o.RowStatus NOT IN (0,254)
+      AND o.EventType = N'WorkflowStatusNotification'
+      AND
+      (
+          TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(o.PayloadJson, '$.transitionGuid')) = @TransitionGuid
+          OR TRY_CONVERT(UNIQUEIDENTIFIER, JSON_VALUE(o.PayloadJson, '$.TransitionGuid')) = @TransitionGuid
+      )
+    ORDER BY o.ID DESC;
+
+    IF @OutboxId IS NOT NULL
+    BEGIN
+        SET @OutcomeCode = N'AlreadyEnqueued';
+        SET @OutcomeMessage = N'An active workflow notification outbox item already exists for this transition.';
+        RETURN;
+    END;
+
+    /* ------------------------------------------------------------
+       2) Resolve status metadata (ONLY SendNotification = 1)
+    ------------------------------------------------------------ */
+    DECLARE
+        @StatusGuid        UNIQUEIDENTIFIER,
+        @StatusName        NVARCHAR(200),
+        @SendNotification  BIT;
+
+    SELECT TOP (1)
+        @StatusGuid       = ws.Guid,
+        @StatusName       = ws.Name,
+        @SendNotification = ISNULL(ws.SendNotification, 0)
+    FROM SCore.WorkflowStatus ws
+    WHERE ws.ID = @StatusId
+      AND ws.RowStatus NOT IN (0,254);
+
+    IF @StatusGuid IS NULL
+    BEGIN
+        SET @OutcomeCode = N'StatusNotFound';
+        SET @OutcomeMessage = N'The active workflow status could not be resolved.';
+        RETURN;
+    END;
+
+    IF ISNULL(@SendNotification, 0) = 0
+    BEGIN
+        SET @OutcomeCode = N'NotificationDisabled';
+        SET @OutcomeMessage = N'The workflow status is not configured to send a notification.';
+        RETURN;
+    END;
+
+    /* Old status metadata */
+    DECLARE
+        @OldStatusGuid UNIQUEIDENTIFIER = NULL,
+        @OldStatusName NVARCHAR(200) = NULL;
+
+    IF @OldStatusId IS NOT NULL
+    BEGIN
+        SELECT TOP (1)
+            @OldStatusGuid = ws.Guid,
+            @OldStatusName = ws.Name
+        FROM SCore.WorkflowStatus ws
+        WHERE ws.ID = @OldStatusId
+          AND ws.RowStatus NOT IN (0,254);
+    END;
+
+    /* ------------------------------------------------------------
+       3) Resolve routing (EntityType + OU) for this DataObjectGuid
+    ------------------------------------------------------------ */
+    DECLARE
+        @EntityTypeId            INT,
+        @OrganisationalUnitId    INT,
+        @OrganisationalUnitName  NVARCHAR(200) = NULL;
+
+    SELECT TOP (1)
+        @EntityTypeId = r.EntityTypeId,
+        @OrganisationalUnitId = r.OrganisationalUnitId
+    FROM SCore.WF_Auth_DataObjectRouting r
+    WHERE r.DataObjectGuid = @DataObjectGuid
+      AND r.EntityTypeId IS NOT NULL
+      AND r.OrganisationalUnitId IS NOT NULL
+    ORDER BY r.DataObjectGuid;
+
+    IF @EntityTypeId IS NULL OR @OrganisationalUnitId IS NULL
+    BEGIN
+        SET @OutcomeCode = N'RoutingNotResolved';
+        SET @OutcomeMessage = N'Entity type and organisational-unit routing could not be resolved for the data object.';
+        RETURN;
+    END;
+
+    SELECT TOP (1)
+        @OrganisationalUnitName = ou.Name
+    FROM SCore.OrganisationalUnits ou
+    WHERE ou.RowStatus NOT IN (0,254)
+      AND ou.ID = @OrganisationalUnitId;
+
+    /* ------------------------------------------------------------
+       3b) Resolve record-specific payload enrichment
+           CYB-4: add enquiry location + quoting deadline to payload
+    ------------------------------------------------------------ */
+    DECLARE
+        @DisplayAddress NVARCHAR(1000) = NULL,
+        @DueDateUtc DATETIME2(7) = NULL,
+        @DueDateDisplay NVARCHAR(50) = NULL;
+
+    /*
+        Enquiry-specific enrichment.
+        We only populate these fields when the transitioned record is an SSop.Enquiries row.
+        DataObjectGuid is the Enquiry.Guid for major entity rows in CymBuild.
+    */
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SSop.Enquiries e
+        WHERE e.Guid = @DataObjectGuid
+          AND e.RowStatus NOT IN (0,254)
+    )
+    BEGIN
+        SELECT TOP (1)
+            @DisplayAddress =
+                NULLIF(
+                    LTRIM(RTRIM(
+                        COALESCE(NULLIF(e.PropertyNameNumber, N''), N'')
+                        + CASE WHEN NULLIF(e.PropertyNameNumber, N'') IS NOT NULL AND NULLIF(e.PropertyAddressLine1, N'') IS NOT NULL THEN N', ' ELSE N'' END
+                        + COALESCE(NULLIF(e.PropertyAddressLine1, N''), N'')
+                        + CASE WHEN (NULLIF(e.PropertyNameNumber, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine1, N'') IS NOT NULL) AND NULLIF(e.PropertyAddressLine2, N'') IS NOT NULL THEN N', ' ELSE N'' END
+                        + COALESCE(NULLIF(e.PropertyAddressLine2, N''), N'')
+                        + CASE WHEN (NULLIF(e.PropertyNameNumber, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine1, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine2, N'') IS NOT NULL) AND NULLIF(e.PropertyAddressLine3, N'') IS NOT NULL THEN N', ' ELSE N'' END
+                        + COALESCE(NULLIF(e.PropertyAddressLine3, N''), N'')
+                        + CASE WHEN (NULLIF(e.PropertyNameNumber, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine1, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine2, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine3, N'') IS NOT NULL) AND NULLIF(e.PropertyTown, N'') IS NOT NULL THEN N', ' ELSE N'' END
+                        + COALESCE(NULLIF(e.PropertyTown, N''), N'')
+                        + CASE WHEN (NULLIF(e.PropertyNameNumber, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine1, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine2, N'') IS NOT NULL OR NULLIF(e.PropertyAddressLine3, N'') IS NOT NULL OR NULLIF(e.PropertyTown, N'') IS NOT NULL) AND NULLIF(e.PropertyPostCode, N'') IS NOT NULL THEN N', ' ELSE N'' END
+                        + COALESCE(NULLIF(e.PropertyPostCode, N''), N'')
+                    )),
+                    N''
+                ),
+            @DueDateUtc =
+                CASE
+                    WHEN e.QuotingDeadlineDate IS NULL THEN NULL
+                    ELSE CAST(e.QuotingDeadlineDate AS DATETIME2(7))
+                END,
+            @DueDateDisplay =
+                CASE
+                    WHEN e.QuotingDeadlineDate IS NULL THEN NULL
+                    ELSE CONVERT(NVARCHAR(11), CAST(e.QuotingDeadlineDate AS DATE), 106)
+                END
+        FROM SSop.Enquiries e
+        WHERE e.Guid = @DataObjectGuid
+          AND e.RowStatus NOT IN (0,254);
+    END;
+
+    /* ------------------------------------------------------------
+       4) Resolve WorkflowId (OU=-1 fallback kept)
+    ------------------------------------------------------------ */
+    DECLARE
+        @WorkflowId INT,
+        @WorkflowName NVARCHAR(200) = NULL;
+
+    SELECT TOP (1)
+        @WorkflowId = wf.ID,
+        @WorkflowName = wf.Name
+    FROM SCore.Workflow wf
+    JOIN SCore.WorkflowTransition wft
+        ON wft.WorkflowID = wf.ID
+    WHERE wf.RowStatus NOT IN (0,254)
+      AND wft.RowStatus NOT IN (0,254)
+      AND ISNULL(wf.Enabled, 1) = 1
+      AND ISNULL(wft.Enabled, 1) = 1
+      AND wf.EntityTypeID = @EntityTypeId
+      AND wf.OrganisationalUnitId IN (@OrganisationalUnitId, -1)
+      AND wft.ToStatusID = @StatusId
+    ORDER BY
+        CASE WHEN wf.OrganisationalUnitId = @OrganisationalUnitId THEN 0 ELSE 1 END,
+        wf.ID DESC;
+
+    IF @WorkflowId IS NULL
+    BEGIN
+        SET @OutcomeCode = N'WorkflowNotResolved';
+        SET @OutcomeMessage = CONCAT(
+            N'No enabled workflow transition matched EntityTypeId=',
+            CONVERT(NVARCHAR(20), @EntityTypeId),
+            N', OrganisationalUnitId=',
+            CONVERT(NVARCHAR(20), @OrganisationalUnitId),
+            N', StatusId=',
+            CONVERT(NVARCHAR(20), @StatusId),
+            N'.');
+        RETURN;
+    END;
+
+    /* ------------------------------------------------------------
+       5) Resolve notification target groups
+    ------------------------------------------------------------ */
+    DECLARE @TargetGroupIdsCsv NVARCHAR(MAX);
+
+    SELECT
+        @TargetGroupIdsCsv =
+            STUFF((
+                SELECT ',' + CONVERT(NVARCHAR(20), ng.GroupID)
+                FROM SCore.WorkflowStatusNotificationGroups ng
+                WHERE ng.RowStatus NOT IN (0,254)
+                  AND ng.WorkflowID = @WorkflowId
+                  AND ng.WorkflowStatusGuid = @StatusGuid
+                ORDER BY ng.GroupID
+                FOR XML PATH(''), TYPE
+            ).value('.', 'nvarchar(max)'), 1, 1, '');
+
+    IF @TargetGroupIdsCsv IS NULL OR LTRIM(RTRIM(@TargetGroupIdsCsv)) = ''
+    BEGIN
+        SET @OutcomeCode = N'NotificationGroupsNotConfigured';
+        SET @OutcomeMessage = CONCAT(
+            N'No active workflow notification groups matched WorkflowId=',
+            CONVERT(NVARCHAR(20), @WorkflowId),
+            N' and StatusGuid=',
+            CONVERT(NVARCHAR(36), @StatusGuid),
+            N'.');
+        RETURN;
+    END;
+
+    DECLARE @TargetGroupsJson NVARCHAR(MAX);
+
+    SELECT @TargetGroupsJson =
+    (
+        SELECT
+            ng.GroupID AS groupId,
+            g.Code     AS groupCode,
+            g.Name     AS groupName,
+            CONVERT(bit, ISNULL(ng.CanAction, 0)) AS canAction
+        FROM SCore.WorkflowStatusNotificationGroups ng
+        JOIN SCore.Groups g
+            ON g.RowStatus NOT IN (0,254)
+           AND g.ID = ng.GroupID
+        WHERE ng.RowStatus NOT IN (0,254)
+          AND ng.WorkflowID = @WorkflowId
+          AND ng.WorkflowStatusGuid = @StatusGuid
+        ORDER BY ng.GroupID
+        FOR JSON PATH
+    );
+
+    /* ------------------------------------------------------------
+       5b) Actor / Surveyor identity details
+    ------------------------------------------------------------ */
+    DECLARE
+        @ActorName NVARCHAR(200) = NULL,
+        @ActorEmail NVARCHAR(320) = NULL,
+        @SurveyorName NVARCHAR(200) = NULL,
+        @SurveyorEmail NVARCHAR(320) = NULL;
+
+    SELECT TOP (1)
+        @ActorName = i.FullName,
+        @ActorEmail = i.EmailAddress
+    FROM SCore.Identities i
+    WHERE i.RowStatus NOT IN (0,254)
+      AND i.IsActive = 1
+      AND i.ID = @CreatedByUserId;
+
+    IF @SurveyorUserId IS NOT NULL AND @SurveyorUserId <> -1
+    BEGIN
+        SELECT TOP (1)
+            @SurveyorName = i.FullName,
+            @SurveyorEmail = i.EmailAddress
+        FROM SCore.Identities i
+        WHERE i.RowStatus NOT IN (0,254)
+          AND i.IsActive = 1
+          AND i.ID = @SurveyorUserId;
+    END;
+
+    /* ------------------------------------------------------------
+       6) Build payload JSON (camelCase keys)
+    ------------------------------------------------------------ */
+    DECLARE @Payload NVARCHAR(MAX);
+
+    SET @Payload =
+    (
+        SELECT
+            NEWID() AS eventGuid,
+            N'WorkflowStatusNotification' AS eventType,
+
+            @DateTimeUtc AS occurredOnUtc,
+
+            @DataObjectGuid AS dataObjectGuid,
+            @EntityTypeId AS entityTypeId,
+            @OrganisationalUnitId AS organisationalUnitId,
+            @OrganisationalUnitName AS organisationalUnitName,
+
+            @WorkflowId AS workflowId,
+            @WorkflowName AS workflowName,
+
+            @StatusId AS statusId,
+            @StatusGuid AS statusGuid,
+            @StatusName AS statusName,
+
+            @OldStatusId AS oldStatusId,
+            @OldStatusGuid AS oldStatusGuid,
+            @OldStatusName AS oldStatusName,
+
+            @TransitionId AS transitionId,
+            @TransitionGuid AS transitionGuid,
+
+            @Comment AS comment,
+
+            @CreatedByUserId AS actorIdentityId,
+            @ActorName AS actorName,
+            @ActorEmail AS actorEmail,
+
+            @SurveyorUserId AS surveyorIdentityId,
+            @SurveyorName AS surveyorName,
+            @SurveyorEmail AS surveyorEmail,
+
+            @TargetGroupIdsCsv AS targetGroupIdsCsv,
+            JSON_QUERY(@TargetGroupsJson) AS targetGroups,
+
+            /* CYB-4 */
+            @DisplayAddress AS displayAddress,
+            @DueDateUtc AS dueDateUtc,
+            @DueDateDisplay AS dueDateDisplay
+
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+    );
+
+    /* ------------------------------------------------------------
+       7) Write to outbox
+    ------------------------------------------------------------ */
+    INSERT INTO SCore.IntegrationOutbox
+    (
+        RowStatus,
+        Guid,
+        CreatedOnUtc,
+        EventType,
+        PayloadJson,
+        PublishedOnUtc,
+        PublishAttempts,
+        LastError
+    )
+    VALUES
+    (
+        1,
+        NEWID(),
+        SYSUTCDATETIME(),
+        N'WorkflowStatusNotification',
+        @Payload,
+        NULL,
+        0,
+        NULL
+    );
+
+    SET @OutboxId = CONVERT(BIGINT, SCOPE_IDENTITY());
+    SET @OutcomeCode = N'Enqueued';
+    SET @OutcomeMessage = N'Workflow notification outbox item created.';
+END;
+GO
+
+PRINT N'07. SCore.DataObjectTransition notification triggers (CYB-515)';
+GO
+CREATE OR ALTER TRIGGER [SCore].[tr_DataObjectTransition_EnqueueWorkflowStatusNotification]
+ON [SCore].[DataObjectTransition]
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @TriggerName SYSNAME =
+        N'tr_DataObjectTransition_EnqueueWorkflowStatusNotification';
+
+    IF (ISNULL(CONVERT(int, SESSION_CONTEXT(N'S_disable_triggers')), 0) = 1)
+        RETURN;
+
+    -- Only consider active inserted transitions whose destination status sends notifications.
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM inserted i
+        JOIN SCore.WorkflowStatus ws
+            ON ws.ID = i.StatusID
+           AND ws.RowStatus NOT IN (0,254)
+        WHERE i.RowStatus NOT IN (0,254)
+          AND ISNULL(ws.SendNotification, 0) = 1
+    )
+        RETURN;
+
+    BEGIN TRY
+        DECLARE @TransitionGuid UNIQUEIDENTIFIER;
+
+        DECLARE cur CURSOR LOCAL FAST_FORWARD FOR
+            SELECT i.Guid
+            FROM inserted i
+            JOIN SCore.WorkflowStatus ws
+                ON ws.ID = i.StatusID
+               AND ws.RowStatus NOT IN (0,254)
+            WHERE i.RowStatus NOT IN (0,254)
+              AND i.Guid IS NOT NULL
+              AND ISNULL(ws.SendNotification, 0) = 1;
+
+        OPEN cur;
+        FETCH NEXT FROM cur INTO @TransitionGuid;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            DECLARE
+                @OutcomeCode NVARCHAR(64),
+                @OutcomeMessage NVARCHAR(2000),
+                @OutboxId BIGINT;
+
+            SET @OutcomeCode = NULL;
+            SET @OutcomeMessage = NULL;
+            SET @OutboxId = NULL;
+
+            BEGIN TRY
+                EXEC [SCore].[IntegrationOutbox_EnqueueWorkflowStatusNotification]
+                    @TransitionGuid = @TransitionGuid,
+                    @OutcomeCode = @OutcomeCode OUTPUT,
+                    @OutcomeMessage = @OutcomeMessage OUTPUT,
+                    @OutboxId = @OutboxId OUTPUT;
+
+                IF ISNULL(@OutcomeCode, N'Unknown') NOT IN
+                (
+                    N'Enqueued',
+                    N'AlreadyEnqueued'
+                )
+                BEGIN
+                    BEGIN TRY
+                        INSERT INTO SCore.WorkflowNotificationQueueErrorLog
+                        (
+                            CreatedOnUtc,
+                            TriggerName,
+                            TransitionGuid,
+                            StatusId,
+                            ErrorNumber,
+                            ErrorSeverity,
+                            ErrorState,
+                            ErrorLine,
+                            ErrorProcedure,
+                            ErrorMessage
+                        )
+                        SELECT
+                            SYSUTCDATETIME(),
+                            @TriggerName,
+                            @TransitionGuid,
+                            i.StatusID,
+                            0,
+                            0,
+                            0,
+                            0,
+                            N'SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification',
+                            CONCAT(
+                                N'OutcomeCode=', ISNULL(@OutcomeCode, N'Unknown'),
+                                N'; OutcomeMessage=', ISNULL(@OutcomeMessage, N''),
+                                N'; OutboxId=', ISNULL(CONVERT(NVARCHAR(30), @OutboxId), N'NULL'))
+                        FROM inserted i
+                        WHERE i.Guid = @TransitionGuid;
+                    END TRY
+                    BEGIN CATCH
+                        -- Diagnostics must never block the workflow transition.
+                    END CATCH;
+                END;
+            END TRY
+            BEGIN CATCH
+                BEGIN TRY
+                    INSERT INTO SCore.WorkflowNotificationQueueErrorLog
+                    (
+                        CreatedOnUtc,
+                        TriggerName,
+                        TransitionGuid,
+                        StatusId,
+                        ErrorNumber,
+                        ErrorSeverity,
+                        ErrorState,
+                        ErrorLine,
+                        ErrorProcedure,
+                        ErrorMessage
+                    )
+                    SELECT
+                        SYSUTCDATETIME(),
+                        @TriggerName,
+                        @TransitionGuid,
+                        i.StatusID,
+                        ERROR_NUMBER(),
+                        ERROR_SEVERITY(),
+                        ERROR_STATE(),
+                        ERROR_LINE(),
+                        ERROR_PROCEDURE(),
+                        ERROR_MESSAGE()
+                    FROM inserted i
+                    WHERE i.Guid = @TransitionGuid;
+                END TRY
+                BEGIN CATCH
+                    -- Diagnostics must never block the workflow transition.
+                END CATCH;
+            END CATCH;
+
+            FETCH NEXT FROM cur INTO @TransitionGuid;
+        END;
+
+        CLOSE cur;
+        DEALLOCATE cur;
+    END TRY
+    BEGIN CATCH
+        BEGIN TRY
+            INSERT INTO SCore.WorkflowNotificationQueueErrorLog
+            (
+                CreatedOnUtc,
+                TriggerName,
+                TransitionGuid,
+                StatusId,
+                ErrorNumber,
+                ErrorSeverity,
+                ErrorState,
+                ErrorLine,
+                ErrorProcedure,
+                ErrorMessage
+            )
+            SELECT TOP (1)
+                SYSUTCDATETIME(),
+                @TriggerName,
+                i.Guid,
+                i.StatusID,
+                ERROR_NUMBER(),
+                ERROR_SEVERITY(),
+                ERROR_STATE(),
+                ERROR_LINE(),
+                ERROR_PROCEDURE(),
+                ERROR_MESSAGE()
+            FROM inserted i
+            ORDER BY i.ID;
+        END TRY
+        BEGIN CATCH
+            -- Diagnostics must never block the workflow transition.
+        END CATCH;
+
+        RETURN;
+    END CATCH
+END;
+GO
+
+CREATE OR ALTER TRIGGER [SCore].[tr_DataObjectTransition_QueueWorkflowNotifications]
+ON [SCore].[DataObjectTransition]
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @TriggerName SYSNAME = N'tr_DataObjectTransition_QueueWorkflowNotifications';
+
+    -- Session escape hatch
+    IF (ISNULL(CONVERT(int, SESSION_CONTEXT(N'S_disable_notification_triggers')), 0) = 1)
+        RETURN;
+
+    BEGIN TRY
+
+        DECLARE @Eligible TABLE
+        (
+            TransitionGuid       UNIQUEIDENTIFIER NOT NULL,
+            StatusId             INT              NOT NULL,
+            DataObjectGuid       UNIQUEIDENTIFIER NOT NULL,
+            TransitionRowStatus  INT              NOT NULL,
+            SendNotification     BIT              NOT NULL,
+            LatestTransitionGuid UNIQUEIDENTIFIER NULL,
+            AlreadyQueued        BIT              NOT NULL,
+            IsInsert             BIT              NOT NULL,
+            StatusChanged        BIT              NOT NULL
+        );
+
+        INSERT INTO @Eligible
+        (
+            TransitionGuid,
+            StatusId,
+            DataObjectGuid,
+            TransitionRowStatus,
+            SendNotification,
+            LatestTransitionGuid,
+            AlreadyQueued,
+            IsInsert,
+            StatusChanged
+        )
+        SELECT
+            i.Guid,
+            i.StatusID,
+            i.DataObjectGuid,
+            i.RowStatus,
+            ISNULL(ws.SendNotification, 0) AS SendNotification,
+            latest.LatestGuid,
+            CASE WHEN EXISTS (SELECT 1 FROM SCore.WorkflowNotificationQueue q WHERE q.TransitionGuid = i.Guid) THEN 1 ELSE 0 END AS AlreadyQueued,
+            CASE WHEN d.Guid IS NULL THEN 1 ELSE 0 END AS IsInsert,
+            CASE
+                WHEN d.Guid IS NULL THEN 1
+                WHEN ISNULL(d.StatusID, -1) <> ISNULL(i.StatusID, -1) THEN 1
+                ELSE 0
+            END AS StatusChanged
+        FROM inserted i
+        LEFT JOIN deleted d
+            ON d.Guid = i.Guid
+        LEFT JOIN SCore.WorkflowStatus ws
+            ON ws.ID = i.StatusID
+           AND ws.RowStatus NOT IN (0,254)
+        OUTER APPLY
+        (
+            SELECT TOP (1) dot2.Guid AS LatestGuid
+            FROM SCore.DataObjectTransition dot2
+            WHERE dot2.RowStatus NOT IN (0,254)
+              AND dot2.DataObjectGuid = i.DataObjectGuid
+            ORDER BY dot2.DateTimeUTC DESC, dot2.ID DESC
+        ) latest
+        WHERE i.Guid IS NOT NULL;
+
+        -- Only queue when the status is meaningful (SendNotification=1) and it is the latest transition.
+        INSERT INTO SCore.WorkflowNotificationQueue (TransitionGuid, StatusId)
+        SELECT e.TransitionGuid, e.StatusId
+        FROM @Eligible e
+        WHERE
+            e.TransitionRowStatus NOT IN (0,254)
+            AND e.SendNotification = 1
+            AND e.LatestTransitionGuid = e.TransitionGuid         -- latest-only
+            AND e.AlreadyQueued = 0                               -- idempotent
+            AND e.StatusChanged = 1;                              -- catches your "update sets current stage" flow
+
+        -- Diagnostics when nothing queued
+        IF @@ROWCOUNT = 0
+        BEGIN
+            INSERT INTO SCore.WorkflowNotificationQueueErrorLog
+            (
+                CreatedOnUtc, TriggerName, TransitionGuid, StatusId,
+                ErrorNumber, ErrorSeverity, ErrorState, ErrorLine, ErrorProcedure, ErrorMessage
+            )
+            SELECT TOP (5)
+                SYSUTCDATETIME(),
+                @TriggerName,
+                e.TransitionGuid,
+                e.StatusId,
+                0,0,0,0,NULL,
+                CONCAT(
+                    N'No queue row inserted. ',
+                    N'RowStatus=', e.TransitionRowStatus,
+                    N' StatusId=', e.StatusId,
+                    N' SendNotification=', CONVERT(nvarchar(5), e.SendNotification),
+                    N' IsLatest=', CASE WHEN e.LatestTransitionGuid = e.TransitionGuid THEN N'1' ELSE N'0' END,
+                    N' AlreadyQueued=', CASE WHEN e.AlreadyQueued = 1 THEN N'1' ELSE N'0' END,
+                    N' IsInsert=', CASE WHEN e.IsInsert = 1 THEN N'1' ELSE N'0' END,
+                    N' StatusChanged=', CASE WHEN e.StatusChanged = 1 THEN N'1' ELSE N'0' END,
+                    N' LatestGuid=', CONVERT(nvarchar(36), e.LatestTransitionGuid)
+                )
+            FROM @Eligible e
+            WHERE e.TransitionRowStatus NOT IN (0,254)
+              AND e.SendNotification = 1
+              AND e.AlreadyQueued = 0
+              AND e.StatusChanged = 1
+            ORDER BY e.TransitionGuid DESC;
+        END
+
+    END TRY
+    BEGIN CATCH
+        BEGIN TRY
+            INSERT INTO SCore.WorkflowNotificationQueueErrorLog
+            (
+                CreatedOnUtc, TriggerName, TransitionGuid, StatusId,
+                ErrorNumber, ErrorSeverity, ErrorState, ErrorLine, ErrorProcedure, ErrorMessage
+            )
+            SELECT TOP (1)
+                SYSUTCDATETIME(),
+                @TriggerName,
+                i.Guid,
+                i.StatusID,
+                ERROR_NUMBER(),
+                ERROR_SEVERITY(),
+                ERROR_STATE(),
+                ERROR_LINE(),
+                ERROR_PROCEDURE(),
+                ERROR_MESSAGE()
+            FROM inserted i;
+        END TRY
+        BEGIN CATCH
+            -- swallow
+        END CATCH;
+        RETURN;
+    END CATCH
+END;
+GO
+
+PRINT N'08. DF_FeeAmendmentChase_DateChased';
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = N'DF_FeeAmendmentChase_DateChased')
+   AND NOT EXISTS (SELECT 1 FROM sys.default_constraints dc
+                   JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
+                   WHERE dc.parent_object_id = OBJECT_ID(N'SJob.FeeAmendmentChase') AND c.name = N'DateChased')
+    ALTER TABLE [SJob].[FeeAmendmentChase] ADD CONSTRAINT [DF_FeeAmendmentChase_DateChased] DEFAULT (CONVERT([date],getutcdate())) FOR [DateChased];
+GO
+
+PRINT N'09. Enquiry Town metadata (EntityQuery 64b03f27)';
+GO
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+GO
+
+BEGIN TRANSACTION;
+
+DECLARE @EntityQueryGuid UNIQUEIDENTIFIER = '64b03f27-756c-45aa-ac98-275662ffc669',
+        @NvarcharTypeGuid UNIQUEIDENTIFIER = '0D4122CC-5281-4DFE-9BD1-5C8B18EC2561',
+        @Anchor NVARCHAR(100) = N'@AssetJSONDetails = @AssetJSONDetails',
+        @Crlf NCHAR(2) = NCHAR(13) + NCHAR(10);
+
+/* 1. Statement text (manual statement - EntityQueryUpsert does not regenerate it). */
+IF NOT EXISTS (SELECT 1 FROM SCore.EntityQueries WHERE Guid = @EntityQueryGuid AND Statement LIKE N'%@PropertyTown%')
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM SCore.EntityQueries WHERE Guid = @EntityQueryGuid AND CHARINDEX(@Anchor, Statement) > 0)
+        THROW 60500, N'EnquiriesUpsert save statement anchor (@AssetJSONDetails = @AssetJSONDetails) not found - statement has drifted, stop and inspect.', 1;
+
+    DECLARE @Statement NVARCHAR(MAX), @Name NVARCHAR(250), @RowStatus TINYINT, @EntityTypeGuid UNIQUEIDENTIFIER, @HobtGuid UNIQUEIDENTIFIER,
+            @IsDefaultCreate BIT, @IsDefaultRead BIT, @IsDefaultUpdate BIT, @IsDefaultDelete BIT, @IsScalarExecute BIT, @IsDefaultValidation BIT,
+            @IsDefaultDataPills BIT, @IsMergeDocumentQuery BIT, @IsProgressData BIT, @SchemaName NVARCHAR(255), @ObjectName NVARCHAR(255),
+            @Guid UNIQUEIDENTIFIER = @EntityQueryGuid;
+
+    SELECT  @Statement = REPLACE(eq.Statement, @Anchor,
+                @Anchor + N',' + @Crlf
+              + N'        @PropertyTown = @PropertyTown,' + @Crlf
+              + N'        @ClientAddressTown = @ClientAddressTown,' + @Crlf
+              + N'        @AgentTown = @AgentTown,' + @Crlf
+              + N'        @FinanceTown = @FinanceTown'),
+            @Name = eq.Name, @RowStatus = eq.RowStatus, @EntityTypeGuid = et.Guid, @HobtGuid = h.Guid,
+            @IsDefaultCreate = eq.IsDefaultCreate, @IsDefaultRead = eq.IsDefaultRead, @IsDefaultUpdate = eq.IsDefaultUpdate,
+            @IsDefaultDelete = eq.IsDefaultDelete, @IsScalarExecute = eq.IsScalarExecute, @IsDefaultValidation = eq.IsDefaultValidation,
+            @IsDefaultDataPills = eq.IsDefaultDataPills, @IsMergeDocumentQuery = eq.IsMergeDocumentQuery, @IsProgressData = eq.IsProgressData,
+            @SchemaName = eq.SchemaName, @ObjectName = eq.ObjectName
+    FROM    SCore.EntityQueries AS eq
+    JOIN    SCore.EntityTypes AS et ON (et.ID = eq.EntityTypeID)
+    JOIN    SCore.EntityHobts AS h ON (h.ID = eq.EntityHoBTID)
+    WHERE   eq.Guid = @EntityQueryGuid;
+
+    EXEC SCore.EntityQueryUpsert
+         @Name = @Name, @RowStatus = @RowStatus, @Statement = @Statement, @EntityTypeGuid = @EntityTypeGuid,
+         @IsDefaultCreate = @IsDefaultCreate, @IsDefaultRead = @IsDefaultRead, @IsDefaultUpdate = @IsDefaultUpdate,
+         @IsDefaultDelete = @IsDefaultDelete, @IsScalarExecute = @IsScalarExecute, @IsDefaultValidation = @IsDefaultValidation,
+         @EntityHoBTGuid = @HobtGuid, @IsDefaultDataPills = @IsDefaultDataPills, @IsMergeDocumentQuery = @IsMergeDocumentQuery,
+         @IsProgressData = @IsProgressData, @SchemaName = @SchemaName, @ObjectName = @ObjectName,
+         @IsManualStatement = 1, @Guid = @Guid OUTPUT;
+
+    PRINT N'Statement updated.';
+END
+ELSE
+    PRINT N'Statement already passes the Town parameters.';
+
+/* 2. Parameter rows, mapped to the existing Enquiries Town entity properties. */
+DECLARE @Params TABLE (Name NVARCHAR(250), ParamGuid UNIQUEIDENTIFIER, PropertyName NVARCHAR(250));
+INSERT @Params (Name, ParamGuid, PropertyName)
+VALUES  (N'@PropertyTown',      '1557ffa6-6c8c-4103-982f-98ea6fb70b45', N'PropertyTown'),
+        (N'@ClientAddressTown', 'bf14db49-e88b-42d1-b44e-6122f787a7c4', N'ClientAddressTown'),
+        (N'@AgentTown',         'b5ad4a19-177b-4d3f-8f14-83141398f06a', N'AgentTown'),
+        (N'@FinanceTown',       'b854a54a-09f3-4b4e-bcf2-98904d5fa238', N'FinanceTown');
+
+DECLARE @PName NVARCHAR(250), @PGuid UNIQUEIDENTIFIER, @PropName NVARCHAR(250), @PropGuid UNIQUEIDENTIFIER;
+DECLARE param_cursor CURSOR LOCAL FAST_FORWARD FOR SELECT Name, ParamGuid, PropertyName FROM @Params;
+OPEN param_cursor;
+FETCH NEXT FROM param_cursor INTO @PName, @PGuid, @PropName;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @PropGuid = NULL;
+    SELECT  @PropGuid = ep.Guid
+    FROM    SCore.EntityProperties AS ep
+    JOIN    SCore.EntityHobts AS h ON (h.ID = ep.EntityHoBTID)
+    WHERE   h.SchemaName = N'SSop' AND h.ObjectName = N'Enquiries'
+      AND   ep.Name = @PropName AND ep.RowStatus NOT IN (0, 254);
+
+    IF @PropGuid IS NULL
+        THROW 60501, N'Enquiries Town entity property not found - stop and inspect.', 1;
+
+    -- Reuse an existing row for this name if one is already there.
+    SELECT  @PGuid = eqp.Guid
+    FROM    SCore.EntityQueryParameters AS eqp
+    JOIN    SCore.EntityQueries AS eq ON (eq.ID = eqp.EntityQueryID)
+    WHERE   eq.Guid = @EntityQueryGuid AND eqp.Name = @PName;
+
+    EXEC SCore.EntityQueryParameterUpsert
+         @Name = @PName, @RowStatus = 1, @EntityQueryGuid = @EntityQueryGuid,
+         @EntityDataTypeGuid = @NvarcharTypeGuid, @MappedEntityPropertyGuid = @PropGuid,
+         @DefaultValue = N'', @IsInput = 1, @IsOutput = 0, @IsReturnColumn = 0,
+         @Guid = @PGuid OUTPUT;
+
+    PRINT N'Parameter upserted: ' + @PName;
+    FETCH NEXT FROM param_cursor INTO @PName, @PGuid, @PropName;
+END
+CLOSE param_cursor;
+DEALLOCATE param_cursor;
+
+COMMIT TRANSACTION;
+GO
+
+PRINT N'10. Verification';
+GO
+SELECT  N'01 EnquiriesUpsert Town'   AS [Check], CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SSop.EnquiriesUpsert')) LIKE N'%@PropertyTown%' THEN N'OK' ELSE N'FAIL' END AS Result
+UNION ALL SELECT N'02 CYB-445', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SFin.TransactionDetailsUpsert')) LIKE N'%ELSE td.InvoiceRequestItemId%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'03 ItemsUpsert sentinel', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SFin.InvoiceRequestItemsUpsert')) LIKE N'%SET @RIBAStageId = -1;%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'04 CreateInvoice COALESCE', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SFin.InvoiceRequestCreateInvoice')) LIKE N'%COALESCE(iri.RIBAStageId, -1)%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'05 TeamF10 BU/Dept', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SJob.tvf_Jobs_TeamF10ExpiryList')) LIKE N'%AS BusinessUnit%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'06 Enqueue outcome codes', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SCore.IntegrationOutbox_EnqueueWorkflowStatusNotification')) LIKE N'%@OutcomeCode%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'07 Enqueue trigger logs outcomes', CASE WHEN OBJECT_DEFINITION(OBJECT_ID(N'SCore.tr_DataObjectTransition_EnqueueWorkflowStatusNotification')) LIKE N'%@OutcomeCode = @OutcomeCode OUTPUT%' THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'08 DateChased default', CASE WHEN EXISTS (SELECT 1 FROM sys.default_constraints dc JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id WHERE dc.parent_object_id = OBJECT_ID(N'SJob.FeeAmendmentChase') AND c.name = N'DateChased') THEN N'OK' ELSE N'FAIL' END
+UNION ALL SELECT N'09 Town metadata', CASE WHEN EXISTS (SELECT 1 FROM SCore.EntityQueries WHERE Guid = '64b03f27-756c-45aa-ac98-275662ffc669' AND Statement LIKE N'%@PropertyTown%')
+                                       AND (SELECT COUNT(*) FROM SCore.EntityQueryParameters p JOIN SCore.EntityQueries q ON q.ID = p.EntityQueryID
+                                            WHERE q.Guid = '64b03f27-756c-45aa-ac98-275662ffc669' AND p.RowStatus NOT IN (0,254) AND p.Name LIKE N'%Town') = 4
+                                      THEN N'OK' ELSE N'FAIL' END;
+GO
+
+/* NOT INCLUDED - needs a data decision first (duplicates exist on CymBuild_Dev and Cymbuild_UAT_Test):
+   - IX_UQ_Products_Code (unique SProd.Products.Code): active duplicates BRAC HRB ADVISORY (3140/3141),
+     FIRE-DFS (82/3179), FIRE-SIT (76/3262), IRE-FTC (3208/3209); quote items reference both copies.
+   - IX_UQ_EntityProperties_Hobt_Name: duplicate active metadata properties
+     SCrm.Accounts.DefaultCreditTermsId (2817/2821), SFin.InvoiceRequests.FinanceBillingNotes (2819/2822),
+     SFin.InvoiceRequests.JobBillingNotes (2820/2824).
+*/
+PRINT N'Done.';
+GO

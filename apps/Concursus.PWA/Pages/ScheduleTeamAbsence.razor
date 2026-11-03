@@ -52,18 +52,16 @@
                                 RecordGuid="@appointment.Guid"
                                 inputUpdated="@editPage.HandleInputUpdated" />
 
+        <div class="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+            <button class="btn btn-danger" id="cancelbtn" @onclick="CloseWindow">Cancel</button>
+
+            @if(appointment.CssClass != "scheduled-work")
+            {
+                <button class="btn btn-success" id="confirmbtn" @onclick="ConfirmChanges">Confirm</button>
+            }
+        </div>
 
     </FormBody>
-    <FormButtons>
-
-        <button class="btn btn-danger" id="cancelbtn" @onclick="CloseWindow">Cancel</button>
-
-        @if(appointment.CssClass != "scheduled-work")
-        {
-            <button class="btn btn-success" id="confirmbtn" @onclick="ConfirmChanges">Confirm</button>
-        }
-
-    </FormButtons>
 </EditPage>
 
 
@@ -290,33 +288,27 @@
             var dataObject = editPage.dataObject;
             var entityProperties = dataObject.DataProperties;
 
-            var teamID = "b138a1b2-4a0e-4aa4-8767-9c0c7ad5bf3e";
-            var memberID = "3f36e529-2e57-46a8-b36e-cf7512ecc683";
-
-            //Update two fields programmatically: MemberIdentityId + TeamGroupId.
-            foreach(var prop in entityProperties){
-                if(prop.EntityPropertyGuid == teamID )
-                {
-                    Int32Value teamIDWrap = new Int32Value { Value = TeamID };
-                    Any teamIDVal = Any.Pack(teamIDWrap);
-
-                    prop.Value = teamIDVal;
-                }
-                else if(prop.EntityPropertyGuid == memberID)
-                {
-                    //Add the user ID
-                    Int32Value memberIDWrap = new Int32Value { Value = UserID };
-                    Any memberIDVal = Any.Pack(memberIDWrap);
-
-                    prop.Value = memberIDVal;
-                }
+            var validationError = ValidateAbsence(entityProperties);
+            if (validationError != null)
+            {
+                ShowErrorMessage(new Exception(validationError));
+                return;
             }
 
+            ApplyProgrammaticFields(entityProperties, UserID);
 
             var resp = await formHelper.UpsertDataObject(dataObject, null, false);
 
             if (!string.IsNullOrEmpty(resp.Item1))
                 throw new Exception(resp.Item1);
+
+            // Sync local state to the server's authoritative post-save DataObject, matching
+            // EditPage.SaveDataObject()'s own pattern - without this the modal (which stays
+            // open after Confirm) kept showing stale/local pre-save state, and a second
+            // Confirm click would have inserted a duplicate record instead of updating this one.
+            editPage.dataObject = resp.Item2;
+            appointment.Guid = resp.Item2.Guid;
+            StateHasChanged();
 
             ShowSuccessMessage();
             gridRef.RefreshGrid();
@@ -327,6 +319,64 @@
             ShowErrorMessage(ex);
         }
 
+    }
+
+    public static string ValidateAbsence(IEnumerable<API.Core.DataProperty> entityProperties)
+    {
+        var startValue = GetTimestampPropertyValue(entityProperties, StartTimeEntityPropGuid);
+        var endValue = GetTimestampPropertyValue(entityProperties, EndTimeEntityPropGuid);
+
+        if (startValue.HasValue && endValue.HasValue && endValue.Value < startValue.Value)
+            return "End date cannot be before the start date.";
+
+        var eventTypeValue = GetStringPropertyValue(entityProperties, NonActivityTypePropGuid);
+        if (PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(eventTypeValue) == Guid.Empty)
+            return "Event Name must be selected.";
+
+        return null;
+    }
+
+    // TeamGroupId is FK'd to SCore.Groups (AD-synced security groups), a different ID space to
+    // TeamID/UnitId (an SCore.OrganisationalUnits/department id) - writing TeamID there violates
+    // FK_NonActivityEvents_Groups. -1 is the column's own DEFAULT and has a matching sentinel row
+    // in SCore.Groups, matching the "unassigned" convention already used for MemberIdentityId on
+    // this table.
+    public static void ApplyProgrammaticFields(IEnumerable<API.Core.DataProperty> entityProperties, int memberIdentityId)
+    {
+        const string teamGroupIdPropertyGuid = "b138a1b2-4a0e-4aa4-8767-9c0c7ad5bf3e";
+        const string memberIdentityIdPropertyGuid = "3f36e529-2e57-46a8-b36e-cf7512ecc683";
+
+        foreach (var prop in entityProperties)
+        {
+            if (prop.EntityPropertyGuid == teamGroupIdPropertyGuid)
+            {
+                prop.Value = Any.Pack(new Int32Value { Value = -1 });
+            }
+            else if (prop.EntityPropertyGuid == memberIdentityIdPropertyGuid)
+            {
+                prop.Value = Any.Pack(new Int32Value { Value = memberIdentityId });
+            }
+        }
+    }
+
+    private static DateTime? GetTimestampPropertyValue(IEnumerable<API.Core.DataProperty> entityProperties, string entityPropertyGuid)
+    {
+        var prop = entityProperties.FirstOrDefault(p => p.EntityPropertyGuid == entityPropertyGuid);
+
+        if (prop?.Value == null || !prop.Value.Is(Timestamp.Descriptor))
+            return null;
+
+        return prop.Value.Unpack<Timestamp>().ToDateTime();
+    }
+
+    private static string GetStringPropertyValue(IEnumerable<API.Core.DataProperty> entityProperties, string entityPropertyGuid)
+    {
+        var prop = entityProperties.FirstOrDefault(p => p.EntityPropertyGuid == entityPropertyGuid);
+
+        if (prop?.Value == null || !prop.Value.Is(StringValue.Descriptor))
+            return string.Empty;
+
+        return prop.Value.Unpack<StringValue>().Value;
     }
 
     private void ShowSuccessMessage(){

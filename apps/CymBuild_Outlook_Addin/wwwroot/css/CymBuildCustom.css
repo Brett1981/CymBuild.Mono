@@ -241,8 +241,8 @@ section.samples {
 }
 
 .k-input-inner {
-    padding-block: var(--kendo-spacing-1, 0.25rem);
-    padding-inline: var(--kendo-spacing-2, 0.5rem);
+    padding-block: 0.25rem;
+    padding-inline: 0.5rem;
     width: 100%;
     border: 0;
     outline: 0;

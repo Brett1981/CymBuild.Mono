@@ -1,0 +1,25 @@
+# Format checks for the template docs.
+#
+# Runs on merge requests and on main. The workflow rules below mean exactly one
+# pipeline per change: without them, pushing to a branch with an open MR creates
+# a duplicate branch pipeline alongside the MR pipeline.
+#
+# Jobs are pinned to tags: [internal] per docs/gitlab-ci-deploy.md. An untagged
+# job sits pending with no error, which reads like a broken pipeline rather than
+# a missing tag.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+
+stages:
+  - check
+
+docs:format:
+  stage: check
+  image: python:3.12-alpine
+  tags: [internal]
+  script:
+    - python3 ci/check-docs.py

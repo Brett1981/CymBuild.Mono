@@ -79,13 +79,13 @@ namespace Concursus.EF.Finance
             return result;
         }
 
-        public async Task<List<SageInboundDiagnosticsRowModel>> GetAsync(
+        public async Task<SageInboundDiagnosticsPageResult> GetAsync(
             SageInboundDiagnosticsGetRequestModel request,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            var results = new List<SageInboundDiagnosticsRowModel>();
+            var result = new SageInboundDiagnosticsPageResult();
 
             await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -135,14 +135,100 @@ namespace Concursus.EF.Finance
                 Value = request.JobId.HasValue ? request.JobId.Value : DBNull.Value
             });
 
+            command.Parameters.Add(new SqlParameter("@PaymentFilter", SqlDbType.NVarChar, 20)
+            {
+                Value = string.IsNullOrWhiteSpace(request.PaymentFilter) ? DBNull.Value : request.PaymentFilter.Trim()
+            });
+
+            command.Parameters.Add(new SqlParameter("@PageNumber", SqlDbType.Int)
+            {
+                Value = request.PageNumber < 1 ? 1 : request.PageNumber
+            });
+
+            command.Parameters.Add(new SqlParameter("@PageSize", SqlDbType.Int)
+            {
+                Value = request.PageSize < 1 ? 50 : request.PageSize
+            });
+
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                results.Add(Map(reader));
+                if (result.Rows.Count == 0)
+                {
+                    result.TotalCount = GetInt64(reader, "TotalCount");
+                }
+
+                result.Rows.Add(Map(reader));
             }
 
-            return results;
+            return result;
+        }
+
+        public async Task<SageInboundDiagnosticsSummaryModel> GetSummaryAsync(
+            SageInboundDiagnosticsSummaryRequestModel request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            var summary = new SageInboundDiagnosticsSummaryModel();
+
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[SageInboundDiagnostics_GetSummary]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.Add(new SqlParameter("@SageAccountReference", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(request.SageAccountReference) ? DBNull.Value : request.SageAccountReference.Trim()
+            });
+
+            command.Parameters.Add(new SqlParameter("@SageDocumentNo", SqlDbType.NVarChar, 100)
+            {
+                Value = string.IsNullOrWhiteSpace(request.SageDocumentNo) ? DBNull.Value : request.SageDocumentNo.Trim()
+            });
+
+            command.Parameters.Add(new SqlParameter("@TransactionNumber", SqlDbType.NVarChar, 50)
+            {
+                Value = string.IsNullOrWhiteSpace(request.TransactionNumber) ? DBNull.Value : request.TransactionNumber.Trim()
+            });
+
+            command.Parameters.Add(new SqlParameter("@OnlyRetryableFailures", SqlDbType.Bit)
+            {
+                Value = request.OnlyRetryableFailures.HasValue ? request.OnlyRetryableFailures.Value : DBNull.Value
+            });
+
+            command.Parameters.Add(new SqlParameter("@InvoiceRequestID", SqlDbType.Int)
+            {
+                Value = request.InvoiceRequestId.HasValue ? request.InvoiceRequestId.Value : DBNull.Value
+            });
+
+            command.Parameters.Add(new SqlParameter("@TransactionID", SqlDbType.BigInt)
+            {
+                Value = request.TransactionId.HasValue ? request.TransactionId.Value : DBNull.Value
+            });
+
+            command.Parameters.Add(new SqlParameter("@JobID", SqlDbType.Int)
+            {
+                Value = request.JobId.HasValue ? request.JobId.Value : DBNull.Value
+            });
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                summary.TotalCount = GetInt64(reader, "TotalCount");
+                summary.SucceededCount = GetInt64(reader, "SucceededCount");
+                summary.RetryPendingCount = GetInt64(reader, "RetryPendingCount");
+                summary.PaidCount = GetInt64(reader, "PaidCount");
+                summary.ReceiptsCreatedCount = GetInt64(reader, "ReceiptsCreatedCount");
+                summary.CreditNotesCreatedCount = GetInt64(reader, "CreditNotesCreatedCount");
+            }
+
+            return summary;
         }
 
         public async Task<int> ApplyTransactionReferencesAsync(
@@ -212,6 +298,7 @@ namespace Concursus.EF.Finance
                 InvoiceRequestId = GetInt32(reader, "InvoiceRequestID"),
                 TransactionId = GetInt64(reader, "TransactionID"),
                 JobId = GetInt32(reader, "JobID"),
+                JobNumber = GetString(reader, "JobNumber"),
 
                 SageDataset = GetString(reader, "SageDataset"),
                 SageAccountReference = GetString(reader, "SageAccountReference"),
@@ -265,7 +352,11 @@ namespace Concursus.EF.Finance
                 MaterialisedReceiptTransactionNumber = GetString(reader, "MaterialisedReceiptTransactionNumber"),
 
                 MaterialisedAllocationGuid = GetGuidNullable(reader, "MaterialisedAllocationGuid"),
-                MaterialisedAllocationId = GetInt64Nullable(reader, "MaterialisedAllocationID")
+                MaterialisedAllocationId = GetInt64Nullable(reader, "MaterialisedAllocationID"),
+
+                LastMatchedExternalTransactionId = GetInt64Nullable(reader, "LastMatchedExternalTransactionID"),
+                LastMatchedExternalTransactionTypeCode = GetInt32Nullable(reader, "LastMatchedExternalTransactionTypeCode"),
+                LastMatchedExternalTransactionAllocatedValue = GetDecimalNullable(reader, "LastMatchedExternalTransactionAllocatedValue")
             };
         }
 
@@ -333,10 +424,22 @@ namespace Concursus.EF.Finance
             return reader.IsDBNull(ordinal) ? null : Convert.ToInt64(reader.GetValue(ordinal));
         }
 
+        private static int? GetInt32Nullable(SqlDataReader reader, string name)
+        {
+            var ordinal = Ord(reader, name);
+            return reader.IsDBNull(ordinal) ? null : Convert.ToInt32(reader.GetValue(ordinal));
+        }
+
         private static decimal GetDecimal(SqlDataReader reader, string name)
         {
             var ordinal = Ord(reader, name);
             return reader.IsDBNull(ordinal) ? 0m : Convert.ToDecimal(reader.GetValue(ordinal));
+        }
+
+        private static decimal? GetDecimalNullable(SqlDataReader reader, string name)
+        {
+            var ordinal = Ord(reader, name);
+            return reader.IsDBNull(ordinal) ? null : Convert.ToDecimal(reader.GetValue(ordinal));
         }
 
         private static bool GetBool(SqlDataReader reader, string name)

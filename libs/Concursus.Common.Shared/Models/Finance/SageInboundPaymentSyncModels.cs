@@ -167,11 +167,56 @@ namespace Concursus.Common.Shared.Models.Finance
         public string RawPayloadJson { get; set; } = string.Empty;
     }
 
+    /// <summary>
+    /// CYB-555: one row of a Sage allocation session, recorded against the
+    /// invoice it settled (SFin.SageInbound_RecordAllocation).
+    /// </summary>
+    public sealed class SageAllocationRecordRequest
+    {
+        public long InvoiceExternalTransactionId { get; set; } = -1;
+        public string CounterpartUrn { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 1 Receipt, 5 Credit Note, or null when Sage could not resolve it
+        /// (the invoice is then settled, method unknown).
+        /// </summary>
+        public int? CounterpartTypeCode { get; set; }
+
+        public string CounterpartReference { get; set; } = string.Empty;
+        public string CounterpartSecondReference { get; set; } = string.Empty;
+        public DateTime? CounterpartTransactionDateUtc { get; set; }
+
+        /// <summary>
+        /// The counterpart's whole value, signed as Sage returns it.
+        /// </summary>
+        public decimal CounterpartNetAmount { get; set; }
+        public decimal CounterpartTaxAmount { get; set; }
+        public decimal CounterpartGrossAmount { get; set; }
+        public string CounterpartRawPayloadJson { get; set; } = string.Empty;
+
+        public string AllocationHeaderId { get; set; } = string.Empty;
+        public DateTime? SessionDateUtc { get; set; }
+
+        /// <summary>
+        /// The part of the session that settled this invoice, positive.
+        /// </summary>
+        public decimal AppliedAmount { get; set; }
+
+        public string AllocationRawPayloadJson { get; set; } = string.Empty;
+    }
+
+    public sealed class SageAllocationRecordResult
+    {
+        public long CounterpartExternalTransactionId { get; set; } = -1;
+        public long ExternalAllocationId { get; set; } = -1;
+    }
+
     public sealed class SageReconcileInvoiceResult
     {
         public long ExternalTransactionId { get; set; } = -1;
         public bool IsMatched { get; set; }
         public long MatchedTransactionId { get; set; } = -1;
+        public Guid MatchedTransactionGuid { get; set; } = Guid.Empty;
         public int MatchedInvoiceRequestId { get; set; } = -1;
         public int MatchedJobId { get; set; } = -1;
         public string MatchRule { get; set; } = string.Empty;

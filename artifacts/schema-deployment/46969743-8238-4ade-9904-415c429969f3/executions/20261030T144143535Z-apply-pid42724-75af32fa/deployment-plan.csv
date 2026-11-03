@@ -1,0 +1,8 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"729071c3-2e02-4a2a-8f0f-ef625172e417","Function","SFin","tvf_InvoiceRequestItemFeeCheck","","MissingInTarget","True","False","True","True"
+"0f72ae61-71c5-4fb1-87a1-9d2b3dd02f11","Function","SFin","tvf_InvoiceRequestItemsValidate","","Different","True","False","True","True"
+"ff9565d1-1d63-476c-a84c-2d4d045fbf9e","StoredProcedure","SCore","CreateUserSession","","Different","True","False","True","True"
+"9aa2442d-6e29-4855-a6fc-27d479a9cb73","StoredProcedure","SFin","InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances","","Different","True","False","True","True"
+"2538981f-3df7-44c7-be4b-37e0c505573f","StoredProcedure","SFin","InvoiceRequestCreateInvoice","","Different","True","False","True","True"
+"5a604cc5-ccd9-4771-8652-44170108b982","StoredProcedure","SFin","InvoiceRequestItemsUpsert","","Different","True","False","True","True"
+"68357bed-d90a-427a-9a7f-b60830da865d","StoredProcedure","SSop","QuotesUpsert","","Different","True","False","True","True"

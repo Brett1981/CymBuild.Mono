@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","ExpectedSourceHash","ExpectedOperationalSourceHash","ObservedTargetHash","ObservedOperationalHash","Message"
+"1a5710ef-6ee1-4c1d-afb6-bd6a93c33d72","Constraint","SSop","FK_CriticalProjectNotes_Guid","CriticalProjectNotes","F2F6740CF6896D954EFECBACF24AFB9E9143BAB8194BCE030323FCAB8D7806BC","","84D669837DBDAE7BD8185100D68CB04F19ACA3AF22C873F6FE91BD6741B650D0","","The deployed target definition does not match the accepted source hash."

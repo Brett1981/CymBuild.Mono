@@ -307,7 +307,9 @@ public class Converters
             FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt,
             IsHidden = request.IsHidden,
             AllowCsvExport = request.AllowCsvExport,
-            AllowExcelExport = request.AllowExcelExport
+            AllowExcelExport = request.AllowExcelExport,
+            ShowSearchBar = request.ShowSearchBar,
+            IsSearchDefaultCollapsed = request.IsSearchDefaultCollapsed
         };
 
         foreach (var gridViewColumnDefinition in request.Columns)
@@ -873,7 +875,9 @@ public class Converters
             FilteredListGreenStatusIndicatorTxt = request.FilteredListGreenStatusIndicatorTxt,
             IsHidden = request.IsHidden,
             AllowCsvExport = request.AllowCsvExport,
-            AllowExcelExport = request.AllowExcelExport
+            AllowExcelExport = request.AllowExcelExport,
+            ShowSearchBar = request.ShowSearchBar,
+            IsSearchDefaultCollapsed = request.IsSearchDefaultCollapsed
         };
 
         foreach (var gridViewColumnDefinition in request.Columns)
@@ -963,6 +967,7 @@ public class Converters
             AllowPDFOnly = mergeDocument.AllowPDFOnly,
             AllowExcelOutputOnly = mergeDocument.AllowExcelOutputOnly,
             ProduceOneOutputPerRow = mergeDocument.ProduceOneOutputPerRow,
+            IsActive = mergeDocument.IsActive,
             Items = { mergeDocument.Items.Select(ConvertEfMergeDocumentItemToCoreMergeDocumentItem) }
         };
     }
@@ -1232,6 +1237,7 @@ public class Converters
         if (data == null) return new QuoteDashboardData();
 
         Timestamp timestamp = Timestamp.FromDateTime(data.Date.ToUniversalTime());
+        Timestamp? sentDatetimestamp = data.SentDate.HasValue ? Timestamp.FromDateTime(data.SentDate.Value.ToUniversalTime()) : null;
 
         return new QuoteDashboardData
         {
@@ -1239,10 +1245,13 @@ public class Converters
             QuoteNumber = data.QuoteNumber,
             Guid = data.Guid,
             Date = timestamp,
+            SentDate = sentDatetimestamp,
             Status = data.Status,
             Client = data.Client,
             QuoteType = data.QuoteType,
-            QuoteValue = Convert.ToDouble(data.QuoteValue)
+            QuoteValue = Convert.ToDouble(data.QuoteValue),
+            BusinessUnit = data.BusinessUnit,
+            Department = data.Department
         };
     }
 
@@ -1374,6 +1383,46 @@ public class Converters
         return orgUnitForUser;
     }
 
+
+    public static DuplicateAssets ConvertEFDuplicateAssetsToCoreDuplicateAssets(EF.Types.DuplicateAssets asset)
+    {
+        if (asset == null) return new DuplicateAssets();
+
+        var EFAsset = new DuplicateAssets
+        {
+            Guid = asset.Guid,
+            FormattedAddress = asset.FormattedAddress
+        };
+
+        return EFAsset;
+    }
+
+    public static DuplicateAccounts ConvertEFDuplicateAccountsToCoreDuplicateAccounts(EF.Types.DuplicateAccounts accounts)
+    {
+        if (accounts == null) return new DuplicateAccounts();
+
+        var EFAccounts = new DuplicateAccounts
+        {
+            Guid = accounts.Guid,
+            DisplaName = accounts.DisplayName
+        };
+
+        return EFAccounts;
+    }
+
+    public static DuplicateContacts ConvertEFDuplicateContactsToCoreDuplicateContacts(EF.Types.DuplicateContacts contacts)
+    {
+        if (contacts == null) return new DuplicateContacts();
+
+        var EFContacts = new DuplicateContacts
+        {
+            Guid = contacts.Guid,
+            DisplayName = contacts.DisplayName
+        };
+
+        return EFContacts;
+    }
+
     #endregion Public Methods
 
     #region Internal Methods
@@ -1498,7 +1547,8 @@ public class Converters
             LinkedEntityTypeGuid = Functions.ParseAndReturnEmptyGuidIfInvalid(dataObjectMergeDocument.LinkedEntityTypeGuid),
             AllowPDFOnly = dataObjectMergeDocument.AllowPDFOnly,
             AllowExcelOutputOnly = dataObjectMergeDocument.AllowExcelOutputOnly,
-            ProduceOneOutputPerRow = dataObjectMergeDocument.ProduceOneOutputPerRow
+            ProduceOneOutputPerRow = dataObjectMergeDocument.ProduceOneOutputPerRow,
+            IsActive = dataObjectMergeDocument.IsActive
         };
         foreach (var item in dataObjectMergeDocument.Items)
         {

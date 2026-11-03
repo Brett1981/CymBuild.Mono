@@ -1,0 +1,16 @@
+{
+  "Release": "UAT-20261013-143944-616884af",
+  "Environment": "UAT",
+  "Branch": "feature/SB_ServerDeploy-26.4-qa-publish",
+  "Commit": "616884af1acd93a2e2296b33e9f467387c4f4596",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-13T14:43:06.1022717+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 203,
+    "Pwa": 7061
+  }
+}

@@ -1,0 +1,27 @@
+warning: in the working copy of 'Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.EnquiryCreateQuotes.sql', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuoteCreateJobs.sql', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuoteTemplatesCreateQuote.sql', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql', CRLF will be replaced by LF the next time Git touches it
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:156: trailing whitespace.
+[32m+[m		[32mCYB-321:[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:181: trailing whitespace.
+[32m+[m				[32mN'ClientAccountId',[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:182: trailing whitespace.
+[32m+[m				[32mN'ClientAddressId',[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:183: trailing whitespace.
+[32m+[m				[32mN'ClientContactId',[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:184: trailing whitespace.
+[32m+[m				[32mN'AgentAccountId',[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:185: trailing whitespace.
+[32m+[m				[32mN'AgentAddressId',[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:189: trailing whitespace.
+[32m+[m[41m				[m
+Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql:191: trailing whitespace.
+[32m+[m[41m		[m
+Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuoteTemplatesCreateQuote.sql:35: trailing whitespace.
+[32m+[m						[32m   @QuotingUserGuid = @UserGuid,			-- uniqueidentifier[m[41m					[m
+Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql:166: trailing whitespace.
+[32m+[m	[32mSELECT @JobTypeId = jt.ID[m[41m [m
+Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql:413: trailing whitespace.
+[32m+[m[32m                IF (ISNULL(@NewEffectiveQuoteJobTypeId, -1) > 0 AND @RevisionNumber <= 0)[m[41m [m

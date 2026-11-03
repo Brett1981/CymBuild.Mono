@@ -4,10 +4,11 @@ GO
 PRINT (N'Create procedure [SCore].[SCHEMABINDING]')
 GO
 
-CREATE PROCEDURE [SCore].[SCHEMABINDING]
+CREATE OR ALTER PROCEDURE [SCore].[SCHEMABINDING]
 (
-    @Apply  BIT = 1,   -- 1 = enable schemabinding, 0 = disable schemabinding
-    @Strict BIT = 0    -- 0 = do not fail deployment if some objects cannot be processed (recommended)
+    @Apply   BIT = 1,               -- 1 = enable schemabinding, 0 = disable schemabinding
+    @Strict  BIT = 0,               -- 0 = do not fail deployment if some objects cannot be processed (recommended)
+    @RunGuid UNIQUEIDENTIFIER = NULL -- correlates durable log rows to a deployment run; a fresh one is generated when omitted
 )
 AS
 BEGIN
@@ -21,7 +22,15 @@ BEGIN
         @SucceededThisPass INT,
         @AttemptSql    NVARCHAR(MAX),
         @ObjectId      INT,
-        @Err           INT;
+        @Err           INT,
+        @CanLog        BIT = 0,
+        @LeadingCreatePos INT;
+
+    IF @RunGuid IS NULL
+        SET @RunGuid = NEWID();
+
+    IF OBJECT_ID(N'SCore.PostDeploymentRunLog', N'U') IS NOT NULL
+        SET @CanLog = 1;
 
     IF @Apply = 1
     BEGIN
@@ -69,7 +78,10 @@ BEGIN
     );
 
     -------------------------------------------------------------------------
-    -- Load candidates (ONLY those containing the marker and not already swapped)
+    -- Load candidates by their authoritative SQL Server binding state.
+    -- A bound module can legitimately retain a prepared marker when altering it
+    -- is blocked by another schema-bound dependent. It must still be disabled
+    -- during the next pre-deployment lifecycle.
     -------------------------------------------------------------------------
     ;WITH Candidates AS
     (
@@ -77,14 +89,24 @@ BEGIN
             o.object_id,
             QUOTENAME(SCHEMA_NAME(o.schema_id)) + N'.' + QUOTENAME(o.name) AS FullName,
             o.type,
-            OBJECT_DEFINITION(o.object_id) AS Defn
+            sm.definition AS Defn
         FROM sys.objects o
+        JOIN sys.sql_modules sm
+            ON sm.object_id = o.object_id
         WHERE
             o.is_ms_shipped = 0
             AND o.type IN ('V','IF','TF','FN')
-            AND OBJECT_DEFINITION(o.object_id) IS NOT NULL
-            AND OBJECT_DEFINITION(o.object_id) LIKE N'%' + @CurrentString + N'%'
-            AND OBJECT_DEFINITION(o.object_id) NOT LIKE N'%' + @NewString + N'%'
+            AND sm.definition IS NOT NULL
+            AND
+            (
+                (@Apply = 0 AND sm.is_schema_bound = 1)
+                OR
+                (
+                    @Apply = 1
+                    AND sm.is_schema_bound = 0
+                    AND sm.definition LIKE N'%' + @CurrentString + N'%'
+                )
+            )
             AND NOT EXISTS
             (
                 SELECT 1
@@ -157,14 +179,24 @@ BEGIN
         BEGIN
             SELECT @AttemptSql =
                 REPLACE(
-                    REPLACE(
-                        REPLACE(w.DefinitionSql, @CurrentString, @NewString),
-                        N'----WITH SCHEMABINDING', N'--WITH SCHEMABINDING'
-                    ),
-                    N'CREATE ', N'ALTER '
+                    REPLACE(w.DefinitionSql, @CurrentString, @NewString),
+                    N'----WITH SCHEMABINDING', N'--WITH SCHEMABINDING'
                 )
             FROM @Work w
             WHERE w.ObjectId = @ObjectId;
+
+            -----------------------------------------------------------------
+            -- Convert only the leading CREATE keyword to ALTER. A blind
+            -- REPLACE of every "CREATE " occurrence corrupts any identifier
+            -- that happens to contain the word (for example DECLARE
+            -- @JobsToCreate INT), turning a later, unmatched reference to it
+            -- into a "must declare the scalar variable" compile error. The
+            -- object's definition always begins with its own CREATE keyword,
+            -- so only the first occurrence is ever the one we mean to touch.
+            -----------------------------------------------------------------
+            SET @LeadingCreatePos = CHARINDEX(N'CREATE ', @AttemptSql);
+            IF @LeadingCreatePos > 0
+                SET @AttemptSql = STUFF(@AttemptSql, @LeadingCreatePos, LEN(N'CREATE '), N'ALTER ');
 
             BEGIN TRY
                 EXEC sys.sp_executesql @AttemptSql;
@@ -201,6 +233,33 @@ BEGIN
                 -- 4513 = schemabinding blocked because dependency not schemabound -> defer
                 -- Any other error = hard fail (compile error, missing variable, etc.)
                 -----------------------------------------------------------------
+                -- @Errors is a local table variable: it evaporates when this
+                -- procedure returns, and PowerShell invokes this proc via
+                -- ExecuteNonQuery, which discards any result set. Without a
+                -- durable row here, a deferred-then-never-recovered object
+                -- (for example one still bound at the very end of the retry
+                -- loop) leaves no trace anywhere once deployment moves on.
+                IF @CanLog = 1
+                BEGIN
+                    INSERT INTO SCore.PostDeploymentRunLog
+                    (
+                        RunGuid, StepName, ObjectName, Severity, Message,
+                        ErrorNumber, ErrorSeverity, ErrorState, ErrorLine
+                    )
+                    SELECT
+                        @RunGuid,
+                        CASE WHEN @Apply = 0 THEN N'Schema binding pre-deployment disable' ELSE N'Schema binding pre-deployment enable' END,
+                        w.FullName,
+                        CASE WHEN @Err IN (3729,4513) THEN N'Warning' ELSE N'Error' END,
+                        N'Pass ' + CONVERT(NVARCHAR(20), @Pass) + N': ' + ERROR_MESSAGE(),
+                        ERROR_NUMBER(),
+                        ERROR_SEVERITY(),
+                        ERROR_STATE(),
+                        ERROR_LINE()
+                    FROM @Work w
+                    WHERE w.ObjectId = @ObjectId;
+                END;
+
                 UPDATE w
                 SET
                     LastError = @Err,
@@ -227,6 +286,30 @@ BEGIN
     BEGIN
         -- Always show errors for diagnostics
         SELECT * FROM @Errors ORDER BY LoggedAtUtc, FullName;
+
+        -- Durable summary: every object left bound (or unbound, on the enable
+        -- path) when this procedure gives up, so the next dependent ALTER's
+        -- failure downstream in the deployment can be traced back to a cause
+        -- instead of a bare "referenced by object" error with no history.
+        IF @CanLog = 1
+        BEGIN
+            INSERT INTO SCore.PostDeploymentRunLog
+            (
+                RunGuid, StepName, ObjectName, Severity, Message, ErrorNumber
+            )
+            SELECT
+                @RunGuid,
+                CASE WHEN @Apply = 0 THEN N'Schema binding pre-deployment disable' ELSE N'Schema binding pre-deployment enable' END,
+                w.FullName,
+                N'Error',
+                CASE
+                    WHEN w.Failed = 1 THEN N'Object never processed to completion; last error ' + ISNULL(CONVERT(NVARCHAR(20), w.LastError), N'?') + N'.'
+                    ELSE N'Object still deferred after the maximum number of retry passes (' + CONVERT(NVARCHAR(20), @MaxPasses) + N').'
+                END,
+                w.LastError
+            FROM @Work w
+            WHERE w.Failed = 1 OR w.Done = 0;
+        END;
 
         IF @Strict = 1
         BEGIN

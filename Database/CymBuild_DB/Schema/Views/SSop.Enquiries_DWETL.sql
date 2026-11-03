@@ -6,7 +6,7 @@ GO
 
 
 
-CREATE VIEW [SSop].[Enquiries_DWETL]
+CREATE OR ALTER VIEW [SSop].[Enquiries_DWETL]
      --WITH SCHEMABINDING
 AS
 SELECT
@@ -39,7 +39,8 @@ OUTER APPLY
 (
     SELECT TOP (1)
         dot.DateTimeUTC AS DateSentUtc,
-        wfs.Name
+        wfs.Name,
+        wfs.Guid AS StatusGuid
     FROM SCore.DataObjectTransition dot
     JOIN SCore.WorkflowStatus wfs ON wfs.ID = dot.StatusID
     WHERE dot.RowStatus NOT IN (0,254)
@@ -50,6 +51,39 @@ OUTER APPLY
 WHERE
         e.RowStatus NOT IN (0,254)
     AND ou.RowStatus NOT IN (0,254)
+
+    -- CYB-553-SHORE-LEGACY-EXCLUSION: leave out Shore CDM legacy enquiries
+    -- (their quote has LegacySystemID 1) that were never converted to a job and
+    -- are now Expired; the business asked for these to be removed from reporting.
+    AND NOT
+    (
+        ISNULL(wfd_current_status.StatusGuid, '00000000-0000-0000-0000-000000000000') = 'E6FAC201-F98B-4B3A-AB55-83DC9F802D00' -- Expired
+        AND EXISTS
+        (
+            SELECT 1
+            FROM SSop.EnquiryServices AS legacyService
+            JOIN SSop.Quotes AS legacyQuote
+                ON legacyQuote.EnquiryServiceID = legacyService.ID
+               AND legacyQuote.RowStatus NOT IN (0,254)
+            WHERE legacyService.EnquiryId = e.ID
+              AND legacyService.RowStatus NOT IN (0,254)
+              AND legacyQuote.LegacySystemID = 1
+        )
+        AND NOT EXISTS
+        (
+            SELECT 1
+            FROM SSop.EnquiryServices AS legacyService
+            JOIN SSop.Quotes AS legacyQuote
+                ON legacyQuote.EnquiryServiceID = legacyService.ID
+               AND legacyQuote.RowStatus NOT IN (0,254)
+            JOIN SSop.QuoteItems AS legacyItem
+                ON legacyItem.QuoteId = legacyQuote.ID
+               AND legacyItem.RowStatus NOT IN (0,254)
+               AND legacyItem.CreatedJobId > 0
+            WHERE legacyService.EnquiryId = e.ID
+              AND legacyService.RowStatus NOT IN (0,254)
+        )
+    )
 
 
 GO

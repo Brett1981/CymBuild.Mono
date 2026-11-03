@@ -1,0 +1,6 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"1e7968e9-d943-4dd8-bd10-2a7db121d554","View","SJob","Job_FeeDrawdown","","Different","True","False","True","True"
+"ef5bb756-6180-402b-b71c-3c365a2cca4e","Function","SJob","FeeAmendmentsValidate","","Different","True","False","True","True"
+"80adb2ba-ae66-4f69-949d-6252d535288a","StoredProcedure","SJob","FeeAmendmentChaseUpsert","","Different","True","False","True","True"
+"c3dfe5b2-b176-44e8-81ec-2d53e6c64fdd","StoredProcedure","SJob","FeeAmendmentsUpsert","","Different","True","False","True","True"
+"cae1f0df-8983-4d93-937c-d35f594b85c6","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"

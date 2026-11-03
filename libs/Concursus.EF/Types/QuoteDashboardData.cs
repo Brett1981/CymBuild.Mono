@@ -9,13 +9,15 @@
         public int? QuoteID { get; set; }
 
         public string? QuoteNumber { get; set; }
-
         public string Guid { get; set; }
         public DateTime Date { get; set; }
+        public DateTime? SentDate { get; set; }
         public string Status { get; set; }
         public string Client { get; set; }
         public string QuoteType { get; set; }
         public decimal QuoteValue { get; set; }
+        public string? BusinessUnit { get; set; } = null;
+        public string? Department { get; set; } = null;
 
         //[CALCULATED FIELDS]
         public string? Label { get; set; }
@@ -23,5 +25,6 @@
         public double? Value { get; set; }
         public double? Min { get; set; }
         public double? Max { get; set; }
+
     }
 }

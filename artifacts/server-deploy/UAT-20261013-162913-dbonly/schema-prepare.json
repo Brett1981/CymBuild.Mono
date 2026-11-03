@@ -1,0 +1,165 @@
+{
+  "mode": "created",
+  "runGuid": "e1105a38-1132-4b78-ad06-9b42a999225c",
+  "comparedOnUtc": "2026-10-13 15:35:08",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SCore",
+      "objectName": "tvf_MergeDocumentsForEntityType",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Function",
+      "schemaName": "SFin",
+      "objectName": "tvf_SageInboundDiagnostics",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Function",
+      "schemaName": "SJob",
+      "objectName": "ActivitiesValidate",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SCore",
+      "objectName": "MergeDocumentsUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceRequestItemsUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInbound_ReconcileInvoiceTransaction",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundReceiptAndAllocation_Materialise",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundReceiptMaterialisation_AutoCorrect",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SJob",
+      "objectName": "ActivitiesUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataApply_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataValidate_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SSop",
+      "objectName": "QuotesUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Table",
+      "schemaName": "SCore",
+      "objectName": "MergeDocuments",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Table",
+      "schemaName": "SJob",
+      "objectName": "Activities",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Table",
+      "schemaName": "SJob",
+      "objectName": "FeeAmendment",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Constraint",
+      "schemaName": "SCore",
+      "objectName": "DF_SCore_MergeDocuments_IsActive",
+      "parentObjectName": "MergeDocuments",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "Constraint",
+      "schemaName": "SJob",
+      "objectName": "DF_SJob_Activities_IsPartOfAgreedFee",
+      "parentObjectName": "Activities",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "Constraint",
+      "schemaName": "SJob",
+      "objectName": "DF_SJob_FeeAmendment_ActivityID",
+      "parentObjectName": "FeeAmendment",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "Constraint",
+      "schemaName": "SJob",
+      "objectName": "FK_FeeAmendment_Activities",
+      "parentObjectName": "FeeAmendment",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "Function",
+      "schemaName": "SCore",
+      "objectName": "tvf_UserCanUseInactiveMergeDocuments",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "Index",
+      "schemaName": "SJob",
+      "objectName": "FeeAmendment.IX_FeeAmendment_ActivityID",
+      "parentObjectName": "FeeAmendment",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SJob",
+      "objectName": "ActivityFeeAmendmentEnsure",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run e1105a38-1132-4b78-ad06-9b42a999225c: selected 22 row(s), skipped 0, validated and accepted."
+}

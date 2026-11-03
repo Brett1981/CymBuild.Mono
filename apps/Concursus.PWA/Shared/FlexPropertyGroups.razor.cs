@@ -26,6 +26,13 @@ public partial class FlexPropertyGroups
 
     [Parameter] public List<EntityPropertyGroup> entityPropertyGroups { get; set; } = new();
 
+    /// <summary>
+    /// The CSS grid's per-column minimum width (e.g. "60rem" for a panel with few groups that
+    /// should fill its row rather than leave an empty reserved column next to it). Defaults to
+    /// the original fixed value so every existing page keeps its current layout unchanged.
+    /// </summary>
+    [Parameter] public string MinColumnWidth { get; set; } = "30rem";
+
     [Parameter] public EventCallback<InputUpdatedArgs> inputUpdated { get; set; }
 
     [Parameter] public bool IsBulkUpdate { get; set; } = false;
@@ -34,6 +41,9 @@ public partial class FlexPropertyGroups
 
     [Parameter] public EditPage editPageRef { get; set; }
 
+    [Parameter] public Func<Task<bool>>? ValidateAddressCallback { get; set; }
+    [Parameter] public EventCallback UpdateValidateBtnCallback { get; set; }
+
     #endregion Public Properties
 
     #region Public Methods
@@ -41,6 +51,11 @@ public partial class FlexPropertyGroups
     public void RebindFromPropertyChange(InputUpdatedArgs inputUpdatedArgs)
     {
         foreach (var flexPropertyGroup in ChildGroups) flexPropertyGroup.RebindFromPropertyChange(inputUpdatedArgs);
+    }
+
+    public void ChangeValidationBtnText(string Text, string CSSClass = "btn btn-primary")
+    {
+        foreach (var flexPropertyGroup in ChildGroups) flexPropertyGroup.ChangeValidationBtnText(Text, CSSClass);
     }
 
     #endregion Public Methods

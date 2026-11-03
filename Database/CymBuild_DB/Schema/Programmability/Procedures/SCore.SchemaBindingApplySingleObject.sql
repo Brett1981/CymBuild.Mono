@@ -4,7 +4,7 @@ GO
 PRINT (N'Create procedure [SCore].[SchemaBindingApplySingleObject]')
 GO
 
-CREATE PROCEDURE [SCore].[SchemaBindingApplySingleObject]
+CREATE OR ALTER PROCEDURE [SCore].[SchemaBindingApplySingleObject]
 (
       @ObjectId       INT
     , @RunGuid        UNIQUEIDENTIFIER = NULL
@@ -28,7 +28,16 @@ BEGIN
         , @KeywordPos       INT
         , @AsPos            INT
         , @ReturnsPos       INT
-        , @CanLog           BIT = 0;
+        , @CanLog           BIT = 0
+        , @IsSchemaBound    BIT = 0
+        , @HasPreparedMarker BIT = 0
+        , @PreparedMarkerRemoved BIT = 0
+        , @ScanPosition     INT
+        , @DefinitionLength INT
+        , @LexicalState     TINYINT
+        , @BlockDepth       INT
+        , @Character        NCHAR(1)
+        , @NextCharacter    NCHAR(1);
 
     IF @RunGuid IS NULL
         SET @RunGuid = NEWID();
@@ -42,6 +51,15 @@ BEGIN
         , @ObjectType  = o.type
         , @TwoPartName = QUOTENAME(s.name) + N'.' + QUOTENAME(o.name)
         , @Definition  = sm.definition
+        , @IsSchemaBound = CONVERT(BIT, sm.is_schema_bound)
+        , @HasPreparedMarker = CONVERT
+          (
+              BIT,
+              CASE
+                  WHEN sm.definition LIKE N'%--WITH SCHEMABINDING%' THEN 1
+                  ELSE 0
+              END
+          )
     FROM sys.objects AS o
     JOIN sys.schemas AS s
         ON s.schema_id = o.schema_id
@@ -78,13 +96,8 @@ BEGIN
         RETURN;
     END;
 
-    IF EXISTS
-    (
-        SELECT 1
-        FROM sys.sql_modules AS sm
-        WHERE sm.object_id = @ObjectId
-          AND sm.is_schema_bound = 1
-    )
+    IF @IsSchemaBound = 1
+       AND @HasPreparedMarker = 0
     BEGIN
         RETURN;
     END;
@@ -96,7 +109,8 @@ BEGIN
         TF = Multi-statement TVF
         FN = Scalar function
 
-        The procedure only injects WITH SCHEMABINDING.
+        The procedure injects WITH SCHEMABINDING when required and removes only
+        the exact prepared lifecycle marker from executable SQL.
         SQL Server may still reject the object later if it contains invalid
         schema-bound syntax such as SELECT *, one-part names, non-deterministic
         functions, or unbound dependencies.
@@ -132,11 +146,149 @@ BEGIN
         SET @Sql = @Definition;
 
         /*
-            Keep the same string length as the original by replacing CR/LF/TAB
-            with spaces. This means positions found in @Search still line up
-            with @Sql for STUFF().
+            Build a same-length lexical search buffer. Comments and string
+            literals are replaced with spaces so words such as "user-created"
+            or example DDL inside a header cannot be mistaken for the module
+            declaration. Positions continue to line up exactly for STUFF().
+
+            LexicalState: 0 = SQL, 1 = line comment, 2 = block comment,
+                          3 = string literal.
         */
-        SET @Search = UPPER(REPLACE(REPLACE(REPLACE(@Sql, CHAR(13), N' '), CHAR(10), N' '), CHAR(9), N' '));
+        SET @Search = N'';
+        SET @ScanPosition = 1;
+        /* Appending a sentinel preserves trailing spaces and follows the current collation's character indexing. */
+        SET @DefinitionLength = LEN(@Sql + N'#') - 1;
+        SET @LexicalState = 0;
+        SET @BlockDepth = 0;
+
+        WHILE @ScanPosition <= @DefinitionLength
+        BEGIN
+            SET @Character = SUBSTRING(@Sql, @ScanPosition, 1);
+            SET @NextCharacter = CASE
+                WHEN @ScanPosition < @DefinitionLength
+                    THEN SUBSTRING(@Sql, @ScanPosition + 1, 1)
+                ELSE N''
+            END;
+
+            IF @LexicalState = 0
+            BEGIN
+                /*
+                    SCore.PreDeploymentScript creates this exact line-comment token.
+                    Remove it only while scanning executable SQL (never from strings,
+                    quoted identifiers or block comments).  This allows an already-bound
+                    module to shed a stale prepared marker without losing its active
+                    WITH SCHEMABINDING clause.
+                */
+                IF @Character = N'-'
+                   AND @NextCharacter = N'-'
+                   AND UPPER
+                       (
+                           SUBSTRING
+                           (
+                                 @Sql
+                               , @ScanPosition
+                               , LEN(N'--WITH SCHEMABINDING')
+                           )
+                       ) = N'--WITH SCHEMABINDING'
+                BEGIN
+                    SET @Sql = STUFF
+                    (
+                          @Sql
+                        , @ScanPosition
+                        , LEN(N'--WITH SCHEMABINDING')
+                        , N''
+                    );
+                    SET @DefinitionLength = @DefinitionLength - LEN(N'--WITH SCHEMABINDING');
+                    SET @PreparedMarkerRemoved = 1;
+                    CONTINUE;
+                END;
+
+                IF @Character = N'-' AND @NextCharacter = N'-'
+                BEGIN
+                    SET @Search += N'  ';
+                    SET @ScanPosition += 2;
+                    SET @LexicalState = 1;
+                    CONTINUE;
+                END;
+
+                IF @Character = N'/' AND @NextCharacter = N'*'
+                BEGIN
+                    SET @Search += N'  ';
+                    SET @ScanPosition += 2;
+                    SET @LexicalState = 2;
+                    SET @BlockDepth = 1;
+                    CONTINUE;
+                END;
+
+                IF @Character = N''''
+                BEGIN
+                    SET @Search += N' ';
+                    SET @ScanPosition += 1;
+                    SET @LexicalState = 3;
+                    CONTINUE;
+                END;
+
+                SET @Search += CASE
+                    WHEN @Character IN (NCHAR(9), NCHAR(10), NCHAR(13)) THEN N' '
+                    ELSE UPPER(@Character)
+                END;
+                SET @ScanPosition += 1;
+                CONTINUE;
+            END;
+
+            IF @LexicalState = 1
+            BEGIN
+                SET @Search += N' ';
+                SET @ScanPosition += 1;
+                IF @Character IN (NCHAR(10), NCHAR(13))
+                    SET @LexicalState = 0;
+                CONTINUE;
+            END;
+
+            IF @LexicalState = 2
+            BEGIN
+                IF @Character = N'/' AND @NextCharacter = N'*'
+                BEGIN
+                    SET @Search += N'  ';
+                    SET @ScanPosition += 2;
+                    SET @BlockDepth += 1;
+                    CONTINUE;
+                END;
+
+                IF @Character = N'*' AND @NextCharacter = N'/'
+                BEGIN
+                    SET @Search += N'  ';
+                    SET @ScanPosition += 2;
+                    SET @BlockDepth -= 1;
+                    IF @BlockDepth = 0
+                        SET @LexicalState = 0;
+                    CONTINUE;
+                END;
+
+                SET @Search += N' ';
+                SET @ScanPosition += 1;
+                CONTINUE;
+            END;
+
+            /* String literal, including escaped single quotes. */
+            IF @Character = N'''' AND @NextCharacter = N''''
+            BEGIN
+                SET @Search += N'  ';
+                SET @ScanPosition += 2;
+                CONTINUE;
+            END;
+
+            SET @Search += N' ';
+            SET @ScanPosition += 1;
+            IF @Character = N''''
+                SET @LexicalState = 0;
+        END;
+
+        IF @LexicalState = 2
+            THROW 51209, N'Unterminated block comment in module definition.', 1;
+
+        IF @LexicalState = 3
+            THROW 51210, N'Unterminated string literal in module definition.', 1;
 
         /* =====================================================================================
            VIEW
@@ -173,12 +325,13 @@ BEGIN
                 , N'ALTER VIEW'
             );
 
-            SET @Search = UPPER(REPLACE(REPLACE(REPLACE(@Sql, CHAR(13), N' '), CHAR(10), N' '), CHAR(9), N' '));
-
-            SET @DdlStart = NULLIF(PATINDEX(N'%ALTER%VIEW%', @Search), 0);
-
-            IF @DdlStart IS NULL
-                THROW 51202, N'Could not find ALTER VIEW token after normalising view definition.', 1;
+            SET @Search = STUFF
+            (
+                  @Search
+                , @DdlStart
+                , (@KeywordPos + LEN(N'VIEW')) - @DdlStart
+                , N'ALTER VIEW'
+            );
 
             SET @AsPos = CHARINDEX(N' AS ', @Search, @DdlStart + LEN(N'ALTER VIEW'));
 
@@ -226,12 +379,13 @@ BEGIN
                 , N'ALTER FUNCTION'
             );
 
-            SET @Search = UPPER(REPLACE(REPLACE(REPLACE(@Sql, CHAR(13), N' '), CHAR(10), N' '), CHAR(9), N' '));
-
-            SET @DdlStart = NULLIF(PATINDEX(N'%ALTER%FUNCTION%', @Search), 0);
-
-            IF @DdlStart IS NULL
-                THROW 51206, N'Could not find ALTER FUNCTION token after normalising function definition.', 1;
+            SET @Search = STUFF
+            (
+                  @Search
+                , @DdlStart
+                , (@KeywordPos + LEN(N'FUNCTION')) - @DdlStart
+                , N'ALTER FUNCTION'
+            );
 
             SET @ReturnsPos = CHARINDEX(N'RETURNS', @Search, @DdlStart + LEN(N'ALTER FUNCTION'));
 
@@ -290,7 +444,13 @@ BEGIN
                 , N'Schema binding dependency discovery'
                 , @TwoPartName
                 , N'Info'
-                , N'Applied WITH SCHEMABINDING to discovered dependency.'
+                , CASE
+                    WHEN @PreparedMarkerRemoved = 1 AND @IsSchemaBound = 1
+                        THEN N'Removed the stale prepared --WITH SCHEMABINDING marker from an already schema-bound module.'
+                    WHEN @PreparedMarkerRemoved = 1
+                        THEN N'Applied WITH SCHEMABINDING and removed the prepared lifecycle marker.'
+                    ELSE N'Applied WITH SCHEMABINDING to discovered dependency.'
+                  END
             );
         END;
     END TRY
@@ -315,7 +475,19 @@ BEGIN
                   @RunGuid
                 , N'Schema binding dependency discovery'
                 , @TwoPartName
-                , N'Warning'
+                , CASE
+                    /*
+                        Dependency discovery and stale-marker cleanup deliberately call
+                        this procedure with @ThrowOnError = 0.  Their final state checks
+                        are authoritative, so a speculative ALTER failure must remain a
+                        diagnostic warning rather than poison the strict post-deployment
+                        result.  Direct strict callers still receive hard parser/compile
+                        failures and the original exception is re-thrown below.
+                    */
+                    WHEN @ThrowOnError = 0 THEN N'Warning'
+                    WHEN ERROR_NUMBER() IN (3729, 4513) THEN N'Warning'
+                    ELSE N'Error'
+                  END
                 , ERROR_MESSAGE()
                 , ERROR_NUMBER()
                 , ERROR_SEVERITY()

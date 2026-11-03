@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","ExpectedSourceHash","ExpectedOperationalSourceHash","ObservedTargetHash","ObservedOperationalHash","Message"
+"84bee809-5a33-4462-982b-89efabcc570b","StoredProcedure","SMigration","MetadataStage_Run","","3B34F6E9A8445FF8BCFCE0F8D6817FD49F676D0E218C082CCE6DC3A57991361A","","4CD6E5B74CAFF66F51D0889183ED49A0F276307054CB612DDC0D64FF5698E5C9","","The deployed target definition does not match the accepted source hash."

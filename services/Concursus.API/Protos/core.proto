@@ -37,6 +37,8 @@ service Core {
   rpc AIAssistantUploadList (AIAssistantUploadListRequest) returns (AIAssistantUploadListResponse);
   // Generic Approve/Reject for AUTHORISATION queue (Quotes/Enquiries/other)
   rpc AuthorisationDecision (AuthorisationDecisionRequest) returns (AuthorisationDecisionResponse); //CBLD-415
+  // Lightweight pending-count summary for the AUTHOREVIEW queue KPI badges (avoids the full display view/fee-drawdown join)
+  rpc AuthorisationQueueCounts (AuthorisationQueueCountsRequest) returns (AuthorisationQueueCountsResponse);
   rpc CheckPhotoFilesAtUrl(PhotoFileCheckRequest) returns (PhotoFileCheckResponse);
   rpc ConvertTiffToPng (ConvertImageRequest) returns (ConvertImageResponse);rpc DashboardMetricsGet (DashboardMetricsGetRequest) returns (DashboardMetricsGetResponse);
   rpc DataObjectDelete (DataObjectDeleteRequest) returns (DataObjectDeleteResponse);
@@ -61,11 +63,18 @@ service Core {
   rpc DownloadFile (FileRequest) returns (stream ChunkMsg);
   rpc DropDownDataList (DropDownDataListRequest) returns (DropDownDataListReply);
   rpc DropDownListDefinitionGet (DropDownListDefinitionGetRequest) returns (DropDownListDefinitionGetResponse);
+
+  rpc DuplicateAssetsGet (DuplicateAssetsReq) returns (DuplicateAssetsRes);
+  rpc DuplicateAccountsGet (DuplicateAccountsReq) returns (DuplicateAccountsRes);
+  rpc DuplicateContactsGet (DuplicateContactsReq) returns (DuplicateContactsRes);
+
   rpc EntityPropertyDefaultGet (EntityPropertyDefaultRequest) returns (EntityPropertyDefaultResponse);
   rpc EntityTypeGet (EntityTypeGetRequest) returns (EntityTypeGetResponse);
   rpc ExecuteGridMenuAction(ExecuteGridMenuItemRequest) returns (ExecuteGridMenuItemResponse);
   rpc ExecuteMenuItemPost (ExecuteMenuItemRequest) returns (ExecuteMenuItemResponse);
   rpc QuoteCreateJobsStageScheduleValidate (QuoteCreateJobsStageScheduleValidationRequest) returns (QuoteCreateJobsStageScheduleValidationResponse);
+  rpc ActivityFeeAmendmentEnsure (ActivityFeeAmendmentEnsureRequest) returns (ActivityFeeAmendmentEnsureResponse);
+  rpc TransactionRejectBatched (TransactionRejectBatchedRequest) returns (TransactionRejectBatchedResponse);
   rpc GetAutomatedInvoicingKPI(AutomatedInvoicingKPIReq) returns (AutomatedInvoicingKPIRes);
   rpc GetCymBuildSchemaDashboard (GetCymBuildSchemaDashboardRequest) returns (GetCymBuildSchemaDashboardResponse);
 
@@ -134,6 +143,7 @@ service Core {
   rpc MetadataMigrationStage (MetadataMigrationRunRequest) returns (MetadataMigrationStageResponse);
   rpc MetadataMigrationStagedRows (MetadataMigrationRowsRequest) returns (MetadataMigrationStagedRowsResponse);
   rpc MetadataMigrationValidate (MetadataMigrationRunRequest) returns (MetadataMigrationValidateResponse);
+  rpc MetadataMigrationValidationIssueIgnoreUpsert (MetadataMigrationValidationIssueIgnoreUpsertRequest) returns (MetadataMigrationValidationIssueIgnoreResponse);
 
   rpc NotificationsForUserGet (NotificationsForUserGetRequest) returns (NotificationsForUserGetResponse);
   rpc ObjectSecurityList (ObjectSecurityListRequest) returns (ObjectSecurityListResponse);
@@ -182,10 +192,12 @@ service Core {
   rpc SageCreateSalesOrder (SageCreateSalesOrderRequest) returns (SageCreateSalesOrderResponse);
   rpc SageFetchCustomerTransactions (SageFetchCustomerTransactionsRequest) returns (SageFetchCustomerTransactionsResponse);
   rpc SageFetchSalesOrders (SageFetchSalesOrdersRequest) returns (SageFetchSalesOrdersResponse);
+  rpc SageFetchSalesAllocations (SageFetchSalesAllocationsRequest) returns (SageFetchSalesAllocationsResponse);
 
   rpc SageHealthGet (SageHealthGetRequest) returns (SageHealthGetResponse);
   rpc SageInboundDiagnosticsApplyTransactionReferences (SageInboundDiagnosticsApplyTransactionReferencesRequest) returns (SageInboundDiagnosticsApplyTransactionReferencesReply);
   rpc SageInboundDiagnosticsGet (SageInboundDiagnosticsGetRequest) returns (SageInboundDiagnosticsGetReply);
+  rpc SageInboundDiagnosticsSummaryGet (SageInboundDiagnosticsSummaryGetRequest) returns (SageInboundDiagnosticsSummaryGetReply);
   rpc SageInboundPaymentSync (SageInboundPaymentSyncRequestMessage) returns (SageInboundPaymentSyncReply);
   rpc SageInboundPaymentSyncEnqueue (SageInboundPaymentSyncEnqueueRequestMessage) returns (SageInboundPaymentSyncEnqueueReply);
   rpc SageInboundReceiptMaterialisationAutoCorrect (SageInboundReceiptMaterialisationAutoCorrectRequest) returns (SageInboundReceiptMaterialisationAutoCorrectReply);
@@ -320,6 +332,67 @@ message DeveloperInspectorWorkflowInfo {
   string current_status_name = 5;
   string current_transition_on_utc = 6;
 }
+
+//[[Duplicate Accounts]] => [Stuct]
+message DuplicateAccounts{
+	string guid = 1;
+	string DisplaName = 2;
+}
+
+//[[Duplicate Accounts]] => [Req]
+message DuplicateAccountsReq{
+	string displayname = 1;
+}
+
+//[[Duplicate Accounts]] => [Res]
+message DuplicateAccountsRes{
+	repeated DuplicateAccounts Duplicates = 1;
+}
+
+
+
+//[Duplicate Assets]
+message DuplicateAssets{
+	string guid = 1;
+	string formattedAddress = 2;
+}
+
+message DuplicateAssetsReq{
+	string name = 1;
+	string number = 2;
+	string addressline1 = 3;
+	string addressline2 = 4;
+	string addressline3 = 5;
+	string town = 6;
+	string countyGuid = 7;
+	string postcode = 8;
+}
+
+message DuplicateAssetsRes{
+	repeated DuplicateAssets Duplicates = 1;
+}
+
+
+//[[Duplicate Contacts]] => [Stuct]
+message DuplicateContacts{
+	string guid = 1;
+	string displayName = 2;
+}
+
+//[[Duplicate Contacts]] => [Req]
+message DuplicateContactsReq{
+	string displayname = 1;
+	string firstname   = 2;
+	string surname     = 3;
+	string initials    = 4;
+}
+
+//[[Duplicate Contacts]] => [Res]
+message DuplicateContactsRes{
+	repeated DuplicateContacts Duplicates = 1;
+}
+
+
 
 message UniversalSearchRequest {
   string search_text = 1;
@@ -718,6 +791,18 @@ message AuthorisationDecisionResponse {
 
   string fromStatusGuid = 8;
   string toStatusGuid = 9;
+}
+
+message AuthorisationQueueCountsRequest {
+  int32 userId = 1;
+  bool myItemsOnly = 2;
+}
+
+message AuthorisationQueueCountsResponse {
+  int32 all = 1;
+  int32 jobs = 2;
+  int32 quotes = 3;
+  int32 enquiries = 4;
 }
 
 message AutomatedInvoicingKPIReq{
@@ -1579,6 +1664,7 @@ message ExecuteMenuItemRequest {
 	string  EntityQueryGuid = 1;
 	DataObject DataObject = 2;
 	bool AllowQuoteItemStageFallback = 3;
+	bool CopyQuoteItems = 4; //CYB-320
 }
 
 message ExecuteMenuItemResponse {
@@ -1597,6 +1683,29 @@ message QuoteCreateJobsStageScheduleValidationResponse {
 	bool RequiresQuoteItemStageFallbackConfirmation = 2;
 	string Message = 3;
 	string ErrorReturned = 4;
+}
+
+// CYB-333: raise (or return) the fee amendment for a billable activity that is not part of the agreed fee.
+message ActivityFeeAmendmentEnsureRequest {
+	string ActivityGuid = 1;
+}
+
+message ActivityFeeAmendmentEnsureResponse {
+	string FeeAmendmentGuid = 1;
+	string JobGuid = 2;
+	string JobEntityTypeGuid = 3;
+	bool WasCreated = 4;
+	string ErrorReturned = 5;
+}
+
+message TransactionRejectBatchedRequest {
+	string TransactionGuid = 1;
+	string RejectionReason = 2;
+}
+
+message TransactionRejectBatchedResponse {
+	bool Success = 1;
+	string ErrorReturned = 2;
 }
 
 message FileHashes {
@@ -1888,6 +1997,8 @@ message GridViewDefinition {
 	bool IsHidden = 50;
 	bool AllowCsvExport = 51;
 	bool AllowExcelExport = 52;
+	bool ShowSearchBar = 53;
+	bool IsSearchDefaultCollapsed = 54;
 }
 
 message GridViewDefinitionForWidgets {
@@ -1978,6 +2089,7 @@ message InvoiceScheduleMonthlySeriesGenerateRequest {
   string endDate = 3;         // yyyy-MM-dd
   string totalValueNet = 4;   // invariant DECIMAL(19,2)
   bool overwriteExisting = 5;
+  string frequency = 6;
 }
 
 message InvoiceScheduleMonthlySeriesGenerateResponse {
@@ -1985,6 +2097,7 @@ message InvoiceScheduleMonthlySeriesGenerateResponse {
   int32 insertedCount = 2;
   int32 monthsCount = 3;
   string message = 4;
+  string frequency = 5;
   string errorReturned = 99;
 }
 
@@ -1998,6 +2111,7 @@ message InvoiceScheduleConfigurationTotalsGetResponse {
   double percentageTotalPercentage = 2;
   double percentageTotalAmount = 3;
   double scheduleAmount = 4;
+  string frequency = 5;
   string errorReturned = 99;
 }
 
@@ -2335,6 +2449,7 @@ message MetadataMigrationIdentityMapDetailRow {
   string overrideTargetRowGuid = 18;
   string overrideTargetDisplayName = 19;
   string overrideReason = 20;
+  string overrideColumnSourceSelectionJson = 21;
 }
 
 message MetadataMigrationIdentityMapCandidateRow {
@@ -2372,6 +2487,7 @@ message MetadataMigrationIdentityMapOverrideUpsertRequest {
   string reason = 7;
   string targetServerName = 8;
   string targetDatabaseName = 9;
+  string columnSourceSelectionJson = 10;
 }
 
 message MetadataMigrationIdentityMapDetailsRequest {
@@ -2482,6 +2598,7 @@ message MetadataMigrationDiffRow {
   bool isIgnored = 9;
   string ignoreReason = 10;
   string ignoredOnUtc = 11;
+  string selectionSource = 12;
 }
 
 message MetadataMigrationExecutionLogItem {
@@ -2576,6 +2693,7 @@ message MetadataMigrationSelectionItem {
 message MetadataMigrationSelectionResponse {
   int32 selectedCount = 1;
   string message = 2;
+  int32 autoSelectedCount = 3;
 }
 
 message MetadataMigrationSelectionUpsertRequest {
@@ -2599,6 +2717,9 @@ message MetadataMigrationRunRequest {
   string runGuid = 1;
   string targetServerName = 2;
   string targetDatabaseName = 3;
+  // CYB-564: MetadataMigrationStage only. Opt-in staging of source rows retired to RowStatus 254
+  // whose same-Guid target row is still active. Ignored by every other RPC sharing this message.
+  bool includeRetirements = 4;
 }
 
 message MetadataMigrationRunResponse {
@@ -2649,6 +2770,7 @@ message MetadataMigrationStagedRow {
   bool isIgnored = 11;
   string ignoreReason = 12;
   string ignoredOnUtc = 13;
+  string selectionSource = 14;
 }
 
 message MetadataMigrationStagedRowsResponse {
@@ -2679,6 +2801,26 @@ message MetadataMigrationValidationIssue {
   string issueCode = 7;
   string issueMessage = 8;
   string detailsJson = 9;
+  bool canIgnore = 10;
+  bool isIgnored = 11;
+  string ignoreReason = 12;
+  string ignoredOnUtc = 13;
+  int32 ignoredByUserId = 14;
+}
+
+message MetadataMigrationValidationIssueIgnoreUpsertRequest {
+  string runGuid = 1;
+  string validationIssueGuid = 2;
+  bool isIgnored = 3;
+  string reason = 4;
+  string targetServerName = 5;
+  string targetDatabaseName = 6;
+}
+
+message MetadataMigrationValidationIssueIgnoreResponse {
+  int32 activeFailCount = 1;
+  int32 ignoredIssueCount = 2;
+  string message = 3;
 }
 
 
@@ -2786,6 +2928,8 @@ message SchemaMigrationObjectComparisonRow {
   string notes = 13;
   bool isSelected = 14;
   bool hasExplicitSelection = 15;
+  // CYB-566: a selected new table (Table / MissingInTarget) whose DEV rows are copied as reference data.
+  bool copyReferenceData = 16;
 }
 
 message SchemaMigrationSelectionItem {
@@ -2795,6 +2939,8 @@ message SchemaMigrationSelectionItem {
   string objectName = 4;
   string parentObjectName = 5;
   bool isSelected = 6;
+  // CYB-566: honoured only for a selected Table / MissingInTarget row; ignored for anything else.
+  bool copyReferenceData = 7;
 }
 
 message SchemaMigrationSelectionSaveRequest {
@@ -2911,6 +3057,8 @@ message SchemaMigrationRunSummary {
   string appliedOnUtc = 16;
   string notes = 17;
   string summaryJson = 18;
+  string sourceSyncedOnUtc = 19;
+  string sourceSyncCommit = 20;
 }
 
 message SchemaMigrationValidateResponse {
@@ -2973,6 +3121,7 @@ message MergeDocument {
 	bool AllowPDFOnly = 12;
 	bool AllowExcelOutputOnly = 13;
 	bool ProduceOneOutputPerRow = 14;
+	bool IsActive = 15;
 }
 
 message MergeDocumentItem {
@@ -3458,7 +3607,9 @@ message QuoteDashboardData{
 	string Client = 6;
 	string QuoteType = 7;
 	double QuoteValue = 8;
-
+	google.protobuf.Timestamp SentDate = 9;
+	string BusinessUnit = 10;
+	string Department = 11;
 }
 
 message RecentItem{
@@ -3655,6 +3806,44 @@ message SageFetchCustomerTransactionsResponse {
   repeated SageCustomerTransaction transactions = 5;
 }
 
+// CYB-555: what settled an invoice (wrapper GET /api/sales-allocations).
+message SageFetchSalesAllocationsRequest {
+  string dataset = 1;
+  string account_reference = 2;
+  string urn = 3;
+}
+
+message SageFetchSalesAllocationsResponse {
+  string status = 1;
+  string account_reference = 2;
+  string urn = 3;
+  string raw_json = 4;       // legacy/debug
+  string error_returned = 5;
+
+  repeated SageSalesAllocationSession sessions = 6;
+}
+
+message SageSalesAllocationSession {
+  string allocation_header_id = 1;
+  string session_date = 2;
+  repeated SageSalesAllocationRow rows = 3;
+}
+
+message SageSalesAllocationRow {
+  string urn = 1;
+  string transaction_date = 2;
+  double allocation_value = 3;
+  bool is_requested = 4;
+  bool type_resolved = 5;
+  google.protobuf.Int32Value sys_trader_tran_type = 6;
+  string transaction_reference = 7;
+  string instrument_no = 8;
+  string second_reference = 9;
+  google.protobuf.DoubleValue gross_amount = 10;
+  google.protobuf.DoubleValue tax_amount = 11;
+  google.protobuf.DoubleValue net_amount = 12;
+}
+
 message SageFetchSalesOrdersRequest {
   string dataset = 1;
   string order_id = 2;
@@ -3700,6 +3889,7 @@ message SageInboundDiagnosticsApplyTransactionReferencesReply {
 
 message SageInboundDiagnosticsGetReply {
   repeated SageInboundDiagnosticsRow rows = 1;
+  int64 totalCount = 2;
 }
 
 message SageInboundDiagnosticsGetRequest {
@@ -3715,6 +3905,32 @@ message SageInboundDiagnosticsGetRequest {
   int32 jobId = 10;
   bool jobIdSpecified = 11;
   string transactionNumber = 12;
+  string paymentFilter = 13;
+  int32 pageNumber = 14;
+  int32 pageSize = 15;
+}
+
+message SageInboundDiagnosticsSummaryGetRequest {
+  string sageAccountReference = 1;
+  string sageDocumentNo = 2;
+  bool includeOnlyRetryableFailures = 3;
+  bool includeOnlyRetryableFailuresSpecified = 4;
+  int32 invoiceRequestId = 5;
+  bool invoiceRequestIdSpecified = 6;
+  int64 transactionId = 7;
+  bool transactionIdSpecified = 8;
+  int32 jobId = 9;
+  bool jobIdSpecified = 10;
+  string transactionNumber = 11;
+}
+
+message SageInboundDiagnosticsSummaryGetReply {
+  int64 totalCount = 1;
+  int64 succeededCount = 2;
+  int64 retryPendingCount = 3;
+  int64 paidCount = 4;
+  int64 receiptsCreatedCount = 5;
+  int64 creditNotesCreatedCount = 6;
 }
 
 message SageInboundDiagnosticsRow {
@@ -3780,6 +3996,12 @@ message SageInboundDiagnosticsRow {
   int64 materialisedAllocationId = 56;
   string transactionSageTransactionReference = 57;
   string matchedTransactionSageTransactionReference = 58;
+
+  // CYB-568: the matched SFin.SageExternalTransactions row. Fix Receipt needs its ID
+  // (the row ID above is SFin.SageInboundDocumentStatus.ID). 0 = no external row.
+  int64 lastMatchedExternalTransactionId = 59;
+  int32 lastMatchedExternalTransactionTypeCode = 60;
+  double lastMatchedExternalTransactionAllocatedValue = 61;
 }
 
 message SageInboundPaymentSyncEnqueueReply {

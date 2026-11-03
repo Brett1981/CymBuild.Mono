@@ -183,7 +183,8 @@
 .dynamic-grid-view-v2-grid-wrapper {
     overflow-x: auto;
     overflow-y: auto;
-    max-height: 650px;
+    max-height: 68vh;
+    scrollbar-gutter: stable;
 }
 
 .dynamic-grid-view-v2-grid-table {
@@ -1482,4 +1483,20 @@
     .dynamic-grid-view-v2-filter-panel .dynamic-grid-view-v2-filter-grid.row {
         grid-template-columns: 1fr !important;
     }
+}
+
+/* CYB-524: keep the complete header group inside the grid scroll viewport. */
+.dynamic-grid-view-v2-grid-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.dynamic-grid-view-v2-grid-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.dynamic-grid-view-v2-grid-table thead th {
+    position: static;
 }

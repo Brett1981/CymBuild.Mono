@@ -187,6 +187,77 @@ namespace Concursus.EF
             public DateTime? DecisionDateTimeUtc { get; set; }
         }
 
+        public sealed class AuthorisationQueueCountsEfResult
+        {
+            public int All { get; set; }
+            public int Jobs { get; set; }
+            public int Quotes { get; set; }
+            public int Enquiries { get; set; }
+        }
+
+        // =========================================================================================
+        // Authorisation Queue Counts (EF entry point)
+        //
+        // Lightweight KPI-badge summary for the AUTHOREVIEW queue. Deliberately queries
+        // SCore.tvf_WF_AuthorisationQueue directly instead of SCore.vw_WF_AuthorisationQueue_Display -
+        // the display view's Job/Quote/Enquiry joins and its two SJob.Job_FeeDrawdown OUTER APPLYs
+        // are display-only and not needed just to count pending rows by entity type.
+        // =========================================================================================
+        public async Task<AuthorisationQueueCountsEfResult> GetAuthorisationQueueCountsAsync(
+            int userId,
+            bool myItemsOnly,
+            CancellationToken ct = default)
+        {
+            var result = new AuthorisationQueueCountsEfResult();
+
+            using (SqlConnection connection = CreateConnection())
+            {
+                await connection.OpenAsync(ct);
+
+                const string statement = @"
+SELECT
+    et.Name AS EntityTypeName,
+    COUNT(*) AS PendingCount
+FROM SCore.tvf_WF_AuthorisationQueue(@UserId, -1) q
+JOIN SCore.EntityTypes et
+    ON et.ID = q.EntityTypeId
+   AND et.RowStatus NOT IN (0,254)
+WHERE (@MyItemsOnly = 0 OR q.CanActionForUser = 1)
+GROUP BY et.Name;";
+
+                using var command = new SqlCommand(statement, connection);
+                command.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int) { Value = userId });
+                command.Parameters.Add(new SqlParameter("@MyItemsOnly", SqlDbType.Bit) { Value = myItemsOnly });
+
+                try
+                {
+                    using var reader = await command.ExecuteReaderAsync(ct);
+
+                    while (await reader.ReadAsync(ct))
+                    {
+                        var entityTypeName = reader.GetString(reader.GetOrdinal("EntityTypeName"));
+                        var pendingCount = reader.GetInt32(reader.GetOrdinal("PendingCount"));
+
+                        result.All += pendingCount;
+
+                        if (entityTypeName.Equals("Jobs", StringComparison.OrdinalIgnoreCase))
+                            result.Jobs = pendingCount;
+                        else if (entityTypeName.Equals("Quotes", StringComparison.OrdinalIgnoreCase))
+                            result.Quotes = pendingCount;
+                        else if (entityTypeName.Equals("Enquiries", StringComparison.OrdinalIgnoreCase))
+                            result.Enquiries = pendingCount;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                    throw new Exception($"Exception occurred getting GetAuthorisationQueueCountsAsync: {ex.Message}", ex);
+                }
+            }
+
+            return result;
+        }
+
         // =========================================================================================
         // Enquiry Workflow Status GUID constants (single source of truth) =========================================================================================
         private static readonly Guid Enq_BidTeamReview_Guid = Guid.Parse("675CA95D-F03D-4DBC-B83C-3D21BF138635");
@@ -294,9 +365,8 @@ namespace Concursus.EF
                     var bidTeamReviewId = await ResolveWorkflowStatusIdByGuidAsync(connection, tx, Enq_BidTeamReview_Guid, ct);
                     var declinedToQuoteId = await ResolveWorkflowStatusIdByGuidAsync(connection, tx, Enq_DeclinedToQuote_Guid, ct);
                     var approvedForQuoteId = await ResolveWorkflowStatusIdByGuidAsync(connection, tx, Enq_ApprovedForQuote_Guid, ct);
-                    var readyForQuoteId = await ResolveWorkflowStatusIdByGuidAsync(connection, tx, Enq_ReadyForQuote_Guid, ct);
 
-                    if (bidTeamReviewId <= 0 || declinedToQuoteId <= 0 || approvedForQuoteId <= 0 || readyForQuoteId <= 0)
+                    if (bidTeamReviewId <= 0 || declinedToQuoteId <= 0 || approvedForQuoteId <= 0)
                     {
                         await RollbackSafeAsync(tx);
                         return new AuthorisationDecisionEfResult
@@ -354,8 +424,8 @@ namespace Concursus.EF
                     }
                     else
                     {
-                        // APPROVE: Step 1: current -> Approved For Quote Step 2: Approved For Quote
-                        // -> Ready for Quote (System Imported)
+                        // APPROVE: current -> Approved For Quote. Stops there; Ready for Quote is a
+                        // separate, later transition and must not be auto-applied here.
 
                         var storedComment = string.IsNullOrWhiteSpace(comment)
                             ? "Bid Review Acceptance - Continue To Quote"
@@ -383,33 +453,6 @@ namespace Concursus.EF
                             surveyorUserGuid: Guid.Empty,
                             dataObjectGuid: recordGuid,
                             isImported: false,
-                            ct: ct);
-
-                        // Validate allowed transition exists: approved -> ready
-                        var ok2 = await ExistsTransitionAsync(connection, tx, queue.WorkflowId, approvedForQuoteId, readyForQuoteId, ct);
-                        if (!ok2)
-                        {
-                            await RollbackSafeAsync(tx);
-                            return new AuthorisationDecisionEfResult
-                            {
-                                Success = false,
-                                Message = $"Enquiry approve inserted Approved For Quote, but workflow has no transition Approved For Quote -> Ready for Quote (ID={readyForQuoteId})."
-                            };
-                        }
-
-                        // System Imported step: Use CreatedByUserGuid = Guid.Empty to avoid
-                        // "Created By = Stephen Brett" if you prefer blank/system. If you want the
-                        // user shown, set createdByUserGuid: actingUserGuid.
-                        await ExecuteDataObjectTransitionUpsertAsync(
-                            connection, tx,
-                            transitionGuid: Guid.NewGuid(),
-                            oldStatusGuid: Enq_ApprovedForQuote_Guid,
-                            newStatusGuid: Enq_ReadyForQuote_Guid,
-                            comment: "System Imported",
-                            createdByUserGuid: Guid.Empty,
-                            surveyorUserGuid: Guid.Empty,
-                            dataObjectGuid: recordGuid,
-                            isImported: true,
                             ct: ct);
 
                         var (fromGuid, toGuid) = await ResolveStatusGuidsByIdAsync(connection, tx, queue.LatestStatusId, approvedForQuoteId, ct);
@@ -2114,6 +2157,8 @@ WHERE i.RowStatus NOT IN (0,254)
                                 Console.WriteLine($"[DataObjectGet] ReadEntityHoBT {eh.SchemaName}.{eh.ObjectName} for {objectGuid} took {swHobt.ElapsedMilliseconds} ms");
                             }
 
+                            dataObject = await ValidateReadDataObject(connection, dataObject, entityType, ForInformationView);
+
                             // 2c) SharePoint folder info (if used by this entity type)
                             if (entityType.HasDocuments)
                             {
@@ -2505,6 +2550,10 @@ WHERE i.RowStatus NOT IN (0,254)
             result.ScheduleAmount = reader.IsDBNull(reader.GetOrdinal("ScheduleAmount"))
                 ? 0m
                 : Convert.ToDecimal(reader["ScheduleAmount"]);
+
+            result.Frequency = reader.IsDBNull(reader.GetOrdinal("Frequency"))
+                ? null
+                : reader.GetString(reader.GetOrdinal("Frequency"));
 
             return result;
         }
@@ -3016,13 +3065,29 @@ WHERE i.RowStatus NOT IN (0,254)
 
             using (SqlConnection connection = CreateConnection())
             {
-                await connection.OpenAsync();
+                var currentUserId = await OpenConnectionAsync(connection);
 
-                string statement = "SELECT * FROM SSop.tvf_Quotes(@UserId)";
+                string statement = @"
+SELECT
+    q.ID,
+    q.Number,
+    q.Guid,
+    q.Date,
+    q.QuoteSentDate,
+    q.QuoteStatus,
+    q.Client,
+    q.JobType,
+    q.TotalNet,
+    q.BusinessUnitName,
+    q.DepartmentName
+FROM SSop.tvf_Quotes(@UserId) AS q;";
 
                 using var command = new SqlCommand(statement, connection);
 
-                command.Parameters.Add(new SqlParameter("@UserId", UserId));
+                command.Parameters.Add(new SqlParameter("@UserId", SqlDbType.Int)
+                {
+                    Value = currentUserId
+                });
 
                 try
                 {
@@ -3030,16 +3095,25 @@ WHERE i.RowStatus NOT IN (0,254)
 
                     while (await reader.ReadAsync())
                     {
+                        var sentDateOrdinal = reader.GetOrdinal("QuoteSentDate");
+
                         var quote = new QuoteDashboardData
                         {
                             QuoteID = reader.GetInt32(reader.GetOrdinal("ID")),
                             QuoteNumber = reader.GetString(reader.GetOrdinal("Number")),
                             Guid = reader.GetGuid(reader.GetOrdinal("Guid")).ToString(),
                             Date = reader.GetDateTime(reader.GetOrdinal("Date")),
+                            SentDate = reader.IsDBNull(sentDateOrdinal) ? (DateTime?)null : reader.GetDateTime(sentDateOrdinal),
                             Status = reader.GetString(reader.GetOrdinal("QuoteStatus")),
                             Client = reader.GetString(reader.GetOrdinal("Client")),
                             QuoteType = reader.GetString(reader.GetOrdinal("JobType")),
-                            QuoteValue = reader.GetDecimal(reader.GetOrdinal("TotalNet"))
+                            QuoteValue = reader.GetDecimal(reader.GetOrdinal("TotalNet")),
+                            BusinessUnit = reader["BusinessUnitName"] == DBNull.Value
+                                ? string.Empty
+                                : Convert.ToString(reader["BusinessUnitName"]) ?? string.Empty,
+                            Department = reader["DepartmentName"] == DBNull.Value
+                                ? string.Empty
+                                : Convert.ToString(reader["DepartmentName"]) ?? string.Empty
                         };
 
                         QuoteDashboardDate.Add(quote);
@@ -3049,9 +3123,11 @@ WHERE i.RowStatus NOT IN (0,254)
                 }
                 catch (Exception ex)
                 {
-                    // Attach the SQL query to the exception data so the API logger can pick it up
-                    ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
-                    throw new Exception($"Exception occurred getting GetNonActivityEvents: {ex.Message}", ex);
+                    ex.Data["SQL"] = BuildSqlWithParams(
+                        command.CommandText,
+                        command.Parameters.Cast<SqlParameter>().ToArray());
+
+                    throw new Exception($"Exception occurred getting QuoteDashboardData: {ex.Message}", ex);
                 }
             }
         }
@@ -3756,6 +3832,30 @@ WHERE i.RowStatus NOT IN (0,254)
             return await ReadMergeDocumentsWithChildren(entityType, c, null);
         }
 
+        /// <summary>
+        /// CYB-496: true when the merge document is inactive and the current user is not a
+        /// full Super User / System Administrator. Read uncached so a toggle applies at once.
+        /// Unknown Guids return false; the existing generate path handles those.
+        /// </summary>
+        public async Task<bool> IsMergeDocumentInactiveForUser(Guid mergeDocumentGuid)
+        {
+            const string sql = @"SELECT CONVERT(BIT, CASE WHEN (md.IsActive = 1) OR (ia.CanUseInactive = 1) THEN 0 ELSE 1 END)
+FROM SCore.MergeDocuments AS md
+CROSS APPLY SCore.tvf_UserCanUseInactiveMergeDocuments(@UserId) AS ia
+WHERE (md.Guid = @Guid)";
+
+            using var c = CreateConnection();
+            await OpenConnectionAsync(c);
+            await QueryBuilder.SetReadCommittedAsync(c);
+
+            using var command = c.CreateCommandWithParameters(sql, CommandType.Text,
+                new SqlParameter("@Guid", mergeDocumentGuid),
+                new SqlParameter("@UserId", _userId));
+
+            var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+            return result is bool blocked && blocked;
+        }
+
         public async Task<List<NonActivityEvents>> GetNonActivityEvents(int UserId, DateTime StartDate, DateTime EndDate)
         {
             List<NonActivityEvents> nonActivityEvents = new();
@@ -4053,6 +4153,201 @@ WHERE i.RowStatus NOT IN (0,254)
                         // Attach the SQL query to the exception data so the API logger can pick it up
                         ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
                         throw new Exception($"Exception occurred getting GetSignatoryInfo: {ex.Message}", ex);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// CYB-323: resolves signature info directly from a Quote's Consultant field
+        /// (Quotes.QuotingConsultantId -> SCore.Identities), independent of GetSignatoryInfo /
+        /// SJob.GetJobSignatoryInfo. That existing path is rooted at SJob.Jobs and only ever
+        /// returns rows once a Job has been created from the quote, so it cannot resolve a
+        /// signatory for a document (like the Fire Engineering Fee Proposal) generated at
+        /// Quote stage, before any Job exists. This method is intentionally separate rather
+        /// than a branch inside GetSignatoryInfo, so existing Job-signatory behaviour used by
+        /// other documents is completely unaffected.
+        /// </summary>
+        public async Task<List<SignatureInfo>> GetQuoteConsultantSignatoryInfo(Guid quoteGuid)
+        {
+            List<SignatureInfo> result = new();
+
+            if (quoteGuid == default)
+            {
+                Console.WriteLine("[ERROR] No valid QuoteGuid provided.");
+                return result;
+            }
+
+            using (var connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+                const string query = @"
+SELECT TOP (1)
+    i.EmailAddress,
+    i.FullName,
+    i.JobTitle,
+    i.UserGuid,
+    i.IsActive,
+    i.Signature,
+    q.Guid AS QuoteGuid
+FROM SSop.Quotes AS q
+JOIN SCore.Identities AS i ON i.ID = q.QuotingConsultantId
+WHERE q.Guid = @QuoteGuid
+  AND q.RowStatus NOT IN (0,254)
+  AND i.RowStatus NOT IN (0,254)";
+                using (var command = QueryBuilder.CreateCommand(query, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@QuoteGuid", quoteGuid));
+                    try
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                var signatureInfo = new SignatureInfo
+                                {
+                                    EmailAddress = reader.GetString(reader.GetOrdinal("EmailAddress")),
+                                    FullName = reader.GetString(reader.GetOrdinal("FullName")),
+                                    JobTitle = reader.GetString(reader.GetOrdinal("JobTitle")),
+                                    UserGuid = reader.GetGuid(reader.GetOrdinal("UserGuid")),
+                                    IsActive = reader.GetBoolean(reader.GetOrdinal("IsActive")),
+                                    Signature = reader.IsDBNull(reader.GetOrdinal("Signature"))
+                                            ? Array.Empty<byte>()
+                                            : reader.GetFieldValue<byte[]>(reader.GetOrdinal("Signature")),
+                                    QuoteGuid = reader.GetGuid(reader.GetOrdinal("QuoteGuid")),
+                                    EnquiryGuid = Guid.Empty,
+                                    JobGuid = Guid.Empty,
+                                    JobTypeName = ""
+                                };
+                                result.Add(signatureInfo);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Attach the SQL query to the exception data so the API logger can pick it up
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting GetQuoteConsultantSignatoryInfo: {ex.Message}", ex);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// CYB-323: returns the gating rules (SCore.MergeDocumentItemGatingProducts) for a
+        /// "Conditional Row" MergeDocumentItem. An empty list means the row has no gating
+        /// configured and should always be included - this is the default for every merge
+        /// document item that predates this ticket, since the gating table only ever has rows
+        /// for items explicitly configured with it.
+        /// </summary>
+        public async Task<List<MergeDocumentItemGatingRule>> GetGatingRulesForMergeDocumentItem(Guid mergeDocumentItemGuid)
+        {
+            List<MergeDocumentItemGatingRule> result = new();
+
+            if (mergeDocumentItemGuid == default)
+            {
+                return result;
+            }
+
+            using (var connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+                const string query = @"
+SELECT gp.ProductId,
+       gp.RibaStageId
+FROM SCore.MergeDocumentItemGatingProducts AS gp
+JOIN SCore.MergeDocumentItems AS mdi ON mdi.ID = gp.MergeDocumentItemId
+WHERE mdi.Guid = @MergeDocumentItemGuid
+  AND gp.RowStatus NOT IN (0,254)
+  AND mdi.RowStatus NOT IN (0,254)";
+                using (var command = QueryBuilder.CreateCommand(query, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@MergeDocumentItemGuid", mergeDocumentItemGuid));
+                    try
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                result.Add(new MergeDocumentItemGatingRule
+                                {
+                                    ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
+                                    RibaStageId = reader.GetInt32(reader.GetOrdinal("RibaStageId"))
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting GetGatingRulesForMergeDocumentItem: {ex.Message}", ex);
+                    }
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// CYB-323: returns a quote's active line items with their product, normalised RIBA
+        /// stage (ProvideAtStageID = -1 counts as stage ID 2, as in SSop.tvf_QuoteFeeDrawdown),
+        /// line net and deliverable text, for "Conditional Row" gating and per-row fee /
+        /// deliverable merge fields (see GetGatingRulesForMergeDocumentItem).
+        /// </summary>
+        public async Task<List<QuoteItemMergeLine>> GetQuoteItemMergeLines(Guid quoteGuid)
+        {
+            List<QuoteItemMergeLine> result = new();
+
+            if (quoteGuid == default)
+            {
+                return result;
+            }
+
+            using (var connection = CreateConnection())
+            {
+                await OpenConnectionAsync(connection);
+                const string query = @"
+SELECT qi.ProductId,
+       rs.ID AS RibaStageId,
+       rs.Number AS RibaStageNumber,
+       qit.LineNet,
+       CASE WHEN LTRIM(RTRIM(qi.Details)) = N'' THEN p.Description ELSE qi.Details END AS Deliverable,
+       qi.SortOrder
+FROM SSop.QuoteItems AS qi
+JOIN SSop.Quotes AS q ON q.ID = qi.QuoteId
+JOIN SSop.QuoteItemTotals AS qit ON qit.ID = qi.ID
+JOIN SProd.Products AS p ON p.ID = qi.ProductId
+JOIN SJob.RibaStages AS rs ON rs.ID = CASE WHEN qi.ProvideAtStageID = -1 THEN 2 ELSE qi.ProvideAtStageID END
+WHERE q.Guid = @QuoteGuid
+  AND qi.RowStatus NOT IN (0,254)
+  AND q.RowStatus NOT IN (0,254)
+ORDER BY qi.SortOrder, qi.ID";
+                using (var command = QueryBuilder.CreateCommand(query, connection))
+                {
+                    command.Parameters.Add(new SqlParameter("@QuoteGuid", quoteGuid));
+                    try
+                    {
+                        using (var reader = await command.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                result.Add(new QuoteItemMergeLine
+                                {
+                                    ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
+                                    RibaStageId = reader.GetInt32(reader.GetOrdinal("RibaStageId")),
+                                    RibaStageNumber = reader.GetInt32(reader.GetOrdinal("RibaStageNumber")),
+                                    LineNet = reader.GetDecimal(reader.GetOrdinal("LineNet")),
+                                    Deliverable = reader.IsDBNull(reader.GetOrdinal("Deliverable")) ? "" : reader.GetString(reader.GetOrdinal("Deliverable")),
+                                    SortOrder = reader.GetInt32(reader.GetOrdinal("SortOrder"))
+                                });
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                        throw new Exception($"Exception occurred getting GetQuoteItemMergeLines: {ex.Message}", ex);
                     }
                 }
             }
@@ -5552,6 +5847,94 @@ ORDER BY us.SearchRank,
             }
         }
 
+        /// <summary>
+        /// CYB-333: raises the fee amendment for a billable activity answered "not part of the
+        /// agreed fee", or returns the one already raised. FeeAmendmentGuid is empty when the
+        /// activity does not need one.
+        /// </summary>
+        public async Task<ActivityFeeAmendmentEnsureRow> ActivityFeeAmendmentEnsureAsync(
+            Guid activityGuid,
+            CancellationToken ct = default)
+        {
+            var result = new ActivityFeeAmendmentEnsureRow();
+
+            if (activityGuid == Guid.Empty)
+            {
+                result.ErrorReturned = "A valid Activity Guid is required.";
+                return result;
+            }
+
+            await using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            await using var command = QueryBuilder.CreateCommand("SJob.ActivityFeeAmendmentEnsure", connection);
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = 60;
+            command.Parameters.Add(new SqlParameter("@ActivityGuid", SqlDbType.UniqueIdentifier) { Value = activityGuid });
+
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                if (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    result.FeeAmendmentGuid = reader.GetGuid(reader.GetOrdinal("FeeAmendmentGuid"));
+                    result.JobGuid = reader.GetGuid(reader.GetOrdinal("JobGuid"));
+                    result.JobEntityTypeGuid = reader.GetGuid(reader.GetOrdinal("JobEntityTypeGuid"));
+                    result.WasCreated = reader.GetBoolean(reader.GetOrdinal("WasCreated"));
+                }
+
+                return result;
+            }
+            catch (SqlException ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                result.ErrorReturned = ex.Message;
+                return result;
+            }
+        }
+
+        public async Task<TransactionRejectBatchedResultRow> TransactionRejectBatchedAsync(
+            Guid transactionGuid,
+            string rejectionReason,
+            CancellationToken ct = default)
+        {
+            var result = new TransactionRejectBatchedResultRow();
+
+            if (transactionGuid == Guid.Empty)
+            {
+                result.ErrorReturned = "A valid Transaction Guid is required to reject a batched transaction.";
+                return result;
+            }
+
+            await using var connection = CreateConnection();
+            await OpenConnectionAsync(connection);
+
+            await using var command = QueryBuilder.CreateCommand("SFin.RejectBatchedTransaction", connection);
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandTimeout = 60;
+            command.Parameters.Add(new SqlParameter("@Guid", SqlDbType.UniqueIdentifier) { Value = transactionGuid });
+            command.Parameters.Add(new SqlParameter("@RejectionReason", SqlDbType.NVarChar, -1) { Value = (object?)rejectionReason ?? DBNull.Value });
+
+            try
+            {
+                await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                result.Success = true;
+                return result;
+            }
+            catch (SqlException ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                result.Success = false;
+                result.ErrorReturned = ex.Message;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                ex.Data["SQL"] = BuildSqlWithParams(command.CommandText, command.Parameters.Cast<SqlParameter>().ToArray());
+                throw new Exception($"Exception occurred rejecting batched transaction: {ex.Message}", ex);
+            }
+        }
+
         //CBLD-616: Imports legacy statuses by executing a stored procedure ([SCore].[DataObjectTransitionImportLegacyStatus])
         public async Task<bool> ImportLegacyStatuses()
         {
@@ -5634,6 +6017,7 @@ ORDER BY us.SearchRank,
             DateOnly endDate,
             decimal totalValueNet,
             bool overwriteExisting,
+            string frequency,
             CancellationToken ct = default)
         {
             if (invoiceScheduleGuid == Guid.Empty)
@@ -5686,6 +6070,10 @@ ORDER BY us.SearchRank,
             command.Parameters.Add(new SqlParameter("@OverwriteExisting", SqlDbType.Bit)
             {
                 Value = overwriteExisting
+            });
+            command.Parameters.Add(new SqlParameter("@Frequency", SqlDbType.NVarChar)
+            {
+                Value = frequency
             });
 
             await using var reader = await command.ExecuteReaderAsync(ct);
@@ -6159,17 +6547,11 @@ ORDER BY us.SearchRank,
 
                         if (!forInformationView || currentProperty.IsIncludedInformation)
                         {
-                            var property = new Types.DataProperty
-                            {
-                                EntityPropertyGuid = currentProperty.Guid,
-                            };
+                            var property = new Types.DataProperty { EntityPropertyGuid = currentProperty.Guid };
 
                             SetObjectSecurity(currentProperty.ObjectSecurity.FirstOrDefault(), property);
 
-                            if (property.IsEnabled)
-                            {
-                                property.Value = ProcessFieldValue(reader, fieldIndex, currentProperty, ref dataObject);
-                            }
+                            property.Value = ProcessFieldValue(reader, fieldIndex, currentProperty, ref dataObject);
 
                             if (forInformationView)
                             {
@@ -6855,6 +7237,8 @@ ORDER BY us.SearchRank,
                 AllowPDFOnly = reader.GetBoolean(reader.GetOrdinal("AllowPDFOutputOnly")),
                 AllowExcelOutputOnly = reader.GetBoolean(reader.GetOrdinal("AllowExcelOutputOnly")),
                 ProduceOneOutputPerRow = reader.GetBoolean(reader.GetOrdinal("ProduceOneOutputPerRow")),
+                // Include reads (tvf_MergeDocumentForItemInclude) do not return IsActive; treat as active.
+                IsActive = reader.GetBooleanSafe("IsActive", true),
                 Items = new List<MergeDocumentItem>() // Initialize child items
             };
         }
@@ -7230,6 +7614,37 @@ ORDER BY us.SearchRank,
             }
         }
 
+        /// <summary>
+        /// Validates a freshly read DataObject once every HoBT has been read.
+        /// CYB-462: validating each HoBT straight after its own read meant the main HoBT's
+        /// validation query ran before the secondary HoBT properties existed, so its results
+        /// for them (e.g. tvf_QuotesValidate locking Quote_ExtendedInfo.DescriptionOfWorks once
+        /// a quote is Sent) were dropped on load and only applied after the first edit.
+        /// The HoBTs still validate in read order (main first) and their results apply in that
+        /// order, so each HoBT's own results land exactly as before.
+        /// </summary>
+        private static async Task<DataObject> ValidateReadDataObject(SqlConnection connection, DataObject dataObject, EntityType entityType, bool ForInformationView)
+        {
+            try
+            {
+                var hobts = entityType.EntityHoBTs.OrderByDescending(h => h.IsMainHoBT).ToList();
+                List<Types.ValidationResult> validationResults = new();
+
+                foreach (var hobt in hobts)
+                {
+                    validationResults.AddRange(await Validation.RunObjectValidation(entityType, dataObject, connection, hobt));
+                }
+
+                Validation.ApplyValidationResults(ref dataObject, true, entityType, validationResults, hobts.Select(h => h.Guid).ToList(), ForInformationView);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Exception occured while running object validation : " + ex.Message);
+            }
+
+            return dataObject;
+        }
+
         private async Task<DataObject> ReadEntityHoBT(SqlConnection connection, DataObject dataObject, EntityType entityType, EntityHoBT hobt, Guid requestQueryGuid, Guid requestGuid, bool ForInformationView, Dictionary<string, Google.Protobuf.WellKnownTypes.Any>? transientVirtualProperties = null)
         {
             try
@@ -7305,7 +7720,7 @@ ORDER BY us.SearchRank,
                                 }
 
                                 /*
-                                    Ensure all metadata-defined properties exist on the DataObject before validation runs.
+                                    Ensure all metadata-defined properties exist on the DataObject before validation runs in DataObjectGet.
                                     This is essential for virtual properties because they are not returned by the HoBT read query.
                                 */
                                 await EnsureAllEntityPropertiesMaterialisedAsync(
@@ -7337,16 +7752,7 @@ ORDER BY us.SearchRank,
                         throw outer;
                     }
 
-                    try
-                    {
-                        // Get the validation results from the temp table.
-                        List<Types.ValidationResult> validationResults = await Validation.RunObjectValidation(entityType, dataObject, connection, hobt);
-                        Validation.ApplyValidationResults(ref dataObject, true, entityType, validationResults, hobt.Guid, ForInformationView);
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new Exception("Exception occured while running object validation : " + ex.Message);
-                    }
+                    // Validation runs in ValidateReadDataObject once every HoBT has been read (CYB-462).
                 }
                 else
                 {
@@ -7604,6 +8010,258 @@ ORDER BY us.SearchRank,
             return rowVersionValid;
         }
 
+
+        /// <summary>
+        /// Queries SJob.tvf_AssetsCheckForDuplicate to return possible duplicates
+        /// using the below parameters
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="number"></param>
+        /// <param name="addressLine1"></param>
+        /// <param name="addressLine2"></param>
+        /// <param name="addressLine3"></param>
+        /// <param name="town"></param>
+        /// <param name="countyGuid"></param>
+        /// <param name="postcode"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public async Task<List<DuplicateAssets>> DuplicateAssetsGet(
+        string name,
+        string number,
+        string addressLine1,
+        string addressLine2,
+        string addressLine3,
+        string town,
+        string countyGuid,
+        string postcode)
+        {
+            List<DuplicateAssets> result = new();
+            SqlConnection? connection = null;
+
+            try
+            {
+                connection = CreateConnection();
+                await OpenConnectionAsync(connection);
+
+                await connection.ExecuteInTransaction(async transaction =>
+                {
+                    const string query = @"
+                SELECT *
+                FROM SJob.tvf_AssetsCheckForDuplicate
+                    (
+                         @Name,
+                         @Number,
+                         @AddressLine1,
+                         @AddressLine2,
+                         @AddressLine3,
+                         @Town,
+                         @CountryGuid,
+                         @Postcode
+                    ) ORDER BY MatchScore DESC;";
+
+                    await using var command = QueryBuilder.CreateCommand(query, connection, transaction);
+
+                    command.AddParameters(new[]
+                    {
+                        new SqlParameter("@Name", SqlDbType.NVarChar) { Value = (object?)name ?? DBNull.Value },
+                        new SqlParameter("@Number", SqlDbType.NVarChar) { Value = (object?)number ?? DBNull.Value },
+                        new SqlParameter("@AddressLine1", SqlDbType.NVarChar) { Value = (object?)addressLine1 ?? DBNull.Value },
+                        new SqlParameter("@AddressLine2", SqlDbType.NVarChar) { Value = (object?)addressLine2 ?? DBNull.Value },
+                        new SqlParameter("@AddressLine3", SqlDbType.NVarChar) { Value = (object?)addressLine3 ?? DBNull.Value },
+                        new SqlParameter("@Town", SqlDbType.NVarChar) { Value = (object?)town ?? DBNull.Value },
+                        new SqlParameter("@CountryGuid", SqlDbType.NVarChar) { Value = (object?)countyGuid ?? DBNull.Value },
+                        new SqlParameter("@Postcode", SqlDbType.NVarChar) { Value = (object?)postcode ?? DBNull.Value }
+                    });
+
+                    try
+                    {
+                        await using var reader = await command.ExecuteReaderAsync();
+
+                        while (await reader.ReadAsync())
+                        {
+                            result.Add(new DuplicateAssets
+                            {
+                                Guid = reader.GetGuid("Guid").ToString(),
+                                FormattedAddress = reader.GetStringOrNull("FormattedAddress")
+                             
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Data["SQL"] = BuildSqlWithParams(
+                            command.CommandText,
+                            command.Parameters.Cast<SqlParameter>().ToArray());
+
+                        throw new Exception($"Exception occurred getting duplicate Assets: {ex.Message}", ex);
+                    }
+                });
+            }
+            finally
+            {
+                if (connection != null && connection.State != ConnectionState.Closed)
+                {
+                    connection.Close();
+                }
+
+                connection?.Dispose();
+            }
+
+            return result;
+        }
+
+
+        /// <summary>
+        /// Queries AccountsCheckForDuplicate to return possible duplicates
+        /// using the below parameters
+        /// </summary>
+        /// <param name="DisplayName"></param>
+        /// <returns><List<DuplicateAccounts></returns>
+        /// <exception cref="Exception"></exception>
+        public async Task<List<DuplicateAccounts>> DuplicateAccountsGet(string DisplayName)
+        {
+            List<DuplicateAccounts> result = new();
+            SqlConnection? connection = null;
+
+            try
+            {
+                connection = CreateConnection();
+                await OpenConnectionAsync(connection);
+
+                await connection.ExecuteInTransaction(async transaction =>
+                {
+                    const string query = @"
+                    SELECT *
+                    FROM SCrm.tvf_AccountsCheckForDuplicate
+                    (
+                         @DisplayName
+                    ) ORDER BY MatchScore DESC;";
+
+                    await using var command = QueryBuilder.CreateCommand(query, connection, transaction);
+
+                    command.AddParameters(new[]
+                    {
+                        new SqlParameter("@DisplayName", SqlDbType.NVarChar) { Value = (object?)DisplayName ?? DBNull.Value },
+                     
+                    });
+
+                    try
+                    {
+                        await using var reader = await command.ExecuteReaderAsync();
+
+                        while (await reader.ReadAsync())
+                        {
+                            result.Add(new DuplicateAccounts
+                            {
+                                Guid = reader.GetGuid("Guid").ToString(),
+                                DisplayName = reader.GetStringOrNull("DisplayName")
+
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Data["SQL"] = BuildSqlWithParams(
+                            command.CommandText,
+                            command.Parameters.Cast<SqlParameter>().ToArray());
+
+                        throw new Exception($"Exception occurred getting Duplicate Accounts: {ex.Message}", ex);
+                    }
+                });
+            }
+            finally
+            {
+                if (connection != null && connection.State != ConnectionState.Closed)
+                {
+                    connection.Close();
+                }
+
+                connection?.Dispose();
+            }
+
+            return result;
+        }
+
+
+
+        /// <summary>
+        /// Queries AccountsCheckForDuplicate to return possible duplicates
+        /// using the below parameters
+        /// </summary>
+        /// <param name="DisplayName"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        public async Task<List<DuplicateContacts>> DuplicateContactsGet(string DisplayName, string FirstName, string Surname, string Initials)
+        {
+            List<DuplicateContacts> result = new();
+            SqlConnection? connection = null;
+
+            try
+            {
+                connection = CreateConnection();
+                await OpenConnectionAsync(connection);
+
+                await connection.ExecuteInTransaction(async transaction =>
+                {
+                    const string query = @"
+                    SELECT *
+                    FROM SCrm.tvf_ContactsCheckForDuplicate
+                    (
+                         @DisplayName,
+                         @FirstName,
+                         @Surname,
+                         @Initials
+                    ) ORDER BY MatchScore DESC;";
+
+                    await using var command = QueryBuilder.CreateCommand(query, connection, transaction);
+
+                    command.AddParameters(new[]
+                    {
+                        new SqlParameter("@DisplayName", SqlDbType.NVarChar) { Value = (object?)DisplayName ?? DBNull.Value },
+                        new SqlParameter("@FirstName", SqlDbType.NVarChar) { Value = (object?)FirstName ?? DBNull.Value },
+                        new SqlParameter("@Surname", SqlDbType.NVarChar) { Value = (object?)Surname ?? DBNull.Value },
+                        new SqlParameter("@Initials", SqlDbType.NVarChar) { Value = (object?)Initials ?? DBNull.Value },
+
+                    });
+
+                    try
+                    {
+                        await using var reader = await command.ExecuteReaderAsync();
+
+                        while (await reader.ReadAsync())
+                        {
+                            result.Add(new DuplicateContacts
+                            {
+                                Guid = reader.GetGuid("Guid").ToString(),
+                                DisplayName = reader.GetStringOrNull("DisplayName")
+
+                            });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ex.Data["SQL"] = BuildSqlWithParams(
+                            command.CommandText,
+                            command.Parameters.Cast<SqlParameter>().ToArray());
+
+                        throw new Exception($"Exception occurred getting Duplicate Contacts: {ex.Message}", ex);
+                    }
+                });
+            }
+            finally
+            {
+                if (connection != null && connection.State != ConnectionState.Closed)
+                {
+                    connection.Close();
+                }
+
+                connection?.Dispose();
+            }
+
+            return result;
+        }
+
+
         /*
          * [OE] - [CBLD-259]
          *
@@ -7727,12 +8385,28 @@ ORDER BY us.SearchRank,
         public string ErrorReturned { get; set; } = string.Empty;
     }
 
+    public sealed class ActivityFeeAmendmentEnsureRow
+    {
+        public Guid FeeAmendmentGuid { get; set; }
+        public Guid JobGuid { get; set; }
+        public Guid JobEntityTypeGuid { get; set; }
+        public bool WasCreated { get; set; }
+        public string ErrorReturned { get; set; } = string.Empty;
+    }
+
+    public sealed class TransactionRejectBatchedResultRow
+    {
+        public bool Success { get; set; }
+        public string ErrorReturned { get; set; } = string.Empty;
+    }
+
     public sealed class InvoiceScheduleConfigurationTotalsRow
     {
         public decimal MonthlyTotalAmount { get; set; }
         public decimal PercentageTotalPercentage { get; set; }
         public decimal PercentageTotalAmount { get; set; }
         public decimal ScheduleAmount { get; set; }
+        public string? Frequency { get; set; }
     }
     public sealed record JobInvoiceScheduleRow(
     long Id,

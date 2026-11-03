@@ -32,8 +32,7 @@ builder.Services.AddScoped(sp =>
     };
 });
 
-// Register the Telerik services.
-builder.Services.AddTelerikBlazor();
+// CYB-537: AddTelerikBlazor() removed - no component in the solution uses Telerik.Blazor anymore.
 builder.Services.AddScoped<CymBuildModalService>();
 builder.Services.AddScoped<Concursus.Components.Shared.Modals.CymBuildModalService>();
 builder.Services.AddSingleton<UserService>();
@@ -48,7 +47,6 @@ builder.Services.AddScoped<IndexedDbHelper>();
 builder.Services.AddScoped<GenericEntityService>();
 builder.Services.AddScoped<IndexedDbService>();
 builder.Services.AddScoped<MemoryOverlayService>();
-builder.Services.AddScoped<AiErrorReporter>();
 builder.Services.AddScoped<UserInteractionTrackerService>();
 builder.Services.AddScoped<DeveloperInspectorState>();
 var env = builder.Configuration.GetValue<string>("Environment:Type");
@@ -83,6 +81,11 @@ builder.Services
         o.Address = new Uri(builder.Configuration["ShoreAPI:Url"]);
     })
     .ConfigurePrimaryHttpMessageHandler(() => new GrpcWebHandler(new HttpClientHandler()))
+    .ConfigureChannel(options =>
+    {
+        options.MaxReceiveMessageSize = 16 * 1024 * 1024;
+        options.MaxSendMessageSize = 16 * 1024 * 1024;
+    })
     .AddHttpMessageHandler(sp => sp.GetRequiredService<AuthorizationMessageHandler>()
         .ConfigureHandler(
             new[] { builder.Configuration["ShoreAPI:Url"] },

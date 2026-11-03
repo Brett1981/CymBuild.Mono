@@ -9,9 +9,9 @@ using System.Text.RegularExpressions;
 namespace Concursus.EF;
 
 /// <summary>
-/// Installs only the source-controlled SMigration prerequisites required to
-/// start the Schema and Metadata Migration workbenches. Application schema and
-/// business data are outside this repository's scope.
+/// Installs the source-controlled SMigration prerequisites and SCore schema-lifecycle
+/// procedures required to run the Schema and Metadata Migration workbenches.
+/// Application business schema and business data are outside this repository's scope.
 /// </summary>
 public sealed class MigrationBootstrapRepository
 {
@@ -32,16 +32,46 @@ public sealed class MigrationBootstrapRepository
         BootstrapObjectDefinition.Table(50, "SMigration", "Schema_ExecutionLog"),
         BootstrapObjectDefinition.Table(60, "SMigration", "Schema_RunSelections"),
         BootstrapObjectDefinition.Table(70, "SMigration", "Schema_ExcludedObjects"),
+        BootstrapObjectDefinition.Table(75, "SMigration", "Schema_DeploymentAttempts"),
+        BootstrapObjectDefinition.Table(76, "SMigration", "Schema_DeploymentObjectCheckpoints"),
         BootstrapObjectDefinition.Procedure(80, "SMigration", "SchemaDataObject_Ensure"),
         BootstrapObjectDefinition.Procedure(90, "SMigration", "SchemaDeploymentPlan_Get"),
         BootstrapObjectDefinition.Procedure(100, "SMigration", "SchemaExcludedObject_Apply"),
-        BootstrapObjectDefinition.Procedure(110, "SMigration", "SchemaExcludedObjects_List")
+        BootstrapObjectDefinition.Procedure(110, "SMigration", "SchemaExcludedObjects_List"),
+        BootstrapObjectDefinition.Procedure(115, "SCore", "SCHEMABINDING"),
+        BootstrapObjectDefinition.Procedure(120, "SCore", "SchemaBindingApplySingleObject"),
+        BootstrapObjectDefinition.Procedure(130, "SCore", "RebuildRecordHistoryTriggers"),
+        BootstrapObjectDefinition.Procedure(140, "SCore", "PostDeploymentScript")
     ];
 
     private static readonly string[] SchemaBootstrapResources =
     [
+        $"{ResourcePrefix}.Schema.SMigration.SchemaWorkbench.Schema_Run.NotesWiden.sql",
         $"{ResourcePrefix}.Schema.SMigration.SchemaWorkbench.Bootstrap.sql",
-        $"{ResourcePrefix}.Schema.SMigration.SchemaExclusions.Bootstrap.sql"
+        $"{ResourcePrefix}.Schema.SMigration.SchemaExclusions.Bootstrap.sql",
+        $"{ResourcePrefix}.Schema.SMigration.SchemaR7D.ExecutionHardening.Bootstrap.sql",
+        $"{ResourcePrefix}.Schema.SCore.SCHEMABINDING.sql",
+        $"{ResourcePrefix}.Schema.SCore.SchemaBindingApplySingleObject.sql",
+        $"{ResourcePrefix}.Schema.SCore.RebuildRecordHistoryTriggers.sql",
+        $"{ResourcePrefix}.Schema.SCore.PostDeploymentScript.sql"
+    ];
+
+    // CYB-584: checked on every metadata bootstrap. A module is installed only when missing; one that
+    // exists with a different definition is reported in BootstrapResult.DivergentModules, never replaced.
+    private static readonly string[] MetadataAlwaysCheckedResources =
+    [
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataRunSelection_Clear.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataRunSelection_Upsert.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataRunSelection_AddDependencies.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataIgnoredRecord_Upsert.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataValidationIssueIgnore_Upsert.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataQuerySignature_Check.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataValidate_Run.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataApplyPreviewFingerprint_Get.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataApplyPreview_Accept.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataApplyPreview_Get.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataApply_Run.sql",
+        $"{ResourcePrefix}.Metadata.Procedures.SMigration.MetadataApply_VerifyConvergence.sql"
     ];
 
     private static readonly BootstrapObjectDefinition[] MetadataRequiredObjects =
@@ -56,6 +86,7 @@ public sealed class MigrationBootstrapRepository
         MetadataTable(120, "Metadata_IdentityMapIgnoredIssues"),
         MetadataTable(130, "Metadata_IdentityMapOverrides"),
         MetadataTable(140, "Metadata_IgnoredRecords"),
+        MetadataTable(145, "Metadata_ValidationIssueIgnores"),
         MetadataTable(150, "Metadata_Run"),
         MetadataTable(160, "Metadata_RunSelections"),
         MetadataTable(170, "Metadata_StagedRows"),
@@ -73,6 +104,7 @@ public sealed class MigrationBootstrapRepository
         MetadataProcedure(1080, "MetadataEntityTypeScope_Set"),
         MetadataProcedure(1090, "MetadataRunSelection_Clear"),
         MetadataProcedure(1100, "MetadataRunSelection_Upsert"),
+        MetadataProcedure(1105, "MetadataRunSelection_AddDependencies"),
         MetadataProcedure(1110, "MetadataIgnoredRecord_Upsert"),
         MetadataProcedure(1120, "MetadataIgnoredRecords_List"),
         MetadataProcedure(1130, "MetadataIdentityMapIssue_Upsert"),
@@ -82,11 +114,14 @@ public sealed class MigrationBootstrapRepository
         MetadataProcedure(1170, "MetadataStage_NormaliseDifferences"),
         MetadataProcedure(1180, "MetadataStage_NormaliseEnvironmentOnlyUpdates"),
         MetadataProcedure(1190, "MetadataStage_Run"),
+        MetadataProcedure(1195, "MetadataValidationIssueIgnore_Upsert"),
+        MetadataProcedure(1197, "MetadataQuerySignature_Check"),
         MetadataProcedure(1200, "MetadataValidate_Run"),
         MetadataProcedure(1210, "MetadataApplyPreviewFingerprint_Get"),
         MetadataProcedure(1220, "MetadataApplyPreview_Accept"),
         MetadataProcedure(1230, "MetadataApplyPreview_Get"),
-        MetadataProcedure(1240, "MetadataApply_Run")
+        MetadataProcedure(1240, "MetadataApply_Run"),
+        MetadataProcedure(1245, "MetadataApply_VerifyConvergence")
     ];
 
     private readonly Assembly _assembly;
@@ -127,7 +162,8 @@ public sealed class MigrationBootstrapRepository
         IReadOnlyList<string> MissingBefore,
         IReadOnlyList<string> MissingAfter,
         IReadOnlyList<string> InstalledObjects,
-        IReadOnlyDictionary<string, string> ScriptSha256);
+        IReadOnlyDictionary<string, string> ScriptSha256,
+        IReadOnlyList<string> DivergentModules);
 
     public Task<BootstrapResult> EnsureSchemaWorkbenchAsync(
         string serverName,
@@ -140,9 +176,7 @@ public sealed class MigrationBootstrapRepository
             databaseName,
             environmentName,
             SchemaRequiredObjects,
-            static missingObjects => missingObjects.Count == 0
-                ? []
-                : SchemaBootstrapResources,
+            static _ => SchemaBootstrapResources,
             cancellationToken);
 
     public Task<BootstrapResult> EnsureMetadataWorkbenchAsync(
@@ -159,6 +193,7 @@ public sealed class MigrationBootstrapRepository
             static missingObjects => missingObjects
                 .Select(definition => definition.ResourceName)
                 .Where(resourceName => !string.IsNullOrWhiteSpace(resourceName))
+                .Concat(MetadataAlwaysCheckedResources)
                 .Distinct(StringComparer.Ordinal)
                 .ToArray(),
             cancellationToken);
@@ -204,7 +239,9 @@ public sealed class MigrationBootstrapRepository
                 requiredObjects,
                 cancellationToken).ConfigureAwait(false);
 
-            if (missingBefore.Count > 0
+            var resources = resourceSelector(missingBefore);
+
+            if (resources.Count > 0
                 && IsLiveLikeEndpoint(environmentName, connection.DataSource, connection.Database)
                 && !_allowLiveBootstrap)
             {
@@ -214,7 +251,8 @@ public sealed class MigrationBootstrapRepository
             }
 
             var scriptHashes = new Dictionary<string, string>(StringComparer.Ordinal);
-            var resources = resourceSelector(missingBefore);
+            var lifecycleLock = new LifecycleLockState();
+            var divergentModules = new List<string>();
 
             foreach (var resourceName in resources)
             {
@@ -222,6 +260,8 @@ public sealed class MigrationBootstrapRepository
                     connection,
                     transaction,
                     resourceName,
+                    lifecycleLock,
+                    divergentModules,
                     cancellationToken).ConfigureAwait(false);
 
                 scriptHashes.Add(resourceName, scriptHash);
@@ -250,7 +290,8 @@ public sealed class MigrationBootstrapRepository
                 MissingBefore: missingBefore.Select(item => item.DisplayName).ToArray(),
                 MissingAfter: missingAfter.Select(item => item.DisplayName).ToArray(),
                 InstalledObjects: missingBefore.Select(item => item.DisplayName).ToArray(),
-                ScriptSha256: scriptHashes);
+                ScriptSha256: scriptHashes,
+                DivergentModules: divergentModules.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -414,10 +455,101 @@ public sealed class MigrationBootstrapRepository
         return missingObjects;
     }
 
+    private sealed class LifecycleLockState
+    {
+        public bool Held { get; set; }
+    }
+
+    // A module whose definition already matches the script is left alone, so a bootstrap never
+    // replaces an unchanged procedure that a running lifecycle step is executing.
+    private static async Task<bool> IsModuleCurrentAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string moduleName,
+        string batch,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT sm.definition
+            FROM sys.sql_modules AS sm
+            WHERE sm.object_id = OBJECT_ID(@ModuleName)
+              AND sm.uses_ansi_nulls = 1
+              AND sm.uses_quoted_identifier = 1;
+            """;
+
+        await using var command = new SqlCommand(sql, connection, transaction)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+        command.Parameters.Add(new SqlParameter("@ModuleName", SqlDbType.NVarChar, 300) { Value = moduleName });
+
+        var definition = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        return definition is not null
+            && string.Equals(
+                SchemaLifecycleLock.NormalizeModuleDefinition(definition),
+                SchemaLifecycleLock.NormalizeModuleDefinition(batch),
+                StringComparison.Ordinal);
+    }
+
+    // Held until the bootstrap transaction ends; waits for running lifecycle steps (Shared holders).
+    private static async Task AcquireLifecycleLockAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            DECLARE @LockResult INT;
+
+            EXEC @LockResult = sys.sp_getapplock
+                @Resource = @Resource,
+                @LockMode = N'Exclusive',
+                @LockOwner = N'Transaction',
+                @LockTimeout = @LockTimeout;
+
+            SELECT @LockResult;
+            """;
+
+        await using var command = new SqlCommand(sql, connection, transaction)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = SchemaLifecycleLock.BootstrapWaitMilliseconds / 1000 + 30
+        };
+        command.Parameters.Add(new SqlParameter("@Resource", SqlDbType.NVarChar, 255) { Value = SchemaLifecycleLock.Resource });
+        command.Parameters.Add(new SqlParameter("@LockTimeout", SqlDbType.Int) { Value = SchemaLifecycleLock.BootstrapWaitMilliseconds });
+
+        var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+        if (result < 0)
+        {
+            throw new TimeoutException(
+                $"A schema pre/post-deployment step is running on [{connection.Database}], so its lifecycle procedures cannot be replaced now. " +
+                $"Try again when it finishes (lock {SchemaLifecycleLock.Resource}, SQL result {result}).");
+        }
+    }
+
+    // CYB-584: true when the module exists at all, whatever its definition.
+    private static async Task<bool> ModuleExistsAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        string moduleName,
+        CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand("SELECT OBJECT_ID(@ModuleName);", connection, transaction)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+        command.Parameters.Add(new SqlParameter("@ModuleName", SqlDbType.NVarChar, 300) { Value = moduleName });
+
+        return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not (null or DBNull);
+    }
+
     private async Task<string> ExecuteEmbeddedSqlScriptAsync(
         SqlConnection connection,
         SqlTransaction transaction,
         string resourceName,
+        LifecycleLockState lifecycleLock,
+        List<string> divergentModules,
         CancellationToken cancellationToken)
     {
         await using var resourceStream = _assembly.GetManifestResourceStream(resourceName)
@@ -439,6 +571,32 @@ public sealed class MigrationBootstrapRepository
 
         for (var batchIndex = 0; batchIndex < batches.Count; batchIndex++)
         {
+            var moduleName = SchemaLifecycleLock.TryGetModuleName(batches[batchIndex]);
+            if (moduleName is not null)
+            {
+                if (await IsModuleCurrentAsync(connection, transaction, moduleName, batches[batchIndex], cancellationToken).ConfigureAwait(false))
+                {
+                    continue;
+                }
+
+                // CYB-584: install a missing module, but never replace an existing one. The build
+                // cannot tell whether the database's copy is older or newer: on 2026-10-16 a
+                // workbench built without CYB-584 replaced CymBuild_QA's newer MetadataValidate_Run
+                // and MetadataApply_Run mid-deployment. Updates reach a database through the schema
+                // deployment; a different copy is only reported.
+                if (await ModuleExistsAsync(connection, transaction, moduleName, cancellationToken).ConfigureAwait(false))
+                {
+                    divergentModules.Add(moduleName);
+                    continue;
+                }
+
+                if (!lifecycleLock.Held)
+                {
+                    await AcquireLifecycleLockAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+                    lifecycleLock.Held = true;
+                }
+            }
+
             await using var command = new SqlCommand(batches[batchIndex], connection, transaction)
             {
                 CommandType = CommandType.Text,

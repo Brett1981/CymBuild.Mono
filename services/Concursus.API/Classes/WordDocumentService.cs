@@ -12,22 +12,30 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Graph;
 using System.Data;
 using System.Security.Cryptography;
-using Telerik.Windows.Documents.Flow.FormatProviders.Docx;
-using Telerik.Windows.Documents.Flow.Model;
-using Telerik.Windows.Documents.Spreadsheet.FormatProviders.OpenXml.Xlsx;
+using OpenXmlPowerTools = Codeuctivity.OpenXmlPowerTools;
+using OpenXmlDocumentBuilder = Codeuctivity.OpenXmlPowerTools.DocumentBuilder.DocumentBuilder;
+using OpenXmlDocumentSource = Codeuctivity.OpenXmlPowerTools.DocumentBuilder.Source;
 using A = DocumentFormat.OpenXml.Drawing;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
-using Footer = DocumentFormat.OpenXml.Wordprocessing.Footer;
-using Header = DocumentFormat.OpenXml.Wordprocessing.Header;
 using Paragraph = DocumentFormat.OpenXml.Wordprocessing.Paragraph;
 using PIC = DocumentFormat.OpenXml.Drawing.Pictures;
 using Run = DocumentFormat.OpenXml.Wordprocessing.Run;
 using Table = DocumentFormat.OpenXml.Wordprocessing.Table;
 using TableCell = DocumentFormat.OpenXml.Wordprocessing.TableCell;
 using TableRow = DocumentFormat.OpenXml.Wordprocessing.TableRow;
-using TelerikParagraph = Telerik.Windows.Documents.Flow.Model.Paragraph;
-using TelerikRun = Telerik.Windows.Documents.Flow.Model.Run;
-using TelerikTable = Telerik.Windows.Documents.Flow.Model.Table;
+// CYB-537: narrow aliases instead of a blanket "using DocumentFormat.OpenXml.Spreadsheet" -
+// that namespace has several names (Text, Drawing, TableStyle, ...) that collide with
+// Wordprocessing types already used unqualified throughout this file.
+using XlsxCell = DocumentFormat.OpenXml.Spreadsheet.Cell;
+using XlsxCellValues = DocumentFormat.OpenXml.Spreadsheet.CellValues;
+using XlsxInlineString = DocumentFormat.OpenXml.Spreadsheet.InlineString;
+using XlsxRow = DocumentFormat.OpenXml.Spreadsheet.Row;
+using XlsxSheet = DocumentFormat.OpenXml.Spreadsheet.Sheet;
+using XlsxSheetData = DocumentFormat.OpenXml.Spreadsheet.SheetData;
+using XlsxSheets = DocumentFormat.OpenXml.Spreadsheet.Sheets;
+using XlsxText = DocumentFormat.OpenXml.Spreadsheet.Text;
+using XlsxWorkbook = DocumentFormat.OpenXml.Spreadsheet.Workbook;
+using XlsxWorksheet = DocumentFormat.OpenXml.Spreadsheet.Worksheet;
 
 namespace Concursus.API.Classes
 {
@@ -52,6 +60,23 @@ namespace Concursus.API.Classes
         { Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56"), "Quote" },
         { Guid.Parse("63542427-46ab-4078-abd1-1d583c24315c"), "Jobs" }
     };
+
+        // CYB-323: the Fire Engineering Fee Proposal's own MergeDocument.Guid. Used to isolate
+        // its Quote-Consultant signature resolution (see Step 6 below) so no other Quote-type
+        // merge document's signature behaviour changes.
+        private static readonly Guid FireEngineeringFeeProposalMergeDocumentGuid =
+            Guid.Parse("c26adae4-cbd1-44a6-876a-1f51d7733ae6");
+
+        /// <summary>
+        /// CYB-323: true only for the Fire Engineering Fee Proposal's own MergeDocument.
+        /// Pulled out as a small, pure, independently-testable check so the signature-routing
+        /// decision in Step 6 can be verified without exercising the rest of
+        /// DownloadAndModifyDocumentWithMergeDocument (SharePoint/Graph/SQL).
+        /// </summary>
+        internal static bool IsFireEngineeringFeeProposalDocument(string mergeDocumentGuid)
+        {
+            return Functions.ParseAndReturnEmptyGuidIfInvalid(mergeDocumentGuid) == FireEngineeringFeeProposalMergeDocumentGuid;
+        }
 
         private static HashSet<uint> _drawingElementIds = new HashSet<uint>();
         private static GraphServiceClient graphServiceClient;
@@ -232,6 +257,9 @@ namespace Concursus.API.Classes
                         documentContent = memoryStream.ToArray();
                     }
 
+                    var headerFooterRequirements =
+                        WordDocumentPackageValidator.CaptureHeaderFooterRequirements(documentContent);
+
                     Console.WriteLine("[INFO] Processing all includes before modifying the main document.");
 
                     // Step 2: Process Includes First
@@ -357,7 +385,14 @@ namespace Concursus.API.Classes
                                     break;
 
                                 case "Quote":
-                                    signatureInfo = await efCore.GetSignatoryInfo(Guid.Empty, Guid.Parse(recordGuid), Guid.Empty);
+                                    // CYB-323: the Fire Engineering Fee Proposal needs the Quote's own
+                                    // Consultant signature, resolved before any Job exists. Isolated to
+                                    // this one MergeDocument via GetQuoteConsultantSignatoryInfo - every
+                                    // other Quote-type merge document keeps using the existing
+                                    // GetSignatoryInfo/GetJobSignatoryInfo path unchanged.
+                                    signatureInfo = IsFireEngineeringFeeProposalDocument(mergeDocument.Guid)
+                                        ? await efCore.GetQuoteConsultantSignatoryInfo(Guid.Parse(recordGuid))
+                                        : await efCore.GetSignatoryInfo(Guid.Empty, Guid.Parse(recordGuid), Guid.Empty);
                                     break;
 
                                 case "Jobs":
@@ -382,6 +417,7 @@ namespace Concursus.API.Classes
                                         Console.WriteLine($"[INFO] Processing table content controls in the main document. with RECORD GUID: {recordGuid}");
                                         foreach (var mergeItem in SignatureMergeItems)
                                         {
+                                            bool signatureInserted = false;
                                             foreach (var signature in signatureInfo)
                                             {
                                                 Console.WriteLine($"[INFO] Signature Image? {signature.Signature}");
@@ -390,11 +426,19 @@ namespace Concursus.API.Classes
                                                     Console.WriteLine($"[INFO] Signature image found. Replacing {mergeItem.BookmarkName} bookmark...");
                                                     await InsertSignatureImageAtContentControlExtended(wordDoc, mergeItem.BookmarkName, signature.Signature);
                                                     Console.WriteLine("[SUCCESS] Signature image replaced in main document.");
+                                                    signatureInserted = true;
                                                 }
                                                 else
                                                 {
                                                     Console.WriteLine("[INFO] No valid signature image found. Skipping signature replacement.");
                                                 }
+                                            }
+
+                                            // CYB-323: the Fee Proposal's consultant signature box is removed when
+                                            // there is no image, rather than left as an empty line.
+                                            if (!signatureInserted && IsFireEngineeringFeeProposalDocument(mergeDocument.Guid))
+                                            {
+                                                await InsertSignatureImageAtContentControlExtended(wordDoc, mergeItem.BookmarkName, null);
                                             }
                                         }
                                     }
@@ -412,6 +456,38 @@ namespace Concursus.API.Classes
                     catch (Exception ex)
                     {
                         throw;
+                    }
+
+                    // Step 6.5: CYB-323 - Remove gated-out "Conditional Row" table rows.
+                    // Wholly new item type/step, isolated from the "Includes" splice pipeline
+                    // above (Step 2) - see SCore.MergeDocumentItemTypes "Conditional Row" and
+                    // ShouldIncludeConditionalRowAsync for why this is a separate mechanism.
+                    // No existing merge document has items of this type, so this step is a
+                    // no-op for every document except the Fire Engineering Fee Proposal.
+                    var conditionalRowItems = mergeDocument.Items.Where(m => m.MergeDocumentItemType == "Conditional Row").ToList();
+                    if (conditionalRowItems.Count > 0)
+                    {
+                        var conditionalRowResult = await ProcessConditionalRowsAsync(efCore, documentContent, conditionalRowItems, recordGuid);
+                        documentContent = conditionalRowResult.DocumentContent;
+
+                        // Kept rows' «{Bookmark}_Fee»/«{Bookmark}_Deliverables» and the stage
+                        // subtotals are resolved by the ordinary merge-field pass in Step 7.
+                        mergeData = (mergeData ?? new List<Dictionary<string, string>>())
+                            .Concat(conditionalRowResult.MergeFields)
+                            .ToList();
+                    }
+
+                    // CYB-323: issue number and generation date for the Fee Proposal's cover page.
+                    if (IsFireEngineeringFeeProposalDocument(mergeDocument.Guid))
+                    {
+                        string revisionNumber = mergeData?
+                            .FirstOrDefault(f => f.TryGetValue("Name", out var name) &&
+                                                 string.Equals(name, "RevisionNumber", StringComparison.OrdinalIgnoreCase))?
+                            .GetValueOrDefault("Value");
+
+                        mergeData = (mergeData ?? new List<Dictionary<string, string>>())
+                            .Concat(ConditionalRowMergeEvaluator.BuildDocumentMergeFields(revisionNumber, GetUkToday()))
+                            .ToList();
                     }
 
                     // Step 7: Process Merge Fields
@@ -440,10 +516,12 @@ namespace Concursus.API.Classes
                     //    documentContent = finalCheckStream.ToArray();
                     //}
 
-                    // Step 8: Validate document using OpenXML Validation
-                    Console.WriteLine("[INFO] Validating document structure...");
-                    //ValidateDocument(documentContent); // Throws exception if validation fails
-                    Console.WriteLine("[SUCCESS] Document is valid.");
+                    // Step 8: Validate the package relationships and ensure that
+                    // required first/default/even header and footer content from
+                    // the source template survived include assembly.
+                    Console.WriteLine("[INFO] Validating document header/footer relationships...");
+                    WordDocumentPackageValidator.Validate(documentContent, headerFooterRequirements);
+                    Console.WriteLine("[SUCCESS] Document header/footer relationships are valid.");
 
                     // Step 9: Validate documentContent Before Upload
                     if (documentContent == null || documentContent.Length == 0)
@@ -491,7 +569,6 @@ namespace Concursus.API.Classes
                         Console.WriteLine("[SUCCESS] All include bookmarks were found and processed.");
                     }
 
-                    return uploadResponse;
                     return uploadResponse;
                 }
             }
@@ -1224,6 +1301,9 @@ namespace Concursus.API.Classes
             var processedIncludes = new Dictionary<string, byte[]>(); // Store processed include documents
             var unprocessedItems = includeMergeItems.Where(include => !processedIncludes.ContainsKey(include.Guid)).ToList();
 
+            var headerFooterRequirements =
+                WordDocumentPackageValidator.CaptureHeaderFooterRequirements(parentDocumentContent);
+
             Console.WriteLine("[INFO] Fully processing all includes before inserting them.");
 
             // **Step 1: Process Each Include One by One**
@@ -1249,25 +1329,16 @@ namespace Concursus.API.Classes
                     includeStream,
                     parentDocumentContent
                 );
-                // Use expandable MemoryStream here
-                using (var checkStream = new MemoryStream())
-                {
-                    // Make the stream expandable by writing the bytes into an empty MemoryStream
-                    checkStream.Write(parentDocumentContent, 0, parentDocumentContent.Length);
-                    checkStream.Position = 0;
 
-                    using (var wordDoc = WordprocessingDocument.Open(checkStream, true))
-                    {
-                        VerifyHeaderFooterExistence(wordDoc.MainDocumentPart);
-                        wordDoc.MainDocumentPart.Document.Save();
-                    }
+                // Do not manufacture empty header/footer parts. Validate that
+                // DocumentBuilder preserved the source template relationships
+                // and required content before continuing.
+                WordDocumentPackageValidator.Validate(parentDocumentContent, headerFooterRequirements);
 
-                    // IMPORTANT: carry forward the updated bytes
-                    parentDocumentContent = checkStream.ToArray();
-                }
                 // **Step 3: Save and Reload the Document after Each Insert**
                 Console.WriteLine($"[INFO] Saving and reloading main document after inserting '{include.BookmarkName}'...");
                 parentDocumentContent = await ReloadMainDocument(parentDocumentContent);
+                WordDocumentPackageValidator.Validate(parentDocumentContent, headerFooterRequirements);
 
                 //// **Step 4: Verify that the Bookmark Still Exists After Reload**
                 //Console.WriteLine($"[DEBUG] Rechecking bookmark '{include.BookmarkName}' after reload...");
@@ -2238,66 +2309,110 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
             }
         }
 
-        private async Task<Stream> ConvertWordToExcel(Stream documentStream)
+        // internal (not private) so it can be unit-tested directly - it has no dependency on
+        // DB/SharePoint/Graph, matching the existing IsFireEngineeringFeeProposalDocument/
+        // RemoveTableRowAtBookmark pattern for pure logic in this class.
+        internal static async Task<Stream> ConvertWordToExcel(Stream documentStream)
         {
-            // 1. Read tables from the Word docx stream (Telerik)
-            List<List<List<string>>> tables = ExtractTablesFromWord_Telerik(documentStream);
+            // 1. Read tables from the Word docx stream
+            List<List<List<string>>> tables = ExtractTablesFromWord(documentStream);
 
-            // 2. Create an Excel workbook/worksheet (Telerik)
-            var workbook = new Telerik.Windows.Documents.Spreadsheet.Model.Workbook();
-            var worksheet = workbook.Worksheets.Add();
-
-            int rowNumber = 0;
-
-            foreach (var table in tables)
+            // 2. Write a plain SpreadsheetML workbook. No formulas/styles are needed here, so this
+            // uses DocumentFormat.OpenXml directly (already a direct dependency of this project)
+            // rather than pulling in a separate Excel-writing library.
+            var excelStream = new MemoryStream();
+            using (var spreadsheet = SpreadsheetDocument.Create(excelStream, SpreadsheetDocumentType.Workbook))
             {
-                foreach (var row in table)
+                var workbookPart = spreadsheet.AddWorkbookPart();
+                workbookPart.Workbook = new XlsxWorkbook();
+
+                var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+                var sheetData = new XlsxSheetData();
+                worksheetPart.Worksheet = new XlsxWorksheet(sheetData);
+
+                var sheets = workbookPart.Workbook.AppendChild(new XlsxSheets());
+                sheets.AppendChild(new XlsxSheet
                 {
-                    for (int col = 0; col < row.Count; col++)
+                    Id = workbookPart.GetIdOfPart(worksheetPart),
+                    SheetId = 1,
+                    Name = "Sheet1"
+                });
+
+                uint rowIndex = 1;
+                foreach (var table in tables)
+                {
+                    foreach (var rowValues in table)
                     {
-                        worksheet.Cells[rowNumber, col].SetValue(row[col]);
+                        var row = new XlsxRow { RowIndex = rowIndex };
+                        for (int col = 0; col < rowValues.Count; col++)
+                        {
+                            row.AppendChild(new XlsxCell
+                            {
+                                CellReference = $"{GetExcelColumnName(col)}{rowIndex}",
+                                DataType = XlsxCellValues.InlineString,
+                                InlineString = new XlsxInlineString
+                                {
+                                    Text = new XlsxText(rowValues[col] ?? string.Empty)
+                                }
+                            });
+                        }
+                        sheetData.AppendChild(row);
+                        rowIndex++;
                     }
-                    rowNumber++;
+                    rowIndex++; // Add space between tables
                 }
-                rowNumber++; // Add space between tables
+
+                workbookPart.Workbook.Save();
             }
 
-            // 3. Export to XLSX stream
-            var formatProvider = new XlsxFormatProvider();
-            var excelStream = new MemoryStream();
-            formatProvider.Export(workbook, excelStream, TimeSpan.FromSeconds(30));
             excelStream.Position = 0;
             return excelStream;
         }
 
-        private List<List<List<string>>> ExtractTablesFromWord_Telerik(Stream documentStream)
+        internal static string GetExcelColumnName(int zeroBasedColumnIndex)
         {
-            var formatProvider = new DocxFormatProvider();
-            RadFlowDocument document = formatProvider.Import(documentStream, TimeSpan.FromSeconds(30));
+            var columnName = string.Empty;
+            var dividend = zeroBasedColumnIndex + 1;
 
+            while (dividend > 0)
+            {
+                var modulo = (dividend - 1) % 26;
+                columnName = (char)('A' + modulo) + columnName;
+                dividend = (dividend - modulo - 1) / 26;
+            }
+
+            return columnName;
+        }
+
+        internal static List<List<List<string>>> ExtractTablesFromWord(Stream documentStream)
+        {
             var tablesList = new List<List<List<string>>>();
 
-            foreach (var table in document.EnumerateChildrenOfType<TelerikTable>())
+            using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(documentStream, false))
             {
-                var tableRows = new List<List<string>>();
-                foreach (var row in table.Rows)
+                var tables = wordDoc.MainDocumentPart?.Document?.Body?.Elements<Table>() ?? Enumerable.Empty<Table>();
+
+                foreach (var table in tables)
                 {
-                    var cellValues = new List<string>();
-                    foreach (var cell in row.Cells)
+                    var tableRows = new List<List<string>>();
+                    foreach (var row in table.Elements<TableRow>())
                     {
-                        // The correct way: extract text from all paragraphs in the cell
-                        string cellText = string.Join(
-                            Environment.NewLine,
-                            cell.Blocks.OfType<TelerikParagraph>().Select(p =>
-                                string.Concat(p.Inlines.OfType<TelerikRun>().Select(r => r.Text))
-                            )
-                        );
-                        cellValues.Add(cellText);
+                        var cellValues = new List<string>();
+                        foreach (var cell in row.Elements<TableCell>())
+                        {
+                            // Extract text paragraph-by-paragraph (matches the previous Telerik
+                            // behaviour of joining each paragraph's text with a newline).
+                            string cellText = string.Join(
+                                Environment.NewLine,
+                                cell.Elements<Paragraph>().Select(p => p.InnerText));
+                            cellValues.Add(cellText);
+                        }
+                        tableRows.Add(cellValues);
                     }
-                    tableRows.Add(cellValues);
+                    tablesList.Add(tableRows);
                 }
-                tablesList.Add(tableRows);
             }
+
             return tablesList;
         }
 
@@ -2381,38 +2496,6 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                     return null;
                 }
             }
-        }
-
-        private List<List<string>> ExtractTablesFromWord(Stream documentStream)
-        {
-            List<List<string>> extractedTables = new List<List<string>>();
-
-            using (WordprocessingDocument wordDoc = WordprocessingDocument.Open(documentStream, false))
-            {
-                var tables = wordDoc.MainDocumentPart.Document.Body.Elements<Table>();
-
-                foreach (var table in tables)
-                {
-                    List<string> tableData = new List<string>();
-
-                    foreach (var row in table.Elements<TableRow>())
-                    {
-                        List<string> rowData = new List<string>();
-
-                        foreach (var cell in row.Elements<TableCell>())
-                        {
-                            string cellText = cell.InnerText.Trim();
-                            rowData.Add(cellText);
-                        }
-
-                        tableData.Add(string.Join(",", rowData)); // Convert row to CSV-like format
-                    }
-
-                    extractedTables.Add(tableData);
-                }
-            }
-
-            return extractedTables;
         }
 
         private async Task<List<ImageFileInfo>> GetImagesFromFolder(string driveId, string folderPath)
@@ -2558,14 +2641,17 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                     Console.WriteLine($"[SUCCESS] Found valid paragraph index {bookmarkIndex} for tag '{bookmarkName}'.");
 
                     // Step 4: Merge included document at the correct paragraph index
-                    var sources = new List<OpenXmlPowerTools.Source>
-            {
-                new OpenXmlPowerTools.Source(mainDocument, 0, bookmarkIndex, true),
-                new OpenXmlPowerTools.Source(includedDocument, true),
-                new OpenXmlPowerTools.Source(mainDocument, bookmarkIndex + 1, true)
+                    var sources = new List<OpenXmlDocumentSource>
+                    {
+                new OpenXmlDocumentSource(mainDocument, 0, bookmarkIndex, true),
+                // Included fragments inherit the parent template section. Keeping
+                // their sections allows their header/footer references to replace
+                // the fee proposal cover during DocumentBuilder assembly.
+                new OpenXmlDocumentSource(includedDocument, false),
+                new OpenXmlDocumentSource(mainDocument, bookmarkIndex + 1, true)
             };
 
-                    var mergedDocument = OpenXmlPowerTools.DocumentBuilder.BuildDocument(sources);
+                    var mergedDocument = OpenXmlDocumentBuilder.BuildDocument(sources);
                     Console.WriteLine($"[SUCCESS] Successfully inserted included document at bookmark '{bookmarkName}'.");
 
                     return mergedDocument.DocumentByteArray;
@@ -2770,6 +2856,12 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
     EF.Core efCore,
     int userId)
         {
+            if (include.Includes == null || include.Includes.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Required include '{include.BookmarkName}' does not define an included merge document.");
+            }
+
             foreach (var includedDocument in include.Includes)
             {
                 if (includedDocument == null || string.IsNullOrEmpty(includedDocument.Guid)) continue;
@@ -2817,7 +2909,8 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                 }
             }
 
-            return parentDocumentContent;
+            throw new InvalidOperationException(
+                $"Required include '{include.BookmarkName}' could not be resolved to an active merge document.");
         }
 
         private async Task<byte[]> ReloadMainDocument(byte[] documentContent)
@@ -3338,7 +3431,7 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
             }
         }
 
-        private BookmarkStart FindBookmarkInDocument(WordprocessingDocument wordDoc, string bookmarkName)
+        private static BookmarkStart FindBookmarkInDocument(WordprocessingDocument wordDoc, string bookmarkName)
         {
             // Search in the main document body.
             var bookmark = wordDoc.MainDocumentPart.Document.Body.Descendants<BookmarkStart>()
@@ -3372,6 +3465,318 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
             return null;
         }
 
+        /// <summary>
+        /// CYB-323: processes "Conditional Row" merge document items - for each item, removes
+        /// its bookmarked table row from the document unless an active quote item matches one
+        /// of its gating rules (SCore.MergeDocumentItemGatingProducts: product, optionally
+        /// restricted to a RIBA stage). An item with no gating rules is always kept (e.g. a
+        /// fixed line like PI insurance that isn't tied to a specific product), and so is an item
+        /// whose bookmark ends with "_KEEP" (its rules then only feed the fee/deliverables).
+        /// Also returns the merge fields kept rows and stage subtotals read - see
+        /// ConditionalRowMergeEvaluator.
+        /// Entirely separate from the "Includes" splice pipeline (ProcessIncludesRecursively) -
+        /// this only ever runs for items of the "Conditional Row" type, so no other merge
+        /// document or item type is affected.
+        /// </summary>
+        private async Task<(byte[] DocumentContent, List<Dictionary<string, string>> MergeFields)> ProcessConditionalRowsAsync(
+            EF.Core efCore,
+            byte[] documentContent,
+            List<MergeDocumentItem> conditionalRowItems,
+            string recordGuid)
+        {
+            var mergeFields = new List<Dictionary<string, string>>();
+
+            if (!Guid.TryParse(recordGuid, out Guid quoteGuid) || quoteGuid == Guid.Empty)
+            {
+                Console.WriteLine($"[ERROR] Conditional row processing requires a valid Quote record guid, got '{recordGuid}'. Skipping - no rows removed.");
+                return (documentContent, mergeFields);
+            }
+
+            List<EF.Types.QuoteItemMergeLine> quoteLines = await efCore.GetQuoteItemMergeLines(quoteGuid);
+            mergeFields.AddRange(ConditionalRowMergeEvaluator.BuildStageSubtotalMergeFields(quoteLines));
+
+            // Load every item's rules first: a catch-all rule matches only the lines that no
+            // other rule in the document claims.
+            var itemRules = new List<(string BookmarkName, List<EF.Types.MergeDocumentItemGatingRule> Rules)>();
+            foreach (var item in conditionalRowItems)
+            {
+                if (string.IsNullOrWhiteSpace(item.BookmarkName))
+                {
+                    Console.WriteLine("[ERROR] Conditional row item has no BookmarkName. Skipping.");
+                    continue;
+                }
+
+                if (!Guid.TryParse(item.Guid, out Guid mergeDocumentItemGuid))
+                {
+                    Console.WriteLine($"[ERROR] Conditional row item '{item.BookmarkName}' has an invalid Guid. Skipping.");
+                    continue;
+                }
+
+                itemRules.Add((item.BookmarkName, await efCore.GetGatingRulesForMergeDocumentItem(mergeDocumentItemGuid)));
+            }
+
+            var documentRules = itemRules.SelectMany(item => item.Rules).ToList();
+
+            foreach (var (bookmarkName, gatingRules) in itemRules)
+            {
+                if (!ConditionalRowMergeEvaluator.ShouldKeepRow(bookmarkName, gatingRules, quoteLines, documentRules))
+                {
+                    Console.WriteLine($"[INFO] No quote item matches the gating rules for '{bookmarkName}'. Removing row.");
+                    documentContent = RemoveTableRowAtBookmark(documentContent, bookmarkName);
+                    continue;
+                }
+
+                var matchedLines = ConditionalRowMergeEvaluator.GetMatchingLines(gatingRules, quoteLines, documentRules);
+
+                if (ConditionalRowMergeEvaluator.IsRepeatRow(bookmarkName) && matchedLines.Count > 0)
+                {
+                    Console.WriteLine($"[INFO] Repeating conditional row '{bookmarkName}' for {matchedLines.Count} quote item(s).");
+                    documentContent = RepeatTableRowAtBookmark(documentContent, bookmarkName, matchedLines.Count);
+                    mergeFields.AddRange(ConditionalRowMergeEvaluator.BuildRepeatedRowMergeFields(bookmarkName, matchedLines));
+                    continue;
+                }
+
+                Console.WriteLine($"[INFO] Keeping conditional row '{bookmarkName}'.");
+                mergeFields.AddRange(ConditionalRowMergeEvaluator.BuildRowMergeFields(bookmarkName, matchedLines));
+            }
+
+            return (documentContent, mergeFields);
+        }
+
+        /// <summary>
+        /// Finds the bookmark by name and removes its containing table row (falling back to
+        /// its containing paragraph if it is not inside a table). Returns the document
+        /// unchanged, with a warning, if the bookmark cannot be found - a missing bookmark
+        /// should not fail the whole document generation.
+        /// </summary>
+        internal static byte[] RemoveTableRowAtBookmark(byte[] documentContent, string bookmarkName)
+        {
+            using (var stream = new MemoryStream())
+            {
+                stream.Write(documentContent, 0, documentContent.Length);
+                stream.Position = 0;
+
+                using (var wordDoc = WordprocessingDocument.Open(stream, true))
+                {
+                    var bookmark = FindBookmarkInDocument(wordDoc, bookmarkName);
+                    if (bookmark == null)
+                    {
+                        Console.WriteLine($"[WARNING] Conditional row bookmark '{bookmarkName}' was not found. Row left in place.");
+                        return documentContent;
+                    }
+
+                    var row = bookmark.Ancestors<TableRow>().FirstOrDefault();
+                    if (row != null)
+                    {
+                        HandOverVerticalMergeRestarts(row);
+                        row.Remove();
+                    }
+                    else
+                    {
+                        var paragraph = bookmark.Ancestors<Paragraph>().FirstOrDefault();
+                        if (paragraph != null)
+                        {
+                            paragraph.Remove();
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[WARNING] Conditional row bookmark '{bookmarkName}' is not inside a table row or paragraph. Nothing removed.");
+                            return documentContent;
+                        }
+                    }
+
+                    wordDoc.MainDocumentPart.Document.Save();
+                }
+
+                return stream.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// Repeats the table row holding the bookmark so there is one copy per quote line
+        /// (copies inserted after it). In copy n, every «{bookmark}_...» placeholder becomes
+        /// «{bookmark}_..._n» - see ConditionalRowMergeEvaluator.BuildRepeatedRowMergeFields.
+        /// The copies drop the bookmark, and a cell that starts a vertical merge (e.g. a stage
+        /// label) becomes an empty continuation, so the label spans every copy. Returns the
+        /// document unchanged, with a warning, if the bookmark or its row cannot be found.
+        /// </summary>
+        internal static byte[] RepeatTableRowAtBookmark(byte[] documentContent, string bookmarkName, int copies)
+        {
+            using (var stream = new MemoryStream())
+            {
+                stream.Write(documentContent, 0, documentContent.Length);
+                stream.Position = 0;
+
+                using (var wordDoc = WordprocessingDocument.Open(stream, true))
+                {
+                    var bookmark = FindBookmarkInDocument(wordDoc, bookmarkName);
+                    var row = bookmark?.Ancestors<TableRow>().FirstOrDefault();
+                    if (row == null)
+                    {
+                        Console.WriteLine($"[WARNING] Repeated row bookmark '{bookmarkName}' was not found in a table row. Row left in place.");
+                        return documentContent;
+                    }
+
+                    var template = (TableRow)row.CloneNode(true);
+                    RenameRepeatPlaceholders(row, bookmarkName, 1);
+
+                    TableRow previous = row;
+                    for (int copyNumber = 2; copyNumber <= copies; copyNumber++)
+                    {
+                        var copy = (TableRow)template.CloneNode(true);
+
+                        foreach (var element in copy.Descendants().Where(e => e is BookmarkStart or BookmarkEnd).ToList())
+                        {
+                            element.Remove();
+                        }
+
+                        foreach (var cell in copy.Elements<TableCell>())
+                        {
+                            var verticalMerge = cell.TableCellProperties?.VerticalMerge;
+                            if (verticalMerge?.Val?.Value != MergedCellValues.Restart)
+                            {
+                                continue;
+                            }
+
+                            verticalMerge.Val = MergedCellValues.Continue;
+                            var paragraphs = cell.Elements<Paragraph>().ToList();
+                            foreach (var extra in paragraphs.Skip(1))
+                            {
+                                extra.Remove();
+                            }
+
+                            foreach (var content in paragraphs[0].ChildElements.Where(e => e is not ParagraphProperties).ToList())
+                            {
+                                content.Remove();
+                            }
+                        }
+
+                        RenameRepeatPlaceholders(copy, bookmarkName, copyNumber);
+                        previous.InsertAfterSelf(copy);
+                        previous = copy;
+                    }
+
+                    wordDoc.MainDocumentPart.Document.Save();
+                }
+
+                return stream.ToArray();
+            }
+        }
+
+        private static void RenameRepeatPlaceholders(TableRow row, string bookmarkName, int copyNumber)
+        {
+            string prefix = "«" + bookmarkName + "_";
+            foreach (var text in row.Descendants<Text>())
+            {
+                int start = text.Text.IndexOf(prefix, StringComparison.Ordinal);
+                if (start < 0)
+                {
+                    continue;
+                }
+
+                int end = text.Text.IndexOf('»', start);
+                if (end < 0)
+                {
+                    continue;
+                }
+
+                string fieldName = text.Text.Substring(start + 1, end - start - 1);
+                text.Text = text.Text.Substring(0, start + 1)
+                    + ConditionalRowMergeEvaluator.RepeatFieldName(fieldName, copyNumber)
+                    + text.Text.Substring(end);
+            }
+        }
+
+        /// <summary>
+        /// A cell that starts a vertical merge (vMerge restart) holds the merged content - e.g.
+        /// the Fee Proposal's RIBA stage label, shared by the rows below it. Removing its row
+        /// would lose that content and orphan the next row's continuation cell, so hand both the
+        /// content and the restart down to the next row's cell in the same grid column.
+        /// </summary>
+        /// <summary>Today's date in UK time - the API host may run on UTC.</summary>
+        private static DateTime GetUkToday()
+        {
+            foreach (var zoneId in new[] { "Europe/London", "GMT Standard Time" })
+            {
+                try
+                {
+                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(zoneId)).Date;
+                }
+                catch (TimeZoneNotFoundException)
+                {
+                }
+            }
+
+            return DateTime.UtcNow.Date;
+        }
+
+        internal static void HandOverVerticalMergeRestarts(TableRow row)
+        {
+            var nextRow = row.NextSibling<TableRow>();
+            if (nextRow == null)
+            {
+                return;
+            }
+
+            foreach (var cell in row.Elements<TableCell>())
+            {
+                if (cell.TableCellProperties?.VerticalMerge?.Val?.Value != MergedCellValues.Restart)
+                {
+                    continue;
+                }
+
+                var nextCell = FindCellAtGridColumn(nextRow, GetGridColumn(row, cell));
+                var nextVerticalMerge = nextCell?.TableCellProperties?.VerticalMerge;
+
+                // A missing Val means "continue".
+                if (nextVerticalMerge == null ||
+                    (nextVerticalMerge.Val != null && nextVerticalMerge.Val.Value != MergedCellValues.Continue))
+                {
+                    continue;
+                }
+
+                nextVerticalMerge.Val = MergedCellValues.Restart;
+
+                foreach (var block in nextCell.ChildElements.Where(e => e is not TableCellProperties).ToList())
+                {
+                    block.Remove();
+                }
+
+                foreach (var block in cell.ChildElements.Where(e => e is not TableCellProperties).ToList())
+                {
+                    block.Remove();
+                    nextCell.AppendChild(block);
+                }
+            }
+        }
+
+        private static int GetGridColumn(TableRow row, TableCell cell)
+        {
+            int column = row.TableRowProperties?.GetFirstChild<GridBefore>()?.Val?.Value ?? 0;
+
+            foreach (var current in row.Elements<TableCell>())
+            {
+                if (current == cell)
+                {
+                    return column;
+                }
+
+                column += current.TableCellProperties?.GridSpan?.Val?.Value ?? 1;
+            }
+
+            return -1;
+        }
+
+        private static TableCell FindCellAtGridColumn(TableRow row, int gridColumn)
+        {
+            if (gridColumn < 0)
+            {
+                return null;
+            }
+
+            return row.Elements<TableCell>().FirstOrDefault(c => GetGridColumn(row, c) == gridColumn);
+        }
+
         private async Task<byte[]> InsertContentAtBookmarkExtended(
     string bookmarkName,
     Stream includedContentStream,
@@ -3392,10 +3797,9 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                     var bookmark = FindBookmarkInDocument(wordDoc, bookmarkName);
                     if (bookmark == null)
                     {
-                        Console.WriteLine($"[WARNING] Bookmark '{bookmarkName}' not found in document. Skipping include.");
                         _missingIncludeBookmarks.Add(bookmarkName);
-                        // Return original document unchanged so processing can continue
-                        return mainDocumentContent;
+                        throw new InvalidDataException(
+                            $"Required include bookmark '{bookmarkName}' was not found in the parent document.");
                     }
 
                     // Determine the parent paragraph for insertion.
@@ -3406,9 +3810,9 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                     }
                     if (parentElement == null)
                     {
-                        Console.WriteLine($"[WARNING] No valid parent paragraph found for bookmark '{bookmarkName}'. Skipping include.");
                         _missingIncludeBookmarks.Add(bookmarkName);
-                        return mainDocumentContent;
+                        throw new InvalidDataException(
+                            $"Required include bookmark '{bookmarkName}' is not contained in a paragraph.");
                     }
 
                     // Find the paragraph index within the main body.
@@ -3421,22 +3825,24 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
 
                     if (bookmarkIndex == -1)
                     {
-                        Console.WriteLine($"[WARNING] Could not determine paragraph index for '{bookmarkName}'. Skipping include.");
                         _missingIncludeBookmarks.Add(bookmarkName);
-                        return mainDocumentContent;
+                        throw new InvalidDataException(
+                            $"Required include bookmark '{bookmarkName}' is not in the main document body.");
                     }
 
                     Console.WriteLine($"[SUCCESS] Found valid paragraph index {bookmarkIndex} for bookmark '{bookmarkName}'.");
 
                     // Build merged document using OpenXmlPowerTools.
-                    var sources = new List<OpenXmlPowerTools.Source>
-            {
-                new OpenXmlPowerTools.Source(mainDocument, 0, bookmarkIndex, true),
-                new OpenXmlPowerTools.Source(includedDocument, true),
-                new OpenXmlPowerTools.Source(mainDocument, bookmarkIndex + 1, true)
+                    var sources = new List<OpenXmlDocumentSource>
+                    {
+                new OpenXmlDocumentSource(mainDocument, 0, bookmarkIndex, true),
+                // Preserve the parent fee proposal header/footer package. Included
+                // fragments supply body content only and inherit the parent section.
+                new OpenXmlDocumentSource(includedDocument, false),
+                new OpenXmlDocumentSource(mainDocument, bookmarkIndex + 1, true)
             };
 
-                    var mergedDocument = OpenXmlPowerTools.DocumentBuilder.BuildDocument(sources);
+                    var mergedDocument = OpenXmlDocumentBuilder.BuildDocument(sources);
                     Console.WriteLine($"[SUCCESS] Successfully inserted included document at bookmark '{bookmarkName}'.");
 
                     return mergedDocument.DocumentByteArray;
@@ -3481,29 +3887,6 @@ FROM SFin.tvf_TransactionInvoiceLines(@TransactionGuid);";
                 {
                     docProperties.Id = GenerateUniqueDrawingId();
                     SetPictureAltText(drawing, docProperties.Description ?? "Generated Image");
-                }
-            }
-        }
-
-        private void VerifyHeaderFooterExistence(MainDocumentPart mainPart)
-        {
-            // Ensure header exists if referenced
-            if (mainPart.Document.Descendants<HeaderReference>().Any())
-            {
-                if (!mainPart.HeaderParts.Any())
-                {
-                    var headerPart = mainPart.AddNewPart<HeaderPart>();
-                    headerPart.Header = new Header(new Paragraph(new Run(new Text(""))));
-                }
-            }
-
-            // Ensure footer exists if referenced
-            if (mainPart.Document.Descendants<FooterReference>().Any())
-            {
-                if (!mainPart.FooterParts.Any())
-                {
-                    var footerPart = mainPart.AddNewPart<FooterPart>();
-                    footerPart.Footer = new Footer(new Paragraph(new Run(new Text(""))));
                 }
             }
         }

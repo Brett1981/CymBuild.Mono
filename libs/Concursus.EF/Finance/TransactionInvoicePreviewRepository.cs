@@ -403,7 +403,9 @@ WHERE imi.TransactionGuid = @TransactionGuid;";
                 Department = GetString(reader, "Department"),
                 InvoiceNumber = renderMode == TransactionInvoiceRenderMode.Final
                     ? GetString(reader, "SageInvoiceNumber")
-                    : string.Empty,
+                    : !string.IsNullOrWhiteSpace(GetString(reader, "SageInvoiceNumber"))
+                        ? GetString(reader, "SageInvoiceNumber")
+                        : GetString(reader, "ReservedInvoiceNumber"),
                 SalesOrderNumber = renderMode == TransactionInvoiceRenderMode.Final
                     ? GetString(reader, "SageSalesOrderNumber")
                     : string.Empty,

@@ -72,6 +72,7 @@ public partial class FormHelper
         Guid runGuid,
         string targetServerName = "",
         string targetDatabaseName = "",
+        bool includeRetirements = false,
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.MetadataMigrationStageAsync(
@@ -79,7 +80,8 @@ public partial class FormHelper
             {
                 RunGuid = runGuid.ToString(),
                 TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                IncludeRetirements = includeRetirements
             },
             cancellationToken: cancellationToken, deadline: DateTime.UtcNow.AddMinutes(45));
 
@@ -102,6 +104,35 @@ public partial class FormHelper
             cancellationToken: cancellationToken);
 
         return reply.ValidationIssues.Select(MapValidationIssue).ToList();
+    }
+
+    public async Task<MetadataMigrationValidationIssueIgnoreResultModel> MetadataMigrationValidationIssueIgnoreUpsertAsync(
+        Guid runGuid,
+        Guid validationIssueGuid,
+        bool isIgnored,
+        string reason = "",
+        string targetServerName = "",
+        string targetDatabaseName = "",
+        CancellationToken cancellationToken = default)
+    {
+        var reply = await _coreClient.MetadataMigrationValidationIssueIgnoreUpsertAsync(
+            new MetadataMigrationValidationIssueIgnoreUpsertRequest
+            {
+                RunGuid = runGuid.ToString(),
+                ValidationIssueGuid = validationIssueGuid.ToString(),
+                IsIgnored = isIgnored,
+                Reason = reason ?? string.Empty,
+                TargetServerName = targetServerName ?? string.Empty,
+                TargetDatabaseName = targetDatabaseName ?? string.Empty
+            },
+            cancellationToken: cancellationToken);
+
+        return new MetadataMigrationValidationIssueIgnoreResultModel
+        {
+            ActiveFailCount = reply.ActiveFailCount,
+            IgnoredIssueCount = reply.IgnoredIssueCount,
+            Message = reply.Message ?? string.Empty
+        };
     }
 
     public async Task<List<MetadataMigrationIdentityMapModel>> MetadataMigrationBuildIdentityMapAsync(
@@ -245,6 +276,7 @@ public partial class FormHelper
         string reason = "",
         string targetServerName = "",
         string targetDatabaseName = "",
+        string columnSourceSelectionJson = "",
         CancellationToken cancellationToken = default)
     {
         var reply = await _coreClient.MetadataMigrationIdentityMapOverrideUpsertAsync(
@@ -258,7 +290,8 @@ public partial class FormHelper
                 IsActive = isActive,
                 Reason = reason ?? string.Empty,
                 TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty
+                TargetDatabaseName = targetDatabaseName ?? string.Empty,
+                ColumnSourceSelectionJson = columnSourceSelectionJson ?? string.Empty
             },
             cancellationToken: cancellationToken);
 
@@ -350,27 +383,6 @@ public partial class FormHelper
         };
     }
 
-    public async Task<string> MetadataMigrationApplyAsync(
-        Guid runGuid,
-        bool forceApply,
-        string targetServerName = "",
-        string targetDatabaseName = "",
-        CancellationToken cancellationToken = default)
-    {
-        var reply = await _coreClient.MetadataMigrationApplyAsync(
-            new MetadataMigrationApplyRequest
-            {
-                RunGuid = runGuid.ToString(),
-                ForceApply = forceApply,
-                TargetServerName = targetServerName ?? string.Empty,
-                TargetDatabaseName = targetDatabaseName ?? string.Empty,
-                ApplySelectedOnly = false
-            },
-            cancellationToken: cancellationToken);
-
-        return reply.Message ?? string.Empty;
-    }
-
     public async Task<string> MetadataMigrationApplySelectedAsync(
         Guid runGuid,
         bool forceApply,
@@ -451,6 +463,7 @@ public partial class FormHelper
         return new MetadataMigrationSelectionResultModel
         {
             SelectedCount = reply.SelectedCount,
+            AutoSelectedCount = reply.AutoSelectedCount,
             Message = reply.Message ?? string.Empty
         };
     }
@@ -682,6 +695,7 @@ public partial class FormHelper
                 IsIgnored = row.IsIgnored,
                 IgnoreReason = row.IgnoreReason,
                 IgnoredOnUtcText = row.IgnoredOnUtc,
+                SelectionSource = row.SelectionSource ?? string.Empty,
                 SourceValues = row.SourceValues.ToDictionary(k => k.Key, v => v.Value),
                 TargetValues = row.TargetValues.ToDictionary(k => k.Key, v => v.Value)
             };
@@ -736,7 +750,12 @@ public partial class FormHelper
         Severity = row.Severity,
         IssueCode = row.IssueCode,
         IssueMessage = row.IssueMessage,
-        DetailsJson = row.DetailsJson
+        DetailsJson = row.DetailsJson,
+        CanIgnore = row.CanIgnore,
+        IsIgnored = row.IsIgnored,
+        IgnoreReason = row.IgnoreReason,
+        IgnoredOnUtcText = row.IgnoredOnUtc,
+        IgnoredByUserId = row.IgnoredByUserId
     };
 
     private static MetadataMigrationIdentityMapModel MapIdentityMap(MetadataMigrationIdentityMapRow row) => new()
@@ -768,7 +787,8 @@ public partial class FormHelper
         HasOverride = row.HasOverride,
         OverrideTargetRowGuid = Guid.TryParse(row.OverrideTargetRowGuid, out var overrideGuid) ? overrideGuid : Guid.Empty,
         OverrideTargetDisplayName = row.OverrideTargetDisplayName ?? string.Empty,
-        OverrideReason = row.OverrideReason ?? string.Empty
+        OverrideReason = row.OverrideReason ?? string.Empty,
+        OverrideColumnSourceSelectionJson = row.OverrideColumnSourceSelectionJson ?? string.Empty
     };
 
     private static MetadataMigrationIdentityMapCandidateModel MapIdentityMapCandidate(MetadataMigrationIdentityMapCandidateRow row) => new()

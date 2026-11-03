@@ -25,6 +25,8 @@ namespace CymBuild_Outlook_Addin.Extentensions
             services.AddHttpClient<EntityTypeService>(client => client.BaseAddress = baseAddress);
             services.AddHttpClient<GraphService>(client => client.BaseAddress = baseAddress);
             services.AddHttpClient<EmailDescriptionService>(client => client.BaseAddress = baseAddress);
+            services.AddHttpClient<SuggestedFilingLocationsService>(client => client.BaseAddress = baseAddress);
+            services.AddHttpClient<FrequentFilingRecordsService>(client => client.BaseAddress = baseAddress);
         }
     }
 }

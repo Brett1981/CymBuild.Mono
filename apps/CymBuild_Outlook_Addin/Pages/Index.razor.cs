@@ -40,7 +40,13 @@ namespace CymBuild_Outlook_Addin.Pages
         private bool isGeneratingDescription = false;
 
         private bool moveToCymBuildFiled = false;
-        private bool extractAttachments = false;
+
+        // True until the first attempt to read the mail item (success or failure) completes -
+        // avoids briefly flashing the "unable to read" error on the very first render.
+        private bool isLoadingMailData = true;
+
+        // Per-attachment "generating description" state, keyed by AttachmentId.
+        private readonly HashSet<string> _generatingAttachmentDescriptionIds = new();
 
         private static string PWAUrl = "";
         private Dictionary<string, string> imageSources = new();
@@ -74,6 +80,25 @@ namespace CymBuild_Outlook_Addin.Pages
         //Used for the dropdown.
         private List<SharePointFolderDto> FilingFolders = new();
 
+        // Raw suggestion rows from the API; intersected against FilingFolders at render time so we
+        // never show a suggestion for a folder that doesn't actually exist for this record right now.
+        private List<SuggestedFilingLocationResult> _rawFolderSuggestions = new();
+
+        private bool isLoadingFolders = false;
+        private bool isQuickSelectExpanded = true;
+
+        // Records the signed-in user files to most often; shown as "Frequently filed" pills above the record list.
+        private List<FrequentFilingRecordResult> FrequentRecords = new();
+
+        private List<SharePointFolderDto> SuggestedFolderChips =>
+            _rawFolderSuggestions
+                .Select(s => FilingFolders.FirstOrDefault(f =>
+                    !string.IsNullOrWhiteSpace(f.WebUrl) &&
+                    string.Equals(f.WebUrl.TrimEnd('/'), s.FilingLocationUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase)))
+                .Where(f => f != null)
+                .Cast<SharePointFolderDto>()
+                .ToList();
+
         private string FilingDirectionLabel => GetFilingDirectionLabel();
 
         private string FilingDirectionBadgeCss => FilingDirectionLabel switch
@@ -90,8 +115,24 @@ namespace CymBuild_Outlook_Addin.Pages
 
         private string EffectiveFilingFolderName =>
             !string.IsNullOrWhiteSpace(selectedFolderPath)
-                ? FilingFolders.FirstOrDefault(x => x.Path == selectedFolderPath)?.Name ?? selectedFolderPath
+                ? GetFolderLabel(selectedFolderPath)
                 : "Emails";
+
+        // Folders with the same name (e.g. several "Attachments" sub folders) are labelled with
+        // their parent folder(s) so the user can tell them apart. Rebuilt when FilingFolders is replaced.
+        private List<SharePointFolderDto>? _folderLabelsSource;
+        private Dictionary<string, string> _folderLabels = new();
+
+        private string GetFolderLabel(string? path)
+        {
+            if (!ReferenceEquals(_folderLabelsSource, FilingFolders))
+            {
+                _folderLabels = SharePointFolderLabelHelper.BuildLabels(FilingFolders);
+                _folderLabelsSource = FilingFolders;
+            }
+
+            return SharePointFolderLabelHelper.GetLabel(_folderLabels, path);
+        }
 
         private string GetFilingDirectionLabel()
         {
@@ -166,43 +207,52 @@ namespace CymBuild_Outlook_Addin.Pages
 
             try
             {
-                JSModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Pages/Index.razor.js");
-                LogInfo($"[{corr}] Index.razor.js imported successfully.", "OnAfterRenderAsync");
-            }
-            catch (Exception ex)
-            {
-                LogError($"[{corr}] Failed importing Index.razor.js", ex, "OnAfterRenderAsync");
-                return;
-            }
+                try
+                {
+                    JSModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./Pages/Index.razor.js");
+                    LogInfo($"[{corr}] Index.razor.js imported successfully.", "OnAfterRenderAsync");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[{corr}] Failed importing Index.razor.js", ex, "OnAfterRenderAsync");
+                    return;
+                }
 
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("authenticateUser");
-                LogInfo($"[{corr}] authenticateUser invoked successfully.", "OnAfterRenderAsync");
-            }
-            catch (Exception ex)
-            {
-                LogError($"[{corr}] authenticateUser failed", ex, "OnAfterRenderAsync");
-                return;
-            }
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("authenticateUser");
+                    LogInfo($"[{corr}] authenticateUser invoked successfully.", "OnAfterRenderAsync");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[{corr}] authenticateUser failed", ex, "OnAfterRenderAsync");
+                    return;
+                }
 
-            try
-            {
-                _dotNetRef?.Dispose();
-                _dotNetRef = DotNetObjectReference.Create(this);
+                try
+                {
+                    _dotNetRef?.Dispose();
+                    _dotNetRef = DotNetObjectReference.Create(this);
 
-                await JSModule.InvokeVoidAsync("getEmailData", _dotNetRef);
-                LogInfo($"[{corr}] getEmailData invoked successfully.", "OnAfterRenderAsync");
+                    await JSModule.InvokeVoidAsync("getEmailData", _dotNetRef);
+                    LogInfo($"[{corr}] getEmailData invoked successfully.", "OnAfterRenderAsync");
+                }
+                catch (Exception ex)
+                {
+                    LogError($"[{corr}] getEmailData invoke failed", ex, "OnAfterRenderAsync");
+                }
+
+                // Load settings after first render
+                await LoadUserSettingsFromApiAsync();
+
+                LogInfo($"[{corr}] OnAfterRenderAsync END ElapsedMs={sw.ElapsedMilliseconds}", "OnAfterRenderAsync");
             }
-            catch (Exception ex)
+            finally
             {
-                LogError($"[{corr}] getEmailData invoke failed", ex, "OnAfterRenderAsync");
+                // Whichever path we exited by, the initial load attempt is over - stop showing the spinner.
+                isLoadingMailData = false;
+                await InvokeAsync(StateHasChanged);
             }
-
-            // Load settings after first render
-            await LoadUserSettingsFromApiAsync();
-
-            LogInfo($"[{corr}] OnAfterRenderAsync END ElapsedMs={sw.ElapsedMilliseconds}", "OnAfterRenderAsync");
         }
 
         /// <summary>
@@ -220,6 +270,9 @@ namespace CymBuild_Outlook_Addin.Pages
                     nameof(GetFoldersForFilingLocation));
 
                 FilingFolders = new();
+                _rawFolderSuggestions = new();
+                isLoadingFolders = true;
+                await InvokeAsync(StateHasChanged);
 
                 var apiToken = await GetApiTokenAsync();
 
@@ -341,6 +394,25 @@ namespace CymBuild_Outlook_Addin.Pages
                         nameof(GetFoldersForFilingLocation));
                 }
 
+                try
+                {
+                    _rawFolderSuggestions = await SuggestedFilingLocationsService.GetSuggestionsAsync(target.ID, target.EntityTypeId);
+
+                    LogInfo(
+                        $"[{corr}] Loaded folder suggestions count={_rawFolderSuggestions.Count}",
+                        nameof(GetFoldersForFilingLocation));
+                }
+                catch (Exception exSuggest)
+                {
+                    // Suggestions are a nice-to-have; never let a failure here block folder loading.
+                    LogError(
+                        $"[{corr}] Failed loading suggested filing locations for targetGuid={target.Guid}",
+                        exSuggest,
+                        nameof(GetFoldersForFilingLocation));
+
+                    _rawFolderSuggestions = new();
+                }
+
                 await InvokeAsync(StateHasChanged);
             }
             catch (Exception ex)
@@ -351,9 +423,21 @@ namespace CymBuild_Outlook_Addin.Pages
                     nameof(GetFoldersForFilingLocation));
 
                 FilingFolders = new();
+                _rawFolderSuggestions = new();
+            }
+            finally
+            {
+                // Every exit path (including the early returns) must clear the loading state.
+                isLoadingFolders = false;
                 await InvokeAsync(StateHasChanged);
             }
         }
+
+        private void SelectSuggestedFolder(SharePointFolderDto folder)
+            => selectedFolderPath = folder.Path;
+
+        private void ToggleQuickSelect()
+            => isQuickSelectExpanded = !isQuickSelectExpanded;
 
         // ---------------- GRID ----------------
 
@@ -518,6 +602,40 @@ namespace CymBuild_Outlook_Addin.Pages
             }
         }
 
+        private async Task LoadFrequentRecordsAsync(string corr)
+        {
+            try
+            {
+                var apiToken = await GetApiTokenAsync(forceRefresh: false);
+
+                if (string.IsNullOrWhiteSpace(apiToken))
+                {
+                    LogInfo($"[{corr}] Frequent records skipped: no API token", nameof(LoadFrequentRecordsAsync));
+                    FrequentRecords = new();
+                    return;
+                }
+
+                FrequentRecords = await FrequentFilingRecordsService.GetFrequentRecordsAsync(apiToken, corr);
+
+                LogInfo($"[{corr}] Loaded frequent records count={FrequentRecords.Count}", nameof(LoadFrequentRecordsAsync));
+            }
+            catch (Exception ex)
+            {
+                // Suggestions are a nice-to-have; never let a failure here block the record search.
+                LogError($"[{corr}] Failed loading frequent records", ex, nameof(LoadFrequentRecordsAsync));
+                FrequentRecords = new();
+            }
+        }
+
+        private Task OnFrequentRecordClick(FrequentFilingRecordResult record)
+            => OnRecordClick(new RecordSearchResult
+            {
+                ID = record.ID,
+                Guid = record.Guid,
+                EntityTypeName = record.EntityTypeName,
+                Name = record.Name
+            });
+
         private async Task OnRecordClick(RecordSearchResult record)
         {
             if (record == null)
@@ -619,6 +737,53 @@ namespace CymBuild_Outlook_Addin.Pages
             }
         }
 
+        private bool IsGeneratingAttachmentDescription(AttachmentInfo attachment)
+            => !string.IsNullOrWhiteSpace(attachment.AttachmentId) &&
+               _generatingAttachmentDescriptionIds.Contains(attachment.AttachmentId);
+
+        private async Task GenerateAttachmentDescriptionAsync(AttachmentInfo attachment)
+        {
+            if (string.IsNullOrWhiteSpace(attachment.AttachmentId))
+                return;
+
+            var corr = NewCorrelationId("genAttDesc");
+            _generatingAttachmentDescriptionIds.Add(attachment.AttachmentId);
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                LogInfo($"[{corr}] Generating AI description for attachment '{attachment.AttachmentName}'...", "GenerateAttachmentDescription");
+
+                var apiToken = await GetApiTokenAsync(forceRefresh: false);
+                if (string.IsNullOrWhiteSpace(apiToken))
+                {
+                    LogError($"[{corr}] Cannot generate: no API token",
+                             new Exception("Empty token"), "GenerateAttachmentDescription");
+                    attachment.Description = "Failed to generate: authentication error";
+                    return;
+                }
+
+                var description = await EmailDescriptionService.GenerateDescriptionAsync(
+                    MailReadData?.Subject ?? string.Empty,
+                    MailReadData?.Body ?? string.Empty,
+                    apiToken,
+                    attachment.AttachmentName ?? string.Empty);
+
+                attachment.Description = description;
+                LogInfo($"[{corr}] AI attachment description generated successfully. Length={description.Length}", "GenerateAttachmentDescription");
+            }
+            catch (Exception ex)
+            {
+                LogError($"[{corr}] Failed to generate attachment description", ex, "GenerateAttachmentDescription");
+                attachment.Description = "An error occurred while generating description";
+            }
+            finally
+            {
+                _generatingAttachmentDescriptionIds.Remove(attachment.AttachmentId);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
         // ---------------- SETTINGS (API) ----------------
 
         private async Task LoadUserSettingsFromApiAsync()
@@ -675,15 +840,14 @@ namespace CymBuild_Outlook_Addin.Pages
                             }), "LoadUserSettingsFromApiAsync");
 
 
-                    Console.WriteLine("Extracting moveToCymBuildFiled & extractAttachments");
+                    Console.WriteLine("Extracting moveToCymBuildFiled");
 
                     moveToCymBuildFiled = settings.MoveToCymBuildFiled;
-                    extractAttachments = settings.ExtractAttachments;
 
-                    Console.WriteLine($"moveToCymBuildFiled = {moveToCymBuildFiled}, extractAttachments = {extractAttachments}");
+                    Console.WriteLine($"moveToCymBuildFiled = {moveToCymBuildFiled}");
 
 
-                    LogInfo($"[{corr}] Settings applied. moveToCymBuildFiled={moveToCymBuildFiled} extractAttachments={extractAttachments}", "LoadUserSettingsFromApiAsync");
+                    LogInfo($"[{corr}] Settings applied. moveToCymBuildFiled={moveToCymBuildFiled}", "LoadUserSettingsFromApiAsync");
 
                     StateHasChanged();
                     return;
@@ -714,7 +878,6 @@ namespace CymBuild_Outlook_Addin.Pages
                 var payload = new Dictionary<string, object>
                 {
                     { "moveToCymBuildFiled", moveToCymBuildFiled },
-                    { "extractAttachments", extractAttachments },
                     { "UserId", userEmail }
                 };
 
@@ -874,6 +1037,8 @@ namespace CymBuild_Outlook_Addin.Pages
             }
 
             SetInitialSection();
+
+            await LoadFrequentRecordsAsync(corr);
 
             await LoadGridDataAsync(corr);
 
@@ -1038,6 +1203,17 @@ namespace CymBuild_Outlook_Addin.Pages
                 var requests = new List<SaveToSharePointRequest>();
                 var totalCount = targetObjects.Count;
 
+                var attachmentFilingRequests = (MailReadData.Attachments ?? new List<AttachmentInfo>())
+                    .Where(a => a.IncludeWhenFiling && !string.IsNullOrWhiteSpace(a.AttachmentId))
+                    .Select(a => new AttachmentFilingRequest
+                    {
+                        AttachmentId = a.AttachmentId!,
+                        AttachmentName = a.AttachmentName ?? string.Empty,
+                        DestinationFolderPath = a.DestinationFolderPath ?? string.Empty,
+                        Description = a.Description ?? string.Empty
+                    })
+                    .ToList();
+
                 foreach (var target in targetObjects)
                 {
                     try
@@ -1110,7 +1286,7 @@ namespace CymBuild_Outlook_Addin.Pages
                             TotalCount = totalCount,
                             RecordSearchResults = selectedRecords,
                             MoveToCymBuildFiled = moveToCymBuildFiled,
-                            ExtractAttachments = extractAttachments,
+                            Attachments = attachmentFilingRequests,
                             Description = emailDescription
                         });
                     }
@@ -1132,7 +1308,7 @@ namespace CymBuild_Outlook_Addin.Pages
                 LogInfo(
                     $"[{corr}] Built requests. Count={requests.Count} totalCount={totalCount} " +
                     $"userId='{SafeText(isSharedMailbox ? mailboxOwnerEmail : userEmail, 80)}' isShared={isSharedMailbox} " +
-                    $"moveToFiled={moveToCymBuildFiled} extractAttachments={extractAttachments} selectedFolderPath='{SafeText(selectedFolderPath, 220)}'",
+                    $"moveToFiled={moveToCymBuildFiled} selectedAttachmentCount={attachmentFilingRequests.Count} selectedFolderPath='{SafeText(selectedFolderPath, 220)}'",
                     "SaveEmailToSharePointAsync");
 
                 var swCall = Stopwatch.StartNew();
@@ -1164,6 +1340,13 @@ namespace CymBuild_Outlook_Addin.Pages
                     "The Emails selected are preparing to be filed. You may now continue.");
 
                 emailDescription = string.Empty;
+
+                foreach (var attachment in MailReadData.Attachments ?? new List<AttachmentInfo>())
+                {
+                    attachment.IncludeWhenFiling = false;
+                    attachment.DestinationFolderPath = null;
+                    attachment.Description = null;
+                }
 
                 _ = SaveSelectedRecordsToLocalStorage();
 

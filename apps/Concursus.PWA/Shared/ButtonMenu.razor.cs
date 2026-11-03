@@ -17,6 +17,10 @@ public partial class ButtonMenu
     protected FormHelper? formHelper;
 
     private static readonly Guid QuoteEntityTypeGuid = Guid.Parse("1c4794c1-f956-4c32-b886-5500ac778a56");
+    private static readonly Guid TransactionEntityTypeGuid = Guid.Parse("3679db86-9a2f-45bd-9e37-8e40967166d1");
+    private const string BatchedEntityPropertyGuid = "f5495d20-1e48-4e46-950e-6ff4e92bb097";
+    private const string TransactionTypeEntityPropertyGuid = "73216ac7-7c70-435a-b4eb-0a114f9772eb";
+    private static readonly Guid InvoiceTransactionTypeGuid = Guid.Parse("5006D388-15F6-44AB-B45D-68323FC5B56A");
 
     private IDictionary<string, object> DetailPageParameters = new Dictionary<string, object>();
 
@@ -64,6 +68,11 @@ public partial class ButtonMenu
     private string? WindowTitle { get; set; }
     private bool IsTaskMenuOpen { get; set; }
     private bool NativeModalIsMaximized { get; set; }
+    private bool _rejectBatchedTransactionModalIsVisible;
+    private string _rejectBatchedTransactionComment = string.Empty;
+    private bool _rejectBatchedTransactionIsBusy;
+    private bool _copyQuoteItemsModalIsVisible;
+    private TaskCompletionSource<bool?>? _copyQuoteItemsPromptCompletionSource;
     private string NativeModalCardCss => NativeModalIsMaximized
         ? "cb-task-modal-card is-maximized"
         : "cb-task-modal-card";
@@ -85,9 +94,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", $"Error navigating to URL. {url}");
-            ex.Data.Add("PageMethod", "ButtonMenu/NavigateToUrlAsync()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", $"Error navigating to URL. {url}");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/NavigateToUrlAsync()");
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -102,9 +111,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to refresh the component.");
-            ex.Data.Add("PageMethod", "ButtonMenu/RequesRefresh()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to refresh the component.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/RequesRefresh()");
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -130,6 +139,126 @@ public partial class ButtonMenu
         StateHasChanged();
     }
 
+    private void OpenRejectBatchedTransactionModal()
+    {
+        _rejectBatchedTransactionComment = string.Empty;
+        _rejectBatchedTransactionModalIsVisible = true;
+        StateHasChanged();
+    }
+
+    private void CloseRejectBatchedTransactionModal()
+    {
+        _rejectBatchedTransactionModalIsVisible = false;
+        _rejectBatchedTransactionComment = string.Empty;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Returns true to copy quote items, false to skip them, or null if the user cancelled the
+    /// revision entirely (closed the modal, clicked the backdrop, or clicked Cancel).
+    /// </summary>
+    private Task<bool?> PromptCopyQuoteItemsAsync()
+    {
+        _copyQuoteItemsPromptCompletionSource = new TaskCompletionSource<bool?>();
+        _copyQuoteItemsModalIsVisible = true;
+        StateHasChanged();
+        return _copyQuoteItemsPromptCompletionSource.Task;
+    }
+
+    private void CopyQuoteItemsModalRespond(bool? copyQuoteItems)
+    {
+        _copyQuoteItemsModalIsVisible = false;
+        _copyQuoteItemsPromptCompletionSource?.TrySetResult(copyQuoteItems);
+        _copyQuoteItemsPromptCompletionSource = null;
+        StateHasChanged();
+    }
+
+    private async Task ShowReviseQuoteCancelledMessageAsync()
+    {
+        var cancelledMessage = new Exception("Revise quote cancelled.");
+        cancelledMessage.Data.Add("MessageType", ShowMessageType.Information);
+        cancelledMessage.Data.Add("AdditionalInfo", "Revise quote cancelled.");
+        cancelledMessage.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(Revise Quote cancelled)");
+        await OnError.InvokeAsync(cancelledMessage);
+
+        await Task.Delay(2000);
+
+        var dismissMessage = new Exception("Revise quote cancelled.");
+        dismissMessage.Data.Add("Dismiss", true);
+        await OnError.InvokeAsync(dismissMessage);
+    }
+
+    private async Task SubmitRejectBatchedTransactionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_rejectBatchedTransactionComment))
+        {
+            await DisplayLocalActionMessageAsync(
+                "A rejection reason is required.",
+                ShowMessageType.Warning,
+                "ButtonMenu/SubmitRejectBatchedTransactionAsync");
+            return;
+        }
+
+        if (dataObject is null)
+        {
+            return;
+        }
+
+        _rejectBatchedTransactionIsBusy = true;
+        StateHasChanged();
+
+        try
+        {
+            formHelper ??= new FormHelper(coreClient, EntityTypeGuid, userService);
+
+            var transactionGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.Guid);
+            var response = await formHelper.TransactionRejectBatchedAsync(
+                transactionGuid,
+                _rejectBatchedTransactionComment.Trim());
+
+            if (!response.Success || !string.IsNullOrEmpty(response.ErrorReturned))
+            {
+                await DisplayLocalActionMessageAsync(
+                    string.IsNullOrWhiteSpace(response.ErrorReturned)
+                        ? "An error occurred while trying to reject the batched transaction."
+                        : response.ErrorReturned,
+                    ShowMessageType.Error,
+                    "ButtonMenu/SubmitRejectBatchedTransactionAsync");
+                return;
+            }
+
+            CloseRejectBatchedTransactionModal();
+
+            await DisplayLocalActionMessageAsync(
+                "Batched transaction rejected successfully.",
+                ShowMessageType.Success,
+                "ButtonMenu/SubmitRejectBatchedTransactionAsync");
+
+            if (modalService.GetOpenModals().Count > 1)
+            {
+                DeleteOperationPerformed = true;
+                await DeleteOperationPerformedChanged.InvokeAsync(true);
+                StateHasChanged();
+            }
+            else
+            {
+                _ = NavigateToUrlAsync(ReturnUrl ?? "", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to reject the batched transaction.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/SubmitRejectBatchedTransactionAsync");
+            _ = OnError.InvokeAsync(ex);
+        }
+        finally
+        {
+            _rejectBatchedTransactionIsBusy = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task OnRootMenuClicked(API.Client.MenuItem item)
     {
         if (item is null || item.IsReadOnly == true)
@@ -147,15 +276,31 @@ public partial class ButtonMenu
         await OnNativeMenuItemClicked(item);
     }
 
+    // CYB-548: a double-click (or a user re-clicking because a slow response looked like
+    // nothing happened) must not fire the same task-menu action twice - e.g. two "Request
+    // Invoice" clicks both reaching the server before the first one's response comes back.
+    // This is defense-in-depth alongside the server-side lock in
+    // SJob.ActivityCreateInvoiceRequest; it also protects every other action-menu item.
+    private bool _isExecutingMenuItem;
+
     private async Task OnNativeMenuItemClicked(API.Client.MenuItem item)
     {
-        if (!CanInvokeNativeMenuItem(item))
+        if (!CanInvokeNativeMenuItem(item) || _isExecutingMenuItem)
         {
             return;
         }
 
         CloseTaskMenu();
-        await OnClickHandler(item);
+
+        _isExecutingMenuItem = true;
+        try
+        {
+            await OnClickHandler(item);
+        }
+        finally
+        {
+            _isExecutingMenuItem = false;
+        }
     }
 
     private void CloseTaskMenu()
@@ -365,6 +510,44 @@ public partial class ButtonMenu
         return pageEntityTypeGuid == QuoteEntityTypeGuid || dataObjectEntityTypeGuid == QuoteEntityTypeGuid;
     }
 
+    private bool IsBatchedTransactionRecord()
+    {
+        var pageEntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid);
+        var dataObjectEntityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject?.EntityTypeGuid ?? string.Empty);
+
+        var isTransaction = pageEntityTypeGuid == TransactionEntityTypeGuid || dataObjectEntityTypeGuid == TransactionEntityTypeGuid;
+        if (!isTransaction)
+        {
+            return false;
+        }
+
+        if (!IsInvoiceTransactionType())
+        {
+            return false;
+        }
+
+        var batchedProperty = dataObject?.DataProperties?
+            .FirstOrDefault(p => p.EntityPropertyGuid == BatchedEntityPropertyGuid);
+
+        return batchedProperty?.Value is not null
+            && batchedProperty.Value.Is(BoolValue.Descriptor)
+            && batchedProperty.Value.Unpack<BoolValue>().Value;
+    }
+
+    private bool IsInvoiceTransactionType()
+    {
+        var transactionTypeProperty = dataObject?.DataProperties?
+            .FirstOrDefault(p => p.EntityPropertyGuid == TransactionTypeEntityPropertyGuid);
+
+        if (transactionTypeProperty?.Value is null || !transactionTypeProperty.Value.Is(StringValue.Descriptor))
+        {
+            return false;
+        }
+
+        return Guid.TryParse(transactionTypeProperty.Value.Unpack<StringValue>().Value, out var transactionTypeGuid)
+            && transactionTypeGuid == InvoiceTransactionTypeGuid;
+    }
+
     private async Task<bool> ValidateQuoteCreateJobsStageScheduleAsync()
     {
         if (formHelper is null || dataObject is null)
@@ -538,9 +721,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to view documents.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(View Documents)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to view documents.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(View Documents)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -577,9 +760,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to view document tasks.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(Document Tasks)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to view document tasks.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(Document Tasks)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -606,9 +789,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to view the modal collection.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(Modal Collection)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to view the modal collection.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(Modal Collection)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -649,9 +832,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to view the SharePoint Browser.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(SharePoint Browser)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to view the SharePoint Browser.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(SharePoint Browser)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -685,9 +868,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to generate a CSV download.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(Generate CSV Download)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to generate a CSV download.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(Generate CSV Download)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -706,6 +889,13 @@ public partial class ButtonMenu
 
                 var DupeEnquiryInfoMessage = PWAFunctions.GetMessageDisplayFromActionMenuItem(item, new Exception(), ShowMessageType.Information);
                 await OnError.InvokeAsync(DupeEnquiryInfoMessage);
+            }
+            else if (item.Text == "Reject Batched Transaction")
+            {
+                _ = formHelper.LogUsageAsync(PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(userService.Guid), "Reject Batched Transaction");
+                InteractionTracker.Log(NavManager.Uri ?? "Clicking Task Menu Item", $"User Clicked \"Reject Batched Transaction\"");
+
+                OpenRejectBatchedTransactionModal();
             }
             else if (item.Text == "Delete")
             {
@@ -757,6 +947,16 @@ public partial class ButtonMenu
                         //No need to perform any other operations.
                         return new ExecuteMenuItemResponse();
                     }
+                    // CYB-320: a windowed detail page opened from a grid on a full page has
+                    // ReturnUrl = the page it is already on, so navigating left the window open
+                    // and the grid/parent stale. Close the window instead - the host grid's
+                    // CloseWindow reloads the grid and resyncs the parent record.
+                    else if (OnClose.HasDelegate)
+                    {
+                        await OnClose.InvokeAsync();
+
+                        return new ExecuteMenuItemResponse();
+                    }
                     else
                     {
                         _ = NavigateToUrlAsync(ReturnUrl ?? "", item.OpenInNewTab);
@@ -764,9 +964,9 @@ public partial class ButtonMenu
                 }
                 catch (Exception ex)
                 {
-                    ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                    ex.Data.Add("AdditionalInfo", "An error occurred while trying to delete the record.");
-                    ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler(Delete)");
+                    SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                    SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to delete the record.");
+                    SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler(Delete)");
                     _ = OnError.InvokeAsync(ex);
                 }
             }
@@ -802,7 +1002,21 @@ public partial class ButtonMenu
                         }
                     }
 
-                    var response = await formHelper.MenuItemPostAsync(item.EntityQueryGuid, dataObject);
+                    bool copyQuoteItems = true;
+                    if (item.Text == "Revise Quote")
+                    {
+                        //Get the selection from the modal (yes, no, or cancelled)
+                        var copyQuoteItemsChoice = await PromptCopyQuoteItemsAsync();
+                        if (copyQuoteItemsChoice is null)
+                        {
+                            await ShowReviseQuoteCancelledMessageAsync();
+                            return new ExecuteMenuItemResponse() { DataObject = dataObject };
+                        }
+                        
+                        copyQuoteItems = copyQuoteItemsChoice.Value;
+                    }
+
+                    var response = await formHelper.MenuItemPostAsync(item.EntityQueryGuid, dataObject, copyQuoteItems: copyQuoteItems);
                     if (!string.IsNullOrEmpty(response.ErrorReturned) && item.EntityQueryGuid != Guid.Empty.ToString())
                     {
                         throw new RpcException(new Status(StatusCode.FailedPrecondition, response.ErrorReturned));
@@ -913,6 +1127,12 @@ public partial class ButtonMenu
                             return response; // Ensure no further operations interfere with navigation
                         }
 
+                        // CYB-235: sibling grids on the page (e.g. the Enquiry Services grid after
+                        // "Create Quote(s) from enquiry") show stale data until this fires, because
+                        // GridUpdated was declared but never invoked after a successful task action.
+                        if (GridUpdated.HasDelegate)
+                            await GridUpdated.InvokeAsync();
+
                         StateHasChanged();
                     }
                     else
@@ -922,8 +1142,14 @@ public partial class ButtonMenu
                 }
                 else
                 {
-                    var errorMessage = PWAFunctions.GetMessageDisplayFromActionMenuItem(item, new Exception(), ShowMessageType.Error);
-                    await OnError.InvokeAsync(errorMessage);
+                    // A null response means TryUpsertDataObjectAsync has already reported why
+                    // (validation messages or the save error); a second, blank error would hide it.
+                    if (saveResponse is not null)
+                    {
+                        await OnError.InvokeAsync(PWAFunctions.BuildActionBlockedByValidationMessage(
+                            item.Text, saveResponse.Value.Item2.ValidationResults));
+                    }
+
                     return new ExecuteMenuItemResponse() { DataObject = dataObject };
                 }
 
@@ -932,11 +1158,16 @@ public partial class ButtonMenu
             }
             catch (Exception ex)
             {
-                ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-                ex.Data.Add("AdditionalInfo", "An error occurred while trying to execute the action menu item.");
-                ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler()");
+                // CYB-551: OnError already surfaces this in the page header via MessageDisplay -
+                // rethrowing here would only escape to EditPage's CustomErrorBoundary, which
+                // discards the whole record in favour of its ErrorContent. Report and stop here
+                // instead, so the record stays visible. SetExceptionData (not ex.Data.Add) since
+                // this same exception can already carry these keys if it's being re-reported.
+                SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+                SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to execute the action menu item.");
+                SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler()");
                 _ = OnError.InvokeAsync(ex);
-                throw;
+                return new ExecuteMenuItemResponse() { DataObject = dataObject };
             }
             // CBLD-629 - SB: added to enforce ReSync of dataobject after Task finished
             await ReSyncDataObject.InvokeAsync();
@@ -945,11 +1176,12 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to execute the action menu item.");
-            ex.Data.Add("PageMethod", "ButtonMenu/OnClickHandler()");
+            // CYB-551: see the inner catch above - report via OnError and stop, don't rethrow.
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to execute the action menu item.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/OnClickHandler()");
             _ = OnError.InvokeAsync(ex);
-            throw;
+            return new ExecuteMenuItemResponse() { DataObject = dataObject };
         }
     }
 
@@ -972,9 +1204,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to initialise the button menu.");
-            ex.Data.Add("PageMethod", "ButtonMenu/OnInitialized()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to initialise the button menu.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/OnInitialized()");
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -1079,6 +1311,15 @@ public partial class ButtonMenu
                 EntityTypeGuid = dataObject?.EntityTypeGuid,
                 EntityQueryGuid = Guid.Empty.ToString(),
                 ObjectGuid = dataObject?.Guid
+            });
+        }
+
+        if (IsBatchedTransactionRecord())
+        {
+            MenuItems[0].Items.Add(new API.Client.MenuItem
+            {
+                Text = "Reject Batched Transaction",
+                Icon = "bi bi-x-octagon"
             });
         }
 
@@ -1254,9 +1495,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to get the parent guid.");
-            ex.Data.Add("PageMethod", "ButtonMenu/GetParentGuid()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to get the parent guid.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/GetParentGuid()");
             _ = OnError.InvokeAsync(ex);
         }
 
@@ -1274,9 +1515,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to handle the item double-click.");
-            ex.Data.Add("PageMethod", "ButtonMenu/HandleItemDoubleClick()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to handle the item double-click.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/HandleItemDoubleClick()");
             _ = OnError.InvokeAsync(ex);
         }
     }
@@ -1290,9 +1531,9 @@ public partial class ButtonMenu
         }
         catch (Exception ex)
         {
-            ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
-            ex.Data.Add("AdditionalInfo", "An error occurred while trying to refresh the component.");
-            ex.Data.Add("PageMethod", "ButtonMenu/RefreshComponent()");
+            SetExceptionData(ex, "MessageType", MessageDisplay.ShowMessageType.Error);
+            SetExceptionData(ex, "AdditionalInfo", "An error occurred while trying to refresh the component.");
+            SetExceptionData(ex, "PageMethod", "ButtonMenu/RefreshComponent()");
             _ = OnError.InvokeAsync(ex);
         }
     }

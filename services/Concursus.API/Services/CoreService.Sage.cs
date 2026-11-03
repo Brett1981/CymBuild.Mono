@@ -163,18 +163,24 @@ public partial class CoreService
             OnlyRetryableFailures = request.IncludeOnlyRetryableFailuresSpecified ? request.IncludeOnlyRetryableFailures : null,
             InvoiceRequestId = request.InvoiceRequestIdSpecified ? request.InvoiceRequestId : null,
             TransactionId = request.TransactionIdSpecified ? request.TransactionId : null,
-            JobId = request.JobIdSpecified ? request.JobId : null
+            JobId = request.JobIdSpecified ? request.JobId : null,
+            PaymentFilter = request.PaymentFilter ?? string.Empty,
+            PageNumber = request.PageNumber > 0 ? request.PageNumber : 1,
+            PageSize = request.PageSize > 0 ? request.PageSize : 50
         };
 
         try
         {
-            var rows = await _sageInboundDiagnosticsRepository
+            var page = await _sageInboundDiagnosticsRepository
                 .GetAsync(model, context.CancellationToken)
                 .ConfigureAwait(false);
 
-            var reply = new SageInboundDiagnosticsGetReply();
+            var reply = new SageInboundDiagnosticsGetReply
+            {
+                TotalCount = page.TotalCount
+            };
 
-            foreach (var row in rows)
+            foreach (var row in page.Rows)
             {
                 reply.Rows.Add(new SageInboundDiagnosticsRow
                 {
@@ -239,7 +245,11 @@ public partial class CoreService
                     MaterialisedReceiptTransactionNumber = row.MaterialisedReceiptTransactionNumber ?? string.Empty,
 
                     MaterialisedAllocationGuid = row.MaterialisedAllocationGuid?.ToString() ?? string.Empty,
-                    MaterialisedAllocationId = row.MaterialisedAllocationId ?? 0
+                    MaterialisedAllocationId = row.MaterialisedAllocationId ?? 0,
+
+                    LastMatchedExternalTransactionId = row.LastMatchedExternalTransactionId ?? 0,
+                    LastMatchedExternalTransactionTypeCode = row.LastMatchedExternalTransactionTypeCode ?? 0,
+                    LastMatchedExternalTransactionAllocatedValue = (double)(row.LastMatchedExternalTransactionAllocatedValue ?? 0m)
                 });
             }
 
@@ -254,6 +264,53 @@ public partial class CoreService
             throw new RpcException(new Status(StatusCode.Internal, $"SageInboundDiagnosticsGet failed. {ex.Message}"));
         }
     }
+
+    public override async Task<SageInboundDiagnosticsSummaryGetReply> SageInboundDiagnosticsSummaryGet(
+    SageInboundDiagnosticsSummaryGetRequest request,
+    ServerCallContext context)
+    {
+        if (request == null)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Request cannot be null."));
+        }
+
+        var model = new SageInboundDiagnosticsSummaryRequestModel
+        {
+            SageAccountReference = request.SageAccountReference ?? string.Empty,
+            SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            TransactionNumber = request.TransactionNumber ?? string.Empty,
+            OnlyRetryableFailures = request.IncludeOnlyRetryableFailuresSpecified ? request.IncludeOnlyRetryableFailures : null,
+            InvoiceRequestId = request.InvoiceRequestIdSpecified ? request.InvoiceRequestId : null,
+            TransactionId = request.TransactionIdSpecified ? request.TransactionId : null,
+            JobId = request.JobIdSpecified ? request.JobId : null
+        };
+
+        try
+        {
+            var summary = await _sageInboundDiagnosticsRepository
+                .GetSummaryAsync(model, context.CancellationToken)
+                .ConfigureAwait(false);
+
+            return new SageInboundDiagnosticsSummaryGetReply
+            {
+                TotalCount = summary.TotalCount,
+                SucceededCount = summary.SucceededCount,
+                RetryPendingCount = summary.RetryPendingCount,
+                PaidCount = summary.PaidCount,
+                ReceiptsCreatedCount = summary.ReceiptsCreatedCount,
+                CreditNotesCreatedCount = summary.CreditNotesCreatedCount
+            };
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.Internal, $"SageInboundDiagnosticsSummaryGet failed. {ex.Message}"));
+        }
+    }
+
     public override async Task<SageHealthGetResponse> SageHealthGet(
     SageHealthGetRequest request,
     ServerCallContext context)
@@ -415,6 +472,60 @@ public partial class CoreService
             {
                 response.Transactions.AddRange(
                     result.Transactions.Select(MapCustomerTransaction));
+            }
+        }
+        catch (Exception ex)
+        {
+            response.ErrorReturned = ex.Message;
+        }
+
+        return response;
+    }
+
+    public override async Task<Core.SageFetchSalesAllocationsResponse> SageFetchSalesAllocations(
+        SageFetchSalesAllocationsRequest request,
+        ServerCallContext context)
+    {
+        var response = new Core.SageFetchSalesAllocationsResponse();
+
+        try
+        {
+            var result = await _sageApiClient.FetchSalesAllocationsAsync(
+                System.Enum.Parse<SageDataset>(request.Dataset, true),
+                request.AccountReference ?? string.Empty,
+                request.Urn ?? string.Empty,
+                context.CancellationToken);
+
+            response.Status = result?.Status ?? string.Empty;
+            response.AccountReference = result?.AccountReference ?? string.Empty;
+            response.Urn = result?.Urn ?? string.Empty;
+            response.RawJson = JsonSerializer.Serialize(result, SageJsonOptions); // legacy/debug
+
+            foreach (var session in result?.Sessions ?? new List<Concursus.API.Sage.SOAP.Models.SageSalesAllocationSession>())
+            {
+                var mappedSession = new Core.SageSalesAllocationSession
+                {
+                    AllocationHeaderId = session.AllocationHeaderId ?? string.Empty,
+                    SessionDate = session.SessionDate ?? string.Empty
+                };
+
+                mappedSession.Rows.AddRange(session.Rows.Select(row => new Core.SageSalesAllocationRow
+                {
+                    Urn = row.Urn ?? string.Empty,
+                    TransactionDate = row.TransactionDate ?? string.Empty,
+                    AllocationValue = (double)row.AllocationValue,
+                    IsRequested = row.IsRequested,
+                    TypeResolved = row.TypeResolved,
+                    SysTraderTranType = row.SysTraderTranType,
+                    TransactionReference = row.TransactionReference ?? string.Empty,
+                    InstrumentNo = row.InstrumentNo ?? string.Empty,
+                    SecondReference = row.SecondReference ?? string.Empty,
+                    GrossAmount = (double?)row.GrossAmount,
+                    TaxAmount = (double?)row.TaxAmount,
+                    NetAmount = (double?)row.NetAmount
+                }));
+
+                response.Sessions.Add(mappedSession);
             }
         }
         catch (Exception ex)

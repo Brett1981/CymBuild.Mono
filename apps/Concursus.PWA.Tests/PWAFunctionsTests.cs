@@ -298,6 +298,80 @@ namespace Concursus.PWA.Tests
             Assert.Equal(Guid.Empty.ToString(), stateService.ChildRecordGuid);
         }
 
+        // CYB-484 regression: EditPage.HandleExitAsync's Windowed branch did not call
+        // PWAFunctions.ResetStateService, so closing a windowed record-detail modal left
+        // stateService.ChildRecordGuid pointing at whatever record had just been viewed/edited
+        // there. ShoreInput's workflow-status lookup (and any other lookup using the same
+        // empty-RecordGuid fallback) picks that stale Guid up for the *next* modal opened from
+        // the same grid whenever that next record is brand new (RecordGuid == Guid.Empty).
+        // These tests model that hand-off at the StateService boundary - the same boundary
+        // ShoreInput.razor.cs's `if (RecordGuid == Guid.Empty.ToString()) RecordGuid =
+        // stateService.ChildRecordGuid.ToString();` reads from - without needing to render
+        // EditPage/ShoreInput. This generalises beyond the workflow-status dropdown: it is
+        // whatever "New" record is opened next in the same windowed grid that inherits the
+        // leaked Guid, not something specific to workflow transitions.
+        [Fact]
+        public void WithoutResetStateService_ANewRecordsLookupWouldInheritThePreviouslyViewedRecordsGuid()
+        {
+            // Arrange: user viewed/edited an existing child record in a windowed modal grid.
+            var stateService = new StateService();
+            var previouslyViewedRecordGuid = Guid.NewGuid();
+            var previouslyViewedDataObject = new API.Core.DataObject
+            {
+                Guid = previouslyViewedRecordGuid.ToString(),
+                EntityTypeGuid = Guid.NewGuid().ToString()
+            };
+            var parentGuid = Guid.NewGuid().ToString();
+            PWAFunctions.PrepareStateChanges(new EditContext(previouslyViewedDataObject), stateService, parentGuid);
+
+            // The modal is closed WITHOUT resetting stateService (the pre-fix behaviour of
+            // HandleExitAsync's Windowed branch).
+
+            // Act: open a brand-new record in the same grid - its own RecordGuid is Guid.Empty
+            // until first saved, so the lookup falls back exactly as ShoreInput does.
+            var newRecordGuid = Guid.Empty.ToString();
+            if (newRecordGuid == Guid.Empty.ToString())
+            {
+                newRecordGuid = stateService.ChildRecordGuid;
+            }
+
+            // Assert: without the reset, the new record's lookup would incorrectly be treated as
+            // an edit of the previously-viewed record.
+            Assert.Equal(previouslyViewedRecordGuid.ToString(), newRecordGuid);
+        }
+
+        [Fact]
+        public void AfterResetStateService_ANewRecordsLookupNoLongerInheritsThePreviouslyViewedRecordsGuid()
+        {
+            // Arrange: same as above, but this time the modal's exit calls
+            // PWAFunctions.ResetStateService - what EditPage.HandleExitAsync's Windowed branch
+            // now does once it has finished using stateService to update the parent grid's bound
+            // selection.
+            var stateService = new StateService();
+            var previouslyViewedRecordGuid = Guid.NewGuid();
+            var previouslyViewedDataObject = new API.Core.DataObject
+            {
+                Guid = previouslyViewedRecordGuid.ToString(),
+                EntityTypeGuid = Guid.NewGuid().ToString()
+            };
+            var parentGuid = Guid.NewGuid().ToString();
+            PWAFunctions.PrepareStateChanges(new EditContext(previouslyViewedDataObject), stateService, parentGuid);
+
+            PWAFunctions.ResetStateService(stateService);
+
+            // Act
+            var newRecordGuid = Guid.Empty.ToString();
+            if (newRecordGuid == Guid.Empty.ToString())
+            {
+                newRecordGuid = stateService.ChildRecordGuid;
+            }
+
+            // Assert: the fallback now correctly resolves to Guid.Empty, so a downstream call
+            // such as SCore.WorkflowGetNextStatus sees a genuinely new record rather than an
+            // edit of the previous one.
+            Assert.Equal(Guid.Empty.ToString(), newRecordGuid);
+        }
+
         [Fact]
         public void GetValueByEntityPropertyGuid_ShouldReturnCorrectValue()
         {

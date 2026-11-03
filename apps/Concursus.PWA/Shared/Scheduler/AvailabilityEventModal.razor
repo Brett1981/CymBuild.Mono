@@ -16,7 +16,12 @@
                         {
                             <label class="width100">
                                 Job Number:<br />
-                                <input class="form-control" @bind="appointment.JobNumber" />
+                                <input class="form-control" @bind="appointment.JobNumber" disabled />
+                            </label>
+
+                            <label class="width100">
+                                Activity Title:<br />
+                                <input class="form-control" @bind="appointment.Title" disabled />
                             </label>
 
                             <label class="width100">

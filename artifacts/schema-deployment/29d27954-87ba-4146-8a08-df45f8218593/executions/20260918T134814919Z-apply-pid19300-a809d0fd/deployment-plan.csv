@@ -1,0 +1,8 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"aee8e248-d28c-4a7c-af6d-cbf64c6dc27a","Function","SSop","tvf_QuotesValidate","","Different","True","False","True","True"
+"3fdf2f0e-5984-4b7e-883e-aed479a944df","StoredProcedure","SJob","ActivityCreateInvoiceRequest","","Different","True","False","True","True"
+"6ce494a6-d185-41bc-ad6d-78ca0f217801","StoredProcedure","SSop","EnquiryCreateQuotes","","Different","True","False","True","True"
+"f1a1c7fe-b5a3-4ece-a002-3dd6ad0cb56a","StoredProcedure","SSop","QuoteCreateJobs","","Different","True","False","True","True"
+"b18be455-8f87-4089-bb14-c6ffce16a08f","StoredProcedure","SSop","QuotesRevise","","Different","True","False","True","True"
+"a9ccce06-9075-455e-afee-c21d58e1c09e","StoredProcedure","SSop","QuotesUpsert","","Different","True","False","True","True"
+"78c3514e-706b-4d45-b5a6-00de795379b0","StoredProcedure","SSop","QuoteTemplatesCreateQuote","","Different","True","False","True","True"

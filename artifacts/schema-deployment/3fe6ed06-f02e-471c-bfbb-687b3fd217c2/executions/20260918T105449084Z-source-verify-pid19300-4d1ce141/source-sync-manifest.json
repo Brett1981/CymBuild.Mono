@@ -1,0 +1,40 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "3fe6ed06-f02e-471c-bfbb-687b3fd217c2",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 2,
+  "ArtifactCount": 2,
+  "GeneratedOnUtc": "2026-09-18T10:54:50.2376952Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "d783c742-24a7-4efa-97ce-3d2ccd52d2e5",
+      "ObjectType": "Function",
+      "SchemaName": "SSop",
+      "ObjectName": "tvf_QuotesValidate",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2A202AA174D6D851A9C3397AB5F3084C6CCBAE29A779086EA4EF6A62610DD0E7",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SSop.tvf_QuotesValidate.sql",
+      "FileSha256": "6CBA6C44F689658409D6526D75D9AD5D188C297A1E11646531F6BC54402D36F2",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "dd275f71-8e65-450b-98ce-eb7708597c80",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SJob",
+      "ObjectName": "ActivityCreateInvoiceRequest",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "CBAD764B47FD52C9550D68090DD98143B45728AD3B29544B7C5CDABB0BBDCC6A",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.ActivityCreateInvoiceRequest.sql",
+      "FileSha256": "288AA1BA102F8C4299C565F6B9B934CC97D1BB3501A5635ED35766BFC5B93F94",
+      "WasSynchronized": false
+    }
+  ]
+}

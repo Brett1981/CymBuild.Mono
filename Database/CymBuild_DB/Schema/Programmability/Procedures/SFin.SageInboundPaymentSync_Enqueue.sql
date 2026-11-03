@@ -1,10 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[SageInboundPaymentSync_Enqueue]')
+PRINT (N'Create or alter procedure [SFin].[SageInboundPaymentSync_Enqueue]')
 GO
 
-CREATE PROCEDURE [SFin].[SageInboundPaymentSync_Enqueue]
+CREATE OR ALTER PROCEDURE [SFin].[SageInboundPaymentSync_Enqueue]
 (
     @CymBuildEntityTypeID   INT = NULL,
     @CymBuildDocumentGuid   UNIQUEIDENTIFIER = NULL,
@@ -86,6 +86,38 @@ BEGIN
     IF @TransactionID IS NULL
     BEGIN
         ;THROW 60101, 'No active transaction exists for the supplied Sage inbound enqueue target.', 1;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Only a CymBuild Invoice owned by the new Sage automation may enter the
+    -- periodic inbound customer-transaction poll. Other finance types complete
+    -- locally, and the legacy SAGE EXPORT population remains outside this flow.
+    -------------------------------------------------------------------------
+    IF NOT EXISTS
+    (
+        SELECT 1
+        FROM SFin.Transactions AS t
+        INNER JOIN SFin.TransactionTypes AS tt
+            ON tt.ID = t.TransactionTypeID
+           AND tt.RowStatus NOT IN (0, 254)
+           AND tt.IsActive = 1
+        WHERE t.ID = @TransactionID
+          AND t.RowStatus NOT IN (0, 254)
+          AND UPPER(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(tt.Name)), N' ', N''), N'-', N''), N'_', N'')) = N'INVOICE'
+    )
+    BEGIN
+        ;THROW 60104, 'Only an active Invoice can be queued for Sage inbound customer-transaction polling.', 1;
+    END;
+
+    IF EXISTS
+    (
+        SELECT 1
+        FROM SFin.SageExportTransactions AS legacyExport
+        WHERE legacyExport.TransactionID = @TransactionID
+          AND legacyExport.RowStatus NOT IN (0, 254)
+    )
+    BEGIN
+        ;THROW 60105, 'Legacy SAGE EXPORT transactions cannot be queued for the new Sage inbound polling process.', 1;
     END;
 
     -------------------------------------------------------------------------

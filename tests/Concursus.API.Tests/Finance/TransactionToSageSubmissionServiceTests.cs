@@ -52,6 +52,8 @@ public sealed class TransactionToSageSubmissionServiceTests
             TransactionGuid = _transactionGuid,
             TransactionId = 20,
             TransactionNumber = "TX-100",
+            TransactionTypeGuid = Guid.NewGuid(),
+            TransactionTypeName = "Invoice",
             InvoiceNumber = "INV-100",
             ActorIdentityId = 42,
             RowStatus = 1,
@@ -220,6 +222,48 @@ public sealed class TransactionToSageSubmissionServiceTests
         _idempotencyService.Verify(x => x.TryClaimAsync(
             It.IsAny<long>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
         _gateway.Verify(x => x.CreateSalesOrderAsync(It.IsAny<Concursus.Common.Shared.Models.Finance.SageCreateSalesOrderRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessApprovedTransactionAsync_InboundOnlyTypeIsSkippedWithoutGatewayCall()
+    {
+        _transaction.TransactionTypeName = "Receipt";
+        _transaction.TransactionTypeIsBank = true;
+        _eligibilityValidator
+            .Setup(x => x.ValidateAsync(_transaction, true, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TransactionToSageEligibilityResult.NotEligible(
+                TransactionToSageEligibilityFailureReason.InboundOnlyTransactionType,
+                "Receipt is inbound-only."));
+
+        var result = await CreateService().ProcessApprovedTransactionAsync("{}");
+
+        Assert.Equal(TransactionToSageProcessStatus.Skipped, result.Status);
+        Assert.True(result.IsSuccess);
+        _idempotencyService.Verify(x => x.TryClaimAsync(
+            It.IsAny<long>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _gateway.Verify(x => x.CreateSalesOrderAsync(
+            It.IsAny<Concursus.Common.Shared.Models.Finance.SageCreateSalesOrderRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ProcessApprovedTransactionAsync_SageManagedCreditNoteIsSkippedWithoutGatewayCall()
+    {
+        _transaction.TransactionTypeName = "CreditNote";
+        _transaction.TransactionTypeIsNegated = true;
+        _eligibilityValidator
+            .Setup(x => x.ValidateAsync(_transaction, true, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TransactionToSageEligibilityResult.NotEligible(
+                TransactionToSageEligibilityFailureReason.SageManagedInboundTransactionType,
+                "CreditNote is Sage-managed and inbound-only."));
+
+        var result = await CreateService().ProcessApprovedTransactionAsync("{}");
+
+        Assert.Equal(TransactionToSageProcessStatus.Skipped, result.Status);
+        Assert.True(result.IsSuccess);
+        _idempotencyService.Verify(x => x.TryClaimAsync(
+            It.IsAny<long>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _gateway.Verify(x => x.CreateSalesOrderAsync(
+            It.IsAny<Concursus.Common.Shared.Models.Finance.SageCreateSalesOrderRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

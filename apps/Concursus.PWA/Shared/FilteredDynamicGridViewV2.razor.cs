@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using System.Collections;
 using System.Dynamic;
+using System.Globalization;
 using System.Text.Json;
 using static Concursus.API.Core.Core;
 using static Concursus.PWA.Shared.MessageDisplay;
@@ -41,6 +42,11 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
     private string RedIndicator { get; set; } = "";
     private string GreenIndicator { get; set; } = "";
     private string OrangeIndicator { get; set; } = "";
+
+    private readonly string _gridWrapperInstanceId = Guid.NewGuid().ToString("N");
+    private bool _edgeAutoScrollAttached;
+
+    private string GridWrapperDomId => $"filtered-dynamic-grid-view-v2-wrapper-{_gridWrapperInstanceId}";
 
     #region Lifecycle
 
@@ -82,6 +88,12 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
                 if (IsClosureReviewQueueGrid)
                 {
+                    // Show the loading state up front - EnsureAuthorisationInitialisedAsync runs
+                    // the KPI count queries before the main grid data load, and without this the
+                    // grid shell renders empty with no indicator until that finishes.
+                    NativeIsLoading = true;
+                    await InvokeAsync(StateHasChanged);
+
                     await EnsureAuthorisationInitialisedAsync();
                 }
 
@@ -93,6 +105,35 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
             ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
             ex.Data.Add("PageMethod", "FilteredDynamicGridViewV2/OnParametersSetAsync()");
             await OnError(ex);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!_edgeAutoScrollAttached && ViewDefinition is not null && !NativeIsLoading)
+        {
+            _edgeAutoScrollAttached = true;
+            await AttachEdgeAutoScrollAsync();
+        }
+    }
+
+    private async Task AttachEdgeAutoScrollAsync()
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync(
+                "cymbuildGridEdgeAutoScroll.attach",
+                GridWrapperDomId);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine(ex.Message);
         }
     }
 
@@ -318,12 +359,36 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         }
     }
 
+    private static readonly string[] DateColumnDisplayFormats = { "dd", "mm", "yyyy" };
+
+    private bool IsDateFilterColumn(string columnName)
+    {
+        var column = VisibleGridColumns
+            .FirstOrDefault(c => string.Equals(c.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        return column is not null && DateColumnDisplayFormats.Contains(column.DisplayFormat);
+    }
+
     private DataCompositeFilter? BuildNativeColumnFilterComposite()
     {
         var composite = new DataCompositeFilter { LogicalOperator = "and" };
 
         foreach (var filter in NativeColumnFilters.Where(f => !string.IsNullOrWhiteSpace(f.Value)))
         {
+            // Date columns use a date picker that matches the picked day only (CYB-582):
+            // [col] >= day AND [col] < next day, so datetime values with a time part still match.
+            // "contains" can't be used - its LIKE string concatenation is rejected by SQL Server
+            // against a date-typed parameter ("nvarchar and date incompatible in the add operator").
+            if (IsDateFilterColumn(filter.Key))
+            {
+                if (!DateTime.TryParseExact(filter.Value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+                    continue;
+
+                composite.Filters.Add(CreateNativeDateBoundFilter(filter.Key, "ge", day));
+                composite.Filters.Add(CreateNativeDateBoundFilter(filter.Key, "lt", day.AddDays(1)));
+                continue;
+            }
+
             composite.Filters.Add(new DataFilter
             {
                 ColumnName = filter.Key,
@@ -336,6 +401,14 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
         return HasAnyFilterContent(composite) ? composite : null;
     }
 
+    private static DataFilter CreateNativeDateBoundFilter(string columnName, string op, DateTime day) => new()
+    {
+        ColumnName = columnName,
+        Operator = op,
+        Guid = Guid.NewGuid().ToString(),
+        Value = Value.ForString(day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+    };
+
     private DataCompositeFilter? BuildNativeSearchFilterComposite()
     {
         if (string.IsNullOrWhiteSpace(NativeSearchText))
@@ -346,6 +419,7 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
         foreach (var column in VisibleGridColumns
                      .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                     .Where(c => !DateColumnDisplayFormats.Contains(c.DisplayFormat))
                      .Select(c => c.Name)
                      .Distinct(StringComparer.OrdinalIgnoreCase))
         {
@@ -777,43 +851,6 @@ public partial class FilteredDynamicGridViewV2 : ComponentBase
 
         Console.WriteLine("DynamicGridView: MessageDisplay updated and error shown.");
 
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null")
-                };
-
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-                Console.WriteLine($"DynamicGridView: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("DynamicGridView: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"DynamicGridView: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
 
         StateHasChanged();
     }

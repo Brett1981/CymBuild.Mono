@@ -1,0 +1,40 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "40974dbe-5e91-4d7e-865a-b8fabef1a4d3",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 2,
+  "ArtifactCount": 2,
+  "GeneratedOnUtc": "2026-09-09T12:13:55.9271350Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "580c963f-f5ef-4728-9e9a-37beefe130ac",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "RejectBatchedTransaction",
+      "ParentObjectName": "",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "2815F4453FBDFF7509B7CA0706DA0B1AC1EFAEBD037442700540C0A4CFB00607",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.RejectBatchedTransaction.sql",
+      "FileSha256": "1E35A7D50F67136309265C1312C2DE4D9084DD2376206D1EE20D6475E4C91DE1",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "5bf951ab-ea2e-412c-8dbf-6db9ac91bfc8",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "TransactionSageSubmissionStatus_MarkSentLegacy",
+      "ParentObjectName": "",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "901241A5829CB97750FED59E064686726C77768F88D5B47722D1A07C8A050A5C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.TransactionSageSubmissionStatus_MarkSentLegacy.sql",
+      "FileSha256": "59857DC72647733D11E389322C432B488CE85451FCCFD85FDC14DCC4DE2A764E",
+      "WasSynchronized": false
+    }
+  ]
+}

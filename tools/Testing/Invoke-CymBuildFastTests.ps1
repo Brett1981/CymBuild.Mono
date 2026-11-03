@@ -200,11 +200,11 @@ try {
 
         $arguments = @(
             'test',
-            $project.File.FullName,
+            '--project', $project.File.FullName,
             '--configuration', $Configuration,
-            '--settings', $runSettings,
             '--results-directory', $projectResultRoot,
-            '--logger', "trx;LogFileName=$projectName.trx"
+            '--report-trx',
+            '--report-trx-filename', "$projectName.trx"
         )
 
         if ($NoRestore) {
@@ -214,8 +214,11 @@ try {
             $arguments += '--no-build'
         }
         if (-not $NoCoverage) {
-            $arguments += '--collect'
-            $arguments += 'XPlat Code Coverage'
+            $arguments += '--coverage'
+            $arguments += '--coverage-output-format'
+            $arguments += 'cobertura'
+            $arguments += '--coverage-settings'
+            $arguments += $runSettings
         }
 
         Write-Host ''

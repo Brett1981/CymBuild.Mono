@@ -105,17 +105,6 @@ WHERE
 			WHERE 
 					(T.ActivityID = root_hobt.ID)
 				AND (T.RowStatus NOT IN (0,254))
-				--In case there are multiple requests for one activity.
-				AND NOT EXISTS
-					(
-						SELECT 1  
-						FROM SFin.TransactionDetails AS T2
-						WHERE 
-								(T2.ActivityID = root_hobt.ID)
-							AND (T2.ID <> T.ID)
-							AND (T2.RowStatus NOT IN (0,254))
-
-					)
 		)
 	--[Exclude completed jobs]
 	AND NOT EXISTS

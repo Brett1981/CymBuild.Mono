@@ -35,3 +35,25 @@ R0 is accepted only when the patch applies cleanly and both existing test projec
 The generated baseline reports must exist under `TestResults\baseline` and the fast-test run summary beneath `TestResults\fast\<UTC-run-time>\fast-test-run.json`.
 
 R0 sets no repository-wide coverage threshold. R1 begins substantive coverage with architecture, common shared, EF comparer, and expanded API finance tests.
+
+## 2026-09-15 correction: VSTest execution model retired
+
+The "VSTest remains the explicit execution model" outcome above no longer holds. The .NET 10
+SDK's `Microsoft.Testing.Platform.MSBuild` package stopped supporting `dotnet test` VSTest mode
+for Microsoft.Testing.Platform (MTP) projects, which made every xUnit v3 fast-test project fail
+to build with "Testing with VSTest target is no longer supported". All fast-test projects now run
+on MTP instead:
+
+- `global.json` sets `test.runner` to `Microsoft.Testing.Platform` for the whole repo.
+- `tests/CymBuild.Testing.props` pins xunit.v3/xunit.runner.visualstudio to the 4.x line (must stay
+  version-aligned with the Microsoft.Testing.Platform extensions it also references) and adds
+  `Microsoft.Testing.Extensions.TrxReport` / `Microsoft.Testing.Extensions.CodeCoverage` in place of
+  `coverlet.collector`.
+- `tests/CymBuild.Testing.runsettings` keeps its filename but now holds the CodeCoverage extension's
+  own `<Configuration>` schema, not a VSTest RunSettings document; it's passed via the coverage
+  settings option, not the old VSTest settings option.
+- `Invoke-CymBuildFastTests.ps1` and `Invoke-CymBuildSqlIntegrationTests.ps1` invoke `dotnet test`
+  with MTP-native options (project selection, TRX report, coverage) instead of the VSTest-era
+  `--settings`/`--collect`/`--logger` flags.
+
+Coverlet collection via shared run settings is retired along with VSTest mode.

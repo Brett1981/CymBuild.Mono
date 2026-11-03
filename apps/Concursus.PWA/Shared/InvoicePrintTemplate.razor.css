@@ -13,23 +13,20 @@
     page-break-after: always;
     box-sizing: border-box;
     font-family: Arial, Helvetica, sans-serif;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.16);
 }
 
 .invoice-page__inner {
-    /* Column sizing must be defined on the active page container.
-       Without these values the browser distributes all six columns equally,
-       making the Description column too narrow and forcing invoice rows to
-       grow vertically until the footer overlaps the next A4 page. */
-    --col-desc: 57%;
-    --col-qty: 6%;
-    --col-unit: 8%;
-    --col-amount: 10%;
-    --col-code: 4%;
-    --col-vat: 15%;
+    --col-desc: 56%;
+    --col-qty: 7%;
+    --col-unit: 10%;
+    --col-amount: 11%;
+    --col-code: 5%;
+    --col-vat: 11%;
 
     padding: 8mm 10mm 8mm 10mm;
     display: grid;
-    grid-template-rows: auto auto auto 1fr auto auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     height: 297mm;
     min-height: 297mm;
     box-sizing: border-box;
@@ -39,20 +36,6 @@
     .invoice-page:last-child {
         page-break-after: auto;
     }
-
-/*.invoice-page__inner {
-    --col-desc: 57%;
-    --col-qty: 6%;
-    --col-unit: 8%;
-    --col-amount: 10%;
-    --col-code: 4%;
-    --col-vat: 15%;
-    padding: 8mm 10mm 8mm 10mm;
-    display: grid;
-    grid-template-rows: auto auto auto 1fr auto auto;
-    min-height: 297mm;
-    box-sizing: border-box;
-}*/
 
 .invoice-header {
     display: grid;
@@ -128,22 +111,16 @@
     white-space: nowrap;
 }
 
-.invoice-detail-table {
-    width: 100%;
-    border-collapse: collapse;
-    /*table-layout: fixed;*/
-    font-size: 8.6pt;
-    border: 1.2px solid #444;
+.invoice-detail-block {
+    min-height: 0;
 }
 
 .invoice-detail-table--standard {
-    /* Leaves room for header, invoice meta, continuation/footer and page number. */
-    min-height: 154mm;
+    min-height: 164mm;
 }
 
 .invoice-detail-table--last {
-    /* Last page needs extra space for totals/legal/remittance footer. */
-    min-height: 116mm;
+    min-height: 124mm;
 }
 
 .invoice-detail-table {
@@ -285,42 +262,21 @@
     vertical-align: middle !important;
 }
 
-.detail-header-cell--vertical {
-    padding: 0.5mm 0 !important;
-    text-align: center;
-    vertical-align: middle !important;
-}
-
-.detail-header-cell--stacked {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    font-size: 6.4pt;
-    line-height: 0.95;
-    letter-spacing: 0;
-}
-
-    .detail-header-cell--stacked > span {
-        display: block;
-    }
-
 .detail-data-row {
     page-break-inside: avoid;
     break-inside: avoid;
 }
 
     .detail-data-row td {
-        min-height: 7mm;
-        height: auto;
-        padding: 1mm 1.6mm;
+        min-height: 5mm;
+        height: 5mm;
+        padding: 0.8mm 1.5mm;
         font-size: 8.2pt;
         vertical-align: top;
     }
 
 .detail-description-cell {
-    padding: 1.5mm 3mm !important;
+    padding: 0.8mm 2mm !important;
     line-height: 1.2;
     white-space: pre-line;
     word-break: break-word;
@@ -343,10 +299,7 @@
 }
 
 .blank-row td {
-    height: 4.5mm !important;
-    min-height: 4.5mm !important;
-    padding: 0 !important;
-    line-height: 1 !important;
+    height: 5mm;
     color: transparent;
 }
 
@@ -354,9 +307,9 @@
     display: grid;
     grid-template-columns: 1fr 88mm;
     column-gap: 10mm;
-    margin-top: 2mm;
+    margin-top: 3mm;
     align-items: end;
-    min-height: 22mm;
+    min-height: 30mm;
 }
 
 .invoice-bottom--continuation {
@@ -388,7 +341,7 @@
 }
 
 .invoice-footer {
-    margin-top: 2mm;
+    margin-top: 3mm;
 }
 
 .invoice-footer__top-line {
@@ -420,13 +373,18 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    margin-top: 6mm;
+    margin-top: 12mm;
     font-size: 8pt;
 }
 
 .invoice-footer__brand {
     color: #18a7e0;
     font-size: 10pt;
+}
+
+@page {
+    size: A4 portrait;
+    margin: 0;
 }
 
 @media print {
@@ -437,8 +395,14 @@
 
     .invoice-page {
         margin: 0;
-        width: auto;
-        min-height: auto;
+        width: 210mm;
+        height: 297mm;
+        min-height: 297mm;
         box-shadow: none;
+        break-after: page;
+    }
+
+    .invoice-page:last-child {
+        break-after: auto;
     }
 }

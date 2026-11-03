@@ -15,7 +15,7 @@
         public int TotalCount { get; set; } = 0;
         public IEnumerable<RecordSearchResult> RecordSearchResults { get; set; }
         public bool MoveToCymBuildFiled { get; set; } = false;
-        public bool ExtractAttachments { get; set; } = false;
         public string Description { get; set; } = "";
+        public List<AttachmentFilingRequest> Attachments { get; set; } = new();
     }
 }

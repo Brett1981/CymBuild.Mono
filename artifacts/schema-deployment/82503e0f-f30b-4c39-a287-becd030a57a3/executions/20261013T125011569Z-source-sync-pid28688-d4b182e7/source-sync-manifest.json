@@ -1,0 +1,88 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "82503e0f-f30b-4c39-a287-becd030a57a3",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "10.100.34.114\\general",
+  "SourceDatabaseName": "CymBuild_DEV264",
+  "PlanDatabase": "CymBuild_QA2",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 6,
+  "ArtifactCount": 6,
+  "GeneratedOnUtc": "2026-10-13T12:50:13.6930440Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "61b24b95-ef70-420c-89bd-148ba72d839d",
+      "ObjectType": "Function",
+      "SchemaName": "SFin",
+      "ObjectName": "tvf_SageInboundDiagnostics",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "666972E9EBDBDCA33259BE30869E364A80B7F921C92E447B1211BF50B0511385",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_SageInboundDiagnostics.sql",
+      "FileSha256": "8E4C776A21021AA909070A659676BB13BF73D22CE8C4B21FFFD121DE9C079752",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "a7a91d48-5c4e-47eb-947b-dac5ca0a2069",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "SageInbound_ReconcileInvoiceTransaction",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "B4533AA5CE330F75CA126A88C582F5D2E7036350240612A9B8D642C9503D3B41",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.SageInbound_ReconcileInvoiceTransaction.sql",
+      "FileSha256": "F9B7967389FE1C0BA18B6013ABC2D9453A2E988C41FD01A58EB6C980D54E72E0",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "532d0dda-2513-4683-bbc0-68827f1726f8",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "SageInboundReceiptAndAllocation_Materialise",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2FCF53F5026350544CF7D54E23E80FE6135805F07C9165EAFD772FC5EC3BA143",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.SageInboundReceiptAndAllocation_Materialise.sql",
+      "FileSha256": "CA399222EADD129291AC71CB0D6FCBE85E6292624160D3D7676C687479A0EF9D",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "686a95e4-45f6-4b09-8b9c-64fc84165ba9",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "SageInboundReceiptMaterialisation_AutoCorrect",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "0C10FD40CCBEB4286B3081CBF71F58CFA8B920128D8D9664F43CDD86CD303FAE",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.SageInboundReceiptMaterialisation_AutoCorrect.sql",
+      "FileSha256": "0BE77735AA7F201A8D89377B16CD43F3244F5F9FAD12EE4917C606FFE3918BF4",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "e1cae0d6-f849-49e4-bca9-303d5acc7c7f",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataApply_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "F5F2CAC4B5844145F908CA4F132BA8D698F7392CCD2C11F9F02426D5BF24E1F5",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataApply_Run.sql",
+      "FileSha256": "A1E16112FC82160534327661A81530BC0D5E70C050A05864FA88FC97F05E8DD2",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "33646c0f-ce75-41c7-8473-583f8c7fc207",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataValidate_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "9F00A200823BDCF82E0C31C8A57D90DA668359C49EA133E4AB8098ACC41EE649",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataValidate_Run.sql",
+      "FileSha256": "55A161C8CFDBA318474D2B3B7FB698A147A3ACB9B8159C2CAD0C49FD81352818",
+      "WasSynchronized": true
+    }
+  ]
+}

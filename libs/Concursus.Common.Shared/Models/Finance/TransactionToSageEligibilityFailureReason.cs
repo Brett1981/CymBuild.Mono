@@ -17,6 +17,10 @@
         InvalidLineData = 9,
         AlreadySubmitted = 10,
         SageIntegrationDisabled = 11,
-        MissingRequiredFinancialData = 12
+        MissingRequiredFinancialData = 12,
+        UnsupportedTransactionType = 13,
+        SageManagedInboundTransactionType = 14,
+        InboundOnlyTransactionType = 15,
+        InvalidTransactionTypeConfiguration = 16
     }
 }

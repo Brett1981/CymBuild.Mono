@@ -1,4 +1,4 @@
-﻿@page "/BulkRecordChange"
+@page "/BulkRecordChange"
 @using Concursus.API.Client.Models
 @using Concursus.PWA.Classes
 @using Google.Protobuf
@@ -6,7 +6,9 @@
 @using Newtonsoft.Json
 @using System.Web
 @using System.Dynamic
+@using Concursus.Components.Shared.Helpers
 @inherits EditPageBase
+@implements IDisposable
 @inject Core.CoreClient coreClient
 @inject UserService userService
 @inject IJSRuntime JsRuntime
@@ -47,11 +49,91 @@
 <!-- Loading Overlay -->
 @if (IsProcessing)
 {
-    <div class="overlay">
+    <div class="bulk-change-overlay">
         <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
         </div>
-        <p>Processing changes, please wait...</p>
+        @if (Progress is not null && Progress.Total > 0)
+        {
+            <p class="mb-2">Updating record @Math.Min(Progress.Processed + 1, Progress.Total) of @Progress.Total...</p>
+            <div class="progress bulk-change-progress mb-2" role="progressbar" aria-valuenow="@ProgressPercent" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar" style="width: @(ProgressPercent)%"></div>
+            </div>
+            <p class="small text-muted mb-2">
+                @Progress.Succeeded updated
+                @if (Progress.Failed > 0)
+                {
+                    <span class="text-danger">, @Progress.Failed failed</span>
+                }
+                @if (Progress.Skipped > 0)
+                {
+                    <span>, @Progress.Skipped skipped</span>
+                }
+            </p>
+            <button type="button" class="btn btn-outline-danger btn-sm" @onclick="StopProcessing" disabled="@(_cancellation?.IsCancellationRequested == true)">
+                Stop after current record
+            </button>
+        }
+        else
+        {
+            <p>Processing changes, please wait...</p>
+        }
+    </div>
+}
+@if (IsConfirmVisible)
+{
+    <div class="bulk-change-overlay">
+        <div class="bulk-change-result" role="dialog" aria-modal="true" aria-labelledby="bulk-change-confirm-title">
+            @if (ValuesToSet.Count == 0)
+            {
+                <h5 id="bulk-change-confirm-title">No changes selected</h5>
+                <p class="mb-3">Tick at least one field and choose its new value before applying a bulk update.</p>
+                <button type="button" class="btn btn-primary" @onclick="CancelConfirm">OK</button>
+            }
+            else
+            {
+                <h5 id="bulk-change-confirm-title">Apply bulk update?</h5>
+                <p class="mb-3">
+                    The selected changes will be applied to @SelectedItems.Count record(s).
+                    Fields that are read-only on a record (for example on completed activities) are left unchanged and that record is reported as skipped.
+                </p>
+                <button type="button" class="btn btn-danger me-2" @onclick="CancelConfirm">Cancel</button>
+                <button type="button" class="btn btn-success" @onclick="ApplyChangesAsync">Apply changes</button>
+            }
+        </div>
+    </div>
+}
+@if (!IsProcessing && Result is not null && (!Result.IsCompleteSuccess || Result.Skipped > 0))
+{
+    <div class="bulk-change-overlay">
+        <div class="bulk-change-result">
+            <h5>Bulk update @(Result.Stopped ? "stopped" : Result.Failed > 0 ? "finished with errors" : "finished")</h5>
+            <p class="mb-2">
+                @Result.Succeeded of @Result.Total records updated.
+                @if (Result.Failed > 0)
+                {
+                    <span class="text-danger">@Result.Failed failed.</span>
+                }
+                @if (Result.Skipped > 0)
+                {
+                    <span>@Result.Skipped skipped (fields read-only or record not found).</span>
+                }
+                @if (Result.NotProcessed > 0)
+                {
+                    <span>@Result.NotProcessed not processed.</span>
+                }
+            </p>
+            @if (Result.Failures.Count > 0)
+            {
+                <ul class="bulk-change-failures">
+                    @foreach (var failure in Result.Failures)
+                    {
+                        <li><strong>@DescribeSelection(failure.Item)</strong>: @failure.Message</li>
+                    }
+                </ul>
+            }
+            <button type="button" class="btn btn-primary" @onclick="CloseResultAsync">Close</button>
+        </div>
     </div>
 }
 <style>
@@ -64,7 +146,10 @@
             min-width: 100px;
         }
 
-    .overlay {
+    /* CYB-579: own class - EditPage.razor's global .overlay rule sets pointer-events: none, which made
+       the Stop / Apply changes / Cancel / Close buttons on these overlays unclickable. */
+    .bulk-change-overlay {
+        pointer-events: auto;
         position: fixed;
         top: 0;
         left: 0;
@@ -76,6 +161,26 @@
         align-items: center;
         justify-content: center;
         z-index: 1050;
+    }
+
+    .bulk-change-progress {
+        width: min(420px, 80vw);
+    }
+
+    .bulk-change-result {
+        width: min(640px, 92vw);
+        max-height: 80vh;
+        overflow: auto;
+        background: #ffffff;
+        border: 1px solid #e5edf7;
+        border-radius: 12px;
+        padding: 1.25rem;
+    }
+
+    .bulk-change-failures {
+        max-height: 40vh;
+        overflow: auto;
+        padding-left: 1.25rem;
     }
 
     .spinner-border {
@@ -101,6 +206,9 @@
     private EntityType EntityTypeProperties = new();
     private FlexPropertyGroup FlexPropertyGroup { get; set; }
     private bool IsProcessing { get; set; } = false;
+    private BulkOperationProgress? Progress { get; set; }
+    private BulkOperationResult<ExpandoObject>? Result { get; set; }
+    private CancellationTokenSource? _cancellation;
 
     //Here, we set the new values for the entity properties
     private Dictionary<string, Any> ValuesToSet { get; set; } = new Dictionary<string, Any>();
@@ -108,83 +216,47 @@
     // Store the changes to be applied
     private Dictionary<string, object> ChangesToApply = new();
 
-    private async Task ConfirmChanges()
+    private bool IsConfirmVisible { get; set; }
+
+    // CYB-579: confirm in-page rather than with a native browser confirm()/alert(), which blocks
+    // the whole page (and browser automation) until it is dismissed.
+    private void ConfirmChanges() => IsConfirmVisible = true;
+
+    private void CancelConfirm() => IsConfirmVisible = false;
+
+    private async Task ApplyChangesAsync()
     {
-        string userEmail = "";
+        IsConfirmVisible = false;
         var formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
-        // Display confirmation dialog
-        bool isConfirmed = await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure you wish to perform the selected changes?");
-        if (!isConfirmed)
-            return;
-
         IsProcessing = true; // Show the loading overlay
+        Progress = new BulkOperationProgress(SelectedItems.Count, 0, 0, 0, 0);
+        Result = null;
+        _cancellation?.Dispose();
+        _cancellation = new CancellationTokenSource();
         StateHasChanged();
 
         try
         {
-            if (ValuesToSet.Count == 0)
-            {
-                await JsRuntime.InvokeVoidAsync("alert", "No changes selected for bulk update.");
-                return;
-            }
-
-
-            // Loop through selected records and apply changes
-            foreach (var selection in SelectedItems)
-            {
-                var selectionId = GetRecordGuidFromSelection(selection);
-                if (selectionId == Guid.Empty) continue;
-
-                var dataObject = await formHelper.ReadDataObjectAsync(selectionId.ToString(), ParentDataObjectReference);
-                if (dataObject == null) continue;
-
-
-                foreach (var newValue in ValuesToSet)
+            // CYB-579: select-all can span every page, so report progress per record and carry on
+            // past a failed record; the failures are listed once the run finishes.
+            Result = await BulkOperationRunner.RunAsync(
+                SelectedItems,
+                (selection, _) => ApplyChangesToRecordAsync(formHelper, selection),
+                async progress =>
                 {
-                    var entityGuid = newValue.Key;
-                    var entity = dataObject.DataProperties.FirstOrDefault(x => x.EntityPropertyGuid == entityGuid);
+                    Progress = progress;
+                    await InvokeAsync(StateHasChanged);
+                },
+                cancellationToken: _cancellation.Token);
 
-                    //If no entity is returned, it means the property is not present.
-                    if (entity != null)
-                    {
-
-                         /*
-                         *         ==============================================
-                         *         ================[OE: CBLD-471]================
-                         *         ==============================================
-                         *
-                         * Check for read-only: due to the implementation of CBLD-92, if there are restrictions
-                         * applied to a user or a group, the fields become read-only - same with just read-only fields.
-                        */
-                        bool IsEntityReadOnly = entity.IsReadOnly;
-
-                        if (IsEntityReadOnly)
-                        {
-                            //Skip, we cannot change a read-only value.
-                            continue;
-                        }
-                        //Update the record.
-                        else
-                        {
-                            entity.Value = newValue.Value;
-                        }
-                    }
-                    //No entity property - cannot be changed for the dataobject.
-                    else
-                    {
-                        Console.WriteLine("Entity property was not found.");
-                    }
-
-                }
-
-                await formHelper.UpsertDataObject(dataObject, null, false);
+            // Only close silently when every record was actually updated; skipped records are
+            // reported so a run against e.g. completed activities does not look like a success.
+            if (Result.IsCompleteSuccess && Result.Skipped == 0)
+            {
+                await GridUpdated.InvokeAsync();
+                CloseModal();
             }
-
-            await GridUpdated.InvokeAsync();
-            CloseModal();
-
-
         }
         catch (Exception ex)
         {
@@ -198,6 +270,84 @@
             IsProcessing = false; // Hide the loading overlay
             StateHasChanged();
         }
+    }
+
+    private async Task<BulkItemOutcome> ApplyChangesToRecordAsync(API.Client.FormHelper formHelper, ExpandoObject selection)
+    {
+        var selectionId = GetRecordGuidFromSelection(selection);
+        if (selectionId == Guid.Empty) return BulkItemOutcome.Skipped;
+
+        var dataObject = await formHelper.ReadDataObjectAsync(selectionId.ToString(), ParentDataObjectReference);
+        if (dataObject == null) return BulkItemOutcome.Skipped;
+
+        // CYB-579: if none of the chosen fields could be changed on this record (all read-only,
+        // e.g. a completed activity), don't save it and count it as skipped rather than updated.
+        if (ApplyBulkValues(dataObject, ValuesToSet) == 0) return BulkItemOutcome.Skipped;
+
+        // UpsertDataObject reports API errors and validation failures in its message rather than
+        // throwing; surface them as a failed record instead of silently moving on.
+        var (upsertMessage, _) = await formHelper.UpsertDataObject(dataObject, null, false);
+        if (!string.IsNullOrWhiteSpace(upsertMessage))
+            throw new InvalidOperationException(upsertMessage);
+
+        return BulkItemOutcome.Succeeded;
+    }
+
+    /// <summary>
+    /// Copies each new value onto the matching data property and returns how many were applied.
+    /// Read-only properties are left unchanged ([OE: CBLD-471] - since CBLD-92, user/group
+    /// restrictions also make fields read-only) and missing properties are ignored.
+    /// </summary>
+    internal static int ApplyBulkValues(DataObject dataObject, IReadOnlyDictionary<string, Any> valuesToSet)
+    {
+        var applied = 0;
+
+        foreach (var (entityPropertyGuid, value) in valuesToSet)
+        {
+            var property = dataObject.DataProperties.FirstOrDefault(x => x.EntityPropertyGuid == entityPropertyGuid);
+            if (property is null || property.IsReadOnly) continue;
+
+            property.Value = value;
+            applied++;
+        }
+
+        return applied;
+    }
+
+    private void StopProcessing() => _cancellation?.Cancel();
+
+    private async Task CloseResultAsync()
+    {
+        Result = null;
+        await GridUpdated.InvokeAsync();
+        CloseModal();
+    }
+
+    private int ProgressPercent =>
+        Progress is null || Progress.Total == 0 ? 0 : (int)Math.Round(Progress.Processed * 100.0 / Progress.Total);
+
+    // A readable label for a failed row: the first couple of visible values, falling back to the Guid.
+    private static string DescribeSelection(ExpandoObject selection)
+    {
+        var dictionary = (IDictionary<string, object>)selection;
+        var label = string.Join(" - ", dictionary
+            .Where(kv => !string.Equals(kv.Key, "Guid", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(kv.Key, "ID", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(kv.Key, "RowStatus", StringComparison.OrdinalIgnoreCase)
+                         && !string.IsNullOrWhiteSpace(kv.Value?.ToString()))
+            .Take(2)
+            .Select(kv => kv.Value!.ToString()));
+
+        if (!string.IsNullOrWhiteSpace(label))
+            return label;
+
+        return dictionary.TryGetValue("Guid", out var guid) ? guid?.ToString() ?? "Record" : "Record";
+    }
+
+    public void Dispose()
+    {
+        _cancellation?.Cancel();
+        _cancellation?.Dispose();
     }
 
 

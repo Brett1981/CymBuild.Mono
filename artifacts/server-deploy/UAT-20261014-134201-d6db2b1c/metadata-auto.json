@@ -1,0 +1,12 @@
+{
+  "Mode": "nothing-to-do",
+  "Status": "Succeeded",
+  "RunGuid": "9cc4e0dd-519a-4d8c-9e31-c29bd6f00e72",
+  "SelectedCount": 0,
+  "DependencyCount": 0,
+  "ApplyCount": 0,
+  "SkippedUnsupportedCount": 0,
+  "SkippedUnsupportedTables": [],
+  "Issues": [],
+  "Message": "No metadata differences to apply."
+}

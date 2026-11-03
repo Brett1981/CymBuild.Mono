@@ -147,9 +147,39 @@ namespace Concursus.API.Sage.SOAP.Client
                 query.Add("force=true");
             }
 
-            var url = "/api/customer-transactions?" + string.Join("&", query);
+            // CYB-555: v2 keeps account codes and instrument numbers as Sage holds them
+            // (leading zeros) and returns real net/tax/gross. v1 stays for other apps.
+            var url = "/api/v2/customer-transactions?" + string.Join("&", query);
 
             return await _httpClient.GetFromJsonAsync<SageFetchCustomerTransactionsResponse>(url, JsonOptions, cancellationToken);
+        }
+
+        public async Task<SageFetchSalesAllocationsResponse?> FetchSalesAllocationsAsync(
+            SageDataset dataset,
+            string accountReference,
+            string urn,
+            CancellationToken cancellationToken = default)
+        {
+            EnsureEnabled();
+
+            // The wrapper rejects a request without either; refuse it here too
+            // rather than send an unbounded allocations query.
+            if (string.IsNullOrWhiteSpace(accountReference))
+            {
+                throw new ArgumentException("An account reference is required.", nameof(accountReference));
+            }
+
+            if (string.IsNullOrWhiteSpace(urn))
+            {
+                throw new ArgumentException("An invoice URN is required.", nameof(urn));
+            }
+
+            var url = "/api/v2/sales-allocations?"
+                + $"dataset={Uri.EscapeDataString(dataset.ToString())}"
+                + $"&accountReference={Uri.EscapeDataString(accountReference)}"
+                + $"&urn={Uri.EscapeDataString(urn)}";
+
+            return await _httpClient.GetFromJsonAsync<SageFetchSalesAllocationsResponse>(url, JsonOptions, cancellationToken);
         }
 
         private void EnsureEnabled()

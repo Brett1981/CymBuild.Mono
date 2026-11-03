@@ -1,0 +1,16 @@
+{
+  "Release": "UAT-20261020-165147-7abf8d66",
+  "Environment": "UAT",
+  "Branch": "feature/SB_CYB-553-26.4-bcc-quote-org-units",
+  "Commit": "7abf8d6651f32424e9f9a43b63696497a209fb82",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-20T16:55:28.6001901+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 201,
+    "Pwa": 7061
+  }
+}

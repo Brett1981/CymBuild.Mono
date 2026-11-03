@@ -1,0 +1,81 @@
+{
+  "mode": "created",
+  "runGuid": "5cc8a5c3-c80d-4af9-be66-6393766cea51",
+  "comparedOnUtc": "2026-10-20 15:44:17",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SFin",
+      "objectName": "tvf_SageInboundDiagnostics",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageExternalTransaction_Upsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInbound_ReconcileAllocations",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundDiagnostics_Get",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundDiagnostics_GetSummary",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInboundReceiptAndAllocation_Materialise",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "View",
+      "schemaName": "SCore",
+      "objectName": "IntegrationOutboxNotificationRecipients",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "View",
+      "schemaName": "SSop",
+      "objectName": "Enquiries_DWETL",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "View",
+      "schemaName": "SSop",
+      "objectName": "Quotes_DWETL",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "SageInbound_RecordAllocation",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 5cc8a5c3-c80d-4af9-be66-6393766cea51: selected 10 row(s), skipped 0, validated and accepted."
+}

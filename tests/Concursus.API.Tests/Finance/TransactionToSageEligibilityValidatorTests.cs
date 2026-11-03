@@ -70,6 +70,58 @@ public sealed class TransactionToSageEligibilityValidatorTests
         AssertNotEligible(result, TransactionToSageEligibilityFailureReason.TransactionStillBatched);
     }
 
+    [Theory]
+    [InlineData("CreditNote")]
+    [InlineData("Credit Note")]
+    [InlineData("credit-note")]
+    public async Task ValidateAsync_CreditNoteIsSageManagedAndInboundOnly(string transactionTypeName)
+    {
+        var transaction = CreateValidTransaction();
+        transaction.TransactionTypeName = transactionTypeName;
+        transaction.TransactionTypeIsNegated = true;
+
+        var result = await _validator.ValidateAsync(transaction, true, false);
+
+        AssertNotEligible(result, TransactionToSageEligibilityFailureReason.SageManagedInboundTransactionType);
+        Assert.Contains("Sage-managed", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("Receipt")]
+    [InlineData("Payment")]
+    public async Task ValidateAsync_BankTransactionTypesAreInboundOnly(string transactionTypeName)
+    {
+        var transaction = CreateValidTransaction();
+        transaction.TransactionTypeName = transactionTypeName;
+        transaction.TransactionTypeIsBank = true;
+
+        var result = await _validator.ValidateAsync(transaction, true, false);
+
+        AssertNotEligible(result, TransactionToSageEligibilityFailureReason.InboundOnlyTransactionType);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_UnknownTransactionTypeIsRejected()
+    {
+        var transaction = CreateValidTransaction();
+        transaction.TransactionTypeName = "Journal";
+
+        var result = await _validator.ValidateAsync(transaction, true, false);
+
+        AssertNotEligible(result, TransactionToSageEligibilityFailureReason.UnsupportedTransactionType);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_InvoiceWithNegatedFlagIsRejectedAsMisconfigured()
+    {
+        var transaction = CreateValidTransaction();
+        transaction.TransactionTypeIsNegated = true;
+
+        var result = await _validator.ValidateAsync(transaction, true, false);
+
+        AssertNotEligible(result, TransactionToSageEligibilityFailureReason.InvalidTransactionTypeConfiguration);
+    }
+
     [Fact]
     public async Task ValidateAsync_MissingTransactionNumberReturnsExpectedReason()
     {
@@ -224,6 +276,8 @@ public sealed class TransactionToSageEligibilityValidatorTests
             TransactionGuid = Guid.NewGuid(),
             TransactionId = 20,
             TransactionNumber = "TX-100",
+            TransactionTypeGuid = Guid.NewGuid(),
+            TransactionTypeName = "Invoice",
             InvoiceNumber = "INV-100",
             RowStatus = 1,
             Batched = false,

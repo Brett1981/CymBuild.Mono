@@ -1,0 +1,3 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"78a9d1ec-57d3-4ebb-97f4-fe5427ed11a0","StoredProcedure","SFin","SageInboundReceiptAndAllocation_Materialise","","Different","True","False","True","True"
+"f4ad0cfe-1f11-49e7-ae8d-6fa3d62de51c","StoredProcedure","SFin","SageInboundReceiptMaterialisation_AutoCorrect","","Different","True","False","True","True"

@@ -190,7 +190,7 @@ public partial class DataPillRow : ComponentBase
 
             if (label.Equals("Remaining Fees", StringComparison.OrdinalIgnoreCase))
             {
-                cards.Add(new FinanceCard(FinanceCardKind.NotInvoiced, "🧾", "Remaining Fees (Without VAT)", amount, "Awaiting invoice creation", "neutral"));
+                cards.Add(new FinanceCard(FinanceCardKind.NotInvoiced, "🧾", "Remaining Fees (Without VAT)", amount, "Not Yet Invoiced", "neutral"));
             }
             //else if (label.Equals("Amount not invoiced", StringComparison.OrdinalIgnoreCase))
             //{

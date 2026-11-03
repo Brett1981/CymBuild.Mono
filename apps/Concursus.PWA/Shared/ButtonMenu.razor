@@ -197,3 +197,136 @@
         </section>
     </div>
 }
+
+@if (_rejectBatchedTransactionModalIsVisible)
+{
+    <div class="cb-task-modal-root"
+         role="presentation"
+         style="position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; display: flex !important; align-items: flex-start !important; justify-content: center !important; padding: 3vh 3vw !important; overflow: auto !important; box-sizing: border-box !important;">
+        <button type="button"
+                class="cb-task-modal-backdrop"
+                aria-label="Close modal backdrop"
+                @onclick="CloseRejectBatchedTransactionModal"
+                style="position: fixed !important; inset: 0 !important; z-index: 0 !important; display: block !important; width: 100vw !important; height: 100vh !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: rgba(15, 23, 42, .55) !important; backdrop-filter: blur(2px) !important; cursor: default !important;"></button>
+
+        <section class="cb-task-modal-card"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="reject-batched-transaction-modal-title"
+                 @onclick:stopPropagation="true"
+                 style="position: relative !important; z-index: 1 !important; width: min(520px, 96vw) !important; max-height: 94vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; background: #ffffff !important; border: 1px solid var(--cb-v2-border, #e5eaf3) !important; border-radius: var(--cb-v2-radius-lg, 18px) !important; box-shadow: var(--cb-v2-shadow-modal, 0 28px 80px rgba(15, 23, 42, .30)) !important; color: var(--cb-v2-text, #172033) !important;">
+            <header class="cb-task-modal-header"
+                    style="display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 1rem !important; padding: .95rem 1.15rem !important; border-bottom: 1px solid var(--cb-v2-border, #e5eaf3) !important; background: linear-gradient(90deg, rgba(220, 53, 69, .10), rgba(255, 255, 255, .96) 48%, #ffffff 100%) !important;">
+                <h5 id="reject-batched-transaction-modal-title"
+                    class="cb-task-modal-title"
+                    style="display: flex !important; align-items: center !important; gap: .55rem !important; margin: 0 !important; color: var(--cb-v2-text-strong, #0f172a) !important; font-size: 1rem !important; font-weight: 800 !important;">
+                    <i class="bi bi-x-octagon" aria-hidden="true"></i>
+                    <span>Reject Batched Transaction</span>
+                </h5>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary cb-task-modal-action"
+                        title="Close"
+                        aria-label="Close"
+                        disabled="@_rejectBatchedTransactionIsBusy"
+                        @onclick="CloseRejectBatchedTransactionModal">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            <div class="cb-task-modal-body"
+                 style="overflow: auto !important; padding: 1rem !important; background: #ffffff !important;">
+                <label for="reject-batched-transaction-reason" class="form-label fw-semibold">Reason</label>
+                <input id="reject-batched-transaction-reason"
+                       type="text"
+                       class="form-control"
+                       placeholder="Enter the reason for rejecting this batched transaction..."
+                       disabled="@_rejectBatchedTransactionIsBusy"
+                       @bind="_rejectBatchedTransactionComment"
+                       @bind:event="oninput" />
+            </div>
+
+            <footer class="cb-task-modal-footer"
+                    style="display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: .6rem !important; padding: .85rem 1.15rem !important; border-top: 1px solid var(--cb-v2-border, #e5eaf3) !important; background: #ffffff !important;">
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        disabled="@_rejectBatchedTransactionIsBusy"
+                        @onclick="CloseRejectBatchedTransactionModal">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-primary"
+                        disabled="@(_rejectBatchedTransactionIsBusy || string.IsNullOrWhiteSpace(_rejectBatchedTransactionComment))"
+                        @onclick="SubmitRejectBatchedTransactionAsync">
+                    @(_rejectBatchedTransactionIsBusy ? "Submitting..." : "Submit")
+                </button>
+            </footer>
+        </section>
+    </div>
+}
+
+@if (_copyQuoteItemsModalIsVisible)
+{
+    <div class="cb-task-modal-root"
+         role="presentation"
+         style="position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; display: flex !important; align-items: flex-start !important; justify-content: center !important; padding: 3vh 3vw !important; overflow: auto !important; box-sizing: border-box !important;">
+        <button type="button"
+                class="cb-task-modal-backdrop"
+                aria-label="Close modal backdrop"
+                @onclick="() => CopyQuoteItemsModalRespond(null)"
+                style="position: fixed !important; inset: 0 !important; z-index: 0 !important; display: block !important; width: 100vw !important; height: 100vh !important; border: 0 !important; padding: 0 !important; margin: 0 !important; background: rgba(15, 23, 42, .55) !important; backdrop-filter: blur(2px) !important; cursor: default !important;"></button>
+
+        <section class="cb-task-modal-card"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="copy-quote-items-modal-title"
+                 @onclick:stopPropagation="true"
+                 style="position: relative !important; z-index: 1 !important; width: min(520px, 96vw) !important; max-height: 94vh !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; background: #ffffff !important; border: 1px solid var(--cb-v2-border, #e5eaf3) !important; border-radius: var(--cb-v2-radius-lg, 18px) !important; box-shadow: var(--cb-v2-shadow-modal, 0 28px 80px rgba(15, 23, 42, .30)) !important; color: var(--cb-v2-text, #172033) !important;">
+            <header class="cb-task-modal-header"
+                    style="display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 1rem !important; padding: .95rem 1.15rem !important; border-bottom: 1px solid var(--cb-v2-border, #e5eaf3) !important; background: linear-gradient(90deg, rgba(13, 110, 253, .10), rgba(255, 255, 255, .96) 48%, #ffffff 100%) !important;">
+                <h5 id="copy-quote-items-modal-title"
+                    class="cb-task-modal-title"
+                    style="display: flex !important; align-items: center !important; gap: .55rem !important; margin: 0 !important; color: var(--cb-v2-text-strong, #0f172a) !important; font-size: 1rem !important; font-weight: 800 !important;">
+                    <i class="bi bi-question-circle" aria-hidden="true"></i>
+                    <span>Revise Quote</span>
+                </h5>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary cb-task-modal-action"
+                        title="Close"
+                        aria-label="Close"
+                        @onclick="() => CopyQuoteItemsModalRespond(null)">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            <div class="cb-task-modal-body"
+                 style="overflow: auto !important; padding: 1rem !important; background: #ffffff !important;">
+                <p class="mb-2">Copy quote items from previous version?</p>
+                <p class="mb-0 text-muted">
+                    If quote items are present in quote, the job type cannot be changed.
+                    The job type can only be changed when quote items are removed.
+                </p>
+            </div>
+
+            <footer class="cb-task-modal-footer"
+                    style="display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: .6rem !important; padding: .85rem 1.15rem !important; border-top: 1px solid var(--cb-v2-border, #e5eaf3) !important; background: #ffffff !important;">
+                <button type="button"
+                        class="btn btn-outline-danger me-auto"
+                        @onclick="() => CopyQuoteItemsModalRespond(null)">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        @onclick="() => CopyQuoteItemsModalRespond(false)">
+                    No
+                </button>
+                <button type="button"
+                        class="btn btn-primary"
+                        @onclick="() => CopyQuoteItemsModalRespond(true)">
+                    Yes
+                </button>
+            </footer>
+        </section>
+    </div>
+}

@@ -35,5 +35,6 @@ public enum CymBuildWorkerRole
     WorkflowOutbox = 2,
     SharePointRepair = 3,
     SageSubmission = 4,
-    SageInbound = 5
+    SageInbound = 5,
+    RecordExpiry = 6
 }

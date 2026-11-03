@@ -66,6 +66,16 @@ namespace Concursus.Common.Shared.Models.Finance
         public string TransactionNumber { get; set; } = string.Empty;
 
         /// <summary>
+        /// Snapshot of the finance transaction type at enqueue time. These fields
+        /// are additive so previously queued payloads remain deserializable.
+        /// </summary>
+        [JsonPropertyName("transactionTypeGuid")]
+        public Guid TransactionTypeGuid { get; set; }
+
+        [JsonPropertyName("transactionTypeName")]
+        public string TransactionTypeName { get; set; } = string.Empty;
+
+        /// <summary>
         /// Optional related Job identifier.
         /// JSON contract: jobId
         /// </summary>

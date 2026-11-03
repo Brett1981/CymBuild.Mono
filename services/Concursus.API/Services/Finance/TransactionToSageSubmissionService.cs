@@ -172,6 +172,16 @@ namespace Concursus.API.Services.Finance
                         eligibilityCode,
                         eligibility.Message);
 
+                    if (eligibility.FailureReason is
+                        TransactionToSageEligibilityFailureReason.SageManagedInboundTransactionType or
+                        TransactionToSageEligibilityFailureReason.InboundOnlyTransactionType)
+                    {
+                        return TransactionToSageProcessResult.Skipped(
+                            transaction.TransitionGuid,
+                            transaction.TransactionGuid,
+                            eligibility.Message);
+                    }
+
                     return TransactionToSageProcessResult.NotEligible(
                         transaction.TransitionGuid,
                         transaction.TransactionGuid,

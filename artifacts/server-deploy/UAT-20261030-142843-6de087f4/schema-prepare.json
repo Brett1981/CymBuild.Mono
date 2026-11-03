@@ -1,0 +1,60 @@
+{
+  "mode": "created",
+  "runGuid": "46969743-8238-4ade-9904-415c429969f3",
+  "comparedOnUtc": "2026-10-30 14:41:36",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SFin",
+      "objectName": "tvf_InvoiceRequestItemsValidate",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SCore",
+      "objectName": "CreateUserSession",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceRequestCreateInvoice",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceRequestItemsUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SSop",
+      "objectName": "QuotesUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Function",
+      "schemaName": "SFin",
+      "objectName": "tvf_InvoiceRequestItemFeeCheck",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 46969743-8238-4ade-9904-415c429969f3: selected 7 row(s), skipped 0, validated and accepted."
+}

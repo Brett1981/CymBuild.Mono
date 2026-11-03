@@ -39,7 +39,7 @@
             @if (!string.Equals(Config.Value.Environment.Type, "LIVE", StringComparison.OrdinalIgnoreCase))
             {
                 <span class="env-badge env-@Config.Value.Environment.Type.ToLowerInvariant()">
-                    @if (NavManager.BaseUri.Contains("bre.socotec.co.uk:9402") || NavManager.BaseUri.Contains("cymbuild-dev"))
+                    @if (NavManager.BaseUri.Contains("cymbuild-dev"))
                     {
                         @("QA")
                     }
@@ -306,9 +306,9 @@ else
 
         return EnvironmentType switch
         {
-            "LIVE" => "https://bre.socotec.co.uk:9601",
-            "TEST" => "https://bre.socotec.co.uk:9501",
-            "DEV" => "https://bre.socotec.co.uk:9401",
+            "LIVE" => "https://cymbuild.socotec.co.uk:9601",
+            "TEST" => "https://cymbuild-uat.socotec.co.uk:9501",
+            "DEV" => "https://cymbuild-dev.socotec.co.uk:9401",
             _ => "https://localhost:7202"
         };
     }

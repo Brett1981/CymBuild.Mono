@@ -15,12 +15,12 @@ namespace CymBuild_Outlook_Addin.Services
             _logger = logger;
         }
 
-        public async Task<string> GenerateDescriptionAsync(string subject, string body, string apiToken)
+        public async Task<string> GenerateDescriptionAsync(string subject, string body, string apiToken, string? attachmentName = null)
         {
             try
             {
-                _logger.LogInformation("GenerateDescriptionAsync called. SubjectLength={SubjectLength}, BodyLength={BodyLength}", 
-                    subject?.Length ?? 0, body?.Length ?? 0);
+                _logger.LogInformation("GenerateDescriptionAsync called. SubjectLength={SubjectLength}, BodyLength={BodyLength}, AttachmentName={AttachmentName}",
+                    subject?.Length ?? 0, body?.Length ?? 0, attachmentName ?? "(none)");
 
                 if (string.IsNullOrWhiteSpace(subject) && string.IsNullOrWhiteSpace(body))
                 {
@@ -31,7 +31,8 @@ namespace CymBuild_Outlook_Addin.Services
                 var request = new GenerateDescriptionRequest
                 {
                     Subject = subject,
-                    Body = body
+                    Body = body,
+                    AttachmentName = attachmentName
                 };
 
                 using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/EmailDescription/generate");
@@ -71,6 +72,7 @@ namespace CymBuild_Outlook_Addin.Services
     {
         public string? Subject { get; set; }
         public string? Body { get; set; }
+        public string? AttachmentName { get; set; }
     }
 
     public class GenerateDescriptionResponse

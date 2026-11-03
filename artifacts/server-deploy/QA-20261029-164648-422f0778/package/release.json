@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261029-164648-422f0778",
+  "Environment": "QA",
+  "Branch": "Oliver_QA_Release_29102026",
+  "Commit": "422f077866306272fb4006bcd1a5d4ef79401ba2",
+  "BuiltBy": "ESGL\\stephen.brett",
+  "BuiltAt": "2026-10-29T16:55:18.5381842+00:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 201,
+    "Pwa": 7061
+  }
+}

@@ -8,7 +8,6 @@
     <base href="/" />
 
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
-    <link href="_content/Telerik.UI.for.Blazor/css/kendo-theme-bootstrap/all.css" rel="stylesheet" type="text/css" />
 
     <link href="css/app.css" rel="stylesheet" />
     <link href="_content/Concursus.Components.Shared/css/cymbuild-v2.css" rel="stylesheet" />
@@ -21,7 +20,6 @@
     <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
 
-    <script src="_content/Telerik.UI.for.Blazor/js/telerik-blazor.js" defer></script>
     <script src="https://unpkg.com/datastore-idb/dist/index.min.js"></script>
     <script src="idb.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -196,6 +194,7 @@
     <script src="iframeHelper.js"></script>
     <script src="sw-registrator.js"></script>
     <script src="excel-export.js"></script>
+    <script src="grid-edge-auto-scroll.js"></script>
 
     <script>
         function setRepairButtonState(enabled, text) {
@@ -884,14 +883,11 @@
             document.body.appendChild(exportRoot);
 
             try {
-                clone.querySelectorAll("*").forEach(el => {
-                    el.style.overflow = "visible";
-                    el.style.overflowX = "visible";
-                    el.style.overflowY = "visible";
-                    el.style.maxHeight = "none";
-                });
-
                 const pages = clone.querySelectorAll(".invoice-page");
+
+                if (!pages.length) {
+                    throw new Error("The invoice preview does not contain any printable pages.");
+                }
 
                 pages.forEach(page => {
                     page.style.width = "210mm";
@@ -909,7 +905,21 @@
                     inner.style.boxSizing = "border-box";
                 });
 
-                await new Promise(resolve => setTimeout(resolve, 150));
+                if (document.fonts && document.fonts.ready) {
+                    await document.fonts.ready;
+                }
+
+                const images = Array.from(clone.querySelectorAll("img"));
+                await Promise.all(images.map(image => {
+                    if (image.complete) return Promise.resolve();
+
+                    return new Promise(resolve => {
+                        image.addEventListener("load", resolve, { once: true });
+                        image.addEventListener("error", resolve, { once: true });
+                    });
+                }));
+
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
                 const pdf = new jsPDF({
                     orientation: "portrait",
@@ -918,15 +928,34 @@
                 });
 
                 for (let i = 0; i < pages.length; i++) {
+                    const page = pages[i];
+                    const pageWidth = page.offsetWidth;
+                    const pageHeight = page.offsetHeight;
+
+                    if (page.scrollWidth > pageWidth + 2 || page.scrollHeight > pageHeight + 2) {
+                        throw new Error(
+                            `Invoice page ${i + 1} exceeds A4. Adjust the page content before exporting.`);
+                    }
+
                     const canvas = await html2canvas(pages[i], {
                         scale: 2,
                         useCORS: true,
                         backgroundColor: "#ffffff",
-                        width: pages[i].scrollWidth,
-                        height: pages[i].scrollHeight
+                        width: pageWidth,
+                        height: pageHeight,
+                        windowWidth: pageWidth,
+                        windowHeight: pageHeight,
+                        scrollX: 0,
+                        scrollY: 0
                     });
 
                     const imgData = canvas.toDataURL("image/png");
+                    const renderedHeightMm = (canvas.height * 210) / canvas.width;
+
+                    if (Math.abs(renderedHeightMm - 297) > 1) {
+                        throw new Error(
+                            `Invoice page ${i + 1} did not render at the A4 aspect ratio.`);
+                    }
 
                     if (i > 0) {
                         pdf.addPage();

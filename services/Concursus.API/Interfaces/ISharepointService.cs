@@ -9,6 +9,7 @@ namespace Concursus.API.Interfaces
         SharepointDirectory GetFoldersForFireStructuralBuildingInJobs();
         SharepointDirectory GetFoldersForFireStructuralBuildingInQuotes();
         SharepointDirectory GetFoldersForFireStructuralBuildingInEnquiry();
+        SharepointDirectory GetFoldersForBuildingSafetyConsultancy();
 
         Task EnsureFolderStructureExists(
             GraphServiceClient graphServiceClient,

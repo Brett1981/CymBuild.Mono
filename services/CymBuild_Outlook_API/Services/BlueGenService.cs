@@ -18,22 +18,42 @@ namespace CymBuild_Outlook_API.Services
             _logger = logger;
         }
 
-        public async Task<string> GenerateEmailDescriptionAsync(string subject, string body)
+        public async Task<string> GenerateEmailDescriptionAsync(string subject, string body, string? attachmentName = null)
+        {
+            var prompt = BuildDescriptionPrompt(subject, body, attachmentName);
+
+            return await CallChatEndpointAsync(prompt, retryOnUnauthorized: true);
+        }
+
+        /// <summary>
+        /// Builds the BlueGen prompt for either an email description (attachmentName is null/empty) or an
+        /// attachment description (attachmentName set - the attachment's own content is never available here,
+        /// only its file name plus the email it was sent with). Pure/no I/O so it can be unit tested directly.
+        /// </summary>
+        public static string BuildDescriptionPrompt(string subject, string body, string? attachmentName)
         {
             var truncatedBody = TruncateBody(body, 1000);
-            
-            var prompt = $@"Generate a concise, professional description (2-3 sentences, max 250 characters) for this email to be used when filing it. Focus on key action items, decisions, or important information.
+
+            return string.IsNullOrWhiteSpace(attachmentName)
+                ? $@"Generate a concise, professional description (2-3 sentences, max 250 characters) for this email to be used when filing it. Focus on key action items, decisions, or important information.
 
 Subject: {subject}
 
 Body: {truncatedBody}
 
-Return only the description text, nothing else.";
+Return only the description text, nothing else."
+                : $@"Generate a concise, professional description (2-3 sentences, max 250 characters) for this email attachment to be used when filing it. Base it on the attachment's file name and the email it was sent with - you do not have the attachment's contents.
 
-            return await CallChatEndpointAsync(prompt, retryOnUnauthorized: true);
+Attachment file name: {attachmentName}
+
+Email subject: {subject}
+
+Email body: {truncatedBody}
+
+Return only the description text, nothing else.";
         }
 
-        private string TruncateBody(string body, int maxLength)
+        private static string TruncateBody(string body, int maxLength)
         {
             if (string.IsNullOrEmpty(body) || body.Length <= maxLength)
                 return body ?? string.Empty;

@@ -9,7 +9,15 @@
       - Run only through the controlled API/EF bootstrap path, the Schema
         Deployment initializer, or an approved deployment worker.
       - The Blazor browser never receives DDL or direct database access.
-      - Existing incompatible objects are rejected rather than altered or replaced.
+      - This bootstrap only ever creates or alters its own [SMigration] control-plane
+        bookkeeping tables. It never touches business schema (SCore, SSop, etc.).
+      - A genuinely missing, safely-additive column (nullable, non-identity, known
+        type) on an existing [SMigration] table is added automatically, since it is
+        this tool's own metadata and carries no business-data or review risk.
+      - Any other shape gap is rejected rather than altered or replaced: an existing
+        column with an incompatible type/width/nullability/identity, or a missing
+        column that would need a NOT NULL backfill decision, still requires a
+        reviewed source-controlled migration.
       - No business data or workflow status is changed.
 */
 SET ANSI_NULLS ON;
@@ -58,8 +66,10 @@ BEGIN
         [CreatedByUserId] INT NOT NULL CONSTRAINT [DF_Schema_Run_CreatedByUserId] DEFAULT (-1),
         [ReviewedByUserId] INT NOT NULL CONSTRAINT [DF_Schema_Run_ReviewedByUserId] DEFAULT (-1),
         [DeploymentReference] NVARCHAR(100) NOT NULL CONSTRAINT [DF_Schema_Run_DeploymentReference] DEFAULT (N''),
-        [Notes] NVARCHAR(2000) NOT NULL CONSTRAINT [DF_Schema_Run_Notes] DEFAULT (N''),
+        [Notes] NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_Schema_Run_Notes] DEFAULT (N''),
         [SummaryJson] NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_Schema_Run_SummaryJson] DEFAULT (N'{}'),
+        [SourceSyncedOnUtc] DATETIME2(7) NULL,
+        [SourceSyncCommit] NVARCHAR(64) NULL,
         CONSTRAINT [PK_Schema_Run] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80),
         CONSTRAINT [UQ_Schema_Run_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
     ) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY];
@@ -152,6 +162,9 @@ BEGIN
         [SelectionNote] NVARCHAR(2000) NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectionNote] DEFAULT (N''),
         [SelectedByUserId] INT NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectedByUserId] DEFAULT (-1),
         [SelectedOnUtc] DATETIME2(7) NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectedOnUtc] DEFAULT (SYSUTCDATETIME()),
+        -- CYB-566: a new table selected with "Copy reference data" carries its captured DEV rows.
+        [CopyReferenceData] BIT NULL,
+        [NewTableCaptureJson] NVARCHAR(MAX) NULL,
         CONSTRAINT [PK_Schema_RunSelections] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80),
         CONSTRAINT [UQ_Schema_RunSelections_Guid] UNIQUE ([Guid]) WITH (FILLFACTOR = 80)
     ) ON [PRIMARY];
@@ -201,8 +214,10 @@ VALUES
     (N'Schema_Run', N'CreatedByUserId', N'int', 4, 0, 0),
     (N'Schema_Run', N'ReviewedByUserId', N'int', 4, 0, 0),
     (N'Schema_Run', N'DeploymentReference', N'nvarchar', 200, 0, 0),
-    (N'Schema_Run', N'Notes', N'nvarchar', 4000, 0, 0),
+    (N'Schema_Run', N'Notes', N'nvarchar', -1, 0, 0),
     (N'Schema_Run', N'SummaryJson', N'nvarchar', -1, 0, 0),
+    (N'Schema_Run', N'SourceSyncedOnUtc', N'datetime2', 8, 1, 0),
+    (N'Schema_Run', N'SourceSyncCommit', N'nvarchar', 128, 1, 0),
 
     (N'Schema_ObjectComparisons', N'ID', N'bigint', 8, 0, 1),
     (N'Schema_ObjectComparisons', N'Guid', N'uniqueidentifier', 16, 0, 0),
@@ -258,7 +273,78 @@ VALUES
     (N'Schema_RunSelections', N'IsSelected', N'bit', 1, 0, 0),
     (N'Schema_RunSelections', N'SelectionNote', N'nvarchar', 4000, 0, 0),
     (N'Schema_RunSelections', N'SelectedByUserId', N'int', 4, 0, 0),
-    (N'Schema_RunSelections', N'SelectedOnUtc', N'datetime2', 8, 0, 0);
+    (N'Schema_RunSelections', N'SelectedOnUtc', N'datetime2', 8, 0, 0),
+    -- CYB-566: nullable, so an existing workbench self-heals them in place.
+    (N'Schema_RunSelections', N'CopyReferenceData', N'bit', 1, 1, 0),
+    (N'Schema_RunSelections', N'NewTableCaptureJson', N'nvarchar', -1, 1, 0);
+
+/*
+    Self-heal only a genuinely missing, safely-additive column: nullable, not an
+    identity, and of a known simple type. Anything else (an existing column whose
+    type/width/nullability/identity differs, or a missing column that would need a
+    NOT NULL backfill decision) is left for the incompatibility check below, which
+    still rejects it and requires a reviewed source-controlled migration.
+*/
+DECLARE @HealableAdds TABLE
+(
+    [TableName] SYSNAME NOT NULL,
+    [ColumnName] SYSNAME NOT NULL,
+    [ColumnTypeDdl] NVARCHAR(50) NOT NULL,
+    PRIMARY KEY ([TableName], [ColumnName])
+);
+
+INSERT INTO @HealableAdds ([TableName], [ColumnName], [ColumnTypeDdl])
+SELECT
+    ec.[TableName],
+    ec.[ColumnName],
+    CASE ec.[TypeName]
+        WHEN N'nvarchar' THEN N'NVARCHAR(' +
+            (CASE WHEN ec.[MaxLength] = -1 THEN N'MAX' ELSE CAST(ec.[MaxLength] / 2 AS NVARCHAR(10)) END) + N')'
+        WHEN N'datetime2' THEN N'DATETIME2(7)'
+        WHEN N'bit' THEN N'BIT'
+        WHEN N'int' THEN N'INT'
+        WHEN N'bigint' THEN N'BIGINT'
+        WHEN N'tinyint' THEN N'TINYINT'
+        WHEN N'uniqueidentifier' THEN N'UNIQUEIDENTIFIER'
+    END
+FROM @ExpectedColumns AS ec
+INNER JOIN sys.tables AS tb
+    ON tb.[name] = ec.[TableName]
+   AND tb.[schema_id] = SCHEMA_ID(N'SMigration')
+LEFT JOIN sys.columns AS cl
+    ON cl.[object_id] = tb.[object_id]
+   AND cl.[name] = ec.[ColumnName]
+WHERE cl.[column_id] IS NULL
+  AND ec.[IsNullable] = 1
+  AND ec.[IsIdentity] = 0
+  AND ec.[TypeName] IN (N'nvarchar', N'datetime2', N'bit', N'int', N'bigint', N'tinyint', N'uniqueidentifier');
+
+IF EXISTS (SELECT 1 FROM @HealableAdds)
+BEGIN
+    DECLARE @HealTableName SYSNAME;
+    DECLARE @HealAlterSql NVARCHAR(MAX);
+    DECLARE HealTableCursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT DISTINCT [TableName] FROM @HealableAdds;
+
+    OPEN HealTableCursor;
+    FETCH NEXT FROM HealTableCursor INTO @HealTableName;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SELECT @HealAlterSql = N'ALTER TABLE ' + QUOTENAME(N'SMigration') + N'.' + QUOTENAME(@HealTableName) + N' ADD ' +
+            STRING_AGG(CONVERT(NVARCHAR(MAX), QUOTENAME(ha.[ColumnName]) + N' ' + ha.[ColumnTypeDdl] + N' NULL'), N', ')
+        FROM @HealableAdds AS ha
+        WHERE ha.[TableName] = @HealTableName;
+
+        PRINT (N'Schema Migration bootstrap self-healing additive column(s) on ' +
+            QUOTENAME(N'SMigration') + N'.' + QUOTENAME(@HealTableName) + N': ' + @HealAlterSql);
+        EXEC sys.sp_executesql @HealAlterSql;
+
+        FETCH NEXT FROM HealTableCursor INTO @HealTableName;
+    END;
+
+    CLOSE HealTableCursor;
+    DEALLOCATE HealTableCursor;
+END;
 
 DECLARE @IncompatibleColumns NVARCHAR(MAX);
 
@@ -402,7 +488,8 @@ CREATE OR ALTER PROCEDURE [SMigration].[SchemaDataObject_Ensure]
 (
     @Guid UNIQUEIDENTIFIER,
     @SchemeName NVARCHAR(255),
-    @ObjectName NVARCHAR(255)
+    @ObjectName NVARCHAR(255),
+    @RequireExactEntityType BIT = 0
 )
 AS
 BEGIN
@@ -410,6 +497,7 @@ BEGIN
     SET XACT_ABORT ON;
 
     DECLARE @EntityTypeId INT;
+    DECLARE @HasExactEntityType BIT = 0;
 
     SELECT TOP (1)
         @EntityTypeId = entityType.[ID]
@@ -423,6 +511,12 @@ BEGIN
       AND entityType.[RowStatus] <> 0
       AND entityType.[RowStatus] <> 254
     ORDER BY entityType.[ID];
+
+    IF @EntityTypeId IS NOT NULL
+        SET @HasExactEntityType = 1;
+
+    IF @EntityTypeId IS NULL AND @RequireExactEntityType = 1
+        THROW 51355, 'No active exact EntityHoBT and EntityType ownership exists for the requested Schema Migration object.', 1;
 
     IF @EntityTypeId IS NULL
     BEGIN
@@ -470,10 +564,21 @@ BEGIN
     END
     ELSE
     BEGIN
+        IF EXISTS
+        (
+            SELECT 1
+            FROM [SCore].[DataObjects] AS dataObject
+            WHERE dataObject.[Guid] = @Guid
+              AND (dataObject.[RowStatus] = 0 OR dataObject.[RowStatus] = 254)
+        )
+            THROW 51356, 'Schema Migration cannot reactivate a DataObject by updating RowStatus directly.', 1;
+
         UPDATE [SCore].[DataObjects]
         SET
-            [RowStatus] = CASE WHEN [RowStatus] = 0 OR [RowStatus] = 254 THEN 1 ELSE [RowStatus] END,
-            [EntityTypeId] = ISNULL([EntityTypeId], @EntityTypeId)
+            [EntityTypeId] = CASE
+                WHEN @HasExactEntityType = 1 THEN @EntityTypeId
+                ELSE ISNULL([EntityTypeId], @EntityTypeId)
+            END
         WHERE [Guid] = @Guid;
     END;
 END;
@@ -516,16 +621,17 @@ BEGIN
         c.[TargetDefinition],
         c.[IsDeployable],
         c.[IsDestructiveRisk],
-        CASE
-            WHEN @HasExplicitSelection = 0 THEN CONVERT(BIT, CASE WHEN c.[IsDestructiveRisk] = 1 THEN 0 ELSE 1 END)
-            ELSE ISNULL(sel.[IsSelected], CONVERT(BIT, 0))
-        END AS [IsSelected],
-        @HasExplicitSelection AS [HasExplicitSelection]
+        ISNULL(sel.[IsSelected], CONVERT(BIT, 0)) AS [IsSelected],
+        @HasExplicitSelection AS [HasExplicitSelection],
+        ISNULL(sel.[CopyReferenceData], CONVERT(BIT, 0)) AS [CopyReferenceData],
+        sel.[NewTableCaptureJson]
     FROM [SMigration].[Schema_ObjectComparisons] AS c
     OUTER APPLY
     (
         SELECT TOP (1)
-            rs.[IsSelected]
+            rs.[IsSelected],
+            rs.[CopyReferenceData],
+            rs.[NewTableCaptureJson]
         FROM [SMigration].[Schema_RunSelections] AS rs
         WHERE rs.[RunGuid] = c.[RunGuid]
           AND rs.[ObjectType] = c.[ObjectType]
@@ -541,16 +647,7 @@ BEGIN
       AND c.[RowStatus] <> 254
       AND c.[IsDeployable] = 1
       AND c.[DifferenceType] <> N'Equal'
-      AND
-      (
-          @HasExplicitSelection = 1
-          OR c.[IsDestructiveRisk] = 0
-      )
-      AND
-      (
-          @HasExplicitSelection = 0
-          OR ISNULL(sel.[IsSelected], CONVERT(BIT, 0)) = 1
-      )
+      AND ISNULL(sel.[IsSelected], CONVERT(BIT, 0)) = 1
     ORDER BY
         CASE c.[ObjectType]
             WHEN N'Schema' THEN 10

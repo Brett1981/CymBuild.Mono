@@ -10,8 +10,7 @@
             <ul>
                 @foreach (var item in diagnostics)
                 {
-                    var isWarning = item.Metric == "GC Total Memory (bytes)" && TryParseBytes(item.Value) > 200_000_000
-                    || item.Metric == "Telerik Grids Rendered" && TryParseInt(item.Value) > 5;
+                    var isWarning = item.Metric == "GC Total Memory (bytes)" && TryParseBytes(item.Value) > 200_000_000;
 
                     <li style="color:@(isWarning ? "#b80000" : "inherit"); font-weight:@(isWarning ? "600" : "normal")">
                         <b>@item.Metric:</b> @item.Value
@@ -55,7 +54,6 @@ else
         var compCount = await _module.InvokeAsync<int>("getBlazorComponentCount");
         var jsCount = await _module.InvokeAsync<int>("getJSObjectReferenceCount");
         var cacheSize = await _module.InvokeAsync<double>("getServiceWorkerCacheSizeMB");
-        var gridCount = await _module.InvokeAsync<int>("getTelerikGridCount");
 
         diagnostics = new()
         {
@@ -63,15 +61,11 @@ else
             new("Page Component Count", compCount.ToString()),
             new("Active JSObjectReferences", jsCount.ToString()),
             new("Service Worker Cache Size (MB)", $"{cacheSize:F2} MB"),
-            new("Telerik Grids Rendered", gridCount.ToString()),
             new("Blazor Circuit Count", "N/A in WebAssembly")
         };
 
         await InvokeAsync(StateHasChanged);
     }
-
-    private static int TryParseInt(string? value)
-        => int.TryParse(value?.Split(' ')[0], out var i) ? i : 0;
 
     private static long TryParseBytes(string? value)
         => long.TryParse(value?.Split(' ')[0].Replace(",", ""), out var i) ? i : 0;

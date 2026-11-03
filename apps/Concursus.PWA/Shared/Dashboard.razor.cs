@@ -267,48 +267,6 @@ public partial class Dashboard : IAsyncDisposable
 
         Console.WriteLine("Dashboard: MessageDisplay updated and error shown.");
 
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod")
-                        ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod"
-                        : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo")
-                        ? error.Data["AdditionalInfo"]?.ToString() ?? "None"
-                        : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null")
-                };
-
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-
-                Console.WriteLine($"Dashboard: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage) && _messageDisplay is not null)
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("Dashboard: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"Dashboard: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
 
         await InvokeAsync(StateHasChanged);
     }

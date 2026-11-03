@@ -92,7 +92,9 @@ public static class Enums
         FireSafety,
         FireEngineering,
         StructuralEngineering,
-        BuildingEnvelope
+        BuildingEnvelope,
+        BuildingSafetyConsultancy,
+        FireEngineeringSIL
     }
 
     #endregion Public Enums

@@ -56,6 +56,7 @@
 .native-grid-scroll {
     overflow: auto;
     max-width: 100%;
+    max-height: 68vh;
     scrollbar-gutter: stable;
 }
 
@@ -792,7 +793,7 @@
     overflow-x: auto;
     overflow-y: auto;
     max-width: 100%;
-    max-height: 650px;
+    max-height: 68vh;
     scrollbar-gutter: stable;
 }
 
@@ -1020,4 +1021,20 @@
     .filtered-dynamic-grid-view-v2-shell .dynamic-grid-view-v2-filter-actions .cb-v2-btn-secondary {
         width: 100%;
     }
+}
+
+/* CYB-524: keep the complete header group inside the grid scroll viewport. */
+.filtered-dynamic-grid-view-v2-shell .native-grid-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.filtered-dynamic-grid-view-v2-shell .native-grid-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.filtered-dynamic-grid-view-v2-shell .native-grid-table thead th {
+    position: static;
 }

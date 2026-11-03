@@ -1,0 +1,25 @@
+{
+  "mode": "created",
+  "runGuid": "a3cb90fd-3c1a-45af-8f01-750b4cebafdc",
+  "comparedOnUtc": "2026-10-16 13:50:54",
+  "selected": [
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataApply_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataValidate_Run",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run a3cb90fd-3c1a-45af-8f01-750b4cebafdc: selected 2 row(s), skipped 0, validated and accepted."
+}

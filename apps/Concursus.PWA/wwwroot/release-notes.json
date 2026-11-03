@@ -11,8 +11,8 @@
     "When selecting a Time within a Date Selection Box, to aid simplicity the Minutes now only show 15 in intervals for easier selection",
     {
       "text": "When navigating or using the Dev/Test Site, you will now be presented with a scrolling navigation bar informing you of this:",
-      "url": "https://bre.socotec.co.uk:9502",
-      "urlText": "bre.socotec.co.uk:9502"
+      "url": "https://cymbuild-uat.socotec.co.uk",
+      "urlText": "cymbuild-uat.socotec.co.uk"
     },
     "Over 30 bug fixes and improvements including better binding and message interaction."
 

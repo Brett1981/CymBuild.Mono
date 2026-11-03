@@ -1,0 +1,3 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"facc8c2d-7d71-45b5-b8db-d3433a1efa80","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"
+"37f5135a-b39d-42ca-bd0e-78c9abfea29d","StoredProcedure","SMigration","MetadataValidate_Run","","Different","True","False","True","True"

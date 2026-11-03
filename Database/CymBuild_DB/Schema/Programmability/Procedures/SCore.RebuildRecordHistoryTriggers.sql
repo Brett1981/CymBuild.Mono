@@ -6,7 +6,11 @@ GO
 
 
 
-CREATE PROCEDURE [SCore].[RebuildRecordHistoryTriggers]
+CREATE OR ALTER PROCEDURE [SCore].[RebuildRecordHistoryTriggers]
+(
+      @RunGuid UNIQUEIDENTIFIER = NULL
+    , @ThrowOnError BIT = 1
+)
 AS
 BEGIN
 	SET NOCOUNT ON;
@@ -25,7 +29,13 @@ BEGIN
 			@IsMainTable BIT,
 			@EntityTypeId INT,
 			@MainHobtSchema NVARCHAR(250),
-			@MainHobtName NVARCHAR(250)
+			@MainHobtName NVARCHAR(250),
+			@TableObjectId INT,
+			@QuotedSchemaName NVARCHAR(258),
+			@QuotedTableName NVARCHAR(258),
+			@QuotedPrimaryKeyColumn NVARCHAR(258),
+			@QuotedColumnName NVARCHAR(258),
+			@TriggerName SYSNAME
 
 	DECLARE	@HoBTs TABLE 
 	(
@@ -35,7 +45,8 @@ BEGIN
 		PrimaryKeyColumn NVARCHAR(254),
 		HobtId INT,
 		EntityTypeId INT,
-		IsMainTable BIT
+		IsMainTable BIT,
+		TableObjectId INT
 	)
 
 	DECLARE	@Columns TABLE 
@@ -46,10 +57,13 @@ BEGIN
 	)
 
 	INSERT @HoBTs
-		 (SchemaName, TableName, PrimaryKeyColumn, HobtID, EntityTypeID, IsMainTable)
-	SELECT	h.SchemaName, h.ObjectName, N'ID', h.ID, h.EntityTypeID, h.IsMainHoBT
+		 (SchemaName, TableName, PrimaryKeyColumn, HobtID, EntityTypeID, IsMainTable, TableObjectId)
+	SELECT	h.SchemaName, h.ObjectName, N'ID', h.ID, h.EntityTypeID, h.IsMainHoBT, t.object_id
 	FROM	SCore.EntityHobts h
 	JOIN	SCore.EntityTypes et ON (et.ID = h.EntityTypeID)
+	JOIN	sys.schemas s ON (s.name = h.SchemaName)
+	JOIN	sys.tables t ON (t.schema_id = s.schema_id AND t.name = h.ObjectName)
+	JOIN	sys.columns idColumn ON (idColumn.object_id = t.object_id AND idColumn.name = N'ID')
 	WHERE	(et.DoNotTrackChanges = 0)
 		AND	(h.RowStatus NOT IN (0, 254))
 		AND	(et.RowStatus NOT IN (0, 254))
@@ -69,12 +83,18 @@ BEGIN
 				@PrimaryKeyColumn = PrimaryKeyColumn,
 				@HobtId = HobtId,
 				@IsMainTable = IsMainTable,
-				@EntityTypeId = EntityTypeId
+				@EntityTypeId = EntityTypeId,
+				@TableObjectId = TableObjectId
 		FROM	@HoBTs
 		WHERE	(ID > @CurrentTableID)
 		ORDER BY ID
 
 		PRINT @TableName
+
+		SET @QuotedSchemaName = QUOTENAME(@SchemaName)
+		SET @QuotedTableName = QUOTENAME(@TableName)
+		SET @QuotedPrimaryKeyColumn = QUOTENAME(@PrimaryKeyColumn)
+		SET @TriggerName = N'tg_' + @TableName + N'_RecordHistory'
 
         -- Get a collection of all the columns in the table. 
         DELETE @Columns
@@ -86,22 +106,54 @@ BEGIN
 		SELECT	ep.name, ep.Id
 		FROM	SCore.EntityProperties ep
 		JOIN	SCore.EntityDataTypes edt ON (edt.ID = ep.EntityDataTypeID)
+		JOIN	sys.columns physicalColumn
+			ON physicalColumn.object_id = @TableObjectId
+		   AND physicalColumn.name = ep.name
 		WHERE	(ep.EntityHoBTID = @HobtId)
 			AND	(ep.RowStatus NOT IN (0, 254))
 			AND	(ep.IsVirtual = 0)
 			AND	(ep.DoNotTrackChanges = 0)
 			AND	(ep.name NOT IN (N'RowVersion'))
 
-        -- Drop the trigger if it alread exists 
-		IF (EXISTS (SELECT 1 FROM sys.triggers WHERE (name = N'tg_' + @TableName + N'_RecordHistory')))
+		IF @RunGuid IS NOT NULL
+		   AND OBJECT_ID(N'SCore.PostDeploymentRunLog', N'U') IS NOT NULL
 		BEGIN 
-			SET @stmt = N'DROP TRIGGER ' + @SchemaName + N'.[tg_' + @TableName +  N'_RecordHistory]'			
-
-			EXEC sp_executesql @stmt
+			INSERT INTO SCore.PostDeploymentRunLog
+			(
+				  RunGuid
+				, StepName
+				, ObjectName
+				, Severity
+				, Message
+			)
+			SELECT
+				  @RunGuid
+				, N'Rebuild record history triggers'
+				, @QuotedSchemaName + N'.' + @QuotedTableName
+				, N'Warning'
+				, N'Skipped active EntityProperty '
+				  + QUOTENAME(ep.name)
+				  + N' because no matching physical table column exists.'
+			FROM SCore.EntityProperties ep
+			JOIN SCore.EntityDataTypes edt ON (edt.ID = ep.EntityDataTypeID)
+			LEFT JOIN sys.columns physicalColumn
+				ON physicalColumn.object_id = @TableObjectId
+			   AND physicalColumn.name = ep.name
+			WHERE ep.EntityHoBTID = @HobtId
+			  AND ep.RowStatus NOT IN (0, 254)
+			  AND ep.IsVirtual = 0
+			  AND ep.DoNotTrackChanges = 0
+			  AND ep.name NOT IN (N'RowVersion')
+			  AND physicalColumn.column_id IS NULL;
 		END
 
-		SET @stmt = N'CREATE TRIGGER '+ @SchemaName + N'.[tg_' + @TableName + N'_RecordHistory]
-   ON  ' + @SchemaName + N'.[' + @TableName + N']	
+		/*
+			CREATE OR ALTER preserves the currently working trigger when the newly
+			generated definition cannot compile. The previous DROP/CREATE sequence
+			could leave audit history disabled after a metadata/column mismatch.
+		*/
+		SET @stmt = N'CREATE OR ALTER TRIGGER ' + @QuotedSchemaName + N'.' + QUOTENAME(@TriggerName) + N'
+   ON  ' + @QuotedSchemaName + N'.' + @QuotedTableName + N'
    AFTER INSERT, UPDATE
 AS 
 BEGIN
@@ -135,7 +187,7 @@ BEGIN
 
 	SELECT @UserID = ISNULL(CONVERT(int, SESSION_CONTEXT(N''user_id'')), -1)
 
-	SELECT	@MaxInsertedID = MAX([' + @PrimaryKeyColumn + ']),
+	SELECT	@MaxInsertedID = MAX(' + @QuotedPrimaryKeyColumn + N'),
 			@CurrentInsertedID = -1
 	FROM	Inserted
 
@@ -146,11 +198,11 @@ BEGIN
 	BEGIN 
 
 		SET @stmt = @stmt + N'
-		SELECT	TOP(1) @CurrentInsertedID = i.[' + @PrimaryKeyColumn + '],
+		SELECT	TOP(1) @CurrentInsertedID = i.' + @QuotedPrimaryKeyColumn + N',
 				@CurrentInsertedGuid = i.Guid
 		FROM	Inserted i
-		WHERE	(i.[' + @PrimaryKeyColumn + '] > @CurrentInsertedID)
-			ORDER BY i.[' + @PrimaryKeyColumn + ']
+		WHERE	(i.' + @QuotedPrimaryKeyColumn + N' > @CurrentInsertedID)
+			ORDER BY i.' + @QuotedPrimaryKeyColumn + N'
 		
 		'
 	END 
@@ -165,13 +217,13 @@ BEGIN
 
 
 		SET @stmt = @stmt + N'
-		SELECT	TOP(1) @CurrentInsertedID = i.[' + @PrimaryKeyColumn + ']
+		SELECT	TOP(1) @CurrentInsertedID = i.' + @QuotedPrimaryKeyColumn + N'
 		FROM	Inserted i
-		WHERE	(i.[' + @PrimaryKeyColumn + '] > @CurrentInsertedID)
-			ORDER BY i.[' + @PrimaryKeyColumn + ']
+		WHERE	(i.' + @QuotedPrimaryKeyColumn + N' > @CurrentInsertedID)
+			ORDER BY i.' + @QuotedPrimaryKeyColumn + N'
 
 		SELECT	TOP(1) @CurrentInsertedGuid = i.Guid
-		FROM	[' + @MainHobtSchema + '].[' + @MainHobtName + '] i
+		FROM	' + QUOTENAME(@MainHobtSchema) + N'.' + QUOTENAME(@MainHobtName) + N' i
 		WHERE	(ID =  @CurrentInsertedID)
 		
 		'
@@ -184,7 +236,7 @@ BEGIN
             BEGIN 
                 SELECT  @UserID = ISNULL(i.last_updated_by, -1)
                 FROM    Inserted i
-                WHERE	(i.[' + @PrimaryKeyColumn + '] = @CurrentInsertedID)   
+                WHERE	(i.' + @QuotedPrimaryKeyColumn + N' = @CurrentInsertedID)
             END
             
             '
@@ -196,7 +248,7 @@ BEGIN
 				(
 					SELECT	1
 					FROM 	deleted d
-					WHERE	(d.[' + @PrimaryKeyColumn + '] = @CurrentInsertedID)
+					WHERE	(d.' + @QuotedPrimaryKeyColumn + N' = @CurrentInsertedID)
 				)
 			)
 		BEGIN 
@@ -225,14 +277,16 @@ BEGIN
 			WHERE	(id > @CurrentColumnID)
 			ORDER BY ID
 
+			SET @QuotedColumnName = QUOTENAME(@ColumnName)
+
 			SET @stmt = @stmt +
 			N'SELECT	
-					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.[' + @ColumnName + ']), N''''),
-					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.[' + @ColumnName + ']), N'''')
+					@PreviousValue = ISNULL(CONVERT(NVARCHAR(max), d.' + @QuotedColumnName + N'), N''''),
+					@NewValue = ISNULL(CONVERT(NVARCHAR(max), i.' + @QuotedColumnName + N'), N'''')
 			FROM	Inserted i
-			JOIN	Deleted d ON (i.[' + @PrimaryKeyColumn + '] = d.[' + @PrimaryKeyColumn + '])
-			WHERE	(i.[' + @PrimaryKeyColumn + '] = @CurrentInsertedID)
-                AND (d.[' + @ColumnName + '] IS DISTINCT FROM i.[' + @ColumnName + '])
+			JOIN	Deleted d ON (i.' + @QuotedPrimaryKeyColumn + N' = d.' + @QuotedPrimaryKeyColumn + N')
+			WHERE	(i.' + @QuotedPrimaryKeyColumn + N' = @CurrentInsertedID)
+                AND (d.' + @QuotedColumnName + N' IS DISTINCT FROM i.' + @QuotedColumnName + N')
 
 
 			IF (@@RowCount > 0)
@@ -256,7 +310,44 @@ BEGIN
 
 		--PRINT @stmt
 
-		EXECUTE sp_executesql @stmt
+		BEGIN TRY
+			EXECUTE sys.sp_executesql @stmt
+		END TRY
+		BEGIN CATCH
+			IF @RunGuid IS NOT NULL
+			   AND OBJECT_ID(N'SCore.PostDeploymentRunLog', N'U') IS NOT NULL
+			BEGIN
+				INSERT INTO SCore.PostDeploymentRunLog
+				(
+					  RunGuid
+					, StepName
+					, ObjectName
+					, Severity
+					, Message
+					, ErrorNumber
+					, ErrorSeverity
+					, ErrorState
+					, ErrorLine
+					, ErrorProcedure
+				)
+				VALUES
+				(
+					  @RunGuid
+					, N'Rebuild record history triggers'
+					, @QuotedSchemaName + N'.' + QUOTENAME(@TriggerName)
+					, N'Error'
+					, ERROR_MESSAGE()
+					, ERROR_NUMBER()
+					, ERROR_SEVERITY()
+					, ERROR_STATE()
+					, ERROR_LINE()
+					, ERROR_PROCEDURE()
+				);
+			END;
+
+			IF @ThrowOnError = 1
+				THROW;
+		END CATCH
 	END
 	
 END

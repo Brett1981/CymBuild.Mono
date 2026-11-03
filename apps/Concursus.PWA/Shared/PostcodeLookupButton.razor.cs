@@ -306,46 +306,6 @@ namespace Concursus.PWA.Shared
 
             Console.WriteLine("DynamicBatchGridView: MessageDisplay updated and error shown.");
 
-            // AI Error Reporting (only for actual errors)
-            if (MessageType == ShowMessageType.Error)
-            {
-                try
-                {
-                    var context = new
-                    {
-                        ErrorMessage = error.Message,
-                        PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                        StackTrace = error.StackTrace ?? "No stack trace",
-                        AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                        Data = error.Data.Cast<DictionaryEntry>()
-                            .ToDictionary(
-                                de => de.Key?.ToString() ?? "UnknownKey",
-                                de => de.Value?.ToString() ?? "null"
-                            )
-                    };
-
-                    var log = InteractionTracker.GetAllLogs();
-                    var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                    error.Data["UserInteractionLog"] = description;
-                    Console.WriteLine($"DynamicBatchGridView: UserInteractionLog = {description}");
-
-                    var result = await AiErrorReporter.ReportAsync(error, context);
-
-                    if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                    {
-                        _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                        _messageDisplay.ShowError(true);
-                    }
-                    else
-                    {
-                        Console.WriteLine("DynamicBatchGridView: AI Error Reporter returned no UI message.");
-                    }
-                }
-                catch (Exception aiEx)
-                {
-                    Console.WriteLine($"DynamicBatchGridView: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-                }
-            }
 
             StateHasChanged();
         }

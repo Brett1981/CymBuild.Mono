@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261021-125751-30081164",
+  "Environment": "QA",
+  "Branch": "bugfix/SB_26.4-deploy-db-backup-rotation",
+  "Commit": "3008116428776cfc47349cd54fcc27b047547463",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-21T13:00:04.2265700+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 201,
+    "Pwa": 7061
+  }
+}

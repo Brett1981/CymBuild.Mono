@@ -10,9 +10,6 @@ using Microsoft.JSInterop;
 using Newtonsoft.Json;
 using System.Collections;
 using System.Web;
-using Telerik.Windows.Documents.Extensibility;
-using Telerik.Windows.Documents.Flow.FormatProviders.Docx;
-using Telerik.Windows.Documents.Flow.FormatProviders.Pdf;
 using static Concursus.PWA.Shared.MessageDisplay;
 using EntityProperty = Concursus.API.Core.EntityProperty;
 
@@ -71,22 +68,8 @@ public partial class DocumentTaskView
 
     #region Public Methods
 
-    public static void ConverDocxToPdf(string path, out string tempResultPath)
-    {
-        var docxProvider = new DocxFormatProvider();
-        var pdfProvider = new PdfFormatProvider();
-
-        var docBytes = File.ReadAllBytes(path);
-
-        var document = docxProvider.Import(docBytes, TimeSpan.FromSeconds(30));
-        var resultBytes = pdfProvider.Export(document, TimeSpan.FromSeconds(30));
-
-        // Generate a temporary file name and path
-        tempResultPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".pdf");
-
-        // Write the PDF bytes to the temporary file
-        File.WriteAllBytes(tempResultPath, resultBytes);
-    }
+    // CYB-537: dead ConverDocxToPdf (Telerik-based docx->pdf conversion) removed - had zero callers;
+    // actual PDF generation goes through WordDocumentService.ConvertWordToPdfWithGraphAPI server-side.
 
     public async Task<MergeDocument> GenerateDocumentAsync(API.Client.MenuItem menuItem)
     {
@@ -104,6 +87,7 @@ public partial class DocumentTaskView
                 RecordGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid).ToString(),
                 AllowPDFOnly = menuItem.AllowPDFOnly,
                 AllowExcelOutputOnly = menuItem.AllowExcelOutputOnly,
+                IsActive = menuItem.IsActive,
                 ParentRecordGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(menuItem._Guid).ToString()
             };
 
@@ -166,46 +150,6 @@ public partial class DocumentTaskView
 
         Console.WriteLine("DocumentTaskView: MessageDisplay updated and error shown.");
 
-        // AI Error Reporting (only for actual errors)
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
-                };
-
-                var log = InteractionTracker.GetAllLogs();
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-                Console.WriteLine($"DocumentTaskView: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("DocumentTaskView: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"DocumentTaskView: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
 
         StateHasChanged();
     }
@@ -242,9 +186,8 @@ public partial class DocumentTaskView
 
     protected async Task BtnGenerateDocuments(List<string>? menuItems)
     {
-        // Set them in FixedExtensibilityManager
-        JpegImageConverterBase customJpegImageConverter = new Helpers.JpegImageConverter();
-        FixedExtensibilityManager.JpegImageConverter = customJpegImageConverter;
+        // CYB-537: removed FixedExtensibilityManager.JpegImageConverter setup (Telerik PDF-export
+        // extensibility hook) - nothing consumed it; actual document generation is server-side via Graph API.
         var fileName = string.Empty;
         var fileUrl = string.Empty;
         SetLoaderVisibility(true);
@@ -367,12 +310,16 @@ public partial class DocumentTaskView
                     menuItems.Add(new API.Client.MenuItem
                     {
                         Text = item.Name,
+                        // The merge document's Guid. Items are no longer sent with the header
+                        // (deferred hydration), so the API loads them by this Guid at generation.
+                        DocumentGuid = item.Guid,
                         Icon = "bi bi-file-earmark-word",
                         FilenameTemplate = item.FilenameTemplate,
                         DriveId = item.DriveId,
                         DocumentId = item.DocumentId,
                         AllowPDFOnly = item.AllowPDFOnly,
                         AllowExcelOutputOnly = item.AllowExcelOutputOnly,
+                        IsActive = item.IsActive,
                         EntityTypeGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(item.EntityTypeGuid).ToString(),
                         LinkedEntityTypeGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(item.LinkedEntityTypeGuid).ToString(),
                         RecordGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(item.RecordGuid).ToString(),

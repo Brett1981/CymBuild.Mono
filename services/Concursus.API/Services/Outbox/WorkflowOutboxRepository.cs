@@ -506,9 +506,67 @@ WHERE TransitionGuid = @TransitionGuid;
             CommandTimeout = 0
         };
 
-        cmd.Parameters.Add(new SqlParameter("@TransitionGuid", SqlDbType.UniqueIdentifier) { Value = transitionGuid });
+        cmd.Parameters.Add(new SqlParameter("@TransitionGuid", SqlDbType.UniqueIdentifier)
+        {
+            Value = transitionGuid
+        });
+
+        var outcomeCodeParameter = new SqlParameter("@OutcomeCode", SqlDbType.NVarChar, 64)
+        {
+            Direction = ParameterDirection.Output
+        };
+
+        var outcomeMessageParameter = new SqlParameter("@OutcomeMessage", SqlDbType.NVarChar, 2000)
+        {
+            Direction = ParameterDirection.Output
+        };
+
+        var outboxIdParameter = new SqlParameter("@OutboxId", SqlDbType.BigInt)
+        {
+            Direction = ParameterDirection.Output
+        };
+
+        cmd.Parameters.Add(outcomeCodeParameter);
+        cmd.Parameters.Add(outcomeMessageParameter);
+        cmd.Parameters.Add(outboxIdParameter);
 
         await cmd.ExecuteNonQueryAsync(ct);
+
+        var outcomeCode = Convert.ToString(outcomeCodeParameter.Value, CultureInfo.InvariantCulture)
+            ?.Trim();
+        var outcomeMessage = Convert.ToString(outcomeMessageParameter.Value, CultureInfo.InvariantCulture)
+            ?.Trim();
+        var outboxId = outboxIdParameter.Value is long id
+            ? id
+            : (long?)null;
+
+        switch (outcomeCode)
+        {
+            case "Enqueued":
+            case "AlreadyEnqueued":
+                _logger.LogDebug(
+                    "Workflow notification enqueue completed. TransitionGuid={TransitionGuid}, OutcomeCode={OutcomeCode}, OutboxId={OutboxId}",
+                    transitionGuid,
+                    outcomeCode,
+                    outboxId);
+                return;
+
+            case "NotLatestTransition":
+            case "NotificationDisabled":
+                _logger.LogInformation(
+                    "Workflow notification queue item reached a terminal no-send outcome. TransitionGuid={TransitionGuid}, OutcomeCode={OutcomeCode}, Message={OutcomeMessage}",
+                    transitionGuid,
+                    outcomeCode,
+                    outcomeMessage);
+                return;
+
+            default:
+                throw new InvalidOperationException(
+                    $"Workflow notification outbox enqueue did not complete. " +
+                    $"TransitionGuid={transitionGuid}, " +
+                    $"OutcomeCode={outcomeCode ?? "Unknown"}, " +
+                    $"Message={outcomeMessage ?? "No outcome message was returned."}");
+        }
     }
 
     private async Task<EntityTypeMeta> GetEntityTypeMetaAsync(int entityTypeId, CancellationToken ct)
@@ -938,4 +996,4 @@ WHERE ou.RowStatus NOT IN (0,254)
         [JsonPropertyName("emailAddress")]
         public string? EmailAddress { get; set; }
     }
-}
+}

@@ -1035,6 +1035,47 @@ private int DebounceDelay { get; set; } = 100;
         Dependents = EntityProperty?.DependantProperties?.ToList() ?? new List<EntityPropertyDependant>();
     }
 
+    /// <summary>
+    /// Finds this property's dependency-parent among the sibling properties in the same group
+    /// (the one whose own DependantProperties lists this property's Guid), and returns that
+    /// parent's currently-loaded value from the shared dataObject - or null if this property
+    /// isn't a dependant of anything, or the parent has no value yet.
+    /// </summary>
+    private string? ResolveParentGuidFromDependencySource()
+    {
+        var thisGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityProperty?.Guid);
+
+        if (thisGuid == Guid.Empty || Parent?.entityProperties is null || Parent.dataObject is null)
+        {
+            return null;
+        }
+
+        var parentProperty = Parent.entityProperties.FirstOrDefault(p =>
+            p.DependantProperties.Any(d =>
+                PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(d.DependantEntityPropertyGuid) == thisGuid));
+
+        if (parentProperty is null)
+        {
+            return null;
+        }
+
+        var parentPropertyGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(parentProperty.Guid).ToString();
+
+        var parentDataProperty = Parent.dataObject.DataProperties.FirstOrDefault(dp =>
+            dp.EntityPropertyGuid == parentPropertyGuid);
+
+        if (parentDataProperty?.Value is null || !parentDataProperty.Value.Is(StringValue.Descriptor))
+        {
+            return null;
+        }
+
+        return parentDataProperty.Value.TryUnpack(out StringValue parentStringValue)
+            && Guid.TryParse(parentStringValue.Value, out var parentGuid)
+            && parentGuid != Guid.Empty
+                ? parentGuid.ToString()
+                : null;
+    }
+
     public void Dispose()
     {
         _debounceTimer?.Dispose();
@@ -1210,34 +1251,30 @@ private int DebounceDelay { get; set; } = 100;
         .Select(x => x.ToString("00", CultureInfo.InvariantCulture))
         .ToArray();
 
-    private static readonly string[] NativeDateTimeMinuteOptions =
+    private static readonly int[] NativeDateTimeQuarterMinutes = { 0, 15, 30, 45 };
+
+    // CYB-562: the picker offers quarter-hours, but an exact value (e.g. from "Set to now" or an
+    // existing record) must be shown as-is rather than rounded down to the previous quarter.
+    private string[] NativeDateTimeMinuteOptions
     {
-        "00",
-        "15",
-        "30",
-        "45"
-    };
+        get
+        {
+            var currentMinute = DateTimeValueBinding?.Minute ?? 0;
+
+            return NativeDateTimeQuarterMinutes
+                .Append(currentMinute)
+                .Distinct()
+                .Order()
+                .Select(x => x.ToString("00", CultureInfo.InvariantCulture))
+                .ToArray();
+        }
+    }
 
     private string NativeDateTimeDateValue => DateTimeValueBinding?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
 
     private string NativeDateTimeHourValue => (DateTimeValueBinding?.Hour ?? 0).ToString("00", CultureInfo.InvariantCulture);
 
-    private string NativeDateTimeMinuteValue => NormaliseMinuteToQuarter(DateTimeValueBinding?.Minute ?? 0).ToString("00", CultureInfo.InvariantCulture);
-
-    private static int NormaliseMinuteToQuarter(int minute)
-    {
-        if (minute <= 0)
-        {
-            return 0;
-        }
-
-        if (minute >= 45)
-        {
-            return 45;
-        }
-
-        return (minute / 15) * 15;
-    }
+    private string NativeDateTimeMinuteValue => (DateTimeValueBinding?.Minute ?? 0).ToString("00", CultureInfo.InvariantCulture);
 
     private Task OnNativeDateTimeDatePartChangeAsync(ChangeEventArgs args)
     {
@@ -1252,6 +1289,24 @@ private int DebounceDelay { get; set; } = 100;
     private Task OnNativeDateTimeMinutePartChangeAsync(ChangeEventArgs args)
     {
         return UpdateNativeDateTimeFromPartsAsync(minuteText: args.Value?.ToString());
+    }
+
+    private Task SetDateTimeToNowAsync()
+    {
+        try
+        {
+            var now = DateTime.Now;
+            DateTimeValueBinding = now.Date.AddHours(now.Hour).AddMinutes(now.Minute);
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in SetDateTimeToNowAsync().";
+            ex.Data["PageMethod"] = "ShoreInput/SetDateTimeToNowAsync()";
+            _ = OnError.InvokeAsync(ex);
+        }
+
+        return Task.CompletedTask;
     }
 
     private Task UpdateNativeDateTimeFromPartsAsync(
@@ -1287,11 +1342,11 @@ private int DebounceDelay { get; set; } = 100;
                 hour = Math.Clamp(parsedHour, 0, 23);
             }
 
-            var minute = NormaliseMinuteToQuarter(existingValue?.Minute ?? 0);
+            var minute = existingValue?.Minute ?? 0;
             if (!string.IsNullOrWhiteSpace(minuteText) &&
                 int.TryParse(minuteText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedMinute))
             {
-                minute = NormaliseMinuteToQuarter(Math.Clamp(parsedMinute, 0, 59));
+                minute = Math.Clamp(parsedMinute, 0, 59);
             }
 
             DateTimeValueBinding = parsedDate.Date.AddHours(hour).AddMinutes(minute);
@@ -1514,10 +1569,18 @@ private int DebounceDelay { get; set; } = 100;
                 dropDownDataListRequest.Filters.Add(compositeFilter);
             }
 
-            // If the parentguid is Guid.Empty -> Try to get it from the stateService
+            // If the parentguid is Guid.Empty -> this field hasn't had a live rebind yet (e.g.
+            // the record was just loaded with an already-saved value in its dependency-parent
+            // field, such as FinanceAddressID's FinanceAccountID). Resolve it from that parent
+            // field's current value first - falling back to stateService.OriginalRecordGuid (the
+            // current record's own guid) is only correct for lookups scoped to this record
+            // itself, not for a genuine cross-entity cascade like Account -> Address/Contact.
             if (ParentGuid == Guid.Empty.ToString())
             {
-                dropDownDataListRequest.ParentGuid = stateService.OriginalRecordGuid;
+                var resolvedParentGuid = ResolveParentGuidFromDependencySource();
+                dropDownDataListRequest.ParentGuid = !string.IsNullOrWhiteSpace(resolvedParentGuid)
+                    ? resolvedParentGuid
+                    : stateService.OriginalRecordGuid;
             }
 
             DropDownDataListReply dropDownDataListReply;

@@ -1,0 +1,18 @@
+{
+  "mode": "accepted",
+  "runGuid": "338e0474-df6a-4dbd-850a-aa312523e29b",
+  "comparedOnUtc": "2026-10-21 16:11:16",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SCore",
+      "objectName": "WorkflowGetNextStatus",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Reusing accepted run 338e0474-df6a-4dbd-850a-aa312523e29b, compared 2026-10-21 16:11:16 UTC (within 25 minutes)."
+}

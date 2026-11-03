@@ -16,6 +16,9 @@
         public bool AllowExcelOutputOnly { get; set; } = false;
         public bool ProduceOneOutputPerRow { get; set; } = false;
 
+        // CYB-496: inactive documents are only listed for SU/SYSADM users.
+        public bool IsActive { get; set; } = true;
+
         // Child collections
         public List<MergeDocumentItem> Items { get; set; } = new();
 

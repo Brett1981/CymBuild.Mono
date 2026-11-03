@@ -16,6 +16,8 @@ namespace Concursus.API.Services.Finance
     /// </summary>
     public sealed class SageSalesOrderRequestMapper : ISageSalesOrderRequestMapper
     {
+        private const int DomesticReverseChargeTaxCode = 22;
+
         private readonly SageSalesOrderMappingOptions _options;
         private readonly ILogger<SageSalesOrderRequestMapper> _logger;
 
@@ -93,6 +95,14 @@ namespace Concursus.API.Services.Finance
 
         private void ValidateHeader(ApprovedTransactionForSageReadModel source)
         {
+            if (source.GetSageOutboundDocumentType() != SageOutboundDocumentType.Invoice ||
+                source.TransactionTypeIsBank ||
+                source.TransactionTypeIsNegated)
+            {
+                throw new InvalidOperationException(
+                    $"Transaction {source.TransactionGuid} has finance type '{source.TransactionTypeName}' and cannot be mapped to the Sage sales-order endpoint.");
+            }
+
             if (!source.IsUsableForSubmission())
             {
                 throw new InvalidOperationException(
@@ -129,11 +139,6 @@ namespace Concursus.API.Services.Finance
                     "Sage sales-order mapping configuration is missing DefaultNominalRef.");
             }
 
-            if (!_options.DefaultTaxCode.HasValue)
-            {
-                throw new InvalidOperationException(
-                    "Sage sales-order mapping configuration is missing DefaultTaxCode.");
-            }
         }
 
         private string ResolveDataset(ApprovedTransactionForSageReadModel source)
@@ -343,23 +348,45 @@ namespace Concursus.API.Services.Finance
 
         private int? ResolveTaxCode(ApprovedTransactionForSageLineReadModel line)
         {
+            int? configuredTaxCode;
+
             if (string.IsNullOrWhiteSpace(line.VatCode))
             {
-                return _options.DefaultTaxCode;
+                configuredTaxCode = _options.DefaultTaxCode;
             }
-
-            if (int.TryParse(
-                    line.VatCode.Trim(),
-                    NumberStyles.Integer,
-                    CultureInfo.InvariantCulture,
-                    out var parsed)
-                && parsed >= 0)
+            else if (int.TryParse(
+                         line.VatCode.Trim(),
+                         NumberStyles.Integer,
+                         CultureInfo.InvariantCulture,
+                         out var parsed)
+                     && parsed >= 0)
             {
-                return parsed;
+                configuredTaxCode = parsed;
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Sage VAT mapping '{line.VatCode}' for line {line.LineId} is not a valid non-negative Sage tax-code identifier.");
             }
 
-            throw new InvalidOperationException(
-                $"Sage VAT mapping '{line.VatCode}' for line {line.LineId} is not a valid non-negative Sage tax-code identifier.");
+            if (!configuredTaxCode.HasValue)
+            {
+                return null;
+            }
+
+            if (configuredTaxCode.Value < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Configured default Sage tax-code '{configuredTaxCode.Value}' is not a valid non-negative Sage tax-code identifier.");
+            }
+
+            // The Sage REST-wrapper contract exposes taxCode only as the
+            // domestic reverse-charge override. Standard VAT code 10 (and all
+            // other non-DRC codes) must omit the optional property so the
+            // wrapper/Sage applies its normal VAT mapping.
+            return configuredTaxCode.Value == DomesticReverseChargeTaxCode
+                ? DomesticReverseChargeTaxCode
+                : null;
         }
 
         private static string BuildLineDescription(ApprovedTransactionForSageLineReadModel line)

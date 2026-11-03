@@ -3,7 +3,18 @@ GO
 
 PRINT (N'Create view [SCore].[IntegrationOutboxNotificationRecipients]')
 GO
-CREATE VIEW [SCore].[IntegrationOutboxNotificationRecipients]
+/*
+    Recipients of a workflow notification: the active members of the
+    notification groups configured on the status (SCore.WorkflowStatusNotificationGroups).
+
+    CYB-588: when an enquiry's bid is decided ("Approved For Quote" or
+    "Declined To Quote"), the person who sent it for "Bid Team Review" is also
+    a recipient: whoever saved the latest Bid Team Review on that enquiry before
+    the decision. They appear as the pseudo-group "Bid review requester"
+    (GroupID -1). The API takes distinct email addresses, so a requester who is
+    also in the Bid Team gets one email.
+*/
+CREATE OR ALTER VIEW [SCore].[IntegrationOutboxNotificationRecipients]
        --WITH SCHEMABINDING
 AS
 WITH Outbox AS
@@ -133,6 +144,73 @@ Users AS
         ON i.RowStatus NOT IN (0,254)
        AND i.IsActive = 1
        AND i.ID = ug.IdentityID
+),
+-- CYB-588-BID-REQUESTER: the person who sent the enquiry for Bid Team Review.
+Requesters AS
+(
+    SELECT
+        sr.OutboxId,
+        sr.OutboxGuid,
+        sr.CreatedOnUtc,
+        sr.EventType,
+        sr.PayloadJson,
+        sr.PublishedOnUtc,
+        sr.PublishAttempts,
+        sr.LastError,
+        sr.DataObjectGuid,
+        sr.TransitionId,
+        sr.WorkflowId,
+        sr.WorkflowStatusGuidResolved,
+
+        CONVERT(int, -1)                   AS GroupID,
+        CONVERT(bit, 0)                    AS CanAction,
+
+        i.ID                               AS IdentityID,
+        CONVERT(nvarchar(50), N'BID_REQUESTER')         AS GroupCode,
+        CONVERT(nvarchar(250), N'Bid review requester') AS GroupName,
+        i.FullName,
+        i.EmailAddress
+    FROM StatusResolved sr
+    CROSS APPLY
+    (
+        SELECT TOP (1)
+            req.CreatedByUserId
+        FROM SCore.DataObjectTransition req
+        JOIN SCore.WorkflowStatus reqStatus
+            ON reqStatus.ID = req.StatusID
+        WHERE req.RowStatus NOT IN (0,254)
+          AND req.DataObjectGuid = sr.DataObjectGuid
+          AND reqStatus.Guid = '675CA95D-F03D-4DBC-B83C-3D21BF138635' -- Bid Team Review
+          AND (sr.TransitionId IS NULL OR req.ID < sr.TransitionId)
+        ORDER BY req.ID DESC
+    ) requester
+    JOIN SCore.Identities i
+        ON i.RowStatus NOT IN (0,254)
+       AND i.IsActive = 1
+       AND i.ID = requester.CreatedByUserId
+    WHERE sr.WorkflowStatusGuidResolved IN
+    (
+        '3070A373-0E0A-4261-B942-66CB512EE1B6', -- Approved For Quote
+        '60B8D960-8F6C-495D-B2E7-F19EBD5506EE'  -- Declined To Quote
+    )
+),
+AllRecipients AS
+(
+    SELECT
+        u.OutboxId, u.OutboxGuid, u.CreatedOnUtc, u.EventType, u.PayloadJson, u.PublishedOnUtc,
+        u.PublishAttempts, u.LastError, u.DataObjectGuid, u.TransitionId, u.WorkflowId,
+        u.WorkflowStatusGuidResolved, u.GroupID, u.CanAction, u.IdentityID, u.GroupCode,
+        u.GroupName, u.FullName, u.EmailAddress
+    FROM Users u
+
+    UNION ALL
+
+    SELECT
+        r.OutboxId, r.OutboxGuid, r.CreatedOnUtc, r.EventType, r.PayloadJson, r.PublishedOnUtc,
+        r.PublishAttempts, r.LastError, r.DataObjectGuid, r.TransitionId, r.WorkflowId,
+        r.WorkflowStatusGuidResolved, r.GroupID, r.CanAction, r.IdentityID, r.GroupCode,
+        r.GroupName, r.FullName, r.EmailAddress
+    FROM Requesters r
 )
 SELECT
     u.OutboxId,
@@ -156,6 +234,6 @@ SELECT
     u.IdentityID,
     u.FullName,
     u.EmailAddress
-FROM Users u;
+FROM AllRecipients u;
 
 GO

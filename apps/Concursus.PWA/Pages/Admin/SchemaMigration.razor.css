@@ -1295,3 +1295,46 @@
     height: 18px;
 }
 /* END CYB-361 R39 */
+
+/* CYB-566: fit-to-screen and grid navigation.
+   Grid tracks declared as `1fr` have an automatic minimum of their content's
+   min-content width, so a wide code diff in the detail panel stretched the
+   compare layout (and every card around it) past the viewport and clipped the
+   right-hand columns. Clamp the tracks and their items so wide content scrolls
+   inside its own wrapper instead. */
+.schema-workbench-main > *,
+.schema-card,
+.schema-card-body,
+.schema-compare-layout > *,
+.schema-definition-grid > * {
+    min-width: 0;
+}
+
+.schema-compare-layout,
+.schema-definition-grid {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* Bounded height makes the wrapper the vertical scroll container, so the
+   header row can stick while rows scroll (same pattern as DynamicGridView).
+   The validation and plan wrappers keep their own tighter heights. */
+.schema-table-wrap:not(.schema-validation-wrap):not(.schema-plan-wrap) {
+    max-height: min(70vh, 720px);
+}
+
+.schema-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8fafc;
+    box-shadow: inset 0 -1px 0 #e2e8f0;
+    white-space: nowrap;
+}
+
+.schema-table th.schema-copy-data-col,
+.schema-table td.schema-copy-data-col {
+    width: 1%;
+    white-space: nowrap;
+    text-align: center;
+}
+/* END CYB-566 */

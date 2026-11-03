@@ -1,0 +1,6 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"310a90ea-52a6-4b91-a43c-689be8254376","Constraint","SMigration","UQ_Metadata_StagedRows_Guid","Metadata_StagedRows","Different","True","False","True","True"
+"929958b1-04d6-43a1-9025-265822bd3786","Index","SMigration","Metadata_StagedRows.IX_Metadata_StagedRows_RunGuid","Metadata_StagedRows","Different","True","False","True","True"
+"e1d06968-d9b8-4e71-88c4-40f0a3e6b0a7","Function","SSop","tvf_QuotesValidate","","Different","True","False","True","True"
+"114d2940-2959-4b79-8a56-a07b49483581","StoredProcedure","SFin","SageInboundReceiptAndAllocation_Materialise","","Different","True","False","True","True"
+"f6c88ff8-bebf-402b-b2ef-f49e2b1627da","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"

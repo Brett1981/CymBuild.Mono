@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Local-only override for Visual Studio Test Explorer.
+  OBSOLETE since the move to Microsoft.Testing.Platform (2026-09-15): the xunit.v3 MTP test
+  host does not read runsettings, so the EnvironmentVariables below are never applied and the
+  SQL integration tests fail with "CYMBUILD_SQL_TEST_CONNECTION_STRING is required". Instead,
+  set that variable as a Windows user environment variable and restart Visual Studio. See
+  docs/testing-strategy.md, "Test runner: Microsoft.Testing.Platform (MTP), not VSTest".
+
+  Original purpose: local-only override for Visual Studio Test Explorer.
 
   tests\CymBuild.Testing.runsettings is shared with Invoke-CymBuildSqlIntegrationTests.ps1
   (used locally and in CI). Do not add EnvironmentVariables there: VSTest sets them on the

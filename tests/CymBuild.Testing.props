@@ -1,19 +1,24 @@
 <Project>
-  <PropertyGroup>
-    <!-- Keep the existing VSTest execution model during R0 so coverage collection does not change test behaviour. -->
-    <TestingPlatformDotnetTestSupport>false</TestingPlatformDotnetTestSupport>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <!-- xunit.v3 / xunit.runner.visualstudio must stay version-aligned with the Microsoft.Testing.Platform
+         extensions below (both depend on Microsoft.Testing.Platform 2.4.0+); mixing the 3.x xunit line with
+         2.4.0 extensions throws a runtime TypeLoadException in Microsoft.Testing.Platform.MSBuild. -->
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
+    <!-- Both extensions must include "compile": the MSBuild-generated SelfRegisteredExtensions.cs
+         calls their TestingPlatformBuilderHook types directly, so the compile-time reference can't
+         be trimmed the way it can for a reflection-loaded collector like the old coverlet.collector. -->
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.4.0">
       <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+      <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>compile; runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 </Project>

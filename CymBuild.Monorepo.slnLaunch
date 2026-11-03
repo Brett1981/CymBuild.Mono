@@ -15,6 +15,21 @@
     ]
   },
   {
+    "Name": "CymBuild Dev, local Sage simulator",
+    "Projects": [
+      {
+        "Path": "services\\Concursus.API\\Concursus.API.csproj",
+        "Action": "Start",
+        "DebugTarget": "API - Dev, local Sage simulator (Kestrel)"
+      },
+      {
+        "Path": "apps\\Concursus.PWA\\Concursus.PWA.csproj",
+        "Action": "Start",
+        "DebugTarget": "PWA - Dev (IIS Express)"
+      }
+    ]
+  },
+  {
     "Name": "CymBuild Test",
     "Projects": [
       {

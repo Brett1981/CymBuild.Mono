@@ -142,6 +142,21 @@ public partial class FormHelper
         return result;
     }
 
+    public async Task<List<QuoteDashboardData>> GetQuoteDashboardDataAsync(
+    CancellationToken cancellationToken = default)
+    {
+        var response = await _coreClient.GetQuoteDashboardDataAsync(
+            new GetQuoteDashboardDataReq(),
+            cancellationToken: cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(response.ErrorReturned))
+        {
+            throw new Exception(response.ErrorReturned);
+        }
+
+        return response.Res.ToList();
+    }
+
     public async Task<int> SageInboundDiagnosticsApplyTransactionReferencesAsync(
     Guid? statusGuid = null,
     long? transactionId = null,
@@ -328,7 +343,7 @@ public partial class FormHelper
         return result;
     }
 
-    public async Task<List<SageInboundDiagnosticsRowModel>> SageInboundDiagnosticsGetAsync(SageInboundDiagnosticsGetRequestModel request)
+    public async Task<SageInboundDiagnosticsPageResult> SageInboundDiagnosticsGetAsync(SageInboundDiagnosticsGetRequestModel request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -349,15 +364,22 @@ public partial class FormHelper
             TransactionIdSpecified = request.TransactionId.HasValue,
 
             JobId = request.JobId ?? 0,
-            JobIdSpecified = request.JobId.HasValue
+            JobIdSpecified = request.JobId.HasValue,
+
+            PaymentFilter = request.PaymentFilter ?? string.Empty,
+            PageNumber = request.PageNumber > 0 ? request.PageNumber : 1,
+            PageSize = request.PageSize > 0 ? request.PageSize : 50
         };
 
         var reply = await _coreClient.SageInboundDiagnosticsGetAsync(grpcRequest);
-        var result = new List<SageInboundDiagnosticsRowModel>(reply.Rows.Count);
+        var result = new SageInboundDiagnosticsPageResult
+        {
+            TotalCount = reply.TotalCount
+        };
 
         foreach (var row in reply.Rows)
         {
-            result.Add(new SageInboundDiagnosticsRowModel
+            result.Rows.Add(new SageInboundDiagnosticsRowModel
             {
                 Id = row.Id,
                 Guid = Guid.TryParse(row.Guid, out var rowGuid) ? rowGuid : Guid.Empty,
@@ -433,11 +455,59 @@ public partial class FormHelper
 
                 MaterialisedAllocationId = row.MaterialisedAllocationId > 0
                     ? row.MaterialisedAllocationId
+                    : null,
+
+                // CYB-568: Fix Receipt must send the matched external transaction's ID,
+                // not row.Id (SFin.SageInboundDocumentStatus.ID). 0 means no external row.
+                LastMatchedExternalTransactionId = row.LastMatchedExternalTransactionId > 0
+                    ? row.LastMatchedExternalTransactionId
+                    : null,
+                LastMatchedExternalTransactionTypeCode = row.LastMatchedExternalTransactionTypeCode > 0
+                    ? row.LastMatchedExternalTransactionTypeCode
+                    : null,
+                LastMatchedExternalTransactionAllocatedValue = row.LastMatchedExternalTransactionId > 0
+                    ? (decimal)row.LastMatchedExternalTransactionAllocatedValue
                     : null
             });
         }
 
         return result;
+    }
+
+    public async Task<SageInboundDiagnosticsSummaryModel> SageInboundDiagnosticsSummaryGetAsync(SageInboundDiagnosticsSummaryRequestModel request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var grpcRequest = new SageInboundDiagnosticsSummaryGetRequest
+        {
+            SageAccountReference = request.SageAccountReference ?? string.Empty,
+            SageDocumentNo = request.SageDocumentNo ?? string.Empty,
+            TransactionNumber = request.TransactionNumber ?? string.Empty,
+
+            IncludeOnlyRetryableFailures = request.OnlyRetryableFailures ?? false,
+            IncludeOnlyRetryableFailuresSpecified = request.OnlyRetryableFailures.HasValue,
+
+            InvoiceRequestId = request.InvoiceRequestId ?? 0,
+            InvoiceRequestIdSpecified = request.InvoiceRequestId.HasValue,
+
+            TransactionId = request.TransactionId ?? 0,
+            TransactionIdSpecified = request.TransactionId.HasValue,
+
+            JobId = request.JobId ?? 0,
+            JobIdSpecified = request.JobId.HasValue
+        };
+
+        var reply = await _coreClient.SageInboundDiagnosticsSummaryGetAsync(grpcRequest);
+
+        return new SageInboundDiagnosticsSummaryModel
+        {
+            TotalCount = reply.TotalCount,
+            SucceededCount = reply.SucceededCount,
+            RetryPendingCount = reply.RetryPendingCount,
+            PaidCount = reply.PaidCount,
+            ReceiptsCreatedCount = reply.ReceiptsCreatedCount,
+            CreditNotesCreatedCount = reply.CreditNotesCreatedCount
+        };
     }
 
     public async Task<DocumentsCreateEmailDraftResponse> DocumentsCreateEmailDraftAsync(
@@ -726,7 +796,8 @@ public partial class FormHelper
             MonthlyTotalAmount = Convert.ToDecimal(response.MonthlyTotalAmount),
             PercentageTotalPercentage = Convert.ToDecimal(response.PercentageTotalPercentage),
             PercentageTotalAmount = Convert.ToDecimal(response.PercentageTotalAmount),
-            ScheduleAmount = Convert.ToDecimal(response.ScheduleAmount)
+            ScheduleAmount = Convert.ToDecimal(response.ScheduleAmount),
+            Frequency = string.IsNullOrWhiteSpace(response.Frequency) ? null : response.Frequency
         };
     }
 
@@ -766,6 +837,7 @@ public partial class FormHelper
         DateOnly endDate,
         decimal totalValueNet,
         bool overwriteExisting,
+        string frequency,
         CancellationToken ct = default)
     {
         if (invoiceScheduleGuid == Guid.Empty)
@@ -793,7 +865,8 @@ public partial class FormHelper
                 StartDate = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 EndDate = endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 TotalValueNet = totalValueNet.ToString(CultureInfo.InvariantCulture),
-                OverwriteExisting = overwriteExisting
+                OverwriteExisting = overwriteExisting,
+                Frequency = frequency
             },
             cancellationToken: ct);
 
@@ -1715,7 +1788,37 @@ public partial class FormHelper
             cancellationToken: ct);
     }
 
-    public async Task<ExecuteMenuItemResponse> MenuItemPostAsync(string entityQueryGuid, DataObject dataObject, bool allowQuoteItemStageFallback = false)
+    /// <summary>
+    /// CYB-333: raises (or returns) the fee amendment for a billable activity that is not part of
+    /// the agreed fee. The server decides whether one is needed.
+    /// </summary>
+    public async Task<ActivityFeeAmendmentEnsureResponse> ActivityFeeAmendmentEnsureAsync(
+        Guid activityGuid,
+        CancellationToken ct = default)
+    {
+        return await _coreClient.ActivityFeeAmendmentEnsureAsync(
+            new ActivityFeeAmendmentEnsureRequest
+            {
+                ActivityGuid = activityGuid.ToString()
+            },
+            cancellationToken: ct);
+    }
+
+    public async Task<TransactionRejectBatchedResponse> TransactionRejectBatchedAsync(
+        Guid transactionGuid,
+        string rejectionReason,
+        CancellationToken ct = default)
+    {
+        return await _coreClient.TransactionRejectBatchedAsync(
+            new TransactionRejectBatchedRequest
+            {
+                TransactionGuid = transactionGuid.ToString(),
+                RejectionReason = rejectionReason ?? string.Empty
+            },
+            cancellationToken: ct);
+    }
+
+    public async Task<ExecuteMenuItemResponse> MenuItemPostAsync(string entityQueryGuid, DataObject dataObject, bool allowQuoteItemStageFallback = false, bool copyQuoteItems = true)
     {
         ExecuteMenuItemResponse executeMenuItemResponse = new ExecuteMenuItemResponse();
 
@@ -1723,7 +1826,8 @@ public partial class FormHelper
         {
             DataObject = dataObject,
             EntityQueryGuid = ClientFunctions.ParseAndReturnEmptyGuidIfInvalid(entityQueryGuid).ToString(),
-            AllowQuoteItemStageFallback = allowQuoteItemStageFallback
+            AllowQuoteItemStageFallback = allowQuoteItemStageFallback,
+            CopyQuoteItems = copyQuoteItems
         });
 
         return executeMenuItemResponse;
@@ -2423,6 +2527,22 @@ public partial class FormHelper
             cancellationToken: ct);
     }
 
+    public async Task<SageFetchSalesAllocationsResponse> SageFetchSalesAllocationsAsync(
+        string dataset,
+        string accountReference,
+        string urn,
+        CancellationToken ct = default)
+    {
+        return await _coreClient.SageFetchSalesAllocationsAsync(
+            new SageFetchSalesAllocationsRequest
+            {
+                Dataset = dataset ?? "group",
+                AccountReference = accountReference ?? string.Empty,
+                Urn = urn ?? string.Empty
+            },
+            cancellationToken: ct);
+    }
+
     public async Task<Core.SageCreateSalesOrderResponse> SageCreateSalesOrderAsync(
         string dataset,
         string accountReference,
@@ -2531,6 +2651,51 @@ public partial class FormHelper
         };
     }
 
+    /// <summary>
+    /// Returns possible duplicate asset records.
+    /// </summary>
+    /// <param name="name"></param>
+    /// <param name="number"></param>
+    /// <param name="addressLine1"></param>
+    /// <param name="addressLine2"></param>
+    /// <param name="addressLine3"></param>
+    /// <param name="town"></param>
+    /// <param name="countyGuid"></param>
+    /// <param name="postcode"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    public async Task<DuplicateAssetsRes> DuplicateAssetsGet(string name = "", string number = "", string addressLine1 = "", string addressLine2 = "", string addressLine3 = "", string town = "", string countyGuid = "", string postcode = "",  CancellationToken ct = default)
+    {
+        var req = await _coreClient.DuplicateAssetsGetAsync(new DuplicateAssetsReq() { Name = name, Number = number, Addressline1 = addressLine1, Addressline2 = addressLine2, Addressline3 = addressLine3, Town = town, CountyGuid = countyGuid, Postcode = postcode });
+        return req;
+    }
+
+    /// <summary>
+    /// Returns possible duplicate account records.
+    /// </summary>
+    /// <param name="DisplayName"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    public async Task<DuplicateAccountsRes> DuplicateAccountsGet(string DisplayName = "", CancellationToken ct = default)
+    {
+        var req = await _coreClient.DuplicateAccountsGetAsync(new DuplicateAccountsReq() { Displayname = DisplayName});
+        return req;
+    }
+
+    /// <summary>
+    /// Returns possible duplicate contact records.
+    /// </summary>
+    /// <param name="DisplayName"></param>
+    /// <param name="FirstName"></param>
+    /// <param name="SurName"></param>
+    /// <param name="Initials"></param>
+    /// <param name="ct"></param>
+    /// <returns></returns>
+    public async Task<DuplicateContactsRes> DuplicateContactsGet(string DisplayName = "", string FirstName = "", string SurName = "", string Initials = "", CancellationToken ct = default)
+    {
+        var req = await _coreClient.DuplicateContactsGetAsync(new DuplicateContactsReq() { Displayname = DisplayName, Firstname = FirstName, Surname = SurName, Initials = Initials });
+        return req;
+    }
 
     public async Task<SageInboundPaymentSyncClientResult> SageInboundPaymentSyncAsync(
     Guid cymBuildDocumentGuid,

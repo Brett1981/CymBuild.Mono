@@ -1,11 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[TransactionSageSubmission_EnsureQueued]')
+PRINT (N'Create or alter procedure [SFin].[TransactionSageSubmission_EnsureQueued]')
 GO
-PRINT (N'Create procedure [SFin].[TransactionSageSubmission_EnsureQueued]')
-GO
-CREATE PROCEDURE [SFin].[TransactionSageSubmission_EnsureQueued]
+CREATE OR ALTER PROCEDURE [SFin].[TransactionSageSubmission_EnsureQueued]
 (
       @TransactionID       BIGINT = NULL
     , @TransactionGuid     UNIQUEIDENTIFIER = NULL
@@ -23,6 +21,8 @@ BEGIN
           @ResolvedTransactionID BIGINT
         , @ResolvedTransactionGuid UNIQUEIDENTIFIER
         , @SourceTransactionRowVersion BINARY(8)
+        , @TransactionTypeName NVARCHAR(50)
+        , @NormalisedTransactionTypeName NVARCHAR(50)
         , @BeforeMaxTransitionID BIGINT
         , @TransitionID BIGINT
         , @TransitionGuid UNIQUEIDENTIFIER
@@ -40,7 +40,13 @@ BEGIN
               @ResolvedTransactionID = t.ID
             , @ResolvedTransactionGuid = t.Guid
             , @SourceTransactionRowVersion = t.RowVersion
+            , @TransactionTypeName = tt.Name
         FROM SFin.Transactions AS t WITH (UPDLOCK, HOLDLOCK)
+        LEFT JOIN SFin.TransactionTypes AS tt
+            ON tt.ID = t.TransactionTypeID
+           AND tt.RowStatus <> 0
+           AND tt.RowStatus <> 254
+           AND tt.IsActive = 1
         WHERE t.RowStatus <> 0
           AND t.RowStatus <> 254
           AND (@TransactionID IS NULL OR t.ID = @TransactionID)
@@ -49,6 +55,11 @@ BEGIN
 
         IF @ResolvedTransactionID IS NULL
             THROW 60201, 'TransactionSageSubmission_EnsureQueued could not resolve an active transaction.', 1;
+
+        SET @NormalisedTransactionTypeName =
+            UPPER(REPLACE(REPLACE(REPLACE(
+                LTRIM(RTRIM(ISNULL(@TransactionTypeName, N''))),
+                N' ', N''), N'-', N''), N'_', N''));
 
         IF EXISTS
         (
@@ -207,6 +218,35 @@ BEGIN
 
         IF @TransitionID IS NULL OR @TransitionGuid IS NULL
             THROW 60202, 'TransactionSageSubmission_EnsureQueued could not create or resolve a transaction batch transition.', 1;
+
+        ---------------------------------------------------------------------
+        -- Every non-Invoice type still completes its normal CymBuild
+        -- Transaction Batch approval and retains the transition audit row.
+        -- Only Invoice belongs to the Sage sales-order integration, so local
+        -- completion for any other type must not require an outbox row or
+        -- invoke the Sage API.
+        -- The submission service retains a second defensive skip for any
+        -- legacy event that was already queued before this guard was deployed.
+        ---------------------------------------------------------------------
+        IF @NormalisedTransactionTypeName <> N'INVOICE'
+        BEGIN
+            SET @Outcome = N'CompletedWithoutSageSubmission';
+            SET @Message = CONCAT(
+                N'Transaction Batch approval completed for ',
+                ISNULL(NULLIF(@TransactionTypeName, N''), N'non-Invoice transaction'),
+                N'; no Sage API submission is required.');
+
+            COMMIT TRAN;
+
+            IF ISNULL(@SuppressResult, 0) = 0
+            BEGIN
+                SELECT TransactionID = @ResolvedTransactionID, TransactionGuid = @ResolvedTransactionGuid,
+                       TransitionID = @TransitionID, TransitionGuid = @TransitionGuid, OutboxID = CAST(NULL AS BIGINT),
+                       Outcome = @Outcome, [Message] = @Message;
+            END;
+
+            RETURN;
+        END;
 
         EXEC SFin.TransactionSageSubmissionStatus_Ensure
              @TransactionID = @ResolvedTransactionID,

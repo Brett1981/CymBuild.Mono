@@ -32,6 +32,9 @@
 
 .dynamic-batch-grid-v2-grid-wrapper {
     overflow-x: auto;
+    overflow-y: auto;
+    max-height: 68vh;
+    scrollbar-gutter: stable;
 }
 
 .dynamic-batch-grid-v2-grid-table {

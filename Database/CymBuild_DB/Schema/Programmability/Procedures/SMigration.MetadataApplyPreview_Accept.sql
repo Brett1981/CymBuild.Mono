@@ -4,10 +4,10 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataApplyPreview_Accept]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataApplyPreview_Accept]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyPreview_Accept]
 (
     @RunGuid UNIQUEIDENTIFIER,
-    @ApplySelectedOnly BIT = 0,
+    @ApplySelectedOnly BIT = 1,
     @ExpectedPreviewFingerprint VARCHAR(64),
     @SourceSnapshotFingerprint VARCHAR(64),
     @TargetSnapshotFingerprint VARCHAR(64)
@@ -20,6 +20,7 @@ BEGIN
     DECLARE
         @RunStatus NVARCHAR(30),
         @IsValidateOnly BIT,
+        @TargetDatabaseName SYSNAME,
         @FailCount INT = 0,
         @PreviewFingerprint VARBINARY(32),
         @ScopeFingerprint VARBINARY(32),
@@ -33,6 +34,9 @@ BEGIN
         @DetailsJson NVARCHAR(MAX),
         @Message NVARCHAR(2000);
 
+    IF ISNULL(@ApplySelectedOnly, 0) <> 1
+        THROW 52920, 'Metadata apply preview acceptance requires an explicit selected-row scope.', 1;
+
     IF LEN(ISNULL(@ExpectedPreviewFingerprint, '')) <> 64
         THROW 52911, 'A valid 64-character apply preview fingerprint is required for acceptance.', 1;
 
@@ -45,7 +49,8 @@ BEGIN
 
     SELECT
         @RunStatus = r.RunStatus,
-        @IsValidateOnly = r.IsValidateOnly
+        @IsValidateOnly = r.IsValidateOnly,
+        @TargetDatabaseName = r.TargetDatabaseName
     FROM SMigration.Metadata_Run AS r WITH (UPDLOCK, HOLDLOCK)
     WHERE r.Guid = @RunGuid
       AND r.RowStatus NOT IN (0,254);
@@ -70,7 +75,54 @@ BEGIN
     FROM SMigration.Metadata_ValidationIssues AS vi WITH (HOLDLOCK)
     WHERE vi.RunGuid = @RunGuid
       AND vi.RowStatus NOT IN (0,254)
-      AND vi.Severity = N'Fail';
+      AND vi.Severity = N'Fail'
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Metadata_ValidationIssueIgnores AS ignoredIssue WITH (HOLDLOCK)
+          WHERE ignoredIssue.DatabaseName = @TargetDatabaseName
+            AND ignoredIssue.RegistryGuid = vi.RegistryGuid
+            AND ignoredIssue.SourceRowGuid = vi.SourceRowGuid
+            AND ignoredIssue.IssueCode = vi.IssueCode
+            AND ignoredIssue.RowStatus NOT IN (0,254)
+      )
+      AND
+      (
+          vi.IssueCode IN (N'RunNotFound', N'NoSelectedRows', N'DuplicateSourceGuid', N'DuplicateTargetGuid', N'DuplicateTargetKey', N'UnresolvedReference')
+          OR EXISTS
+          (
+              SELECT 1
+              FROM SMigration.Metadata_RunSelections AS selected
+              INNER JOIN SMigration.Metadata_StagedRows AS selectedRow
+                  ON selectedRow.RunGuid = selected.RunGuid
+                 AND selectedRow.RegistryGuid = selected.RegistryGuid
+                 AND selectedRow.SourceRowGuid = selected.SourceRowGuid
+                 AND selectedRow.RowStatus NOT IN (0,254)
+              WHERE selected.RunGuid = vi.RunGuid
+                AND selected.RowStatus NOT IN (0,254)
+                AND selectedRow.DifferenceType IN (N'Insert', N'Update')
+                AND selectedRow.RegistryGuid = vi.RegistryGuid
+                AND (vi.SourceRowGuid IS NULL OR selectedRow.SourceRowGuid = vi.SourceRowGuid)
+                AND NOT EXISTS
+                (
+                    SELECT 1
+                    FROM SMigration.Metadata_IgnoredRecords AS selectedIgnored
+                    WHERE selectedIgnored.DatabaseName = @TargetDatabaseName
+                      AND selectedIgnored.RegistryGuid = selectedRow.RegistryGuid
+                      AND selectedIgnored.SourceRowGuid = selectedRow.SourceRowGuid
+                      AND selectedIgnored.RowStatus NOT IN (0,254)
+                )
+                AND NOT EXISTS
+                (
+                    SELECT 1
+                    FROM SMigration.Metadata_IdentityMapOverrides AS selectedOverride
+                    WHERE selectedOverride.DatabaseName = @TargetDatabaseName
+                      AND selectedOverride.RegistryGuid = selectedRow.RegistryGuid
+                      AND selectedOverride.SourceRowGuid = selectedRow.SourceRowGuid
+                      AND selectedOverride.RowStatus NOT IN (0,254)
+                )
+          )
+      );
 
     IF ISNULL(@FailCount, 0) > 0
         THROW 52915, 'Metadata apply preview cannot be accepted while validation failures exist.', 1;

@@ -129,7 +129,4 @@
 //// GraphService DI
 //builder.Services.AddScoped<GraphService>();
 
-//// Telerik
-//builder.Services.AddTelerikBlazor();
-
 //await builder.Build().RunAsync();

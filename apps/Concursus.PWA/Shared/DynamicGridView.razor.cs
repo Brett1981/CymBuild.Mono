@@ -34,9 +34,11 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         "BypassReadOnlyForAutomationReenable";
 
     private System.Type? _detailPageType;
-    private MessageDisplay _messageDisplay = new();
+    protected MessageDisplay _messageDisplay = new();
     private GridViewDefinition? _viewDefinition;
     private string modalId = Guid.Empty.ToString();
+    private readonly string _gridWrapperInstanceId = Guid.NewGuid().ToString("N");
+    private bool _edgeAutoScrollAttached;
 
     private bool _isLoading;
     private CancellationTokenSource? _filterDebounceCancellationTokenSource;
@@ -46,6 +48,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private string? _lastParameterLoadKey;
     private string _searchText = string.Empty;
     private bool _isFilterPanelOpen;
+    private bool _isSearchBarCollapsed;
     private bool _scrollDetailPanelIntoViewAfterRender;
 
     private int _page = 1;
@@ -68,6 +71,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private readonly Dictionary<string, Dictionary<string, object?>> _drawdownInlineOriginalRows = new(StringComparer.OrdinalIgnoreCase);
 
     private bool IsMonthlyDrawdownGrid => string.Equals(GridCode, "INVSCEDMONTHLY", StringComparison.OrdinalIgnoreCase);
+    private const int MonthlyDrawdownPageSize = 150;
     private bool IsPercentageDrawdownGrid => string.Equals(GridCode, "INVSCEDULEPERCENTAGE", StringComparison.OrdinalIgnoreCase);
     private bool IsInvoiceDrawdownGrid => IsMonthlyDrawdownGrid || IsPercentageDrawdownGrid;
 
@@ -94,10 +98,11 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         : "Review and update this record, then save when ready.";
 
     private string DetailPanelDomId => $"dynamic-grid-view-detail-{modalId}";
+    private string GridWrapperDomId => $"dynamic-grid-view-wrapper-{_gridWrapperInstanceId}";
 
     private string DetailPanelInlineStyle => _isDetailNewRecord
-        ? "position:relative;overflow:hidden;margin:0 0 1rem 0;border:2px solid #86efac;border-radius:18px;background:radial-gradient(circle at top left, rgba(34, 197, 94, .12), transparent 34%), linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);box-shadow:0 12px 32px rgba(15, 23, 42, .08);"
-        : "position:relative;overflow:hidden;margin:0 0 1rem 0;border:2px solid #93c5fd;border-radius:18px;background:radial-gradient(circle at top left, rgba(59, 130, 246, .13), transparent 34%), linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);box-shadow:0 12px 32px rgba(59, 130, 246, .10);";
+        ? "position:relative;margin:0 0 1rem 0;border:2px solid #86efac;border-radius:18px;background:radial-gradient(circle at top left, rgba(34, 197, 94, .12), transparent 34%), linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);box-shadow:0 12px 32px rgba(15, 23, 42, .08);"
+        : "position:relative;margin:0 0 1rem 0;border:2px solid #93c5fd;border-radius:18px;background:radial-gradient(circle at top left, rgba(59, 130, 246, .13), transparent 34%), linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);box-shadow:0 12px 32px rgba(59, 130, 246, .10);";
 
     private string DetailPanelAccentInlineStyle => _isDetailNewRecord
         ? "position:absolute;inset:0 auto 0 0;width:5px;background:#22c55e;"
@@ -108,8 +113,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         : "width:40px;height:40px;flex:0 0 40px;display:inline-flex;align-items:center;justify-content:center;border-radius:14px;color:#1d4ed8;background:#dbeafe;box-shadow:inset 0 0 0 1px rgba(59, 130, 246, .18);";
 
     private string MonthlySeriesPanelInlineStyle => !string.IsNullOrWhiteSpace(MonthlySeriesError)
-        ? "position:relative;overflow:hidden;margin:1rem 0;border:2px solid #fca5a5;border-radius:18px;background:#ffffff;box-shadow:0 14px 36px rgba(239, 68, 68, .12);"
-        : "position:relative;overflow:hidden;margin:1rem 0;border:2px solid #86efac;border-radius:18px;background:#ffffff;box-shadow:0 12px 32px rgba(34, 197, 94, .10);";
+        ? "position:relative;padding:10px;margin:1rem 0;border:2px solid #fca5a5;border-radius:18px;background:#ffffff;box-shadow:0 14px 36px rgba(239, 68, 68, .12);"
+        : "position:relative;padding:10px;margin:1rem 0;border:2px solid #86efac;border-radius:18px;background:#ffffff;box-shadow:0 12px 32px rgba(34, 197, 94, .10);";
 
     private string MonthlySeriesAccentInlineStyle => !string.IsNullOrWhiteSpace(MonthlySeriesError)
         ? "position:absolute;inset:0 auto 0 0;width:5px;background:#ef4444;"
@@ -176,7 +181,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
 
     private bool ShouldShowCsvExportButton =>
         ViewDefinition is not null &&
-        (string.Equals(ViewDefinition.Code, "OVERDUEACTIVITIES", StringComparison.OrdinalIgnoreCase) ||
+        (ViewDefinition.AllowCsvExport ||
+         string.Equals(ViewDefinition.Code, "OVERDUEACTIVITIES", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(ViewDefinition.Code, "ENGJOBSFINANCE", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(ViewDefinition.Code, "OVERDUEMILESTONES", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(GridCode, "OVERDUEACTIVITIES", StringComparison.OrdinalIgnoreCase) ||
@@ -189,7 +195,14 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         var requiresInitialLoad = !_isInitialised;
         if (requiresInitialLoad)
         {
+            _isSearchBarCollapsed = ViewDefinition.IsSearchDefaultCollapsed;
             await RestoreNativeGridStateAsync();
+            if (!ViewDefinition.ShowSearchBar)
+            {
+                // No search/filter controls are rendered, so restored search/filter state could not be seen or cleared.
+                _searchText = string.Empty;
+                _filtersByColumn.Clear();
+            }
             ApplyDefaultSortIfNeeded();
             _isInitialised = true;
         }
@@ -253,6 +266,30 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         {
             _scrollDetailPanelIntoViewAfterRender = false;
             await ScrollDetailPanelIntoViewAsync();
+        }
+
+        if (!_edgeAutoScrollAttached && ViewDefinition is not null && (ParentRowStatus == -1 || ParentRowStatus > 0))
+        {
+            _edgeAutoScrollAttached = true;
+            await AttachEdgeAutoScrollAsync();
+        }
+    }
+
+    private async Task AttachEdgeAutoScrollAsync()
+    {
+        try
+        {
+            await JsRuntime.InvokeVoidAsync(
+                "cymbuildGridEdgeAutoScroll.attach",
+                GridWrapperDomId);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.WriteLine(ex.Message);
         }
     }
 
@@ -428,6 +465,12 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             _detailPageParameters.Clear();
             _detailPageType = null;
 
+            // CYB-484: this is the detail panel's own "Close" (X) button - it closes the modal
+            // directly and never routes through EditPage.HandleExitAsync/PerformACanceledState.
+            // Without this, stateService.ChildRecordGuid/OriginalRecordGuid from whatever record
+            // was open here can leak into the next "New" record opened from this grid.
+            PWAFunctions.ResetStateService(stateService);
+
             if (!ComingFromModal)
             {
                 await LoadPageAsync(preservePage: true);
@@ -441,6 +484,14 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             {
                 await LoadPageAsync(preservePage: true);
                 ComingFromModal = false;
+
+                // CYB-320: editing or deleting an existing row can change the parent's
+                // validation too (e.g. Quote Job Type locks while quote items exist).
+                if (ResyncDataObject.HasDelegate) await ResyncDataObject.InvokeAsync();
+
+                // CYB-237: editing an existing row (e.g. setting a Fee Amendment to Agreed) changes
+                // parent totals too, so the parent must refresh its summary cards as it does for new rows.
+                if (OnActionCompleted.HasDelegate) await OnActionCompleted.InvokeAsync();
             }
         }
         catch (Exception ex)
@@ -500,6 +551,14 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                 return;
             }
 
+            // CYB-489 (LIVE 26.2 fix c24d3cb7): drawdowns are edited inline across the whole schedule,
+            // and changing page reloads the rows and drops unsaved edits. Keep every drawdown on one page.
+            if (IsMonthlyDrawdownGrid)
+            {
+                _pageSize = Math.Max(_pageSize, MonthlyDrawdownPageSize);
+                _page = 1;
+            }
+
             if (!preservePage)
             {
                 _page = 1;
@@ -510,7 +569,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                 _page = 1;
             }
 
-            await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
+            if (PersistsPageNumber)
+                await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
 
             var request = new GridDataListRequest
             {
@@ -566,7 +626,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             if (_page > _totalPages)
             {
                 _page = _totalPages;
-                await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
+                if (PersistsPageNumber)
+                    await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
             }
 
             CurrentGridItems = _rows;
@@ -626,6 +687,16 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         return false;
     }
 
+    private static readonly string[] DateColumnDisplayFormats = { "dd", "mm", "yyyy" };
+
+    private bool IsDateFilterColumn(string columnName)
+    {
+        var column = ViewDefinition?.Columns?
+            .FirstOrDefault(c => string.Equals(c.Name, columnName, StringComparison.OrdinalIgnoreCase));
+
+        return column is not null && DateColumnDisplayFormats.Contains(column.DisplayFormat);
+    }
+
     private DataCompositeFilter? BuildCompositeFilter()
     {
         var root = new DataCompositeFilter { LogicalOperator = "AND" };
@@ -634,7 +705,28 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         {
             if (_serverFilterExcludedColumns.Contains(filter.ColumnName)) continue;
 
-            var dataFilter = CreateDataFilter(filter.ColumnName, filter.Value, "contains");
+            // Date columns use a date picker that matches the picked day only (CYB-582):
+            // [col] >= day AND [col] < next day, so datetime values with a time part still match.
+            // "contains" can't be used - its LIKE string concatenation is rejected by SQL Server
+            // against a date-typed parameter ("nvarchar and date incompatible in the add operator").
+            if (IsDateFilterColumn(filter.ColumnName))
+            {
+                if (!DateTime.TryParseExact(filter.Value.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+                    continue;
+
+                var nextDay = day.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                root.CompositeFilters.Add(CreateServerCompatibleFilterGroup("AND", new[]
+                {
+                    CreateDataFilter(filter.ColumnName, day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "ge"),
+                    CreateDataFilter(filter.ColumnName, nextDay, "lt")
+                }));
+
+                LogFilter(filter.ColumnName, "on", filter.Value);
+                continue;
+            }
+
+            const string op = "contains";
+            var dataFilter = CreateDataFilter(filter.ColumnName, filter.Value, op);
 
             // The current UiService conversion path reads only the child CompositeFilters from
             // the first request filter.  Keep the client-side filter shape compatible with that
@@ -642,7 +734,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             // LogicalOperator and does not generate an empty operator between predicates.
             root.CompositeFilters.Add(CreateServerCompatibleFilterGroup("AND", new[] { dataFilter }));
 
-            LogFilter(filter.ColumnName, "contains", filter.Value);
+            LogFilter(filter.ColumnName, op, filter.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(_searchText) && ViewDefinition?.Columns is not null)
@@ -650,6 +742,7 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             var searchableFilters = ViewDefinition.Columns
                 .Where(c => !c.IsHidden)
                 .Where(c => !IsServerFilterColumnExcluded(c))
+                .Where(c => !DateColumnDisplayFormats.Contains(c.DisplayFormat))
                 .Select(c => c.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -753,6 +846,9 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             ? "contains"
             : op.Trim().ToLowerInvariant();
 
+        if (value.Contains("00:00:00"))
+            value = value.Replace("00:00:00", "");
+
         var trimmed = value.Trim();
         if (trimmed.Equals("yes", StringComparison.OrdinalIgnoreCase)) trimmed = "1";
         else if (trimmed.Equals("no", StringComparison.OrdinalIgnoreCase)) trimmed = "0";
@@ -801,6 +897,16 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private void ToggleFilterPanel()
     {
         _isFilterPanelOpen = !_isFilterPanelOpen;
+    }
+
+    private bool IsSearchToolbarVisible => ViewDefinition.ShowSearchBar && !_isSearchBarCollapsed;
+
+    // Shown on the collapsed Search toggle so an active search/filter is never hidden from the user.
+    private int ActiveSearchCriteriaCount => (string.IsNullOrWhiteSpace(_searchText) ? 0 : 1) + _filtersByColumn.Count;
+
+    private void ToggleSearchBar()
+    {
+        _isSearchBarCollapsed = !_isSearchBarCollapsed;
     }
 
     private async Task ApplyFiltersAsync()
@@ -874,7 +980,8 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         {
             await LocalStorageAccessor.RemoveAsync($"{ViewDefinition.Code}_gridState");
             await LocalStorageAccessor.RemoveAsync($"{ViewDefinition.Code}_nativeGridState");
-            await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
+            if (PersistsPageNumber)
+                await LocalStorageAccessor.SetValueAsync($"{ViewDefinition.Code}_currentPageNumber", _page);
         }
 
         await LoadPageAsync(preservePage: true);
@@ -953,12 +1060,21 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         _sortDescending = ViewDefinition.IsDefaultSortDescending;
     }
 
+    // CYB-506: the saved page is keyed by grid code only, so a grid that belongs to a parent record
+    // (e.g. Job Fees > Transactions) would reopen on the page last used for a different record and
+    // look empty. Only full, parentless grids remember their page.
+    private bool PersistsPageNumber =>
+        FullGrid && PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid) == Guid.Empty;
+
     private async Task RestoreNativeGridStateAsync()
     {
         if (ViewDefinition is null) return;
 
-        var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
-        if (int.TryParse(savedPageNumber, out var pageNumber) && pageNumber > 0) _page = pageNumber;
+        if (PersistsPageNumber)
+        {
+            var savedPageNumber = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_currentPageNumber");
+            if (int.TryParse(savedPageNumber, out var pageNumber) && pageNumber > 0) _page = pageNumber;
+        }
 
         var savedNativeState = await LocalStorageAccessor.GetValueAsync<string>($"{ViewDefinition.Code}_nativeGridState");
         if (string.IsNullOrWhiteSpace(savedNativeState) || !FullGrid) return;
@@ -1325,14 +1441,36 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     private string GetDrawdownStageGuid(ExpandoObject row)
     {
         var explicitGuid = GetRowValue(row, "RibaStageID");
-        if (Guid.TryParse(explicitGuid, out var parsed) && parsed != Guid.Empty)
+        var stageName = GetRowValue(row, "RibaStage");
+        return ResolveDrawdownStageGuid(explicitGuid, stageName, DrawdownStageOptions);
+    }
+
+    /// <summary>
+    /// Resolves the drawdown stage GUID for a grid row against the available lookup options.
+    /// Extracted as a pure, internal function so the name-matching fix can be unit tested
+    /// directly (apps/Concursus.PWA.Tests) without rendering the component.
+    /// </summary>
+    internal static string ResolveDrawdownStageGuid(
+        string? explicitGuidText,
+        string? stageDescription,
+        IReadOnlyCollection<InvoiceScheduleDrawdownStageLookupModel> stageOptions)
+    {
+        if (Guid.TryParse(explicitGuidText, out var parsed) && parsed != Guid.Empty)
         {
             return parsed.ToString();
         }
 
-        var stageName = GetRowValue(row, "RibaStage");
-        var stage = DrawdownStageOptions.FirstOrDefault(x =>
-            string.Equals(x.Name, stageName, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(stageDescription))
+        {
+            return string.Empty;
+        }
+
+        // The grid only exposes the stage's description (e.g. "Strategic Definition"), not
+        // its RibaStageID, while the lookup options are formatted as "Riba Stage 0 - Strategic
+        // Definition" / "Fee Stage 99 - Pre-Construction", so match on the description suffix.
+        var stage = stageOptions.FirstOrDefault(x =>
+            string.Equals(x.Name, stageDescription, StringComparison.OrdinalIgnoreCase)
+            || x.Name.EndsWith(" - " + stageDescription, StringComparison.OrdinalIgnoreCase));
 
         return stage?.Guid.ToString() ?? string.Empty;
     }
@@ -1434,6 +1572,17 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         return null;
     }
 
+    /// <summary>
+    /// CYB-279: the drawdown series can be Monthly, Bi-monthly, Quarterly or Bi-annual, so the
+    /// confirmation names the frequency rather than always saying "monthly periods".
+    /// </summary>
+    internal static string FormatDrawdownSeriesGeneratedMessage(int insertedCount, string? frequency)
+    {
+        var cadence = string.IsNullOrWhiteSpace(frequency) ? string.Empty : frequency.Trim().ToLowerInvariant() + " ";
+        var noun = insertedCount == 1 ? "invoice date" : "invoice dates";
+        return $"Generated {insertedCount} {cadence}{noun}.";
+    }
+
     private void OpenMonthlySeriesModal()
     {
         MonthlySeriesError = null;
@@ -1467,6 +1616,12 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                 return;
             }
 
+            if(MonthlySeries.Frequency is null)
+            {
+                MonthlySeriesError = "Please, select a frequency.";
+                return;
+            }
+
             if (MonthlySeries.StartDateFirstInvoice is null)
             {
                 MonthlySeriesError = "Start Date (First Invoice) is required.";
@@ -1482,6 +1637,13 @@ public partial class DynamicGridView : ComponentBase, IDisposable
             if (MonthlySeries.TotalValueNet is null || MonthlySeries.TotalValueNet <= 0)
             {
                 MonthlySeriesError = "Total Value (Net) must be greater than zero.";
+                return;
+            }
+
+
+            if(MonthlySeries.Frequency is null || MonthlySeries.Frequency == string.Empty)
+            {
+                MonthlySeriesError = "Please, specify the frequency.";
                 return;
             }
 
@@ -1505,12 +1667,14 @@ public partial class DynamicGridView : ComponentBase, IDisposable
                 start,
                 end,
                 MonthlySeries.TotalValueNet.Value,
-                MonthlySeries.OverwriteExisting);
-            Toast.ShowSuccess($"Generated {result.InsertedCount} monthly periods.");
+                MonthlySeries.OverwriteExisting,
+                MonthlySeries.Frequency);
+            Toast.ShowSuccess(FormatDrawdownSeriesGeneratedMessage(result.InsertedCount, MonthlySeries.Frequency));
             CloseMonthlySeriesModal();
             await LoadPageAsync(preservePage: true);
 
             if (ResyncDataObject.HasDelegate) await ResyncDataObject.InvokeAsync();
+            if (OnActionCompleted.HasDelegate) await OnActionCompleted.InvokeAsync();
         }
         catch (Exception ex)
         {
@@ -1651,6 +1815,17 @@ public partial class DynamicGridView : ComponentBase, IDisposable
 
             if (ViewDefinition.IsDetailWindowed)
             {
+                // CYB-473 (LIVE 26.2 fix 3ff9c381): a windowed detail opened from a child grid must keep
+                // this grid's parent record as its parent; otherwise its dropdowns (e.g. Quote Item >
+                // Invoice Schedule / Product) are filtered against the wrong record. Windowed only: the
+                // non-windowed DynamicEdit URL is built from the resolved reference.
+                if (ParentDataObjectReference is not null &&
+                    ParentDataObjectReference.DataObjectGuid != Guid.Empty &&
+                    ParentDataObjectReference.DataObjectGuid != PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(rowGuid))
+                {
+                    parentDataObjectReference = ParentDataObjectReference;
+                }
+
                 await GetScrollBarPos();
                 modalId = Guid.NewGuid().ToString();
                 _detailPageParameters.Clear();
@@ -1918,34 +2093,6 @@ public partial class DynamicGridView : ComponentBase, IDisposable
         _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
         _messageDisplay.ShowError(true);
 
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod,
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>().ToDictionary(de => de.Key?.ToString() ?? "UnknownKey", de => de.Value?.ToString() ?? "null")
-                };
-
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-            }
-            catch
-            {
-                // Error reporting must never break the grid.
-            }
-        }
 
         StateHasChanged();
     }
@@ -1953,12 +2100,19 @@ public partial class DynamicGridView : ComponentBase, IDisposable
     public void Dispose()
     {
         CancelQueuedFilterReload();
+
+        if (_edgeAutoScrollAttached)
+        {
+            _ = JsRuntime.InvokeVoidAsync("cymbuildGridEdgeAutoScroll.detach", GridWrapperDomId);
+        }
+
         GC.SuppressFinalize(this);
     }
 
 
     private sealed class MonthlySeriesModel
     {
+        public string Frequency { get; set; }
         public DateTime? StartDateFirstInvoice { get; set; }
         public DateTime? EndDateFinalInvoice { get; set; }
         public decimal? TotalValueNet { get; set; }

@@ -4,10 +4,10 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataApplyPreviewFingerprint_Get]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataApplyPreviewFingerprint_Get]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyPreviewFingerprint_Get]
 (
     @RunGuid UNIQUEIDENTIFIER,
-    @ApplySelectedOnly BIT = 0,
+    @ApplySelectedOnly BIT = 1,
     @SourceSnapshotFingerprint VARCHAR(64),
     @TargetSnapshotFingerprint VARCHAR(64),
     @PreviewFingerprint VARBINARY(32) OUTPUT,
@@ -17,6 +17,9 @@ CREATE PROCEDURE [SMigration].[MetadataApplyPreviewFingerprint_Get]
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF ISNULL(@ApplySelectedOnly, 0) <> 1
+        THROW 52920, 'Metadata apply preview fingerprint requires an explicit selected-row scope.', 1;
 
     DECLARE
         @TargetDatabaseName SYSNAME,
@@ -107,7 +110,9 @@ BEGIN
                         N'|sourceRowStatus=', ISNULL(CONVERT(NVARCHAR(10), sr.SourceRowStatus), N'<null>'),
                         N'|differenceType=', sr.DifferenceType,
                         N'|sourcePayloadHash=', CONVERT(VARCHAR(64), sr.SourcePayloadHash, 2),
-                        N'|targetPayloadHash=', ISNULL(CONVERT(VARCHAR(64), sr.TargetPayloadHash, 2), N'<null>')
+                        N'|targetPayloadHash=', ISNULL(CONVERT(VARCHAR(64), sr.TargetPayloadHash, 2), N'<null>'),
+                        N'|overrideTargetRowGuid=', ISNULL(CONVERT(NVARCHAR(36), identityOverride.TargetRowGuid), N'<null>'),
+                        N'|overrideColumnSourceSelection=', ISNULL(identityOverride.ColumnSourceSelectionJson, N'<null>')
                     )
                 )
             ),
@@ -117,21 +122,22 @@ BEGIN
     INNER JOIN SMigration.Metadata_TableRegistry AS tr WITH (HOLDLOCK)
         ON tr.Guid = sr.RegistryGuid
        AND tr.RowStatus NOT IN (0,254)
+    LEFT JOIN SMigration.Metadata_IdentityMapOverrides AS identityOverride WITH (HOLDLOCK)
+        ON identityOverride.DatabaseName = @TargetDatabaseName
+       AND identityOverride.RegistryGuid = sr.RegistryGuid
+       AND identityOverride.SourceRowGuid = sr.SourceRowGuid
+       AND identityOverride.RowStatus NOT IN (0,254)
     WHERE sr.RunGuid = @RunGuid
       AND sr.RowStatus NOT IN (0,254)
       AND sr.DifferenceType IN (N'Insert', N'Update')
-      AND
+      AND EXISTS
       (
-          ISNULL(@ApplySelectedOnly, 0) = 0
-          OR EXISTS
-          (
-              SELECT 1
-              FROM SMigration.Metadata_RunSelections AS selection WITH (HOLDLOCK)
-              WHERE selection.RunGuid = sr.RunGuid
-                AND selection.RegistryGuid = sr.RegistryGuid
-                AND selection.SourceRowGuid = sr.SourceRowGuid
-                AND selection.RowStatus NOT IN (0,254)
-          )
+          SELECT 1
+          FROM SMigration.Metadata_RunSelections AS selection WITH (HOLDLOCK)
+          WHERE selection.RunGuid = sr.RunGuid
+            AND selection.RegistryGuid = sr.RegistryGuid
+            AND selection.SourceRowGuid = sr.SourceRowGuid
+            AND selection.RowStatus NOT IN (0,254)
       )
       AND NOT EXISTS
       (
@@ -141,16 +147,15 @@ BEGIN
             AND ignored.RegistryGuid = sr.RegistryGuid
             AND ignored.SourceRowGuid = sr.SourceRowGuid
             AND ignored.RowStatus NOT IN (0,254)
-      )
-      AND NOT EXISTS
-      (
-          SELECT 1
-          FROM SMigration.Metadata_IdentityMapOverrides AS identityOverride WITH (HOLDLOCK)
-          WHERE identityOverride.DatabaseName = @TargetDatabaseName
-            AND identityOverride.RegistryGuid = sr.RegistryGuid
-            AND identityOverride.SourceRowGuid = sr.SourceRowGuid
-            AND identityOverride.RowStatus NOT IN (0,254)
       );
+      -- A row with a manual Identity Map override is deliberately INCLUDED here (unlike ignored
+      -- records) - it applies as an update to the mapped target record, so it must be counted
+      -- the same as any other actionable row, and this scope must stay identical to
+      -- #MetadataRowsToApply in SMigration.MetadataApply_Run.sql or the accepted-preview
+      -- fingerprint check there will fail for any run that includes an override. The override's
+      -- own TargetRowGuid is folded into the per-row hash above so that adding, changing or
+      -- removing a mapping between preview and apply invalidates the accepted fingerprint,
+      -- exactly like any other mutable apply-scope input.
 
     SET @ApplyCount = @@ROWCOUNT;
 

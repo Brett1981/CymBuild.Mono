@@ -36,6 +36,13 @@ SELECT TOP (1)
 FROM SFin.SageInboundDocumentStatus AS s
 WHERE s.CymBuildDocumentGuid = @CymBuildDocumentGuid
   AND s.RowStatus NOT IN (0,254)
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SFin.SageExportTransactions AS legacyExport
+      WHERE legacyExport.TransactionID = s.TransactionID
+        AND legacyExport.RowStatus NOT IN (0,254)
+  )
 
 UNION ALL
 
@@ -63,7 +70,14 @@ LEFT JOIN SCrm.Accounts AS a
     ON a.ID = t.AccountID
    AND a.RowStatus NOT IN (0,254)
 WHERE ir.Guid = @CymBuildDocumentGuid
-  AND ir.RowStatus NOT IN (0,254);";
+  AND ir.RowStatus NOT IN (0,254)
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM SFin.SageExportTransactions AS legacyExport
+      WHERE legacyExport.TransactionID = t.ID
+        AND legacyExport.RowStatus NOT IN (0,254)
+  );";
 
             await using var connection = _core.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);

@@ -113,7 +113,8 @@
 .cb-task-modal-backdrop,
 .cb-task-modal-card,
 .cb-task-modal-header,
-.cb-task-modal-body {
+.cb-task-modal-body,
+.cb-task-modal-footer {
     box-sizing: border-box;
 }
 

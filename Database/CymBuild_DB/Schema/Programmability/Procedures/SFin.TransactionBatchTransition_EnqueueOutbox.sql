@@ -1,12 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
-GO
-PRINT (N'Create procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
+PRINT (N'Create or alter procedure [SFin].[TransactionBatchTransition_EnqueueOutbox]')
 GO
 
-CREATE PROCEDURE [SFin].[TransactionBatchTransition_EnqueueOutbox]
+CREATE OR ALTER PROCEDURE [SFin].[TransactionBatchTransition_EnqueueOutbox]
 (
     @TransactionBatchTransitionGuid UNIQUEIDENTIFIER
 )
@@ -20,6 +18,9 @@ BEGIN
         @TransactionID BIGINT,
         @TransactionGuid UNIQUEIDENTIFIER,
         @Number NVARCHAR(30),
+        @TransactionTypeGuid UNIQUEIDENTIFIER,
+        @TransactionTypeName NVARCHAR(50),
+        @TransactionTypeIsBank BIT,
         @JobID INT,
         @AccountID INT,
         @OrganisationalUnitId INT,
@@ -48,15 +49,35 @@ BEGIN
     SELECT
         @TransactionResolved = 1,
         @Number = t.Number,
+        @TransactionTypeGuid = tt.Guid,
+        @TransactionTypeName = tt.Name,
+        @TransactionTypeIsBank = tt.IsBank,
         @JobID = t.JobID,
         @AccountID = t.AccountID,
         @OrganisationalUnitId = t.OrganisationalUnitId
     FROM SFin.Transactions AS t
+    INNER JOIN SFin.TransactionTypes AS tt
+        ON tt.ID = t.TransactionTypeID
+       AND tt.RowStatus NOT IN (0, 254)
+       AND tt.IsActive = 1
     WHERE   t.ID = @TransactionID
         AND t.Guid = @TransactionGuid
         AND t.RowStatus NOT IN (0, 254);
 
     IF ISNULL(@TransactionResolved, 0) = 0
+    BEGIN
+        RETURN;
+    END;
+
+    -------------------------------------------------------------------------
+    -- Only Invoice belongs to the outbound Sage submission flow. CreditNote is
+    -- created in Sage and imported inbound because the Wrapper has no write
+    -- operation. Receipt and Payment are also inbound-only.
+    -- Unknown and bank transaction types must never be treated as invoices.
+    -------------------------------------------------------------------------
+    IF ISNULL(@TransactionTypeIsBank, 0) = 1
+       OR UPPER(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(ISNULL(@TransactionTypeName, N''))), N' ', N''), N'-', N''), N'_', N''))
+            <> N'INVOICE'
     BEGIN
         RETURN;
     END;
@@ -121,6 +142,8 @@ BEGIN
             @TransactionGuid AS transactionGuid,
             @TransactionID AS transactionId,
             @Number AS transactionNumber,
+            @TransactionTypeGuid AS transactionTypeGuid,
+            @TransactionTypeName AS transactionTypeName,
             @JobID AS jobId,
             @AccountID AS accountId,
             @OrganisationalUnitId AS organisationalUnitId,

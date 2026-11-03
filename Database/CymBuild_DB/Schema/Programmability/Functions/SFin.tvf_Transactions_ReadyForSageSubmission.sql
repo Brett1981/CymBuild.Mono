@@ -1,10 +1,10 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create function [SFin].[tvf_Transactions_ReadyForSageSubmission]')
+PRINT (N'Create or alter function [SFin].[tvf_Transactions_ReadyForSageSubmission]')
 GO
 
-CREATE FUNCTION [SFin].[tvf_Transactions_ReadyForSageSubmission]
+CREATE OR ALTER FUNCTION [SFin].[tvf_Transactions_ReadyForSageSubmission]
 (
     @SinceUtc DATETIME2(7) = NULL
 )
@@ -25,9 +25,16 @@ RETURN
         t.OrganisationalUnitId,
         t.SageTransactionReference
     FROM SFin.Transactions AS t
+    INNER JOIN SFin.TransactionTypes AS tt
+        ON tt.ID = t.TransactionTypeID
+       AND tt.RowStatus NOT IN (0, 254)
+       AND tt.IsActive = 1
     WHERE
             t.RowStatus NOT IN (0, 254)
         AND t.Batched = 0
+        AND tt.IsBank = 0
+        AND UPPER(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(tt.Name)), N' ', N''), N'-', N''), N'_', N''))
+            = N'INVOICE'
         AND NULLIF(LTRIM(RTRIM(t.Number)), N'') IS NOT NULL
         AND (
                 @SinceUtc IS NULL

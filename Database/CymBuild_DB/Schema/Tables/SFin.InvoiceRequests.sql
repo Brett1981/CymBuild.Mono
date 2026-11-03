@@ -29,23 +29,14 @@ CREATE TABLE [SFin].[InvoiceRequests] (
   [BlockedReason] [nvarchar](200) NOT NULL CONSTRAINT [DF_InvoiceRequests_BlockedReason] DEFAULT (N''),
   [FinanceAccountGuid] [uniqueidentifier] NULL,
   [IsMerged] [bit] NOT NULL CONSTRAINT [DF_InvoiceRequests_IsMerged] DEFAULT (0),
-  [RIBAStageId] [int] NULL
+  [RIBAStageId] [int] NULL,
+  [IsRejected] [bit] NOT NULL CONSTRAINT [DF_InvoiceRequests_IsRejected] DEFAULT (0),
+  CONSTRAINT [PK_InvoiceRequests] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]
 GO
 
-PRINT (N'Create primary key [PK_InvoiceRequests] on table [SFin].[InvoiceRequests]')
-GO
-ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
-  ADD CONSTRAINT [PK_InvoiceRequests] PRIMARY KEY CLUSTERED ([ID]) WITH (FILLFACTOR = 80)
-GO
-
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_InvoiceRequests_AutomationRunGuid] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_InvoiceRequests_AutomationRunGuid]
   ON [SFin].[InvoiceRequests] ([AutomationRunGuid], [RowStatus])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254) AND [AutomationRunGuid] IS NOT NULL)
@@ -53,11 +44,6 @@ CREATE INDEX [IX_InvoiceRequests_AutomationRunGuid]
   ON [PRIMARY]
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [IX_InvoiceRequests_InvoiceBatchGuid] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_InvoiceRequests_InvoiceBatchGuid]
   ON [SFin].[InvoiceRequests] ([InvoiceBatchGuid], [RowStatus])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254) AND [InvoiceBatchGuid] IS NOT NULL)
@@ -65,8 +51,6 @@ CREATE INDEX [IX_InvoiceRequests_InvoiceBatchGuid]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_1301083792] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_1301083792]
   ON [SFin].[InvoiceRequests] ([JobId], [SourceType], [SourceGuid])
   INCLUDE ([RowStatus], [IsMerged])
@@ -74,16 +58,12 @@ CREATE INDEX [IX_SFin_InvoiceRequests_1301083792]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_1303242085] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_1303242085]
   ON [SFin].[InvoiceRequests] ([IsAutomated], [SourceType], [RowStatus], [InvoicingType])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_1618878386] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_1618878386]
   ON [SFin].[InvoiceRequests] ([IsAutomated], [SourceType], [RowStatus], [InvoicingType])
   INCLUDE ([SourceGuid])
@@ -91,8 +71,6 @@ CREATE INDEX [IX_SFin_InvoiceRequests_1618878386]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_1989789739] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_1989789739]
   ON [SFin].[InvoiceRequests] ([IsAutomated], [SourceType], [RowStatus], [InvoicingType])
   INCLUDE ([Guid], [SourceGuid])
@@ -100,8 +78,6 @@ CREATE INDEX [IX_SFin_InvoiceRequests_1989789739]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_2097759900] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_2097759900]
   ON [SFin].[InvoiceRequests] ([SourceType])
   INCLUDE ([RowStatus], [JobId], [SourceGuid], [IsMerged])
@@ -109,8 +85,6 @@ CREATE INDEX [IX_SFin_InvoiceRequests_2097759900]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_2145932611] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_2145932611]
   ON [SFin].[InvoiceRequests] ([JobId])
   INCLUDE ([RowStatus], [RowVersion], [Guid], [Notes], [RequesterUserId], [CreatedDateTimeUTC], [LegacyId], [LegacySystemID], [InvoicingType], [ExpectedDate], [ManualStatus], [InvoicePaymentStatusID], [IsAutomated], [IsZeroValuePlaceholder], [ReconciliationRequired], [ReconciliationReason], [SourceType], [SourceGuid], [SourceIntId], [AutomationRunGuid], [InvoiceBatchGuid], [BlockedReason], [FinanceAccountGuid], [IsMerged])
@@ -118,16 +92,12 @@ CREATE INDEX [IX_SFin_InvoiceRequests_2145932611]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_287976985] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_287976985]
   ON [SFin].[InvoiceRequests] ([JobId], [ReconciliationRequired], [SourceType], [SourceGuid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_SFin_InvoiceRequests_801677873] on table [SFin].[InvoiceRequests]')
-GO
 CREATE INDEX [IX_SFin_InvoiceRequests_801677873]
   ON [SFin].[InvoiceRequests] ([ReconciliationRequired], [SourceType])
   INCLUDE ([JobId], [SourceGuid])
@@ -135,19 +105,12 @@ CREATE INDEX [IX_SFin_InvoiceRequests_801677873]
   ON [PRIMARY]
 GO
 
-PRINT (N'Create index [IX_UQ_InvoiceRequest_Guid] on table [SFin].[InvoiceRequests]')
-GO
 CREATE UNIQUE INDEX [IX_UQ_InvoiceRequest_Guid]
   ON [SFin].[InvoiceRequests] ([Guid])
   WITH (FILLFACTOR = 80)
   ON [PRIMARY]
 GO
 
-SET QUOTED_IDENTIFIER ON
-GO
-
-PRINT (N'Create index [UX_InvoiceRequests_MonthConfig_Active] on table [SFin].[InvoiceRequests]')
-GO
 CREATE UNIQUE INDEX [UX_InvoiceRequests_MonthConfig_Active]
   ON [SFin].[InvoiceRequests] ([JobId], [SourceGuid])
   WHERE ([RowStatus]<>(0) AND [RowStatus]<>(254) AND [SourceType]=N'MonthConfig' AND [SourceGuid] IS NOT NULL)
@@ -156,9 +119,6 @@ CREATE UNIQUE INDEX [UX_InvoiceRequests_MonthConfig_Active]
 GO
 
 SET QUOTED_IDENTIFIER, ANSI_NULLS ON
-GO
-
-PRINT (N'Create trigger [tg_InvoiceRequests_RecordHistory] on table [SFin].[InvoiceRequests]')
 GO
 CREATE TRIGGER [SFin].[tg_InvoiceRequests_RecordHistory]
    ON  [SFin].[InvoiceRequests]	
@@ -394,62 +354,42 @@ BEGIN
 		
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_DataObjects] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_DataObjects] FOREIGN KEY ([Guid]) REFERENCES [SCore].[DataObjects] ([Guid])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceRequests_DataObjects] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests]
   NOCHECK CONSTRAINT [FK_InvoiceRequests_DataObjects]
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_Identities1] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_Identities1] FOREIGN KEY ([RequesterUserId]) REFERENCES [SCore].[Identities] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_InvoiceAutomationRuns] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_InvoiceAutomationRuns] FOREIGN KEY ([AutomationRunGuid]) REFERENCES [SFin].[InvoiceAutomationRuns] ([Guid])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_InvoiceBatches] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_InvoiceBatches] FOREIGN KEY ([InvoiceBatchGuid]) REFERENCES [SFin].[InvoiceBatches] ([Guid])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_InvoicePaymentStatus] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_InvoicePaymentStatus] FOREIGN KEY ([InvoicePaymentStatusID]) REFERENCES [SFin].[InvoicePaymentStatus] ([ID])
 GO
 
-PRINT (N'Disable foreign key [FK_InvoiceRequests_InvoicePaymentStatus] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests]
   NOCHECK CONSTRAINT [FK_InvoiceRequests_InvoicePaymentStatus]
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_Jobs] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_Jobs] FOREIGN KEY ([JobId]) REFERENCES [SJob].[Jobs] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_RibaStages] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_RibaStages] FOREIGN KEY ([RIBAStageId]) REFERENCES [SJob].[RibaStages] ([ID])
 GO
 
-PRINT (N'Create foreign key [FK_InvoiceRequests_RowStatus] on table [SFin].[InvoiceRequests]')
-GO
 ALTER TABLE [SFin].[InvoiceRequests] WITH NOCHECK
   ADD CONSTRAINT [FK_InvoiceRequests_RowStatus] FOREIGN KEY ([RowStatus]) REFERENCES [SCore].[RowStatus] ([ID])
 GO

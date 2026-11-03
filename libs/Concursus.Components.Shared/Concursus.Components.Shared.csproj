@@ -37,43 +37,39 @@
     <None Remove="Controls\Permissions.razor.css" />
     <None Remove="Controls\RadialGauge.razor.css" />
     <None Remove="Controls\RedirectToLogin.razor.css" />
-    <None Remove="Controls\TelerikLayout.razor.css" />
+    <!-- CYB-537: TelerikLayout.razor.css stub deleted (dead file) -->
     <None Remove="Controls\UpdateAvailableDetector.razor.css" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageReference Include="getAddress.Sdk" Version="3.5.1" />
-    <PackageReference Include="itext" Version="9.7.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.2" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="2.0.0" />
-    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.10" />
-    <PackageReference Include="MimeKit" Version="4.17.0" />
-    <PackageReference Include="SkiaSharp" Version="4.151.1" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
-    <PackageReference Include="Telerik.Documents.Core" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.DrawingML" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.Fixed" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.Flow" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Doc" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.Flow.FormatProviders.Pdf" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.ImageUtils" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Documents.SpreadsheetStreaming" Version="2026.2.519" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Forms" Version="10.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.10" />
+    <PackageReference Include="itext" Version="9.8.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client.Core" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.13" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="2.1.2" />
+    <PackageReference Include="Microsoft.Net.Http.Headers" Version="10.0.13" />
+    <PackageReference Include="MimeKit" Version="4.18.1" />
+    <!-- Pin: MimeKit pulls Pkcs 10.0.0 (GHSA-846f-f764-76mx, GHSA-2fmv-rv2c-59x7) -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.13" />
+    <!-- CYB-537: Telerik.Documents.* (Document Processing) package refs removed - zero usage
+         found in this project; the real Word/Excel export feature lives in Concursus.API,
+         which has its own independent Telerik.Documents.* references. -->
+    <PackageReference Include="Microsoft.AspNetCore.Components.Forms" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <!--<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.1" />
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.0.1" />-->
-    <PackageReference Include="Telerik.UI.for.Blazor" Version="14.0.0" />
-    <PackageReference Include="Telerik.Zip" Version="2026.2.519" />
-    <PackageReference Include="Telerik.Recurrence" Version="1.0.0" />
-    <PackageReference Include="Telerik.Pivot.Core" Version="1.0.0" />
+    <!-- CYB-537: Telerik.UI.for.Blazor removed (along with the Telerik.Zip/Telerik.Recurrence/
+         Telerik.Pivot.Core it pulled in transitively) - CSVExportButton.razor, the last real
+         Telerik.Blazor component consumer, was dead code and has been deleted. -->
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Concursus.API.Client\Concursus.API.Client.csproj" />

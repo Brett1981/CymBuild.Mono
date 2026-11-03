@@ -3,7 +3,6 @@
 @inject Concursus.API.Client.Models.UserService UserService //To get the UserId.
 @inject IJSRuntime JS
 @inject IConfiguration Config
-@inject AiErrorReporter AiErrorReporter
 @inject UserInteractionTrackerService InteractionTracker
 @inject IToastService Toast
 
@@ -18,8 +17,6 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.Routing
 
-@using Telerik.DataSource;
-@using Telerik.DataSource.Extensions;
 @using static Concursus.PWA.Shared.MessageDisplay
 
 <MessageDisplay @ref="_messageDisplay" ErrorMessage="@ErrorMessage" PageMethod="@PageMethod" MessageType="MessageType" />
@@ -534,14 +531,21 @@ else
         public string Color { get; set; } = "#f8f9fa";
     }
 
-    //Stores the filter settings applied to the grid.
+    // CYB-537: Stores the filter/sort state posted back from the "My Work" grid's
+    // SendFilterAndSortCallback. Mirrors MultiColumnDynamicGridView.NativeFilterAndSortSetting's
+    // native (non-Telerik) JSON shape - the grid stopped sending a Telerik filter/sort descriptor
+    // shape once it was migrated to a native grid, so the old Telerik-typed fields never actually
+    // deserialized any data.
     public class FilterAndSortSetting
     {
         public string code { get; set; }
-        public ICollection<IFilterDescriptor> filterDescriptor { get; set; }
+        public Dictionary<string, string> filterValues { get; set; }
         public string gridCode { get; set; }
-        public ICollection<SortDescriptor> sortDescriptor { get; set; }
+        public string searchText { get; set; }
+        public string sortColumn { get; set; }
+        public bool sortDescending { get; set; }
         public int pageNumber { get; set; }
+        public int pageSize { get; set; }
     }
 
 
@@ -863,16 +867,6 @@ else
                             WidgetType = "GR",
                             Id = "SCHEDULE"
                         });
-                // Check if AI error service is enabled Add "Jira Tickets" button if it is enabled.
-                if (Config.GetValue<bool>("AiErrorService:Enabled"))
-                {
-                    Data.Add(new ButtonSelection
-                        {
-                            Text = "Jira Tickets",
-                            WidgetType = "GR",
-                            Id = "JIRATICKETS"
-                        });
-                }
 
                 //Next, populate the button for the gauges.
                 foreach(var metric in _Metrics)
@@ -1190,19 +1184,6 @@ else
                 Widget = new()
                 {
                     Content     = @<WidgetScheduledItems />,
-                    Title = Title,
-                    ColSpan = colSpan,
-                    RowSpan = RowSpan,
-                    WidgetType = Type,
-                    Id = ID,
-                    Color = Color
-                };
-                break;
-
-            case "Jira Tickets":
-                Widget = new()
-                        {
-                    Content = @<JiraTickets />,
                     Title = Title,
                     ColSpan = colSpan,
                     RowSpan = RowSpan,
@@ -1642,46 +1623,6 @@ else
 
         Console.WriteLine("Widget: MessageDisplay updated and error shown.");
 
-        // AI Error Reporting (only for actual errors)
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
-                };
-
-                var log = InteractionTracker.GetAllLogs();
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-                Console.WriteLine($"Widget: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("Widget: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"Widget: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
 
         StateHasChanged();
     }

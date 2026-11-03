@@ -1,0 +1,22 @@
+﻿{
+    "SchemaSnapshotContract":  "R7C4",
+    "RunGuid":  "669790d8-dd42-4e6d-a1f9-c50115d26299",
+    "TargetServer":  "SOC-SQLDEVBRE01\\GENERAL",
+    "TargetDatabase":  "CymBuild_QA",
+    "ReleaseReference":  "",
+    "DeploymentReference":  "ManualSchemaDeployment-669790d8-dd42-4e6d-a1f9-c50115d26299",
+    "IsApply":  false,
+    "IsWhatIf":  false,
+    "IsSourceSync":  true,
+    "IsSourceVerify":  false,
+    "PlanCount":  14,
+    "SupportedCount":  14,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  14,
+    "RetryFailedDeployment":  false,
+    "GeneratedOnUtc":  "2026-08-13T12:02:45.6039133Z",
+    "ExecutionId":  "20260813T120244143Z-source-sync-pid7632-bd36859f",
+    "ExecutionMode":  "source-sync",
+    "RunOutputRoot":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\669790d8-dd42-4e6d-a1f9-c50115d26299",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\669790d8-dd42-4e6d-a1f9-c50115d26299\\executions\\20260813T120244143Z-source-sync-pid7632-bd36859f"
+}

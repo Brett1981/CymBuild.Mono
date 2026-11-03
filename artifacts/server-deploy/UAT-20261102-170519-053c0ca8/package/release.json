@@ -1,0 +1,16 @@
+{
+  "Release": "UAT-20261102-170519-053c0ca8",
+  "Environment": "UAT",
+  "Branch": "Stephen_Release_26_4__02112026",
+  "Commit": "053c0ca83c701e5d66f5e22d880f081f3fd8a2ce",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-11-02T17:06:40.8668075+00:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 201,
+    "Pwa": 7061
+  }
+}

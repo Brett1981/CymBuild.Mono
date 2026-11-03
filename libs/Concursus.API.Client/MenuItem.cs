@@ -14,6 +14,8 @@ public class MenuItem
     public string? FilenameTemplate { get; set; }
     public bool AllowPDFOnly { get; set; }
     public bool AllowExcelOutputOnly { get; set; }
+    // CYB-496: inactive merge documents only reach SU/SYSADM users; flagged in the list.
+    public bool IsActive { get; set; } = true;
     public object? Icon { get; set; }
     public bool? IsReadOnly { get; set; } = false;
     public bool IsSeparator { get; set; }

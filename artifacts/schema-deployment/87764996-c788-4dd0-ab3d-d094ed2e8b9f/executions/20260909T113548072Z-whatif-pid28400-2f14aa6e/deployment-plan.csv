@@ -1,0 +1,5 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"64691ded-0277-49db-beca-fb5bb7c23a62","Index","SCore","SequenceTable.IX_UQ_SequenceTable_Guid","SequenceTable","Different","True","False","True","True"
+"f1dc513f-255a-44a2-a18c-1ea8184a40ee","Index","SCore","SynchronisationErrors.IX_UQ_SychronisationErrors_Guid","SynchronisationErrors","Different","True","False","True","True"
+"fb0e1fb2-4455-42a3-bcbb-77b63d3e9e75","Index","SFin","SageExportTransactions.IX_SageExportTransaction_TransactionId","SageExportTransactions","Different","True","False","True","True"
+"4066cbde-f38a-4f6e-9758-f0036549ad1a","Index","SUserInterface","GridViewActions.IX_UQ_GridViewActions_Unique","GridViewActions","Different","True","False","True","True"

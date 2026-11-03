@@ -2,6 +2,7 @@ using Concursus.API.Services;
 using Concursus.API.Services.Finance;
 using Concursus.API.Services.InvoiceAutomation;
 using Concursus.API.Services.Outbox;
+using Concursus.API.Services.RecordExpiry;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -12,7 +13,7 @@ public static class CymBuildRuntimeServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the hosted workers selected by the CymBuild runtime role.
-    /// With no CymBuildRuntime configuration, all five workers are registered
+    /// With no CymBuildRuntime configuration, all six workers are registered
     /// in their existing startup order so current behaviour is preserved.
     /// </summary>
     public static IServiceCollection AddCymBuildRuntime(
@@ -49,6 +50,7 @@ public static class CymBuildRuntimeServiceCollectionExtensions
                 services.AddHostedService<InvoiceAutomationScheduledWorker>();
                 services.AddHostedService<SharePointStructureRepairWorker>();
                 services.AddHostedService<SageTransactionSubmissionWorker>();
+                services.AddHostedService<RecordExpiryScheduledWorker>();
                 return;
 
             case CymBuildRuntimeMode.ApiOnly:
@@ -88,6 +90,10 @@ public static class CymBuildRuntimeServiceCollectionExtensions
 
             case CymBuildWorkerRole.SageInbound:
                 services.AddHostedService<SageInboundPaymentSyncWorker>();
+                return;
+
+            case CymBuildWorkerRole.RecordExpiry:
+                services.AddHostedService<RecordExpiryScheduledWorker>();
                 return;
 
             case CymBuildWorkerRole.None:

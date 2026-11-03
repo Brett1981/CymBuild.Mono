@@ -24,8 +24,10 @@ CREATE TABLE [SMigration].[Schema_Run] (
   [CreatedByUserId] [int] NOT NULL CONSTRAINT [DF_Schema_Run_CreatedByUserId] DEFAULT (-1),
   [ReviewedByUserId] [int] NOT NULL CONSTRAINT [DF_Schema_Run_ReviewedByUserId] DEFAULT (-1),
   [DeploymentReference] [nvarchar](100) NOT NULL CONSTRAINT [DF_Schema_Run_DeploymentReference] DEFAULT (N''),
-  [Notes] [nvarchar](2000) NOT NULL CONSTRAINT [DF_Schema_Run_Notes] DEFAULT (N''),
-  [SummaryJson] [nvarchar](max) NOT NULL CONSTRAINT [DF_Schema_Run_SummaryJson] DEFAULT (N'{}')
+  [Notes] [nvarchar](max) NOT NULL CONSTRAINT [DF_Schema_Run_Notes] DEFAULT (N''),
+  [SummaryJson] [nvarchar](max) NOT NULL CONSTRAINT [DF_Schema_Run_SummaryJson] DEFAULT (N'{}'),
+  [SourceSyncedOnUtc] [datetime2](7) NULL,
+  [SourceSyncCommit] [nvarchar](64) NULL
 )
 ON [PRIMARY]
 TEXTIMAGE_ON [PRIMARY]

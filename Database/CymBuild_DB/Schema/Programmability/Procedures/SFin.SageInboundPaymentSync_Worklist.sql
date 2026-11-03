@@ -1,9 +1,9 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[SageInboundPaymentSync_Worklist]')
+PRINT (N'Create or alter procedure [SFin].[SageInboundPaymentSync_Worklist]')
 GO
-CREATE PROCEDURE [SFin].[SageInboundPaymentSync_Worklist]
+CREATE OR ALTER PROCEDURE [SFin].[SageInboundPaymentSync_Worklist]
 (
     @BatchSize INT = 25,
     @StaleClaimMinutes INT = 15
@@ -70,6 +70,14 @@ BEGIN
             )
         WHERE s.[RowStatus] <> 0
           AND s.[RowStatus] <> 254
+          AND NOT EXISTS
+          (
+              SELECT 1
+              FROM [SFin].[SageExportTransactions] AS legacyExport
+              WHERE legacyExport.[TransactionID] = s.[TransactionID]
+                AND legacyExport.[RowStatus] <> 0
+                AND legacyExport.[RowStatus] <> 254
+          )
           AND ISNULL(s.[IsTerminalState], 0) = 0
           AND
           (

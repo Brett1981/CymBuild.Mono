@@ -1,0 +1,22 @@
+﻿{
+    "SchemaSnapshotContract":  "R7C4",
+    "RunGuid":  "d9240dcb-42ff-40ed-bccf-bdf1575ad10a",
+    "TargetServer":  "SOC-SQLBRE01\\SQL2022",
+    "TargetDatabase":  "CymBuild_UAT",
+    "ReleaseReference":  "QA-UAT_Schema Test",
+    "DeploymentReference":  "QA-UAT_Schema Test",
+    "IsApply":  true,
+    "IsWhatIf":  false,
+    "IsSourceSync":  false,
+    "IsSourceVerify":  false,
+    "PlanCount":  91,
+    "SupportedCount":  91,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  0,
+    "RetryFailedDeployment":  true,
+    "GeneratedOnUtc":  "2026-08-14T15:26:15.2564293Z",
+    "ExecutionId":  "20260814T152613770Z-apply-pid15796-697aabd9",
+    "ExecutionMode":  "apply",
+    "RunOutputRoot":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\d9240dcb-42ff-40ed-bccf-bdf1575ad10a",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\d9240dcb-42ff-40ed-bccf-bdf1575ad10a\\executions\\20260814T152613770Z-apply-pid15796-697aabd9"
+}

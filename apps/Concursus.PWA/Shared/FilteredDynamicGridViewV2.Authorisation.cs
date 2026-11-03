@@ -2,6 +2,7 @@ using Concursus.API.Core;
 using Concursus.PWA.Classes;
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 using System;
 using System.Linq;
 using System.Threading;
@@ -200,72 +201,26 @@ namespace Concursus.PWA.Shared
 
             ct.ThrowIfCancellationRequested();
 
-            // Compute into locals first so we don't partially update UI
-            var all = await GetAuthorisationRowCountAsync(null, ct);
-            ct.ThrowIfCancellationRequested();
+            // Dedicated lightweight RPC - counts come straight from SCore.tvf_WF_AuthorisationQueue,
+            // not the full display view (which joins Jobs/Quotes/Enquiries and evaluates
+            // SJob.Job_FeeDrawdown twice per row for columns the KPI badges never use).
+            var reply = await coreClient.AuthorisationQueueCountsAsync(
+                new AuthorisationQueueCountsRequest
+                {
+                    UserId = userService.UserId,
+                    MyItemsOnly = AuthorisationMyItemsOnly
+                },
+                cancellationToken: ct);
 
-            var jobs = await GetAuthorisationRowCountAsync("Jobs", ct);
-            ct.ThrowIfCancellationRequested();
-
-            var quotes = await GetAuthorisationRowCountAsync("Quotes", ct);
-            ct.ThrowIfCancellationRequested();
-
-            var enquiries = await GetAuthorisationRowCountAsync("Enquiries", ct);
             ct.ThrowIfCancellationRequested();
 
             // Atomic assignment (prevents "random" mixes)
-            AuthorisationTotalPending = all;
-            AuthorisationJobsPending = jobs;
-            AuthorisationQuotesPending = quotes;
-            AuthorisationEnquiriesPending = enquiries;
+            AuthorisationTotalPending = reply.All;
+            AuthorisationJobsPending = reply.Jobs;
+            AuthorisationQuotesPending = reply.Quotes;
+            AuthorisationEnquiriesPending = reply.Enquiries;
 
             DebugAuthorisationColumnsOnce();
-        }
-
-        private async Task<int> GetAuthorisationRowCountAsync(string? entityTypeName, CancellationToken ct)
-        {
-            var viewCode = ViewDefinition!.Code; // snapshot to avoid races during rapid clicking
-
-            var req = new GridDataListRequest
-            {
-                GridCode = GridCode,
-                GridViewCode = viewCode,
-                Page = 1,
-                PageSize = 1,
-                ParentGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(ParentGuid).ToString()
-            };
-
-            var root = new DataCompositeFilter { LogicalOperator = "and" };
-
-            // IMPORTANT: add filters into an AND group with lowercase operator
-            var andGroup = new DataCompositeFilter { LogicalOperator = "and" };
-
-            // My Items
-            if (AuthorisationMyItemsOnly)
-            {
-                var myItemsOr = BuildOrEqualsFilterForExistingColumns(GetCanActionColumnCandidates(), "1");
-                if (myItemsOr != null)
-                    andGroup.CompositeFilters.Add(myItemsOr); // compositeFilters keeps it robust
-            }
-
-            // Entity type
-            if (!string.IsNullOrWhiteSpace(entityTypeName))
-            {
-                var typeOr = BuildOrEqualsFilterForExistingColumns(GetEntityTypeColumnCandidates(), entityTypeName);
-                if (typeOr != null)
-                    andGroup.CompositeFilters.Add(typeOr);
-            }
-
-            // Only add the AND group if it actually has content
-            if (HasAnyFilterContent(andGroup))
-                root.CompositeFilters.Add(andGroup);
-
-            // Only add root if it actually has content
-            if (HasAnyFilterContent(root))
-                req.Filters.Add(root);
-
-            var reply = await coreClient.GridDataListAsync(req, cancellationToken: ct);
-            return (int)reply.TotalRows;
         }
 
 
@@ -275,6 +230,13 @@ namespace Concursus.PWA.Shared
         {
             try
             {
+                if (_edgeAutoScrollAttached)
+                {
+                    _ = JsRuntime.InvokeVoidAsync(
+                        "cymbuildGridEdgeAutoScroll.detach",
+                        GridWrapperDomId);
+                }
+
                 _authCts?.Cancel();
                 _authCts?.Dispose();
             }
@@ -282,6 +244,8 @@ namespace Concursus.PWA.Shared
             {
                 // swallow dispose exceptions
             }
+
+            GC.SuppressFinalize(this);
         }
 
         private string[] GetEntityTypeColumnCandidates()

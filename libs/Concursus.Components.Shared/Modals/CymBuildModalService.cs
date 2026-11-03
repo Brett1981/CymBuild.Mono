@@ -50,7 +50,8 @@ public sealed class CymBuildModalService
     Guid entityTypeGuid,
     string returnUrl,
     bool isInformationPage = false,
-    bool isMainRecordContext = true)
+    bool isMainRecordContext = true,
+    string sizeCssClass = "cb-v2-modal-lg")
     where TComponent : IComponent
     {
         var modalId = Guid.NewGuid().ToString();
@@ -83,7 +84,7 @@ public sealed class CymBuildModalService
         _registeredModalId = modalId;
         _legacyModalService.RegisterModal(modalId, dataObjectReference);
 
-        return ShowAsync<TComponent>(title, parameters);
+        return ShowAsync<TComponent>(title, parameters, sizeCssClass);
     }
 
     public async Task CloseAsync(object? data = null)

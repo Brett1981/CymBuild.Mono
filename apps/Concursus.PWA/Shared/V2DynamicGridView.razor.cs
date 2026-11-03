@@ -504,35 +504,6 @@ public partial class V2DynamicGridView : ComponentBase
         _messageDisplay.UpdateStackTrace(error.StackTrace ?? "No additional details available.");
         _messageDisplay.ShowError(true);
 
-        // AI Error reporting preserved
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = PageMethod,
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None"
-                };
-
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-            }
-            catch
-            {
-                // swallow (same philosophy as legacy)
-            }
-        }
 
         StateHasChanged();
     }

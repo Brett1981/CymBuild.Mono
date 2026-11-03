@@ -9,7 +9,7 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataIgnoredRecord_Upsert]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataIgnoredRecord_Upsert]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataIgnoredRecord_Upsert]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128),
@@ -148,6 +148,17 @@ BEGIN
                 @RunGuid,
                 SYSUTCDATETIME();
         END;
+
+        -- Ignored records are outside the selected-only validation and apply scope.
+        -- Clear any persisted selection immediately so the UI and pipeline see the
+        -- same durable contract.
+        EXEC SMigration.MetadataRunSelection_Upsert
+            @RunGuid = @RunGuid,
+            @SchemaName = @SchemaName,
+            @TableName = @TableName,
+            @SourceRowGuid = @SourceRowGuid,
+            @DifferenceType = @DifferenceType,
+            @IsSelected = 0;
     END
     ELSE
     BEGIN

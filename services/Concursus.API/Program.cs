@@ -14,6 +14,7 @@ using Concursus.API.Services.InvoiceAutomation;
 using Concursus.API.Services.Monitoring;
 using Concursus.API.Runtime;
 using Concursus.API.Services.Outbox;
+using Concursus.API.Services.RecordExpiry;
 using Concursus.Common.Shared.Kafka.Core;
 using Concursus.Common.Shared.Kafka.Core.Publisher;
 using Concursus.Common.Shared.Models.Finance;
@@ -246,13 +247,15 @@ try
 
     builder.Services.Configure<InvoiceAutomationOptions>(builder.Configuration.GetSection("InvoiceAutomation"));
     builder.Services.AddSingleton<InvoiceAutomationRepository>();
+    builder.Services.Configure<RecordExpiryOptions>(builder.Configuration.GetSection(RecordExpiryOptions.SectionName));
+    builder.Services.AddSingleton<IRecordExpiryRepository, RecordExpiryRepository>();
     builder.Services.AddScoped<SharePoint>();
 
     // -------------------------------------------------------------------------
     // CymBuild runtime role
     // -------------------------------------------------------------------------
     // Default mode is Combined, which preserves the existing behaviour of
-    // running the API and all five hosted workers in the same process.
+    // running the API and all six hosted workers in the same process.
     // Kubernetes can select ApiOnly or exactly one Worker role through
     // CymBuildRuntime configuration without changing the executable/image.
     builder.Services.AddCymBuildRuntime(builder.Configuration);

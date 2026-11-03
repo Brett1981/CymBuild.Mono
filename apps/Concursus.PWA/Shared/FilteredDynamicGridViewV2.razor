@@ -14,7 +14,6 @@
 @inject RefreshService refreshservice
 @inject DeviceInfoService DeviceInfoService
 @inject UserInteractionTrackerService InteractionTracker
-@inject AiErrorReporter AiErrorReporter
 @inject IToastService Toast
 
 @attribute [Authorize]
@@ -85,7 +84,7 @@
                                         Jobs (@AuthorisationJobsPending)
                                     </button>
 
-                                    <div class="auth-toggle form-check form-switch">
+                                    <div class="auth-toggle form-check form-switch mx-5">
                                         <input class="form-check-input"
                                                type="checkbox"
                                                role="switch"
@@ -316,20 +315,50 @@
                             <div class="dynamic-grid-view-v2-filter-grid filtered-grid-v2-filter-grid">
                                 @foreach (var column in VisibleGridColumns.Where(c => c.IsFiltered))
                                 {
-                                    <div class="dynamic-grid-view-v2-filter-field filtered-grid-v2-filter-field">
-                                        <label class="form-label" for="filtered-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
-                                        <div class="dynamic-grid-view-v2-filter-input-shell input-group">
-                                            <i class="bi bi-search" aria-hidden="true"></i>
-                                            <input id="filtered-native-filter-@ViewDefinition.Code-@column.Name"
-                                                   class="form-control cb-v2-input dynamic-grid-view-v2-filter"
-                                                   placeholder="Filter @column.Title..."
-                                                   value="@GetNativeFilterValue(column.Name)"
-                                                   aria-label="Filter @column.Title"
-                                                   @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
-                                                   @onkeydown="OnNativeFilterKeyDown"
-                                                   disabled="@NativeIsLoading" />
+                                    List<string> dateDisplayFormats = new List<string>()
+                                                {
+                                                "dd", "mm", "yyyy"
+                                                };
+
+                                    Console.WriteLine($"column: {column.Name}, format: {column.DisplayFormat}");
+
+                                    //[DATE ]
+                                    if (dateDisplayFormats.Contains(column.DisplayFormat))
+                                    {
+                                        <div class="cb-multicol-grid-filter-field">
+                                            <label class="form-label" for="multicol-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                            <div class="cb-multicol-grid-filter-input-shell input-group">
+                                                <i class="bi bi-search" aria-hidden="true"></i>
+                                                <input id="multicol-native-filter-@ViewDefinition.Code-@column.Name"
+                                                       type="date"
+                                                       class="form-control cb-v2-input cb-multicol-grid-filter-input"
+                                                       placeholder="Filter @column.Title..."
+                                                       value="@GetNativeFilterValue(column.Name)"
+                                                       aria-label="Filter @column.Title"
+                                                       @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                       @onkeydown="OnNativeFilterKeyDown"
+                                                       disabled="@NativeIsLoading" />
+                                            </div>
                                         </div>
-                                    </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="cb-multicol-grid-filter-field">
+                                            <label class="form-label" for="multicol-native-filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                            <div class="cb-multicol-grid-filter-input-shell input-group">
+                                                <i class="bi bi-search" aria-hidden="true"></i>
+                                                <input id="multicol-native-filter-@ViewDefinition.Code-@column.Name"
+                                                       class="form-control cb-v2-input cb-multicol-grid-filter-input"
+                                                       placeholder="Filter @column.Title..."
+                                                       value="@GetNativeFilterValue(column.Name)"
+                                                       aria-label="Filter @column.Title"
+                                                       @oninput="e => SetNativeFilterValue(column.Name, e.Value?.ToString())"
+                                                       @onkeydown="OnNativeFilterKeyDown"
+                                                       disabled="@NativeIsLoading" />
+                                            </div>
+                                        </div>
+                                    }
+
                                 }
                             </div>
 
@@ -364,7 +393,7 @@
                         </div>
                     }
 
-                    <div class="native-grid-scroll">
+                    <div id="@GridWrapperDomId" class="native-grid-scroll">
                         <table class="cb-v2-table dynamic-grid-view-v2-grid-table native-grid-table">
                             <thead>
                                 <tr>

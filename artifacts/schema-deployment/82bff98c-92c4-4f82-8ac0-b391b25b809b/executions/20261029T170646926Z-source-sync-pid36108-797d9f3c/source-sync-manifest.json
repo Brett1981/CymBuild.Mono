@@ -1,0 +1,40 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "82bff98c-92c4-4f82-8ac0-b391b25b809b",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "10.100.34.114\\general",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 2,
+  "ArtifactCount": 2,
+  "GeneratedOnUtc": "2026-10-29T17:06:50.6138582Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "22e0857a-617c-42ea-b5f4-8241495c08fb",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SCore",
+      "ObjectName": "CreateUserSession",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "0DBF18A8A4ABD2D82F525889D4E86DEF0C206DC5C952D1088E34B0DF76C50CD2",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SCore.CreateUserSession.sql",
+      "FileSha256": "99F513197F09E52F1E23F84BFDCD67658DFA1328A4B1DE0C2F3A2731EA4ABF53",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "dfe202f2-fc15-4be1-b29a-ab258f2b998c",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "D160A13A1D5A3B6AF935250F3152FF2A590971254476D3C989B47CA82198CCB0",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql",
+      "FileSha256": "5B2E353761EECE731EDAB2C2C77B5B24344213A08CD6FC6C0846A0FD6F6C2131",
+      "WasSynchronized": true
+    }
+  ]
+}

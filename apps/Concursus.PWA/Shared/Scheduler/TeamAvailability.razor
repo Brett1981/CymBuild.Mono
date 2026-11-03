@@ -66,7 +66,13 @@
    
         <div class="cb-team-filter-card">
             <div class="cb-team-filter-field">
-                
+                <div class="cb-team-filter-help alert alert-info d-flex align-items-start gap-2 mb-3" role="note">
+                    <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+                    <div>
+                        Select a business unit, then hold <kbd>Ctrl</kbd> (<kbd>Cmd</kbd> on Mac) and click to choose multiple departments.
+                        Leave the department and person filters empty to show everyone.
+                    </div>
+                </div>
 
                 <div class="cb-team-person-picker">
                     <select id="Business-unit-filter"
@@ -82,12 +88,12 @@
 
                     <select id="department-filter"
                             class="form-select cb-tbueam-person-picker__select"
-                            @bind:after="LoadTeamMembersWithData"
-                            @bind="_selectedDepartment">
-                        <option value="">Select a department...</option>
+                            multiple
+                            title="Hold Ctrl (Cmd on Mac) to select multiple departments"
+                            @onchange="OnSelectedDepartmentsChangedAsync">
                         @foreach (var d in _departments)
                         {
-                            <option value="@d.Id">@d.Name</option>
+                            <option value="@d.Id" selected="@IsSelectedDepartment(d.Id)">@d.Name</option>
                         }
                     </select>
 
@@ -137,8 +143,6 @@
                         </button>
                     }
                 </div>
-
-                <small>Leave empty to show all team members. (After populating the dropdowns above)</small>
             </div>
         </div>
 
@@ -220,7 +224,7 @@
 
     List<Department> _departments = new();
 
-    private int? _selectedDepartment;
+    private List<int> _selectedDepartmentIds = new();
 
 
 
@@ -294,8 +298,28 @@
 
         _departments = departments.Department.ToList();
 
+        // The previously selected departments belong to the business unit we just
+        // navigated away from - clear them rather than silently filtering by a
+        // department that no longer appears in the dropdown.
+        _selectedDepartmentIds.Clear();
+
+        await LoadTeamMembersWithData();
+
         StateHasChanged();
     }
+
+    private async Task OnSelectedDepartmentsChangedAsync(ChangeEventArgs args)
+    {
+        _selectedDepartmentIds = ExtractSelectedStringValues(args.Value)
+            .Select(id => int.TryParse(id, out var parsed) ? parsed : (int?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToList();
+
+        await LoadTeamMembersWithData();
+    }
+
+    private bool IsSelectedDepartment(int departmentId) => _selectedDepartmentIds.Contains(departmentId);
 
 
     private async Task GetData()
@@ -367,31 +391,44 @@
         teamMembers.Clear();
         teamMemberForCombo.Clear();
 
-        if (_selectedDepartment is null || _selectedDepartment.Value == null)
+        if (string.IsNullOrWhiteSpace(_selectedBusinessUnit))
         {
             return;
         }
 
-        UnitId = _selectedDepartment.Value;
+        // Leave the department filter empty to show every department in the
+        // selected business unit - matches the "Leave empty to show all team
+        // members" hint below, which the old single-department-only version
+        // of this method did not actually honour.
+        var targetDepartmentIds = _selectedDepartmentIds.Any()
+            ? _selectedDepartmentIds
+            : _departments.Select(d => d.Id).ToList();
 
-        var EfteamMembers = await formHelper.GetTeamMembersAsync(UnitId);
+        if (!targetDepartmentIds.Any())
+        {
+            return;
+        }
 
+        // Used as the "TeamID" detail-page parameter elsewhere on this page - with
+        // multiple departments in scope there is no single correct value, so this
+        // takes the first one as a best-effort default.
+        UnitId = targetDepartmentIds.First();
 
+        var seenTeamMemberIds = new HashSet<int>();
 
-        foreach (var tm in EfteamMembers)
-            if (int.TryParse(tm.Id, out int userID))
-                teamMembers.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+        foreach (var departmentId in targetDepartmentIds)
+        {
+            var EfteamMembers = await formHelper.GetTeamMembersAsync(departmentId);
 
-
-        teamMemberForCombo = EfteamMembers
-            .Where(tm => int.TryParse(tm.Id, out _))
-            .Select(tm => new TeamMember
+            foreach (var tm in EfteamMembers)
             {
-                Id = int.Parse(tm.Id),
-                Name = tm.Name,
-                Color = tm.Color
-            })
-            .ToList();
+                if (int.TryParse(tm.Id, out int userID) && seenTeamMemberIds.Add(userID))
+                {
+                    teamMembers.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+                    teamMemberForCombo.Add(new TeamMember { Id = userID, Name = tm.Name, Color = tm.Color });
+                }
+            }
+        }
 
         //Assign to view.
         teamMembersForView = teamMembers;
@@ -450,6 +487,14 @@
         ShowReadOnlyEventModal = false;
     }
 
+    // CYB-538: the board (NativeTeamAvailabilityBoard) buckets events into calendar day columns
+    // using item.Start.Date/item.End.Date against local calendar days (VisibleDays, built from
+    // DateTime.Today/the date picker). Timestamp.ToDateTime() always returns Kind=Utc, so without
+    // converting to local time here first, a UTC midnight during BST truncates back to the
+    // previous local day (e.g. a local 17/09 00:00 absence is stored as 2026-09-16T23:00:00Z and
+    // renders under the 16th).
+    public static DateTime ToLocalCalendarInstant(Timestamp timestamp) => timestamp.ToDateTime().ToLocalTime();
+
     private async Task GetScheduledActivitiesPerUser(int userID, DateTime startDate, DateTime endDate)
     {
         try
@@ -464,8 +509,8 @@
                         Id = id++,
                         Title = act.Title,
                         TeamMemberId = act.UserId,
-                        Start = act.StartDate.ToDateTime(),
-                        End = act.EndDate.ToDateTime(),
+                        Start = ToLocalCalendarInstant(act.StartDate),
+                        End = ToLocalCalendarInstant(act.EndDate),
                         IsAbsence = false,
                         CssClass = "scheduled-work",
                         JobNumber = act.JobNumber,
@@ -491,15 +536,17 @@
             {
                 if (!showAbsence) continue;
 
-                var cssClass = GetAbsencePeriod(a.StartTime.ToDateTime(), a.EndTime.ToDateTime());
+                var localStart = ToLocalCalendarInstant(a.StartTime);
+                var localEnd = ToLocalCalendarInstant(a.EndTime);
+                var cssClass = GetAbsencePeriod(localStart, localEnd);
 
                 availabilityEvents.Add(new AvailabilityEvent
                     {
                         Id = id++,
                         Title = a.EventName,
                         TeamMemberId = a.MemberId,
-                        Start = a.StartTime.ToDateTime(),
-                        End = a.EndTime.ToDateTime(),
+                        Start = localStart,
+                        End = localEnd,
                         IsAbsence = true,
                         CssClass = cssClass,
                         Guid = a.Guid,

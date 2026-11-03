@@ -1,0 +1,112 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "91ad596f-e03a-4127-8dd7-54fd5069fadf",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_UAT",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 8,
+  "ArtifactCount": 8,
+  "GeneratedOnUtc": "2026-09-09T14:39:27.1495538Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "377957fe-6f93-4b8f-8b70-2a4f3e47cedc",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "TransactionDetailsUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "6D88E82B53CE7BE5E03CDA609C5EEAE8FBB3E5E794841EAC333B65F8546E4A8B",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.TransactionDetailsUpsert.sql",
+      "FileSha256": "1981950BD718EDDB4B24AC0DEC61B6B0BAF6D12232E24D7FB411137A70A135A2",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "0f60bf73-7183-4b3d-8e78-e65dd02e75bd",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataApplyIdentityMap_Build",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "613D6A4B756096145D6491A0024F89E539FDF55BE48AD18E7EFBBB3F64C5F13A",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataApplyIdentityMap_Build.sql",
+      "FileSha256": "EAD651A54864B28AA6F2FCF6B439D525AD3DB68641CCC4DE7FC50BB9D180F1D7",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "8b2719ae-97ad-4586-8651-c723920056ae",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataIdentityMapOverride_Upsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "8AAA39548DD16F94268D9C577337E6F5CE36A02F9CC44608DB39EEC1F5C6D4A1",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataIdentityMapOverride_Upsert.sql",
+      "FileSha256": "6DCBBE079245DE5CF1A5BA2C070E5B739B089C896027B17527BAE47F01E19014",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "d33888c5-8802-4bd6-ac2f-a789588de954",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataRegistry_SyncFromEntityTypes",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "C411DA496EAB338773BDA68A8D4C0B27E45F9FC3262D006C7B2ACDCA76EBBCCA",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataRegistry_SyncFromEntityTypes.sql",
+      "FileSha256": "1256954DB759654DE72627E24F074C7D2B8F8CFB7D552030DBE682DF621A5D62",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "aa1c382e-a887-434d-999f-d6a85e1cdb54",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataStage_NormaliseDifferences",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "4896128E2C598EA02C7D90ECE4D85436CB0F96A33501C5A58FE8CA4A8AC6CF54",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataStage_NormaliseDifferences.sql",
+      "FileSha256": "84FDE2018D2C66E04EE3EF79F3A81EB6F67A97E8A2D9341D69819B201C86856F",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "caacc713-1044-4f5a-885a-af7a9aeeca94",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataStage_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "11DF451A2816EC5438C62837DA63B8AB110EB8202EC5171D77F078CFC4ACD29B",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataStage_Run.sql",
+      "FileSha256": "4A9F4FE96728E376199133157F9A275D92B502229BEF689234A599248FB78930",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "ba622d90-b9e1-4cf3-9e0b-0c60b984cdcc",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "OnboardingLookup_BusinessUnitGroups",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "27389066D1B07E19AB1B5F4B03DB9C61AB4F57A4FC16B01F592F3C44D4340216",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.OnboardingLookup_BusinessUnitGroups.sql",
+      "FileSha256": "A1C78A7D632540766D3A1DE32D2F51712EE898E546F4B865C266AA6930FDF6DF",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "e769a680-d4e0-4d79-8fb6-e087c7845910",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "OnboardingStage_LoadFromSource",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "5299ACDF40AF061BB941D9247BC6E2E7ABDD557E11610E3442A8539DC0F22D10",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.OnboardingStage_LoadFromSource.sql",
+      "FileSha256": "70D3E27C424BE05AD9B5FC77BE4F1037CEBAEF64D7496EEBD1556C9C7B690890",
+      "WasSynchronized": false
+    }
+  ]
+}

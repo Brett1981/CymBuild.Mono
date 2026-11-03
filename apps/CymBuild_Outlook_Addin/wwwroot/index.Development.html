@@ -6,7 +6,7 @@
     <!-- CSP: keep as ONE LINE and ensure the tag is properly closed.
          NOTE: frame-ancestors in a <meta> is ignored by browsers; it must be set as an HTTP response header.
          But we keep it here since you are working inside the add-in frame anyway. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: https://*.socotec.co.uk; base-uri 'self'; object-src 'none'; frame-ancestors 'self' https://outlook.office.com https://*.office.com https://office365.com; frame-src 'self' https://outlook.office.com https://*.office.com https://office365.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appsforoffice.microsoft.com https://ajax.aspnetcdn.com https://cdn.jsdelivr.net https://code.jquery.com https://cdnjs.cloudflare.com https://alcdn.msauth.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: https://*.socotec.co.uk https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; font-src 'self' data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self' https://bre.socotec.co.uk:9403 https://bre.socotec.co.uk:9404 https://*.socotec.co.uk https://login.microsoftonline.com https://graph.microsoft.com https://outlook.office.com https://office365.com https://*.office.com https://cdn.jsdelivr.net https://browser.events.data.microsoft.com https://eu-office.events.data.microsoft.com; worker-src 'self' blob:; manifest-src 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: https://*.socotec.co.uk; base-uri 'self'; object-src 'none'; frame-ancestors 'self' https://outlook.office.com https://*.office.com https://office365.com; frame-src 'self' https://outlook.office.com https://*.office.com https://office365.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appsforoffice.microsoft.com https://ajax.aspnetcdn.com https://cdn.jsdelivr.net https://code.jquery.com https://cdnjs.cloudflare.com https://alcdn.msauth.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; img-src 'self' data: https://*.socotec.co.uk https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; font-src 'self' data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self' https://cymbuild-dev.socotec.co.uk https://cymbuild-dev.socotec.co.uk:9404 https://*.socotec.co.uk https://login.microsoftonline.com https://graph.microsoft.com https://outlook.office.com https://office365.com https://*.office.com https://cdn.jsdelivr.net https://browser.events.data.microsoft.com https://eu-office.events.data.microsoft.com; worker-src 'self' blob:; manifest-src 'self';">
 
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta name="viewport" content="width=device-width, maximum-scale=1.0, user-scalable=no" />
@@ -19,16 +19,12 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
     <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="_content/Telerik.UI.for.Blazor/css/kendo-theme-default/all.css" rel="stylesheet" />
 
     <link href="css/app.css" rel="stylesheet" />
     <link href="css/Button.css" rel="stylesheet" />
     <link href="css/CymBuildBase.css" rel="stylesheet" />
     <link href="css/CymBuildCustom.css" rel="stylesheet" />
     <link href="css/MessageBanner.css" rel="stylesheet" />
-
-    <!-- Telerik -->
-    <script src="_content/Telerik.UI.for.Blazor/js/telerik-blazor.js"></script>
 
     <!-- Logging -->
     <script src="logging.js"></script>

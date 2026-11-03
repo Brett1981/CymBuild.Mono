@@ -3,7 +3,14 @@ GO
 
 PRINT (N'Create procedure [SFin].[SageExternalTransaction_Upsert]')
 GO
-CREATE PROCEDURE [SFin].[SageExternalTransaction_Upsert]
+/*
+    CYB-555 (v2): the wrapper's v2 endpoints return account codes as Sage holds
+    them, with their leading zeros (00030607). Rows stored from v1 hold the
+    stripped form (30607). An existing row is found with the zeros ignored on
+    both sides, and its account is then updated to the form Sage holds, so an
+    invoice first stored from v1 is updated in place rather than duplicated.
+*/
+CREATE OR ALTER PROCEDURE [SFin].[SageExternalTransaction_Upsert]
 (
     @SageDataset              NVARCHAR(30),
     @SageAccountReference     NVARCHAR(100),
@@ -35,30 +42,38 @@ BEGIN
 
     DECLARE @NowUtc DATETIME2(7) = GETUTCDATE();
 
+    -- CYB-555-V2-ACCOUNT-ZEROS: compare account codes with their leading zeros stripped.
+    DECLARE @StrippedAccountReference NVARCHAR(100) =
+        SUBSTRING(@SageAccountReference, PATINDEX(N'%[^0]%', @SageAccountReference + N'.'), 100);
+
     IF EXISTS
     (
         SELECT 1
         FROM SFin.SageExternalTransactions AS ext
         WHERE ext.SageDataset              = @SageDataset
-          AND ext.SageAccountReference     = @SageAccountReference
+          AND SUBSTRING(ext.SageAccountReference, PATINDEX(N'%[^0]%', ext.SageAccountReference + N'.'), 100) = @StrippedAccountReference
           AND ext.SageTransactionTypeCode  = @SageTransactionTypeCode
           AND ext.SageDocumentNo           = @SageDocumentNo
           AND ext.SageTransactionReference = @SageTransactionReference
           AND ext.RowStatus NOT IN (0,254)
     )
     BEGIN
-        SELECT
+        SELECT TOP (1)
             @Guid = ext.Guid
         FROM SFin.SageExternalTransactions AS ext
         WHERE ext.SageDataset              = @SageDataset
-          AND ext.SageAccountReference     = @SageAccountReference
+          AND SUBSTRING(ext.SageAccountReference, PATINDEX(N'%[^0]%', ext.SageAccountReference + N'.'), 100) = @StrippedAccountReference
           AND ext.SageTransactionTypeCode  = @SageTransactionTypeCode
           AND ext.SageDocumentNo           = @SageDocumentNo
           AND ext.SageTransactionReference = @SageTransactionReference
-          AND ext.RowStatus NOT IN (0,254);
+          AND ext.RowStatus NOT IN (0,254)
+        ORDER BY
+            CASE WHEN ext.SageAccountReference = @SageAccountReference THEN 0 ELSE 1 END,
+            ext.ID DESC;
 
         UPDATE ext
         SET
+            SageAccountReference     = @SageAccountReference,
             SecondReference          = @SecondReference,
             TransactionDate          = @TransactionDate,
             NetAmount                = @NetAmount,

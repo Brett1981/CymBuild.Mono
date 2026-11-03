@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"34729f55-42cc-441c-abec-89dcb4597624","Function","SFin","tvf_SageInboundDiagnostics","","Different","True","False","True","True"

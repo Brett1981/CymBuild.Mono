@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261020-160713-c62596e6",
+  "Environment": "QA",
+  "Branch": "feature/SB_CYB-553-26.4-bcc-quote-org-units",
+  "Commit": "c62596e61b60e194a6af704ddcc4f390a6e02ad5",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-20T16:15:03.5850115+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 201,
+    "Pwa": 7061
+  }
+}

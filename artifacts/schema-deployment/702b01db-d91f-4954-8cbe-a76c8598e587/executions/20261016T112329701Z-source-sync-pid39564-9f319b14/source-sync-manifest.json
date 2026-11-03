@@ -1,0 +1,52 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "702b01db-d91f-4954-8cbe-a76c8598e587",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "10.100.34.114\\general",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 3,
+  "ArtifactCount": 3,
+  "GeneratedOnUtc": "2026-10-16T11:23:35.5439584Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "dadb851e-31a3-40d1-ac6d-cf64b912b09e",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataApply_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "AB3FC552097D212963EEC3AF8F897C8F439FDDD4717B79857307D2601FE4EC23",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataApply_Run.sql",
+      "FileSha256": "CE7041D2C8572E450501ACDFCA5DC1626D37343C980DB19DCC28DE7DD0F87C4E",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "557caa76-c6d5-4bef-8a09-b91e451454c4",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataQuerySignature_Check",
+      "ParentObjectName": "",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "1D880D5602082A9466398C9C15862AB0CF4BD1E26E1E9E45B4B7F3D6EF18CE04",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataQuerySignature_Check.sql",
+      "FileSha256": "50FC7048AD2FBFDB6A8AC366A15858F877B7EA035BAA4F2B30A2879ADB2CFDAD",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "55756980-cb7c-4c03-b0db-a469a1fe64d2",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataValidate_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "60B2FF5C65F78027898405A5405D114758F1912FBC2FDC87735001224AA38DCC",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataValidate_Run.sql",
+      "FileSha256": "5C14FF34DD3B017EEA2925FFC218979282E7A0ADAD3BE86E791536A7413D99E8",
+      "WasSynchronized": false
+    }
+  ]
+}

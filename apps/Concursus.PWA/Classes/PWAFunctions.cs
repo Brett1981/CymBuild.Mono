@@ -396,22 +396,22 @@ public static class PWAFunctions
                         infoMessage.Data.Add("PageMethod", "PWAFunctions/GetMessageDisplayFromActionMenuItem()\r\n");
                     }
                     break;
-                case "Batch Delete":
-                    if (type == ShowMessageType.Information)
-                    {
-                        infoMessage = new Exception("Deleting batch transactions, Please wait");
-                        infoMessage.Data.Add("MessageType", type);
-                        infoMessage.Data.Add("AdditionalInfo", "Deleting batch transactions, Please wait, Please wait");
-                        infoMessage.Data.Add("PageMethod", "PWAFunctions GetMessageDisplayFromGridViewAction()\r\n");
-                    }
-                    else if (type == ShowMessageType.Success)
-                    {
-                        infoMessage = new Exception("Transactions deleted succesfully.");
-                        infoMessage.Data.Add("MessageType", type);
-                        infoMessage.Data.Add("AdditionalInfo", "Transactions deleted succesfully.");
-                        infoMessage.Data.Add("PageMethod", "PWAFunctions/GetMessageDisplayFromActionMenuItem()\r\n");
-                    }
-                    break;
+                //case "Batch Delete":
+                //    if (type == ShowMessageType.Information)
+                //    {
+                //        infoMessage = new Exception("Deleting batch transactions, Please wait");
+                //        infoMessage.Data.Add("MessageType", type);
+                //        infoMessage.Data.Add("AdditionalInfo", "Deleting batch transactions, Please wait, Please wait");
+                //        infoMessage.Data.Add("PageMethod", "PWAFunctions GetMessageDisplayFromGridViewAction()\r\n");
+                //    }
+                //    else if (type == ShowMessageType.Success)
+                //    {
+                //        infoMessage = new Exception("Transactions deleted succesfully.");
+                //        infoMessage.Data.Add("MessageType", type);
+                //        infoMessage.Data.Add("AdditionalInfo", "Transactions deleted succesfully.");
+                //        infoMessage.Data.Add("PageMethod", "PWAFunctions/GetMessageDisplayFromActionMenuItem()\r\n");
+                //    }
+                //    break;
                 case "Approve Invoice(s)":
                     if (type == ShowMessageType.Information)
                     {
@@ -1034,7 +1034,10 @@ public static class PWAFunctions
 
             if (dataObject.ValidationResults.Count > 0)
             {
-                infoMessage = GetMessageDisplayFromActionMenuItem(item, infoMessage, ShowMessageType.Error);
+                // Say why the action did not run. GetMessageDisplayFromActionMenuItem has no Error
+                // text for most items (e.g. "Create Quote(s) from enquiry" with Value Of Work = 0),
+                // so the action used to silently do nothing.
+                infoMessage = BuildActionBlockedByValidationMessage(item.Text, dataObject.ValidationResults);
                 await OnError.InvokeAsync(infoMessage);
                 return null;
             }
@@ -1049,6 +1052,30 @@ public static class PWAFunctions
             _ = OnError.InvokeAsync(ex);
             return (ex.Message, dataObject);
         }
+    }
+
+    /// <summary>
+    /// Warning shown when an action menu item is not run because saving the record first returned
+    /// validation messages; lists the distinct messages so the user knows what to fix.
+    /// </summary>
+    public static Exception BuildActionBlockedByValidationMessage(string? actionText, IEnumerable<ValidationResults> validationResults)
+    {
+        var reasons = validationResults
+            .Select(v => v.Message?.Trim())
+            .Where(m => !string.IsNullOrEmpty(m))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var action = string.IsNullOrWhiteSpace(actionText) ? "This action" : $"'{actionText}'";
+        var text = reasons.Count == 0
+            ? $"{action} was not run because the record has validation errors. Fix the highlighted fields and try again."
+            : $"{action} was not run. Fix the following first: {string.Join(" ", reasons)}";
+
+        var message = new Exception(text);
+        message.Data.Add("MessageType", ShowMessageType.Warning);
+        message.Data.Add("AdditionalInfo", text);
+        message.Data.Add("PageMethod", "PWAFunctions/TryUpsertDataObjectAsync()");
+        return message;
     }
 
     public static bool UnpackBool(Any packedValue)

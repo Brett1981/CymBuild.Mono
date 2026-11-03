@@ -8,7 +8,6 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
 using Microsoft.Graph.Users.Item.Messages.Item.Move;
 using Newtonsoft.Json;
-using OpenXmlPowerTools;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -534,7 +533,10 @@ namespace CymBuild_Outlook_Common.Helpers
 
 
         /// <summary>
-        /// Uploads the attachments associated with an email to the "Attachments" folder.
+        /// Uploads each attachment the user selected for filing to its own chosen destination folder
+        /// (falling back to "&lt;email folder&gt;/Attachments" when no destination was chosen), and writes
+        /// its per-attachment description onto the uploaded item, matching request.Attachments by AttachmentId
+        /// (falling back to a case-insensitive name match).
         /// </summary>
         /// <param name="graphClient"></param>
         /// <param name="siteId"></param>
@@ -555,14 +557,15 @@ namespace CymBuild_Outlook_Common.Helpers
              string messageId,
              string? corr = null)
         {
-            if (!request.ExtractAttachments)
+            if (request.Attachments == null || request.Attachments.Count == 0)
                 return;
 
             var c = corr ?? $"Upload-{DateTime.UtcNow:HHmmssfff}-{Guid.NewGuid():N}".Substring(0, 24);
             var clientRequestId = Guid.NewGuid().ToString();
 
-            var (driveId, driveName, driveRelativeBasePath) = await ResolveDriveAndBasePathAsync(
+            var (defaultDriveId, driveName, driveRelativeBasePath) = await ResolveDriveAndBasePathAsync(
                   graphClient, siteId, folderPath, c, clientRequestId);
+            var defaultBaseFolder = CombinePaths(driveRelativeBasePath, subFolderPath);
 
             try
             {
@@ -584,38 +587,81 @@ namespace CymBuild_Outlook_Common.Helpers
 
                 Info(corr, nameof(UploadEmailToSharePoint),
                     "ATTACHMENTS",
-                    $"Attachment count={attachments.Count}");
+                    $"Attachment count={attachments.Count} selectedCount={request.Attachments.Count}");
 
                 foreach (var attachment in attachments)
                 {
                     if (attachment.ContentBytes == null || attachment.ContentBytes.Length == 0)
                         continue;
 
-                    using var attachmentStream = new MemoryStream(attachment.ContentBytes);
+                    var routing = MatchAttachmentRouting(request.Attachments, attachment.Id, attachment.Name);
 
-                    var fileName = string.IsNullOrWhiteSpace(attachment.Name)
-                        ? "attachment.bin"
-                        : SanitizeFileName(attachment.Name);
+                    if (routing == null)
+                    {
+                        Info(corr, nameof(UploadEmailToSharePoint), "ATTACH_SKIP",
+                            $"'{SafeText(attachment.Name, 120)}' was not selected for filing - skipping.");
+                        continue;
+                    }
 
-                    // IMPORTANT: match email folder structure
-                    var baseFolder = CombinePaths(driveRelativeBasePath, subFolderPath);
-                    var attachmentsFolder = $"{baseFolder}/Attachments"
-                        .Replace("\\", "/");
+                    try
+                    {
+                        using var attachmentStream = new MemoryStream(attachment.ContentBytes);
 
-                    var fullAttachmentPath = $"{attachmentsFolder}/{fileName}"
-                        .Replace("\\", "/");
+                        var fileName = string.IsNullOrWhiteSpace(attachment.Name)
+                            ? "attachment.bin"
+                            : SanitizeFileName(attachment.Name);
 
-                    var uploadedItem = await graphClient
-                        .Drives[driveId]
-                        .Root
-                        .ItemWithPath(fullAttachmentPath)
-                        .Content
-                        .PutAsync(attachmentStream);
+                        var attachmentDriveId = defaultDriveId;
+                        string attachmentsFolder;
 
-                    Info(corr,
-                        nameof(UploadEmailToSharePoint),
-                        "ATTACH_UPLOAD_RESULT",
-                        $"Uploaded attachment '{fileName}' -> {uploadedItem?.WebUrl}");
+                        if (!string.IsNullOrWhiteSpace(routing.DestinationFolderPath))
+                        {
+                            var (chosenDriveId, _, chosenBasePath) = await ResolveDriveAndBasePathAsync(
+                                graphClient, siteId, routing.DestinationFolderPath, c, clientRequestId);
+
+                            attachmentDriveId = chosenDriveId;
+                            attachmentsFolder = chosenBasePath.Replace("\\", "/");
+                        }
+                        else
+                        {
+                            // No destination chosen for this attachment: fall back to the email's own "Attachments" subfolder.
+                            attachmentsFolder = $"{defaultBaseFolder}/Attachments".Replace("\\", "/");
+                        }
+
+                        var fullAttachmentPath = $"{attachmentsFolder}/{fileName}"
+                            .Replace("\\", "/");
+
+                        var uploadedItem = await graphClient
+                            .Drives[attachmentDriveId]
+                            .Root
+                            .ItemWithPath(fullAttachmentPath)
+                            .Content
+                            .PutAsync(attachmentStream);
+
+                        Info(corr,
+                            nameof(UploadEmailToSharePoint),
+                            "ATTACH_UPLOAD_RESULT",
+                            $"Uploaded attachment '{fileName}' -> {uploadedItem?.WebUrl}");
+
+                        if (!string.IsNullOrWhiteSpace(routing.Description) && !string.IsNullOrWhiteSpace(uploadedItem?.Id))
+                        {
+                            await UpdateSharePointDescriptionAsync(
+                                graphClient,
+                                siteId,
+                                attachmentDriveId,
+                                uploadedItem!.Id!,
+                                routing.Description,
+                                c,
+                                clientRequestId).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception exOne)
+                    {
+                        Info(corr,
+                            nameof(UploadEmailToSharePoint),
+                            "ATTACH_UPLOAD_FAILED",
+                            $"Failed to upload '{SafeText(attachment.Name, 120)}' (continuing with remaining attachments). {SafeText(exOne.Message, 400)}");
+                    }
                 }
 
                 swAttach.Stop();
@@ -632,6 +678,24 @@ namespace CymBuild_Outlook_Common.Helpers
                     "ATTACHMENTS",
                     $"Attachment upload failed (continuing). {SafeText(exAttach.Message, 400)}");
             }
+        }
+
+        /// <summary>
+        /// Matches a fetched Graph attachment against the caller's selected routing list: by AttachmentId first,
+        /// falling back to a case-insensitive name match. Returns null when the attachment was not selected for
+        /// filing. Pure/no I/O so it can be unit tested directly against plain DTOs.
+        /// </summary>
+        public static AttachmentFilingRequest? MatchAttachmentRouting(
+            IEnumerable<AttachmentFilingRequest> routings,
+            string? attachmentId,
+            string? attachmentName)
+        {
+            return routings.FirstOrDefault(a =>
+                    !string.IsNullOrWhiteSpace(a.AttachmentId) &&
+                    string.Equals(a.AttachmentId, attachmentId, StringComparison.OrdinalIgnoreCase))
+                ?? routings.FirstOrDefault(a =>
+                    !string.IsNullOrWhiteSpace(a.AttachmentName) &&
+                    string.Equals(a.AttachmentName, attachmentName, StringComparison.OrdinalIgnoreCase));
         }
 
         private async Task<(string DriveId, string DriveName, string DriveRelativeBasePath)> ResolveDriveAndBasePathAsync(

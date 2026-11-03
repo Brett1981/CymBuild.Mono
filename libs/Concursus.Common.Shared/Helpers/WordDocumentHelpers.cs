@@ -517,6 +517,7 @@ namespace Concursus.Common.Shared.Helpers
                 report.ContentControlReplacements += ReplaceTaggedContentControls(root, map);
                 report.PlainTextReplacements += ReplacePlainTextPlaceholders(root, map);
                 report.SplitPlaceholderReplacements += ReplaceSplitPlainTextPlaceholders(root, map);
+                ConvertLineBreaksToWordBreaks(root);
             }
 
             wordDoc.MainDocumentPart?.Document?.Save();
@@ -615,6 +616,7 @@ namespace Concursus.Common.Shared.Helpers
             {
                 ReplacePlainTextPlaceholders(root, map);
                 ReplaceSplitPlainTextPlaceholders(root, map);
+                ConvertLineBreaksToWordBreaks(root);
             }
 
             wordDoc.MainDocumentPart?.Document?.Save();
@@ -814,6 +816,41 @@ namespace Concursus.Common.Shared.Helpers
             }
 
             return replacements;
+        }
+
+        private static readonly char[] LineBreakChars = { '\r', '\n' };
+
+        /// <summary>
+        /// Merge values can contain line breaks (SCrm.Addresses.FormattedAddressCR uses CR, quote
+        /// item Details use CRLF). Word shows a line break inside w:t as a space, so split each
+        /// such text into text + w:br segments within its run.
+        /// </summary>
+        private static int ConvertLineBreaksToWordBreaks(OpenXmlElement root)
+        {
+            var converted = 0;
+
+            foreach (var text in root.Descendants<Text>().Where(t => t.Parent is Run && t.Text.IndexOfAny(LineBreakChars) >= 0).ToList())
+            {
+                var lines = text.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+                text.Text = lines[0];
+                text.Space = SpaceProcessingModeValues.Preserve;
+
+                OpenXmlElement anchor = text;
+                for (var i = 1; i < lines.Length; i++)
+                {
+                    var lineBreak = new Break();
+                    anchor.InsertAfterSelf(lineBreak);
+
+                    var line = new Text(lines[i]) { Space = SpaceProcessingModeValues.Preserve };
+                    lineBreak.InsertAfterSelf(line);
+                    anchor = line;
+                }
+
+                converted++;
+            }
+
+            return converted;
         }
 
         private static int ReplacePlainTextPlaceholders(OpenXmlElement root, IReadOnlyDictionary<string, string> mergeMap)

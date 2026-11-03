@@ -24,5 +24,15 @@ namespace Concursus.API.Sage.SOAP.Interface
             int? sysTraderTranType = null,
             bool force = false,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// What settled an invoice. Both the account and the invoice's URN are
+        /// required, so this can never ask SFA for every allocation.
+        /// </summary>
+        Task<SageFetchSalesAllocationsResponse?> FetchSalesAllocationsAsync(
+            SageDataset dataset,
+            string accountReference,
+            string urn,
+            CancellationToken cancellationToken = default);
     }
 }

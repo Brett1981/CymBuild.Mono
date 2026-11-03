@@ -1,0 +1,95 @@
+{
+  "mode": "created",
+  "runGuid": "d5a8f2ce-89f6-4b5f-944e-2ee3d1e72a40",
+  "comparedOnUtc": "2026-10-14 12:57:55",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SCore",
+      "objectName": "tvf_GetWorkflowStatuses",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Function",
+      "schemaName": "SJob",
+      "objectName": "tvf_Jobs_TeamF10ExpiryList",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SCore",
+      "objectName": "IntegrationOutbox_EnqueueWorkflowStatusNotification",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceRequestCreateInvoice",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "InvoiceRequestItemsUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SFin",
+      "objectName": "TransactionDetailsUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SSop",
+      "objectName": "EnquiriesUpsert",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Table",
+      "schemaName": "SJob",
+      "objectName": "FeeAmendmentChase",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Trigger",
+      "schemaName": "SCore",
+      "objectName": "tr_DataObjectTransition_EnqueueWorkflowStatusNotification",
+      "parentObjectName": "SCore.DataObjectTransition",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Trigger",
+      "schemaName": "SCore",
+      "objectName": "tr_DataObjectTransition_QueueWorkflowNotifications",
+      "parentObjectName": "SCore.DataObjectTransition",
+      "differenceType": "Different"
+    },
+    {
+      "objectType": "Constraint",
+      "schemaName": "SJob",
+      "objectName": "DF_SJob_FeeAmendmentChase_DateChased",
+      "parentObjectName": "FeeAmendmentChase",
+      "differenceType": "MissingInTarget"
+    },
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SCore",
+      "objectName": "WorkflowStatusMergeDuplicates",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run d5a8f2ce-89f6-4b5f-944e-2ee3d1e72a40: selected 12 row(s), skipped 0, validated and accepted."
+}

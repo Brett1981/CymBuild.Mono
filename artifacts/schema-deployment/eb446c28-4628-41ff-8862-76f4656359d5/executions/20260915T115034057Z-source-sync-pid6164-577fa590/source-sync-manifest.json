@@ -1,0 +1,40 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "eb446c28-4628-41ff-8862-76f4656359d5",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 2,
+  "ArtifactCount": 2,
+  "GeneratedOnUtc": "2026-09-15T11:50:35.4807066Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "1116cc42-7b2c-49bd-8e51-50848cb371e3",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "SageInboundReceiptAndAllocation_Materialise",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "4925D26F76C6D381C98BEE1B360E5392AE82B723F7131E6331F5326A90250F20",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.SageInboundReceiptAndAllocation_Materialise.sql",
+      "FileSha256": "01BEBC24124E5E3E111D01CF4E862FE820076D6B0874A20B9F68E780CEA5697E",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "366febff-9649-4232-8b24-38c162ef6d7a",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "SageInboundReceiptMaterialisation_AutoCorrect",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "CEA974D1ED4C84A656DCFB76153E3DDC0F7CEF54EB4F2A5B3847ED274D84256C",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.SageInboundReceiptMaterialisation_AutoCorrect.sql",
+      "FileSha256": "3D939E2DDD0E3E3FEFBF30AE5F0B46D7CF0856F12658DD2213732DC673920AB5",
+      "WasSynchronized": true
+    }
+  ]
+}

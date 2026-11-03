@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RunSettings>
-  <RunConfiguration>
-    <ResultsDirectory>TestResults</ResultsDirectory>
-  </RunConfiguration>
-  <DataCollectionRunSettings>
-    <DataCollectors>
-      <DataCollector friendlyName="XPlat Code Coverage">
-        <Configuration>
-          <Format>cobertura</Format>
-          <Exclude>[*.Tests]*,[*Tests]*</Exclude>
-          <ExcludeByFile>**/bin/**,**/obj/**,**/*.g.cs,**/*.designer.cs,**/Program.cs</ExcludeByFile>
-          <IncludeTestAssembly>false</IncludeTestAssembly>
-          <UseSourceLink>true</UseSourceLink>
-          <DeterministicReport>true</DeterministicReport>
-        </Configuration>
-      </DataCollector>
-    </DataCollectors>
-  </DataCollectionRunSettings>
-</RunSettings>
+<!--
+  Coverage configuration for Microsoft.Testing.Extensions.CodeCoverage, the MTP-native
+  coverage extension used since the .NET 10 SDK dropped `dotnet test` VSTest-mode support
+  for Microsoft.Testing.Platform projects (global.json sets "test.runner": "Microsoft.Testing.Platform").
+
+  Despite the .runsettings extension (kept for continuity with existing tooling references),
+  this file uses the CodeCoverage extension's own Configuration schema, not a VSTest
+  RunSettings/DataCollectionRunSettings document. Pass it with the coverage settings option,
+  not the old VSTest settings option (an XML comment cannot contain a literal double hyphen,
+  which is why the flag names aren't spelled out here).
+-->
+<Configuration>
+  <Format>cobertura</Format>
+  <Exclude>[*.Tests]*,[*Tests]*</Exclude>
+  <ExcludeByFile>**/bin/**,**/obj/**,**/*.g.cs,**/*.designer.cs,**/Program.cs</ExcludeByFile>
+  <IncludeTestAssembly>false</IncludeTestAssembly>
+  <UseSourceLink>true</UseSourceLink>
+  <DeterministicReport>true</DeterministicReport>
+</Configuration>

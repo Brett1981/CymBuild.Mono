@@ -378,3 +378,14 @@
     max-width: 100%;
     white-space: nowrap;
 }
+
+/* CYB-524: keep the complete header group inside the grid scroll viewport. */
+.cb-filtered-grid-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.cb-filtered-grid-table thead th {
+    position: static;
+}

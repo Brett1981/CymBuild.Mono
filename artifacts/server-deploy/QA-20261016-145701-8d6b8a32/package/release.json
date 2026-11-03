@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261016-145701-8d6b8a32",
+  "Environment": "QA",
+  "Branch": "release/SB_UAT_RELEASE_26.4.0",
+  "Commit": "8d6b8a3299d149d1afe1a8d0299aff5b881904b2",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-16T15:00:51.7141203+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 205,
+    "Pwa": 7061
+  }
+}

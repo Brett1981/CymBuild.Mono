@@ -18,7 +18,7 @@ using EntityProperty = Concursus.API.Core.EntityProperty;
 
 namespace Concursus.PWA.Shared;
 
-public partial class EditPage
+public partial class EditPage : IAsyncDisposable
 {
     #region Private Fields
 
@@ -65,13 +65,31 @@ public partial class EditPage
     [Parameter] public string EntityTypeGuid { get; set; } = Guid.Empty.ToString();
     [Parameter] public FlexPropertyGroups flexPropertyGroups { get; set; } = new();
     [Parameter] public EventCallback<FlexPropertyGroups> FlexPropertyGroupsChanged { get; set; }
+
+    /// <summary>
+    /// Extra <see cref="FlexPropertyGroups"/> instances beyond the single primary
+    /// <see cref="flexPropertyGroups"/> ref, for pages that split an entity's property groups
+    /// across more than one panel (e.g. across tabs). Property-change rebinds and validation
+    /// button state broadcast to every instance in here alongside the primary one.
+    /// </summary>
+    [Parameter] public List<FlexPropertyGroups> ExtraFlexPropertyGroups { get; set; } = new();
     [Parameter] public RenderFragment? FormBody { get; set; }
     [Parameter] public RenderFragment? FormButtons { get; set; }
     [Parameter] public EventCallback<(EditContext, bool, bool)> FormSubmittedPre { get; set; }
+
+    /// <summary>
+    /// Runs after a successful save with no validation messages, before the new-record reload and
+    /// Save &amp; Exit navigation.
+    /// </summary>
+    [Parameter] public Func<DataObject, Task>? FormSavedPost { get; set; }
     [Parameter] public RenderFragment? FormTitle { get; set; }
     [Parameter] public EventCallback GridUpdated { get; set; }
     [Parameter] public bool IsBulkUpdate { get; set; } = false;
     [Parameter] public bool IsDetailWindowed { get; set; } = false;
+
+    [Parameter] public bool DisableSaveButtons { get; set; } = false;
+    [Parameter] public EventCallback<bool> DisableSaveButtonsChanged { get; set; }
+
     public bool IsFirstLoad { get; private set; } = true;
     public API.Client.FormHelper? FormHelperInstance => _formHelper;
     public API.Client.FormHelper? ActiveFormHelper => _formHelper;
@@ -103,7 +121,26 @@ public partial class EditPage
     [Parameter] public bool HideDefaultActions { get; set; } = false;
     [Parameter] public bool DisableDefaultActions { get; set; } = false;
 
+    /// <summary>
+    /// Raised whenever a field value changes, with the EntityPropertyGuid of the changed field.
+    /// Lets a host page (e.g. AccountDetail/ContactDetail/StructureDetail) detect edits to the
+    /// fields its duplicate-check "Validate" button relies on, so it can re-arm validation.
+    /// </summary>
+    [Parameter] public EventCallback<Guid> IdentifyingFieldChanged { get; set; }
+
     [Parameter] public EventCallback<DataObject> DataObjectLoaded { get; set; }
+    [Parameter] public bool DataNeedsValidating { get; set; } = false;
+
+    /// <summary>
+    /// Tracks which independent sections currently require validation (e.g. the Enquiry page's
+    /// Agent/Client/Asset "Enter New ... Details" sections can each need validating at the same
+    /// time). <see cref="DataNeedsValidating"/> stays true until every key added via
+    /// <see cref="ValidationRequired"/> has been cleared via <see cref="DataHasBeenValidated"/>.
+    /// </summary>
+    private readonly HashSet<string> _sectionsPendingValidation = new(StringComparer.OrdinalIgnoreCase);
+
+    private const string DefaultValidationSectionKey = "__default__";
+
     #endregion Public Properties
 
     #region Protected Properties
@@ -134,6 +171,8 @@ public partial class EditPage
     private bool LoaderVisibleS { get; set; }
     private bool LoaderVisibleSe { get; set; }
     private bool SaveButtonDisabled { get; set; } = false;
+
+   
 
     private static readonly string[] EnhancedHeaderEntityLabels =
     {
@@ -938,10 +977,25 @@ public partial class EditPage
         return instance.HandleProcessedFiles(processedFilesJson);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _objectReference?.Dispose();
-        hubConnection?.DisposeAsync();
+        try
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+
+            _debounceTimer?.Dispose();
+            _objectReference?.Dispose();
+
+            if (hubConnection != null)
+            {
+                await hubConnection.DisposeAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"EditPage disposal failed: {ex.Message}");
+        }
     }
 
     public Task HandleInputUpdated(InputUpdatedArgs? inputUpdatedArgs)
@@ -1007,6 +1061,11 @@ public partial class EditPage
                 inputUpdatedArgs.NewValue.Is(Int32Value.Descriptor))
             {
                 HasChanges = true;
+            }
+
+            if (IdentifyingFieldChanged.HasDelegate)
+            {
+                await IdentifyingFieldChanged.InvokeAsync(inputUpdatedArgs.EntityId);
             }
 
             if (_formHelper != null)
@@ -1108,6 +1167,15 @@ public partial class EditPage
     {
         Console.WriteLine("EditPage: OnError called.");
 
+        //CYB-320: Hides the error message when the revision is cancelled.
+        if (error.Data.Contains("Dismiss") && error.Data["Dismiss"] is true)
+        {
+            Console.WriteLine("EditPage: Dismiss signal received. Hiding MessageDisplay.");
+            _messageDisplay.ShowError(false);
+            StateHasChanged();
+            return;
+        }
+
         if (string.IsNullOrEmpty(error.Message))
         {
             Console.WriteLine("EditPage: Error message is empty. Aborting.");
@@ -1153,48 +1221,6 @@ public partial class EditPage
 
         Console.WriteLine("EditPage: MessageDisplay updated and error shown.");
 
-        // AI Error Reporting (only for actual errors)
-        if (MessageType == ShowMessageType.Error)
-        {
-            try
-            {
-                Console.WriteLine("EditPage: Starting AI Error Reporter...");
-                var context = new
-                {
-                    ErrorMessage = error.Message,
-                    PageMethod = error.Data.Contains("PageMethod") ? error.Data["PageMethod"]?.ToString() ?? "UnknownMethod" : "UnknownMethod",
-                    StackTrace = error.StackTrace ?? "No stack trace",
-                    AdditionalInfo = error.Data.Contains("AdditionalInfo") ? error.Data["AdditionalInfo"]?.ToString() ?? "None" : "None",
-                    Data = error.Data.Cast<DictionaryEntry>()
-                        .ToDictionary(
-                            de => de.Key?.ToString() ?? "UnknownKey",
-                            de => de.Value?.ToString() ?? "null"
-                        )
-                };
-
-                var log = InteractionTracker.GetAllLogs();
-                var description = InteractionTracker.GetReplicationStepsFormatted(InteractionTracker);
-                error.Data["UserInteractionLog"] = description;
-                Console.WriteLine($"EditPage: UserInteractionLog = {description}");
-
-                var result = await AiErrorReporter.ReportAsync(error, context);
-
-                if (result != null && !string.IsNullOrEmpty(result.UiMessage))
-                {
-                    Console.WriteLine("EditPage: AI Error Reporter returned UI message. Updating MessageDisplay.");
-                    _messageDisplay.SetMessage(result.UiMessage, result.MessageType);
-                    _messageDisplay.ShowError(true);
-                }
-                else
-                {
-                    Console.WriteLine("EditPage: AI Error Reporter returned no UI message.");
-                }
-            }
-            catch (Exception aiEx)
-            {
-                Console.WriteLine($"EditPage: Exception in AI Error Reporter: {aiEx.Message}\n{aiEx.StackTrace}");
-            }
-        }
 
         StateHasChanged();
         Console.WriteLine("EditPage: StateHasChanged called. OnError complete.");
@@ -1270,6 +1296,70 @@ public partial class EditPage
         PerformACanceledState(stateService, ReturnUrl);
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Sets the "HasChanges" variable to false.
+    /// Handy when we need to make sure the alert dial does not appear.
+    /// </summary>
+    public void SetHasChangesToFalse()
+    {
+        HasChanges = false;
+    }
+
+    /// <summary>
+    /// Swaps this already-mounted EditPage to an existing record of the same entity type and
+    /// re-reads its data, without a browser navigation. Used when a windowed/modal detail page
+    /// (e.g. opened to create a new record) resolves to an existing duplicate instead - a full
+    /// navigation would take the whole browser tab away from the modal.
+    /// </summary>
+    /// <summary>
+    /// Every mounted <see cref="FlexPropertyGroups"/> instance for this page - the primary
+    /// <see cref="flexPropertyGroups"/> ref plus any <see cref="ExtraFlexPropertyGroups"/> (a
+    /// lazily-loaded tab's panel may not have mounted yet, so nulls are filtered out).
+    /// </summary>
+    private IEnumerable<FlexPropertyGroups> AllFlexPropertyGroups() =>
+        new[] { flexPropertyGroups }.Concat(ExtraFlexPropertyGroups).Where(fpg => fpg is not null);
+
+    public async Task ReloadRecordAsync(string newRecordGuid, DataObjectReference newDataObjectReference)
+    {
+        RecordGuid = newRecordGuid;
+        ParentDataObjectReference = newDataObjectReference;
+        MyDataObjectReference = newDataObjectReference;
+
+        // The record being switched to already exists, so any duplicate-check validation that
+        // was pending for the record we were creating no longer applies.
+        _sectionsPendingValidation.Clear();
+        DataNeedsValidating = false;
+        foreach (var fpg in AllFlexPropertyGroups()) fpg.ChangeValidationBtnText("Validated", "btn btn-success");
+
+        await OnInitializedAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Disables the save buttons until data is validated. Pass a <paramref name="sectionKey"/>
+    /// when more than one independent section on the page can require validation at once (e.g.
+    /// Enquiry's Agent/Client/Asset sections) - <see cref="DataNeedsValidating"/> only clears once
+    /// every section that called this has also called <see cref="DataHasBeenValidated"/>.
+    /// </summary>
+    public void ValidationRequired(string sectionKey = DefaultValidationSectionKey)
+    {
+        _sectionsPendingValidation.Add(sectionKey);
+        DataNeedsValidating = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Enables the save buttons once the data has been validated. Must be called with the same
+    /// <paramref name="sectionKey"/> that was passed to <see cref="ValidationRequired"/>.
+    /// </summary>
+    public void DataHasBeenValidated(string sectionKey = DefaultValidationSectionKey)
+    {
+        _sectionsPendingValidation.Remove(sectionKey);
+        DataNeedsValidating = _sectionsPendingValidation.Count > 0;
+        StateHasChanged();
+    }
+
     #endregion Public Methods
 
     #region Protected Methods
@@ -1428,7 +1518,13 @@ public partial class EditPage
                     await _buttonMenuRef.RequestRefresh();
                 }
 
+                if (FormSavedPost != null && !HasValidationMessages)
+                {
+                    await FormSavedPost(dataObject);
+                }
+
                 await ReloadDataForNewRecordAsync();
+                await RebaseEditStateAfterSuccessfulSaveAsync(refreshFromServer: false);
             }
 
             if (exit && !HasValidationMessages)
@@ -1457,7 +1553,12 @@ public partial class EditPage
             await SetLoaderVisibility(save, exit, false).ConfigureAwait(false);
         }
 
-        await SetupSharePointUrlAsync(UpdateSharepoint);
+        var sharePointUpdatedCurrentRecord = await SetupSharePointUrlAsync(UpdateSharepoint);
+
+        if (sharePointUpdatedCurrentRecord && dataObject != null)
+        {
+             await RebaseEditStateAfterSuccessfulSaveAsync(refreshFromServer: true);
+        }
     }
 
     /// <summary>
@@ -1545,6 +1646,9 @@ public partial class EditPage
                     ParentDataObjectReference.DataObjectGuid = modal.Value.DataObjectReference.DataObjectGuid;
                     ParentGuid = ParentDataObjectReference.DataObjectGuid.ToString();
 
+                    // CYB-473 (LIVE 26.2 fix 3ff9c381): ShoreInput dropdowns fall back to OriginalRecordGuid.
+                    stateService.OriginalRecordGuid = ParentGuid;
+
                     StateHasChanged();
                 }
             }
@@ -1566,85 +1670,6 @@ public partial class EditPage
             _objectReference = DotNetObjectReference.Create(this);
             JsRuntime.InvokeVoidAsync("storeDotNetObjectReference", _objectReference);
 
-            // Setup SignalR Hub connection
-            if (!isHubConnected)
-            {
-                var apiUrl = Configuration["ShoreAPI:Url"];
-                hubConnection = new HubConnectionBuilder()
-                    .WithUrl($"{apiUrl}/fileProcessingHub")
-                    .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30) }) // Exponential backoff
-                    .Build();
-
-                await hubConnection.StartAsync();
-                Console.WriteLine($"Hub connection started with ConnectionId: {hubConnection.ConnectionId}");
-
-                // Register the ConnectionId with the server
-                await hubConnection.InvokeAsync("RegisterConnectionId", hubConnection.ConnectionId, userService.Email);
-
-                hubConnection.Reconnecting += error =>
-                {
-                    Console.WriteLine($"Reconnecting due to error: {error?.Message}");
-                    // Notify user about reconnection attempts (you can update the UI here)
-                    return Task.CompletedTask;
-                };
-
-                hubConnection.Reconnected += connectionId =>
-                {
-                    Console.WriteLine($"Reconnected with connection ID: {connectionId}");
-                    // Notify user about reconnection success (you can update the UI here)
-                    _debounceTimer?.Dispose();
-                    _debounceTimer = new Timer(_ =>
-                    {
-                        InvokeAsync(StateHasChanged);
-                    }, null, 500, Timeout.Infinite);
-
-                    return Task.CompletedTask;
-                };
-
-                hubConnection.Closed += async error =>
-                {
-                    Console.WriteLine($"Connection closed due to error: {error?.Message}");
-                    // Attempt to reconnect after a delay
-                    await Task.Delay(new Random().Next(0, 5) * 1000);
-                    await hubConnection.StartAsync();
-                };
-
-                hubConnection.On<string>("FileProcessed", async (fileName) =>
-                {
-                    Console.WriteLine($"Client ConnectionId: {hubConnection.ConnectionId}");
-
-                    Console.WriteLine($"FileProcessed event received for file: {fileName}");
-
-                    // Add the message and show the overlay
-                    _messages.Add($"File {fileName} processed.");
-                    _showOverlay = true;
-                    StateHasChanged();
-
-                    // Debounce the StateHasChanged
-                    _cts?.Cancel(); // Cancel the previous debounce, if it exists
-                    _cts = new CancellationTokenSource();
-
-                    // Debounce delay (e.g., wait 300ms before updating UI)
-                    await Task.Delay(300, _cts.Token).ContinueWith(task =>
-                    {
-                        if (!task.IsCanceled)
-                        {
-                            InvokeAsync(StateHasChanged);
-                        }
-                    });
-
-                    // Simulate random delay before removing message
-                    await Task.Delay(new Random().Next(0, 5) * 400);
-                    _messages.Remove($"File {fileName} processed.");
-
-                    if (_messages.Count == 0)
-                    {
-                        _showOverlay = false;
-                        StateHasChanged();
-                    }
-                });
-                isHubConnected = true;
-            }
             await EnsureCorrectParentGuid();
             _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
 
@@ -1662,6 +1687,7 @@ public partial class EditPage
                     await PWAFunctions.EnsureDataObjectReferenceAsync(dataObject, MyDataObjectReference);
                 ParentDataObjectReference = MyDataObjectReference;
             }
+
             // Get the record data if its a new Record first time save
             if (!Windowed && (RecordGuid == Guid.Empty.ToString() && ParentDataObjectReference.DataObjectGuid.ToString() != Guid.Empty.ToString()))
             {
@@ -1755,8 +1781,13 @@ public partial class EditPage
                 }
             }
             await base.OnInitializedAsync();
-            _ = Task.Run(async () => { await FormSubmitted(_editContext, false, false); });
+
+            await InitialiseLoadedEditStateAsync();
+
             IsLoading = false;
+
+            _ = InvokeAsync(TryInitialiseFileProcessingHubAsync);
+
             return;
         }
         catch (Exception ex)
@@ -1780,14 +1811,23 @@ public partial class EditPage
                 ReturnUrl = NavManager.Uri;
             }
 
-            SaveButtonDisabled = dataObject.SaveButtonDisabled; //CBLD-382
+            SaveButtonDisabled = dataObject.SaveButtonDisabled;
 
-            // Only update if necessary to avoid triggering unnecessary re-renders
-            if (MyDataObjectReference == null ||
-                MyDataObjectReference.DataObjectGuid.ToString() != RecordGuid ||
-                MyDataObjectReference.EntityTypeGuid.ToString() != EntityTypeGuid)
+            var recordGuid = ParseGuidOrEmpty(RecordGuid);
+            var entityTypeGuid = ParseGuidOrEmpty(EntityTypeGuid);
+
+            if (recordGuid != Guid.Empty && entityTypeGuid != Guid.Empty)
             {
-                MyDataObjectReference = new DataObjectReference(RecordGuid, EntityTypeGuid);
+                if (MyDataObjectReference == null
+                    || MyDataObjectReference.DataObjectGuid != recordGuid
+                    || MyDataObjectReference.EntityTypeGuid != entityTypeGuid)
+                {
+                    MyDataObjectReference = new DataObjectReference(recordGuid.ToString(), entityTypeGuid.ToString());
+                }
+            }
+            else if (HasUsableDataObjectReference(ParentDataObjectReference))
+            {
+                MyDataObjectReference ??= ParentDataObjectReference;
             }
 
             base.OnParametersSet();
@@ -1801,6 +1841,164 @@ public partial class EditPage
         }
     }
 
+
+    private static Guid ParseGuidOrEmpty(string? value)
+    {
+        return Guid.TryParse(value, out var parsedGuid)
+            ? parsedGuid
+            : Guid.Empty;
+    }
+
+    private async Task TryInitialiseFileProcessingHubAsync()
+    {
+        if (isHubConnected)
+        {
+            return;
+        }
+
+        try
+        {
+            var apiUrl = Configuration["ShoreAPI:Url"];
+
+            if (string.IsNullOrWhiteSpace(apiUrl))
+            {
+                return;
+            }
+
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl($"{apiUrl}/fileProcessingHub")
+                .WithAutomaticReconnect(new[]
+                {
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(30)
+                })
+                .Build();
+
+            using var startupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            await hubConnection.StartAsync(startupTimeout.Token);
+
+            await hubConnection.InvokeAsync(
+                "RegisterConnectionId",
+                hubConnection.ConnectionId ?? string.Empty,
+                userService.Email,
+                startupTimeout.Token);
+
+            hubConnection.Reconnecting += error =>
+            {
+                Console.WriteLine($"Reconnecting due to error: {error?.Message}");
+                return Task.CompletedTask;
+            };
+
+            hubConnection.Reconnected += connectionId =>
+            {
+                Console.WriteLine($"Reconnected with connection ID: {connectionId}");
+
+                _debounceTimer?.Dispose();
+                _debounceTimer = new Timer(_ =>
+                {
+                    _ = InvokeAsync(StateHasChanged);
+                }, null, 500, Timeout.Infinite);
+
+                return Task.CompletedTask;
+            };
+
+            hubConnection.Closed += async error =>
+            {
+                Console.WriteLine($"Connection closed due to error: {error?.Message}");
+                isHubConnected = false;
+
+                try
+                {
+                    await Task.Delay(new Random().Next(0, 5) * 1000);
+                    await hubConnection.StartAsync();
+                    isHubConnected = true;
+                }
+                catch (Exception reconnectException)
+                {
+                    Console.WriteLine($"File processing hub reconnect failed: {reconnectException.Message}");
+                }
+            };
+
+            hubConnection.On<string>("FileProcessed", async fileName =>
+            {
+                Console.WriteLine($"Client ConnectionId: {hubConnection.ConnectionId}");
+                Console.WriteLine($"FileProcessed event received for file: {fileName}");
+
+                _messages.Add($"File {fileName} processed.");
+                _showOverlay = true;
+
+                await InvokeAsync(StateHasChanged);
+
+                _cts?.Cancel();
+                _cts = new CancellationTokenSource();
+
+                await Task.Delay(300, _cts.Token).ContinueWith(task =>
+                {
+                    if (!task.IsCanceled)
+                    {
+                        _ = InvokeAsync(StateHasChanged);
+                    }
+                });
+
+                await Task.Delay(new Random().Next(0, 5) * 400);
+
+                _messages.Remove($"File {fileName} processed.");
+
+                if (_messages.Count == 0)
+                {
+                    _showOverlay = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+
+            isHubConnected = true;
+        }
+        catch (Exception ex)
+        {
+            isHubConnected = false;
+
+            Console.WriteLine($"File processing hub initialisation skipped: {ex.Message}");
+
+            if (hubConnection != null)
+            {
+                await hubConnection.DisposeAsync();
+                hubConnection = null;
+            }
+        }
+    }
+
+    private async Task InitialiseLoadedEditStateAsync()
+    {
+        try
+        {
+            await FormSubmittedPre.InvokeAsync((_editContext, false, false));
+
+            await InitializeParentDataObjectReferenceAsync();
+
+            PWAFunctions.PrepareStateChanges(
+                _editContext,
+                stateService,
+                ParentDataObjectReference.DataObjectGuid.ToString());
+
+            await UpdateDependentPropertiesAsync();
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "An error occurred while initialising the edit form state.";
+            ex.Data["PageMethod"] = "EditPage/InitialiseLoadedEditStateAsync()";
+            OnError(ex);
+        }
+    }
+    private static bool HasUsableDataObjectReference(DataObjectReference? reference)
+    {
+        return reference != null
+            && reference.DataObjectGuid != Guid.Empty
+            && reference.EntityTypeGuid != Guid.Empty;
+    }
     protected Task SetLoaderVisibility(bool save, bool exit, bool enable)
     {
         switch (save)
@@ -1913,6 +2111,14 @@ public partial class EditPage
                     // Update the bound selection in the parent grid/window
                     dataObject = await PrepareUpdateToBindedSelection();
                 }
+
+                // CYB-484: clear the child/original record guids once this windowed modal's
+                // exit logic has used them. Without this, ShoreInput's empty-RecordGuid
+                // fallback (RecordGuid = stateService.ChildRecordGuid) leaks this record's
+                // Guid into the next "New" record opened from the same grid, which can make
+                // dropdown lookups (e.g. SCore.WorkflowGetNextStatus) treat the new record as
+                // an edit of this already-saved one.
+                PWAFunctions.ResetStateService(stateService);
             });
 
             StateHasChanged();
@@ -1971,7 +2177,7 @@ public partial class EditPage
                 SaveButtonDisabled = dataObject.SaveButtonDisabled;
                 UpdateBoundDataProperties(newDataObject);
 
-                flexPropertyGroups.RebindFromPropertyChange(inputUpdatedArgs);
+                foreach (var fpg in AllFlexPropertyGroups()) fpg.RebindFromPropertyChange(inputUpdatedArgs);
 
                 if (HasValidationMessages && dataObject.ValidationResults.Any())
                 {
@@ -2133,14 +2339,26 @@ public partial class EditPage
 
     private async Task InitializeParentDataObjectReferenceAsync()
     {
-        if (ParentDataObjectReference == null || ParentDataObjectReference.DataObjectGuid == Guid.Empty || ParentDataObjectReference.EntityTypeGuid == Guid.Empty)
-        {
-            MyDataObjectReference = await PWAFunctions.EnsureDataObjectReferenceAsync(dataObject, MyDataObjectReference);
-            ParentDataObjectReference = MyDataObjectReference;
-        }
-        else
+        if (HasUsableDataObjectReference(ParentDataObjectReference))
         {
             MyDataObjectReference = ParentDataObjectReference;
+            ParentGuid = ParentDataObjectReference.DataObjectGuid.ToString();
+            return;
+        }
+
+        if (HasUsableDataObjectReference(MyDataObjectReference))
+        {
+            ParentDataObjectReference = MyDataObjectReference;
+            ParentGuid = ParentDataObjectReference.DataObjectGuid.ToString();
+            return;
+        }
+
+        MyDataObjectReference = await PWAFunctions.EnsureDataObjectReferenceAsync(dataObject, MyDataObjectReference);
+
+        if (HasUsableDataObjectReference(MyDataObjectReference))
+        {
+            ParentDataObjectReference = MyDataObjectReference;
+            ParentGuid = ParentDataObjectReference.DataObjectGuid.ToString();
         }
     }
 
@@ -2330,6 +2548,14 @@ public partial class EditPage
             // Original windowed behaviour (no change)
             _ = GridUpdated.InvokeAsync();
             _ = CloseWindow.InvokeAsync();
+
+            // CYB-484: this is the "no changes, just exit" / "Save & Exit with no changes"
+            // short-circuit in FormSubmitted, which bypasses HandleExitAsync entirely. Without
+            // this, closing a windowed modal via either path leaves stateService.ChildRecordGuid/
+            // OriginalRecordGuid pointing at this record, which a subsequent "New" record opened
+            // from the same grid can inherit (see HandleExitAsync's Windowed branch for the full
+            // explanation).
+            PWAFunctions.ResetStateService(stateService);
         }
         else
         {
@@ -2467,60 +2693,198 @@ public partial class EditPage
     private async Task ReloadDataForNewRecordAsync()
     {
         /*
-         * OE: CBLD-500.
-         *
-         * The function never executed on new grid creation since the only thing we were checking for is if the first GUID in the return URL is an empty GUID.
-         * In this case, it was always just "/dev" without any GUID. To tackle this, I added "ReturnUrl.EndsWith("/dev")" to the if condition.
+         * This method is for newly-created records.
          *
          * This method is specifically for the â€œnew record from grid/devâ€ scenario:
          * - We want to reload the SAME detail page, but with the new Guid.
          * - We do NOT want to go back to the grid here.
+         * Important:
+         * Windowed modal records, such as creating a Client Account from an Enquiry,
+         * must not call OnInitializedAsync() after save. The modal is hosted inside
+         * the parent page context, and reinitialising can reset RecordGuid/parent
+         * context back to a blank child record.
          */
-        if (PWAFunctions.IsFirstGuidEmpty(ReturnUrl) || ReturnUrl.EndsWith("/dev"))
+
+        if (!PWAFunctions.IsFirstGuidEmpty(ReturnUrl) && !ReturnUrl.EndsWith("/dev"))
         {
-            // For non-windowed pages (normal JobDetail/QuoteDetail/etc.) we want to stay on the
-            // detail page but swap in the new Guid and keep the existing ReturnUrl.
-            if (!Windowed && NewlyCreatedRecordReference != null)
-            {
-                PWAFunctions.NavigateToNewlyCreatedRecordPage(
-                    NavManager,
-                    NewlyCreatedRecordReference,
-                    ReturnUrl);
-            }
-
-            // Handle SharePoint document structure setup if needed
-            if (dataObject.HasDocuments && string.IsNullOrEmpty(dataObject.SharePointSiteIdentifier))
-            {
-                var ex = new Exception("Setting up SharePoint document structure and files. Please wait.")
-                {
-                    Data =
-                {
-                    { "PageMethod", dataObject.Label ?? "New Record: " },
-                    { "AdditionalInfo", "Setting up SharePoint document structure and files. Please wait." },
-                    { "MessageType", MessageDisplay.ShowMessageType.Information }
-                }
-                };
-                OnError(ex);
-
-                await OnInitializedAsync();
-
-                ex = new Exception("SharePoint document structure and files created successfully.")
-                {
-                    Data =
-                {
-                    { "PageMethod", dataObject.Label ?? "New Record: " },
-                    { "AdditionalInfo", "SharePoint document structure and files created successfully." },
-                    { "MessageType", MessageDisplay.ShowMessageType.Success }
-                }
-                };
-                OnError(ex);
-            }
-            else if (!Windowed)
-            {
-                // Non-document case: simple reload to ensure the new record state is correct
-                await OnInitializedAsync();
-            }
+            return;
         }
+
+        if (!Windowed && NewlyCreatedRecordReference != null)
+        {
+            PWAFunctions.NavigateToNewlyCreatedRecordPage(
+                NavManager,
+                NewlyCreatedRecordReference,
+                ReturnUrl);
+        }
+
+        if (dataObject.HasDocuments && string.IsNullOrEmpty(dataObject.SharePointSiteIdentifier))
+        {
+            var ex = new Exception("Setting up SharePoint document structure and files. Please wait.")
+            {
+                Data =
+            {
+                { "PageMethod", dataObject.Label ?? "New Record: " },
+                { "AdditionalInfo", "Setting up SharePoint document structure and files. Please wait." },
+                { "MessageType", MessageDisplay.ShowMessageType.Information }
+            }
+            };
+
+            OnError(ex);
+
+            if (!Windowed)
+            {
+                await OnInitializedAsync();
+            }
+            else
+            {
+                await RefreshCurrentSavedWindowedRecordAsync();
+            }
+
+            ex = new Exception("SharePoint document structure and files created successfully.")
+            {
+                Data =
+            {
+                { "PageMethod", dataObject.Label ?? "New Record: " },
+                { "AdditionalInfo", "SharePoint document structure and files created successfully." },
+                { "MessageType", MessageDisplay.ShowMessageType.Success }
+            }
+            };
+
+            OnError(ex);
+        }
+        else if (!Windowed)
+        {
+            await OnInitializedAsync();
+        }
+    }
+
+    private async Task RefreshCurrentSavedWindowedRecordAsync()
+    {
+        if (_formHelper == null || dataObject == null)
+        {
+            return;
+        }
+
+        var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.Guid);
+
+        if (recordGuid == Guid.Empty)
+        {
+            return;
+        }
+
+        var currentReference = new DataObjectReference(
+            recordGuid.ToString(),
+            PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.EntityTypeGuid).ToString());
+
+        var refreshedDataObject = await _formHelper.ReadDataObjectAsync(
+            recordGuid.ToString(),
+            currentReference,
+            IsInformationPage,
+            "",
+            modalService,
+            IsBulkUpdate,
+            transientVirtualProperties: TransientVirtualProperties);
+
+        if (!string.IsNullOrEmpty(refreshedDataObject.ErrorReturned))
+        {
+            throw new Exception(refreshedDataObject.ErrorReturned);
+        }
+
+        dataObject = refreshedDataObject;
+        RecordGuid = dataObject.Guid;
+        ObjectLabel = dataObject.Label;
+        storageUrl = dataObject.SharePointUrl;
+
+        MyDataObjectReference = currentReference;
+        ParentDataObjectReference = currentReference;
+        NewlyCreatedRecordReference = currentReference;
+
+        _editContext = new EditContext(dataObject);
+
+        HasValidationMessages = dataObject.HasValidationMessages;
+        SaveButtonDisabled = dataObject.SaveButtonDisabled;
+
+        await UpdateBrowserTabTitleAsync();
+
+        if (_buttonMenuRef != null)
+        {
+            await _buttonMenuRef.RequestRefresh();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task RebaseEditStateAfterSuccessfulSaveAsync(bool refreshFromServer)
+    {
+        if (dataObject == null)
+        {
+            return;
+        }
+
+        var recordGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.Guid);
+        var entityTypeGuid = PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(dataObject.EntityTypeGuid);
+
+        if (recordGuid == Guid.Empty || entityTypeGuid == Guid.Empty)
+        {
+            return;
+        }
+
+        if (refreshFromServer && _formHelper != null)
+        {
+            var currentReference = new DataObjectReference(
+                recordGuid.ToString(),
+                entityTypeGuid.ToString());
+
+            var refreshedDataObject = await _formHelper.ReadDataObjectAsync(
+                recordGuid.ToString(),
+                currentReference,
+                IsInformationPage,
+                "",
+                modalService,
+                IsBulkUpdate,
+                transientVirtualProperties: TransientVirtualProperties);
+
+            if (!string.IsNullOrWhiteSpace(refreshedDataObject.ErrorReturned))
+            {
+                throw new Exception(refreshedDataObject.ErrorReturned);
+            }
+
+            //dataObject = refreshedDataObject;
+            //Rather than assigning the dataobject, only get the rowversion. 
+            dataObject.RowVersion = refreshedDataObject.RowVersion;
+            dataObject.DataProperties.Clear();
+            dataObject.DataProperties.Add(refreshedDataObject.DataProperties);
+        }
+
+        RecordGuid = dataObject.Guid;
+        ObjectLabel = dataObject.Label;
+        storageUrl = dataObject.SharePointUrl;
+
+        HasValidationMessages = dataObject.HasValidationMessages;
+        SaveButtonDisabled = dataObject.SaveButtonDisabled;
+
+        DeltaDataObject = null;
+        hasUpdated = false;
+        HasChanges = false;
+
+        lock (_inputUpdateLock)
+        {
+            _lastProcessedUpdateSeq = _inputUpdateSeq;
+        }
+
+        _pendingHeaderValues.Clear();
+        //This can be commented out since the dataobject remains the same.
+       // _editContext = new EditContext(dataObject);
+
+        await UpdateBrowserTabTitleAsync();
+
+        if (_buttonMenuRef != null)
+        {
+            await _buttonMenuRef.RequestRefresh();
+        }
+
+        StateHasChanged();
     }
 
     private void ScrollToTop()
@@ -2529,11 +2893,12 @@ public partial class EditPage
         JsRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
     }
 
-    private async Task SetupSharePointUrlAsync(bool UpdateSharePoint)
+    private async Task<bool> SetupSharePointUrlAsync(bool UpdateSharePoint)
     {
+        var currentRecordMayHaveChanged = false;
+
         try
         {
-            // Check if the EntityTypeGuid is for the Permissions Record
             if (EntityTypeGuid == "5fe4e4c7-9f14-4853-90d6-ac249c3b6147" && UpdateSharePoint)
             {
                 var recordGuid = PWAFunctions.GetRecordGuidFromReturnUrl(ReturnUrl);
@@ -2544,11 +2909,17 @@ public partial class EditPage
 
                 if (!string.IsNullOrEmpty(recordGuid) && !string.IsNullOrEmpty(entityTypeGuid))
                 {
-                    // Both GUIDs are valid, proceed with SharePoint URL setup
                     Console.WriteLine("Both RecordGuid and EntityTypeGuid are valid.");
 
                     var originalDataObjectReference = new DataObjectReference(recordGuid, entityTypeGuid);
-                    var originalDataObject = await _formHelper.ReadDataObjectAsync(recordGuid, originalDataObjectReference, false, "", modalService, false, UpdateSharePoint);
+                    var originalDataObject = await _formHelper.ReadDataObjectAsync(
+                        recordGuid,
+                        originalDataObjectReference,
+                        false,
+                        "",
+                        modalService,
+                        false,
+                        UpdateSharePoint);
 
                     if (!string.IsNullOrEmpty(originalDataObject?.ErrorReturned))
                     {
@@ -2560,8 +2931,15 @@ public partial class EditPage
                         _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                         await _formHelper.LoadMetaDataAsync(IsInformationPage);
 
-                        storageUrl = await PWAFunctions.GetStorageUrlAsync(originalDataObject, _formHelper, storageUrl, false, UpdateSharePoint);
+                        storageUrl = await PWAFunctions.GetStorageUrlAsync(
+                            originalDataObject,
+                            _formHelper,
+                            storageUrl,
+                            false,
+                            UpdateSharePoint);
+
                         originalDataObject.SharePointUrl = storageUrl;
+
                         Console.WriteLine($"Storage URL - {storageUrl}");
                     }
                     else
@@ -2574,27 +2952,39 @@ public partial class EditPage
                     Console.WriteLine("One or both GUIDs are invalid.");
                 }
             }
-            else if (!IsBulkUpdate && dataObject != null &&
-                     dataObject.HasDocuments &&
-                     (string.IsNullOrEmpty(dataObject.SharePointUrl) || UpdateSharePoint))
+            else if (!IsBulkUpdate
+                     && dataObject != null
+                     && dataObject.HasDocuments
+                     && (string.IsNullOrEmpty(dataObject.SharePointUrl) || UpdateSharePoint))
             {
                 _formHelper = new API.Client.FormHelper(coreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(EntityTypeGuid).ToString(), userService);
                 await _formHelper.LoadMetaDataAsync(IsInformationPage);
 
-                storageUrl = await PWAFunctions.GetStorageUrlAsync(dataObject, _formHelper, storageUrl, false, UpdateSharePoint);
+                storageUrl = await PWAFunctions.GetStorageUrlAsync(
+                    dataObject,
+                    _formHelper,
+                    storageUrl,
+                    false,
+                    UpdateSharePoint);
+
                 dataObject.SharePointUrl = storageUrl;
+                currentRecordMayHaveChanged = true;
 
                 if (_buttonMenuRef != null)
+                {
                     await _buttonMenuRef.InitializeButton();
+                }
 
                 StateHasChanged();
             }
+
+            return currentRecordMayHaveChanged;
         }
         catch (Exception ex)
         {
-            // Log the exception for debugging purposes
             Console.WriteLine($"Error in SetupSharePointUrlAsync: {ex.Message}");
             Console.WriteLine(ex.StackTrace);
+            return false;
         }
     }
 
@@ -2654,7 +3044,7 @@ public partial class EditPage
                             NewValue = dataProperty.Value,
                             Dependents = dependants
                         };
-                        flexPropertyGroups.RebindFromPropertyChange(inputUpdatedArgs);
+                        foreach (var fpg in AllFlexPropertyGroups()) fpg.RebindFromPropertyChange(inputUpdatedArgs);
                         StateHasChanged();
                     });
                 }
@@ -2702,4 +3092,4 @@ public partial class EditPage
     }
 
     #endregion Private Methods
-}
+}

@@ -42,7 +42,7 @@ public sealed class SageSalesOrderRequestMapperTests
     }
 
     [Fact]
-    public void Map_UsesStandardTwentyPercentSageTaxCodeIdentifier()
+    public void Map_OmitsStandardTwentyPercentTaxCodeSoWrapperUsesNormalVatMapping()
     {
         var mapper = CreateMapper();
         var source = CreateSource(
@@ -53,11 +53,11 @@ public sealed class SageSalesOrderRequestMapperTests
         var request = mapper.Map(source);
 
         Assert.Single(request.Lines);
-        Assert.Equal(10, request.Lines[0].TaxCode);
+        Assert.Null(request.Lines[0].TaxCode);
     }
 
     [Fact]
-    public void Map_UsesCorrectedDefaultTaxCodeWhenSourceMappingIsBlank()
+    public void Map_OmitsStandardDefaultTaxCodeWhenSourceMappingIsBlank()
     {
         var mapper = CreateMapper();
         var source = CreateSource(
@@ -67,7 +67,21 @@ public sealed class SageSalesOrderRequestMapperTests
 
         var request = mapper.Map(source);
 
-        Assert.Equal(10, request.Lines[0].TaxCode);
+        Assert.Null(request.Lines[0].TaxCode);
+    }
+
+    [Fact]
+    public void Map_SendsDomesticReverseChargeTaxCodeOverride()
+    {
+        var mapper = CreateMapper();
+        var source = CreateSource(
+            transactionNumber: "BCCS 7718",
+            purchaseOrderNumber: "PO-45021",
+            vatCode: "22");
+
+        var request = mapper.Map(source);
+
+        Assert.Equal(22, request.Lines[0].TaxCode);
     }
 
     [Theory]
@@ -85,6 +99,23 @@ public sealed class SageSalesOrderRequestMapperTests
         var exception = Assert.Throws<InvalidOperationException>(() => mapper.Map(source));
 
         Assert.Contains("not a valid non-negative Sage tax-code identifier", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("CreditNote", true)]
+    [InlineData("Credit Note", true)]
+    [InlineData("Receipt", false)]
+    [InlineData("Payment", false)]
+    public void Map_RejectsNonInvoiceTransactionTypes(string transactionTypeName, bool isNegated)
+    {
+        var mapper = CreateMapper();
+        var source = CreateSource("TX-100", "PO-100", "10");
+        source.TransactionTypeName = transactionTypeName;
+        source.TransactionTypeIsNegated = isNegated;
+
+        var exception = Assert.Throws<InvalidOperationException>(() => mapper.Map(source));
+
+        Assert.Contains("cannot be mapped to the Sage sales-order endpoint", exception.Message);
     }
 
     private static SageSalesOrderRequestMapper CreateMapper()
@@ -112,6 +143,8 @@ public sealed class SageSalesOrderRequestMapperTests
             TransactionGuid = Guid.NewGuid(),
             TransactionId = 123,
             TransactionNumber = transactionNumber,
+            TransactionTypeGuid = Guid.NewGuid(),
+            TransactionTypeName = "Invoice",
             InvoiceNumber = transactionNumber,
             PurchaseOrderNumber = purchaseOrderNumber,
             RowStatus = 1,

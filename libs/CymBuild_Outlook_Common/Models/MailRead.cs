@@ -102,5 +102,10 @@ namespace CymBuild_Outlook_Common.Models
         public string? AttachmentBase64Data { get; set; }
         public string? AttachmentImageURL { get; set; }
         public string? AttachmentContent { get; set; }
+
+        // Per-attachment filing selections (CYB-244) - bound directly by the add-in's attachments tab.
+        public bool IncludeWhenFiling { get; set; }
+        public string? DestinationFolderPath { get; set; }
+        public string? Description { get; set; }
     }
 }

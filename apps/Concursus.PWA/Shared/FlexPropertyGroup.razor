@@ -15,121 +15,163 @@
                         <div class="d-flex justify-content-between align-items-center mb-2" @onclick="ToggleCollapse" style="cursor: pointer;">
                             <div class="d-flex flex-row justify-content-between">
                                 <h5 class="card-title mb-0">@entityPropertyGroup.Name</h5>
-
-                                @* Logic for showing the postcode button for the client section. *@
-                                @if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Agent Details")
-                                {
-                                    var addNewAgentAddress = dataObject.DataProperties
-                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("9c333b64-2f44-4833-bd6b-68571178f195").ToString())
-                                    ?? new DataProperty();
-
-                                  
-                                    //Get the value for the checkbox (e.g. true or not)
-                                    BoolValue boolValue = addNewAgentAddress.Value.Unpack<BoolValue>();
-
-                                    //If true, show the postcode button
-                                    if (boolValue.Value)
-                                    {
-                                        <div class="mx-3" @onclick:stopPropagation="true">
-                                            <PostcodeLookupButton 
-                                                @bind-DataObject="@dataObject"
-                                                EntityGroupSection="Agent" 
-                                                editPageRef="@editPageRef"
-                                            />
-                                        </div>
-                                        
-                                    }
-                                
-                                }
-                                //Logic for showing the postcode button for the client section.
-                                else if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Client Details")
-                                {
-
-                                    var addNewClientAddress = dataObject.DataProperties
-                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("0279fba4-01d2-4c7c-aee9-a29cfe45174c").ToString())
-                                    ?? new DataProperty();
-
-                                    var editPageR = editPageRef;
-
-                                    //Get the value for the checkbox (e.g. true or not)
-                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
-
-                                    //If true, show the postcode button
-                                    if (boolValue.Value)
-                                    {
-                                        <div class="mx-3" @onclick:stopPropagation="true">
-                                            <PostcodeLookupButton 
-                                                @bind-DataObject="@dataObject"
-                                                EntityGroupSection="Client" 
-                                                editPageRef="@editPageRef"
-                                            />
-                                        </div>
-                                    }
-                                }
-                                //Logic for showing the postcode button for the Asset section.
-                                else if (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Asset Details")
-                                {
-
-                                    var addNewClientAddress = dataObject.DataProperties
-                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("83730cf2-ac67-4064-9590-0a94800d03ce").ToString())
-                                    ?? new DataProperty();
-
-                                    var editPageR = editPageRef;
-
-                                    //Get the value for the checkbox (e.g. true or not)
-                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
-
-                                    //If true, show the postcode button
-                                    if (boolValue.Value)
-                                    {
-                                        <div class="mx-3" @onclick:stopPropagation="true">
-                                            <PostcodeLookupButton @bind-DataObject="@dataObject"
-                                                                  EntityGroupSection="Asset"
-                                                                  editPageRef="@editPageRef" />
-                                        </div>
-                                    }
-                                }
-                                //Logic for showing the postcode button for the Asset section.
-                                else if (dataObject.EntityTypeGuid == "83730cf2-ac67-4064-9590-0a94800d03ce" && entityPropertyGroup.Name == "Finance Account Details")
-                                {
-
-                                    var addNewClientAddress = dataObject.DataProperties
-                                    .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("d5e1665d-0914-4e0f-8ec4-3572890ec345").ToString())
-                                    ?? new DataProperty();
-
-                                    var editPageR = editPageRef;
-
-                                    //Get the value for the checkbox (e.g. true or not)
-                                    BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
-
-                                    //If true, show the postcode button
-                                    if (boolValue.Value)
-                                    {
-                                        <div class="mx-3" @onclick:stopPropagation="true">
-                                            <PostcodeLookupButton @bind-DataObject="@dataObject"
-                                                                  EntityGroupSection="Finance"
-                                                                  editPageRef="@editPageRef" />
-                                        </div>
-                                    }
-                                }
                             </div>
 
+                            @{
+                                //Flags => we use these to display buttons on certain pages/in certain entity property groups.
+
+                                /*
+                                 * Handling for when to show the address lookup / validate buttons.
+                                 * The first four flags are for the enquiry detail page's inline
+                                 * "Enter New Agent/Client/Asset/Finance Details" sections.
+                                 */
+                                bool IsNewAgentDetails = (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Agent Details");
+                                bool IsNewClientDetails = (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Client Details");
+                                bool IsNewAssetDetails = (dataObject.EntityTypeGuid == "3b4f2df9-b6cf-4a49-9eed-2206473867a1" && entityPropertyGroup.Name == "Asset Details");
+                                bool IsNewFinanceDetails = (dataObject.EntityTypeGuid == "83730cf2-ac67-4064-9590-0a94800d03ce" && entityPropertyGroup.Name == "Finance Account Details");
+
+                                bool IsAddressPage      = (entityPropertyGroup.Name == "Address Detail" && configuration.GetValue<bool>("PostcodeLookupUI:Enabled") == true);
+                                bool isNewAddressRecord = (RecordGuid == Guid.Empty.ToString());
+                                bool IsNewAccountRecord = entityPropertyGroup.Name == "Account" && RecordGuid == Guid.Empty.ToString();
+                                bool IsNewContactRecord = entityPropertyGroup.Name == "Contact" && RecordGuid == Guid.Empty.ToString();
 
 
+                                <div class="d-flex flex-row justify-content-end align-items-center flex-grow-1 px-2">
+                                    <!--Use metadata to populate this section - should be tied to the groups -->
+                                    @if (IsNewAgentDetails)
+                                    {
 
-                            <!--Use metadata to populate this section - should be tied to the groups -->
-                            @if(entityPropertyGroup.Name == "Address Detail" && configuration.GetValue<bool>("PostcodeLookupUI:Enabled") == true)
-                            {
-                                <PostcodeLookupButton 
-                                    @bind-DataObject="@dataObject"
-                                editPageRef="@editPageRef" />
+                                        var addNewAgentAddress = dataObject.DataProperties
+                                        .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("9c333b64-2f44-4833-bd6b-68571178f195").ToString())
+                                        ?? new DataProperty();
+
+
+                                        //Get the value for the checkbox (e.g. true or not)
+                                        BoolValue boolValue = addNewAgentAddress.Value.Unpack<BoolValue>();
+
+                                        //If true, show the postcode button
+                                        if (boolValue.Value)
+                                        {
+                                            <div class="d-inline-flex gap-2" @onclick:stopPropagation="true">
+                                                <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Agent"
+                                                                      editPageRef="@editPageRef" />
+                                                <DuplicateCheckButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Agent"
+                                                                      editPageRef="@editPageRef" />
+                                            </div>
+
+                                        }
+                                    }
+                                    else if (IsNewClientDetails)
+                                    {
+
+                                        var addNewClientAddress = dataObject.DataProperties
+                                        .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("0279fba4-01d2-4c7c-aee9-a29cfe45174c").ToString())
+                                        ?? new DataProperty();
+
+                                        var editPageR = editPageRef;
+
+                                        //Get the value for the checkbox (e.g. true or not)
+                                        BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                        //If true, show the postcode button
+                                        if (boolValue.Value)
+                                        {
+                                            <div class="d-inline-flex gap-2" @onclick:stopPropagation="true">
+                                                <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Client"
+                                                                      editPageRef="@editPageRef" />
+                                                <DuplicateCheckButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Client"
+                                                                      editPageRef="@editPageRef" />
+                                            </div>
+                                        }
+                                    }
+                                    else if (IsNewAssetDetails)
+                                    {
+
+                                        var addNewClientAddress = dataObject.DataProperties
+                                        .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("83730cf2-ac67-4064-9590-0a94800d03ce").ToString())
+                                        ?? new DataProperty();
+
+                                        var editPageR = editPageRef;
+
+                                        //Get the value for the checkbox (e.g. true or not)
+                                        BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                        //If true, show the postcode button
+                                        if (boolValue.Value)
+                                        {
+                                            <div class="d-inline-flex gap-2" @onclick:stopPropagation="true">
+                                                <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Asset"
+                                                                      editPageRef="@editPageRef" />
+                                                <DuplicateCheckButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Asset"
+                                                                      editPageRef="@editPageRef" />
+                                            </div>
+                                        }
+                                    }
+                                    else if (IsNewFinanceDetails)
+                                    {
+
+                                        var addNewClientAddress = dataObject.DataProperties
+                                        .FirstOrDefault(p => p.EntityPropertyGuid == PWAFunctions.ParseAndReturnEmptyGuidIfInvalid("d5e1665d-0914-4e0f-8ec4-3572890ec345").ToString())
+                                        ?? new DataProperty();
+
+                                        var editPageR = editPageRef;
+
+                                        //Get the value for the checkbox (e.g. true or not)
+                                        BoolValue boolValue = addNewClientAddress.Value.Unpack<BoolValue>();
+
+                                        //If true, show the postcode button
+                                        if (boolValue.Value)
+                                        {
+                                            <div class="d-inline-flex" @onclick:stopPropagation="true">
+                                                <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                                      EntityGroupSection="Finance"
+                                                                      editPageRef="@editPageRef" />
+                                            </div>
+
+                                        }
+                                    }
+                                    else if (IsAddressPage)
+                                    {
+                                        //[Postcode lookup button]
+                                        <PostcodeLookupButton @bind-DataObject="@dataObject"
+                                                              editPageRef="@editPageRef" />
+
+                                        //[CYB-312:
+                                        // Only show if editpage uri = StructureDetail and it's a new record.]
+                                        @if (isNewAddressRecord)
+                                        {
+                                            <button class="@ValidateBtnCSS  ms-2"
+                                                    disabled="@(ValidateBtnText == "Validated" ? true : false)"
+                                                    @onclick:stopPropagation
+                                                    @onclick="OnValidateClickAsync">
+                                                @ValidateBtnText
+                                            </button>
+                                        }
+                                    }
+                                    //[CYB-312]:
+                                    //Account & Contact details page => Show address validation button on new records.
+                                    else if (IsNewAccountRecord || IsNewContactRecord)
+                                    {
+                                        <button class="@ValidateBtnCSS ms-2"
+                                                disabled="@(ValidateBtnText == "Validated" ? true : false)"
+                                                @onclick:stopPropagation
+                                                @onclick="OnValidateClickAsync">
+                                            @ValidateBtnText
+                                        </button>
+                                    }
+                                </div>
                             }
-                          
+                           
+                           
                             @if (entityPropertyGroup.IsCollapsable)
                             {
                                 <i class="bi @(isCollapsed ? "bi-chevron-down" : "bi-chevron-up")" style="font-size: 1.5rem;"></i>
-
-                             
                             }
                         </div>
 
@@ -145,6 +187,8 @@
                                 </div>
                             </div>
                         }
+
+
                         <div class="@GetGroupFieldsCss()">
                             <CascadingValue Value="this">
                                 @foreach (var ep in FilteredEntityProperties)

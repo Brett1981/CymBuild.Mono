@@ -22,7 +22,7 @@
           @bind-ParentDataObjectReference="@ParentDataObjectReference"
           ReturnUrl="@ReturnUrl"
           CloseWindow="@CloseWindow"
-          GridUpdated="@GridUpdated"
+          GridUpdated="@HandleGridUpdated"
           IsDetailWindowed="IsDetailWindowed"
           EnableBrowserTabTitle="true"
           BrowserTabTitlePropertyName="Number"
@@ -72,7 +72,7 @@
                                     inputUpdated="@editPage.HandleInputUpdated" />
 
                 <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEMEMOS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                <DynamicGrid FormHelper="@_formHelper" GridCode="QUOTEITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                <DynamicGrid @ref="_quoteItemsGrid" FormHelper="@_formHelper" GridCode="QUOTEITEMS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" ResyncDataObject="@editPage.ReSyncDataObject" TransientVirtualProperties="@TransientVirtualProperties" />
                 @* <DynamicGrid GridCode="QUOTESECTIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" /> *@
             </section>
 
@@ -180,6 +180,18 @@
 
     private API.Client.FormHelper? _formHelper;
     private ErrorBoundary? _docsBoundary;
+    private DynamicGrid? _quoteItemsGrid;
+
+    // CYB-554: the Tasks-menu "Create Job(s)" action sets QuoteItems.CreatedJobId behind the
+    // Quote Items grid without touching editPage.dataObject, so the grid must be told to reload
+    // itself here or the new Job Number only appears after a page reload.
+    private async Task HandleGridUpdated()
+    {
+        _quoteItemsGrid?.RefreshGrid();
+
+        if (GridUpdated.HasDelegate)
+            await GridUpdated.InvokeAsync();
+    }
 
     private bool ShowDocumentsTab =>
         Config.Value.Environment.ShowDocumentsTab;

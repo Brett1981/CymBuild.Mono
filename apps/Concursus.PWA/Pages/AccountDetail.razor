@@ -1,5 +1,15 @@
 @page "/AccountDetail/{RecordGuid}/{SerializedDataObjectReference}/{ReturnUrl}"
+@using Google.Protobuf.WellKnownTypes
+@using Concursus.API.Client
+@using Concursus.API.Client.Models
+@using Newtonsoft.Json
+@using System.Web
+@inject Concursus.API.Client.Models.UserService userService
+@inject Core.CoreClient CoreClient
+@inject IJSRuntime JS
 @inherits EditPageBase
+@inject NavigationManager Navigation
+@inject ModalService modalService
 
 @attribute [Authorize]
 
@@ -16,6 +26,7 @@
           EnableBrowserTabTitle="true"
           BrowserTabTitlePropertyName="Name"
           BrowserTabTitlePrefix="Account"
+          IdentifyingFieldChanged="@OnIdentifyingFieldChanged"
           TransientVirtualProperties="@TransientVirtualProperties">
     <FormTitle>
         <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
@@ -44,27 +55,39 @@
             @if (ShouldRenderNativeTab(0))
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 0)">
+                    @if (RecordGuid == Guid.Empty.ToString())
+                    {
+                        <div class="alert alert-info d-flex align-items-start mt-3" role="alert">
+                            <i class="bi bi-info-circle-fill me-2 mt-1"></i>
+                            <div>
+                                <strong>Before saving, check this isn't a duplicate.</strong>
+                                Enter the account's <strong>Name</strong>, then click <strong>Validate</strong> above to check it
+                                against existing accounts. Using the full, exact name gives the most accurate result.
+                            </div>
+                        </div>
+                    }
                     <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
                                         entityProperties="@editPage.entityProperties"
                                         entityPropertyGroups="@editPage.entityPropertyGroups"
                                         IsMainRecordContext="@IsMainRecordContext"
                                         dataObject="@editPage.dataObject"
                                         RecordGuid="@RecordGuid"
-                                        inputUpdated="@editPage.HandleInputUpdated" />
+                                        inputUpdated="@editPage.HandleInputUpdated"
+                                        ValidateAddressCallback="@ValidateAddress"/>
 
-                    <DynamicGrid GridCode="ACCOUNTADDRESSES" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTADDRESSES" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
 
-                    <DynamicGrid GridCode="ACCOUNTCONTACTS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTCONTACTS" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
 
-                    <DynamicGrid GridCode="ACCOUNTMEMOS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTMEMOS" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
             }
 
             @if (ShouldRenderNativeTab(1))
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 1)">
-                    <DynamicGrid GridCode="ACCOUNTTRANSACTIONS" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
-                    <DynamicGrid GridCode="ACCOUNTFINANCEMEMO" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference"
+                    <DynamicGrid GridCode="ACCOUNTTRANSACTIONS" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTFINANCEMEMO" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference"
                                  ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
             }
@@ -72,17 +95,150 @@
             @if (ShouldRenderNativeTab(2))
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 2)">
-                    <DynamicGrid GridCode="ACCOUNTCONTRACTS" ParentGuid="@RecordGuid" FullGrid="true" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTCONTRACTS" ParentGuid="@editPage.dataObject.Guid" FullGrid="true" ParentDataObjectReference="@editPage.MyDataObjectReference" ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
             }
 
             @if (ShouldRenderNativeTab(3))
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 3)">
-                    <DynamicGrid GridCode="ACCOUNTJOBHISTORY" ParentGuid="@RecordGuid" ParentDataObjectReference="@editPage.MyDataObjectReference" TransientVirtualProperties="@TransientVirtualProperties" />
+                    <DynamicGrid GridCode="ACCOUNTJOBHISTORY" ParentGuid="@editPage.dataObject.Guid" ParentDataObjectReference="@editPage.MyDataObjectReference" TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
             }
         </div>
+
+
+        @if (ShowAssetConfirmationModal)
+        {
+            <div class="shore-input-modal-backdrop"></div>
+            <div class="shore-input-modal-shell" role="dialog" aria-modal="true">
+                <div class="shore-input-modal-card dup-select-modal-card">
+                    <div class="shore-input-modal-header">
+                        <div class="shore-input-modal-title-wrap">
+                            <div class="shore-input-modal-title">
+                                <i class="bi bi-arrow-up-right-square"></i>
+                                <span>Possible Account Duplicates</span>
+                            </div>
+                        </div>
+
+                        <div class="shore-input-modal-actions">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-light"
+                                    title="Close"
+                                    @onclick="CloseModal">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="shore-input-modal-body dup-select-modal-body">
+
+                        @if (HasDuplicateAssets)
+                        {
+                            <div class="alert alert-info small py-2 mb-2">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Select a match below and click <strong>Use Selected</strong> to be taken to that account
+                                instead, where you can make any changes needed - or click <strong>Cancel</strong> if none match.
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-around">
+                                <ShoreLookupInput Value="@DuplicateSelection"
+                                                  ValueChanged="@OnNativeLookupValueChangedAsync"
+                                                  LoadItems="@LoadDuplicateValues"
+                                                  Placeholder="Select possible duplicate"
+                                                  ReadOnly="false"
+                                                  IsInvalid="false"
+                                                  CssClass="w-100" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick="HandleModelOnClick">
+                                    <span class="bi bi bi-info-circle"></span>
+                                </button>
+                            </div>
+
+                            <div class="d-flex justify-content-end gap-2 mt-3">
+                                <button type="button"
+                                        class="btn btn-success"
+                                        @onclick="DuplicatePresent">
+                                    <i class="bi bi-check-circle-fill me-1"></i>
+                                    Use Selected
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-danger"
+                                        @onclick="DuplicateNotPresent">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                   Cancel
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="alert alert-success small mb-3">
+                                <i class="bi bi-check-circle me-2"></i>
+                                <strong>No potential duplicates found.</strong><br />
+                                The details you have entered do not closely match any existing account records.
+                            </div>
+
+                            <div class="d-flex justify-content-end gap-2 mt-4">
+                                <button type="button"
+                                        class="btn btn-success"
+                                        @onclick="DuplicateNotPresent">
+                                    <i class="bi bi-check-circle-fill me-1"></i>
+                                    Continue
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+
+            @if (SecondaryModalIsVisible)
+            {
+                var informationComponentType = InformationPageComponentType;
+
+                <!-- Secondary modal for inspecting asset records-->
+                <div class="shore-input-modal-backdrop"></div>
+                <div class="shore-input-modal-shell" role="dialog" aria-modal="true">
+                    <div class="shore-input-modal-card">
+                        <div class="shore-input-modal-header">
+                            <div class="shore-input-modal-title-wrap">
+                                <div class="shore-input-modal-title">
+                                    <i class="bi bi-info-circle"></i>
+                                    <span>"Information"</span>
+                                </div>
+                                @*
+                                 <div class="shore-input-modal-subtitle">@PropertyName</div>
+                            *@
+                            </div>
+                            <div class="shore-input-modal-actions">
+                                <button type="button" class="btn btn-sm btn-outline-light" title="Maximise" @onclick="() => { SecondaryModalIsVisible = !SecondaryModalIsVisible; }">
+                                    <i class="bi bi-arrows-fullscreen"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-light" title="Close" @onclick="() => { SecondaryModalIsVisible = !SecondaryModalIsVisible; }">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="shore-input-modal-body">
+                            @if (informationComponentType is not null)
+                            {
+                                <DynamicComponent Type="@informationComponentType" Parameters="@_detailPageParameters" />
+                            }
+                            else
+                            {
+                                <div class="alert alert-warning mb-0">
+                                    Could not resolve information component: StructureDetail
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+
+            }
+
+        }
+
     </FormBody>
 </EditPage>
 
@@ -90,6 +246,25 @@
 
     private int _nativeActiveTab;
     private readonly System.Collections.Generic.HashSet<int> _nativeVisitedTabs = new() { 0 };
+    private List<ComboDataItem> _duplicateItems = new();
+    private Guid DuplicateSelection { get; set; }
+    private bool ShowAssetConfirmationModal = false;
+    private bool HasDuplicateAssets = false;
+    private bool SecondaryModalIsVisible = false;
+    private IDictionary<string, object> _detailPageParameters = new Dictionary<string, object>();
+    private System.Type? InformationPageComponentType => ResolvePageComponentType("AccountDetail");
+    private const string AccountEntityTypeGuid = "40476ecc-d19a-4de9-90df-e1f45cd72fb2";
+    private const string DisplayNameGuid = "90596957-0988-4871-bcfa-05351faf2ae1";
+    private bool _validationConfirmed = false;
+
+    // When a windowed duplicate-check modal is reloaded onto an existing record (see
+    // DuplicatePresent), this component is still hosted by a DynamicComponent whose Parameters
+    // dictionary was built once, for the original *new* record, and never updated. Any later,
+    // unrelated re-render of that host re-pushes the stale RecordGuid/ParentDataObjectReference
+    // straight back into this component's parameters. Remembering the resolved record here and
+    // reasserting it in OnParametersSet keeps the swap from reverting.
+    private string? _resolvedRecordGuid;
+    private DataObjectReference? _resolvedParentDataObjectReference;
 
     private void SelectNativeTab(int index)
     {
@@ -101,5 +276,284 @@
 
     private string NativeTabButtonCss(int index) =>
         _nativeActiveTab == index ? "cb-native-tab-button active" : "cb-native-tab-button";
+
+    protected override void OnParametersSet()
+    {
+        if (_resolvedRecordGuid != null)
+        {
+            RecordGuid = _resolvedRecordGuid;
+            ParentDataObjectReference = _resolvedParentDataObjectReference!;
+        }
+
+        base.OnParametersSet();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Check this component's own RecordGuid, not the outer browser URL. When previewing a
+            // duplicate match via the info (i) popup, this page is rendered inline with its own
+            // RecordGuid for an *existing* record while the browser URL still points at the record
+            // being created, so the URL-based check wrongly forced validation on the read-only
+            // preview (CYB-312 QA feedback).
+            if (!IsInformationPage && RecordGuid == Guid.Empty.ToString())
+            {
+                editPage.ValidationRequired();
+            }
+        }
+        base.OnAfterRender(firstRender);
+    }
+
+
+    string? GetStringValue(Any? any)
+    {
+        if (any == null)
+            return null;
+
+        return any.Unpack<StringValue>().Value;
+    }
+
+    private Task<IReadOnlyList<ComboDataItem>> LoadDuplicateValues(string searchText)
+    {
+        var items = _duplicateItems
+            .Where(x => string.IsNullOrWhiteSpace(searchText) ||
+                        x.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<ComboDataItem>>(items);
+    }
+
+    private Task OnNativeLookupValueChangedAsync(Guid value)
+    {
+        DuplicateSelection = value;
+        return Task.CompletedTask;
+    }
+
+
+    private async void DuplicatePresent()
+    {
+
+        if (DuplicateSelection == null || DuplicateSelection == Guid.Empty)
+        {
+            await JS.InvokeVoidAsync("alert", "No account has been selected");
+            return;
+        }
+
+        var parentDataObjectRef = new DataObjectReference(DuplicateSelection.ToString(), AccountEntityTypeGuid);
+
+        //Prevent popup from appearing (e.g. you have changes...)
+        editPage.SetHasChangesToFalse();
+
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            "Your changes will be lost. Do you want to continue?"
+        );
+
+        if (!confirmed)
+        {
+            ShowAssetConfirmationModal = false;
+            StateHasChanged();
+            return;
+        }
+
+        if (Windowed)
+        {
+            // Loaded inside a modal: reload this same modal with the selected existing account
+            // instead of navigating the whole browser tab away from it.
+            ShowAssetConfirmationModal = false;
+            _resolvedRecordGuid = DuplicateSelection.ToString();
+            _resolvedParentDataObjectReference = parentDataObjectRef;
+            RecordGuid = _resolvedRecordGuid;
+            ParentDataObjectReference = parentDataObjectRef;
+            await editPage.ReloadRecordAsync(RecordGuid, parentDataObjectRef);
+        }
+        else
+        {
+            var serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(parentDataObjectRef));
+            var returnUri = System.Web.HttpUtility.UrlEncode(Navigation.Uri);
+            var url = $"AccountDetail/{DuplicateSelection.ToString()}/{serializeParentDataObjectReferenced}/{returnUri}";
+
+            Navigation.NavigateTo(url, true);
+        }
+
+        StateHasChanged();
+    }
+
+    private void DuplicateNotPresent()
+    {
+
+        ShowAssetConfirmationModal = false;
+        editPage.flexPropertyGroups?.ChangeValidationBtnText("Validated", "btn btn-success");
+        editPage.DataHasBeenValidated();
+        _validationConfirmed = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Re-arms the "Validate" button if the account's Display Name is edited after the account
+    /// was already confirmed via the duplicate-check modal, so the user can re-check.
+    /// </summary>
+    private void OnIdentifyingFieldChanged(Guid entityPropertyGuid)
+    {
+        if (!DuplicateCheckRevalidation.ShouldRearm(_validationConfirmed, entityPropertyGuid == new Guid(DisplayNameGuid), RecordGuid))
+        {
+            return;
+        }
+
+        _validationConfirmed = false;
+        editPage.flexPropertyGroups?.ChangeValidationBtnText("Validate", "btn btn-primary");
+        editPage.ValidationRequired();
+    }
+
+
+    private void CloseModal()
+    {
+        ShowAssetConfirmationModal = false;
+        StateHasChanged();
+    }
+
+    protected void HandleModelOnClick()
+    {
+
+        if (SecondaryModalIsVisible) return; // Prevent modal from being re-registered
+
+        var modalId = "";
+        try
+        {
+            string serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(ParentDataObjectReference ?? new DataObjectReference("", ""))); ;
+            if (ParentDataObjectReference == null || (ParentDataObjectReference.EntityTypeGuid == Guid.Empty)
+                && ParentDataObjectReference.DataObjectGuid == Guid.Empty)
+            {
+                try
+                {
+                    ParentDataObjectReference = new DataObjectReference(DuplicateSelection.ToString(), AccountEntityTypeGuid);
+                    serializeParentDataObjectReferenced = HttpUtility.UrlEncode(JsonConvert.SerializeObject(ParentDataObjectReference));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                }
+            }
+            //Get new ModalId, add it to Parameter and register it
+            modalId = Guid.NewGuid().ToString();
+            _detailPageParameters.Clear();
+            _detailPageParameters.Add("EntityTypeGuid", AccountEntityTypeGuid);
+            _detailPageParameters.Add("Windowed", true);
+            _detailPageParameters.Add("CloseWindow", EventCallback.Factory.Create(this, CloseWindow));
+            _detailPageParameters.Add("RecordGuid",
+                PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(DuplicateSelection.ToString()).ToString());
+            _detailPageParameters.Add("SerializedDataObjectReference", serializeParentDataObjectReferenced);
+            _detailPageParameters.Add("ParentDataObjectReference", ParentDataObjectReference);
+            // _detailPageParameters.Add("PassedEntityProperty",
+            //     EntityProperty); //this will be the Object that needs populating
+            _detailPageParameters.Add("ReturnUrl", "");
+            _detailPageParameters.Add("IsInformationPage", true);
+            _detailPageParameters.Add("ModalId", modalId);
+
+            modalService.RegisterModal(modalId, ParentDataObjectReference);
+
+            SecondaryModalIsVisible = true;
+        }
+        catch (Exception ex)
+        {
+            ex.Data["MessageType"] = MessageDisplay.ShowMessageType.Error;
+            ex.Data["AdditionalInfo"] = "Error in HandleModelOnClick().";
+            ex.Data["PageMethod"] = "ShoreInput/HandleModelOnClick()";
+            _ = OnError.InvokeAsync(ex);
+        }
+    }
+
+    private static System.Type? ResolvePageComponentType(string? pageUri)
+    {
+        var trimmedPageUri = pageUri?.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedPageUri))
+        {
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            trimmedPageUri,
+            $"{trimmedPageUri}, Concursus.PWA",
+            $"Concursus.PWA.Pages.{trimmedPageUri}",
+            $"Concursus.PWA.Pages.{trimmedPageUri}, Concursus.PWA",
+            $"Concursus.PWA.Shared.{trimmedPageUri}",
+            $"Concursus.PWA.Shared.{trimmedPageUri}, Concursus.PWA"
+        };
+
+        foreach (var candidate in candidates)
+        {
+            var type = System.Type.GetType(candidate, throwOnError: false, ignoreCase: false);
+
+            if (type is not null)
+            {
+                return type;
+            }
+        }
+
+        return AppDomain.CurrentDomain
+            .GetAssemblies()
+            .Select(assembly => assembly.GetType($"Concursus.PWA.Pages.{trimmedPageUri}", throwOnError: false, ignoreCase: false)
+                             ?? assembly.GetType($"Concursus.PWA.Shared.{trimmedPageUri}", throwOnError: false, ignoreCase: false)
+                             ?? assembly.GetType(trimmedPageUri, throwOnError: false, ignoreCase: false))
+            .FirstOrDefault(type => type is not null);
+    }
+
+    private async Task<bool> ValidateAddress()
+    {
+        try
+        {
+            var _formHelper = new API.Client.FormHelper(CoreClient, PWAFunctions.ParseAndReturnEmptyGuidIfInvalid(RecordGuid).ToString(), userService);
+            var DisplayName = GetStringValue(editPage.dataObject.DataProperties.Where(x => x.EntityPropertyGuid == "90596957-0988-4871-bcfa-05351faf2ae1").FirstOrDefault().Value) ?? "";
+
+
+            //Check if all the variables are empty. (e.g. user clicked "Validate" but didn't enter an address)
+
+            if(DisplayName == string.Empty)
+            {
+                await JS.InvokeVoidAsync("alert", "Please, enter the display name before validating.");
+                return false;
+            }
+
+
+            var duplicates = await _formHelper.DuplicateAccountsGet(DisplayName);
+
+            _duplicateItems = duplicates?.Duplicates
+                 .Select(x => new ComboDataItem(
+                     new DropDownDataListItem
+                     {
+                         Value = x.Guid,
+                         Name = x.DisplaName
+                     }))
+                 .ToList() ?? new List<ComboDataItem>();
+
+            HasDuplicateAssets = _duplicateItems.Count > 0;
+            DuplicateSelection = Guid.Empty;
+
+            //Disable the save button until the user confirms via the modal.
+            editPage.ValidationRequired();
+
+            ShowAssetConfirmationModal = true;
+            StateHasChanged();
+
+            //Modal drives the final "Validated" state via DuplicatePresent/DuplicateNotPresent.
+            return false;
+        }
+        catch (Exception ex)
+        {
+            await HandleErrorAsync(ex, "PropertyDetail/ValidateAddress()");
+            return false;
+        }
+    }
+
+    private async Task HandleErrorAsync(Exception ex, string method)
+    {
+        ex.Data.Add("MessageType", MessageDisplay.ShowMessageType.Error);
+        ex.Data.Add("AdditionalInfo", "An error occurred while processing the request. Please try again later.");
+        ex.Data.Add("PageMethod", method);
+        await OnError.InvokeAsync(ex);
+    }
 
 }

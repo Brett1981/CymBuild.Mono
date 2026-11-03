@@ -336,6 +336,42 @@ WHERE schemaObject.name = @SchemaName
     return ([int64]$value -gt 0)
 }
 
+function Test-SequenceExists {
+    param($Connection, $Transaction, [string]$SchemaName, [string]$SequenceName)
+
+    $sql = @'
+SELECT COUNT_BIG(1)
+FROM sys.sequences AS sequenceObject
+JOIN sys.schemas AS schemaObject ON schemaObject.schema_id = sequenceObject.schema_id
+WHERE schemaObject.name = @SchemaName
+  AND sequenceObject.name = @ObjectName;
+'@
+    $value = Invoke-SqlScalar `
+        -Connection $Connection `
+        -Transaction $Transaction `
+        -CommandText $sql `
+        -Parameters @{ '@SchemaName' = $SchemaName; '@ObjectName' = $SequenceName }
+    return ([int64]$value -gt 0)
+}
+
+function Test-TableTypeExists {
+    param($Connection, $Transaction, [string]$SchemaName, [string]$TypeName)
+
+    $sql = @'
+SELECT COUNT_BIG(1)
+FROM sys.table_types AS typeObject
+JOIN sys.schemas AS schemaObject ON schemaObject.schema_id = typeObject.schema_id
+WHERE schemaObject.name = @SchemaName
+  AND typeObject.name = @ObjectName;
+'@
+    $value = Invoke-SqlScalar `
+        -Connection $Connection `
+        -Transaction $Transaction `
+        -CommandText $sql `
+        -Parameters @{ '@SchemaName' = $SchemaName; '@ObjectName' = $TypeName }
+    return ([int64]$value -gt 0)
+}
+
 function Test-ProcedureExists {
     param($Connection, $Transaction, [string]$SchemaName, [string]$ProcedureName)
 
@@ -549,6 +585,48 @@ function Convert-CanonicalBatchForTestDatabase {
             1
         )
     }
+    elseif ($Kind -eq 'View') {
+        $createViewRegex = New-Object System.Text.RegularExpressions.Regex(
+            '(?im)^\s*CREATE\s+VIEW',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        $converted = $createViewRegex.Replace(
+            $converted,
+            'CREATE OR ALTER VIEW',
+            1
+        )
+    }
+    elseif ($Kind -eq 'Function') {
+        $createFunctionRegex = New-Object System.Text.RegularExpressions.Regex(
+            '(?im)^\s*CREATE\s+FUNCTION',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        $converted = $createFunctionRegex.Replace(
+            $converted,
+            'CREATE OR ALTER FUNCTION',
+            1
+        )
+    }
+    elseif ($Kind -eq 'TableType') {
+        # LocalDB rejects FILLFACTOR as a CREATE TYPE option; like the [METADATA] rewrite above,
+        # dropping it changes physical storage only.
+        $fillFactorRegex = New-Object System.Text.RegularExpressions.Regex(
+            '\s+WITH\s*\(\s*FILLFACTOR\s*=\s*\d+\s*\)',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        $converted = $fillFactorRegex.Replace($converted, '')
+    }
+    elseif ($Kind -eq 'Trigger') {
+        $createTriggerRegex = New-Object System.Text.RegularExpressions.Regex(
+            '(?im)^\s*CREATE\s+TRIGGER',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+        $converted = $createTriggerRegex.Replace(
+            $converted,
+            'CREATE OR ALTER TRIGGER',
+            1
+        )
+    }
 
     return $converted
 }
@@ -577,6 +655,12 @@ function Invoke-ManifestSource {
             'Table' {
                 $shouldExecute = -not (Test-TableExists -Connection $Connection -Transaction $Transaction -SchemaName $schemaName -TableName $objectName)
             }
+            'Sequence' {
+                $shouldExecute = -not (Test-SequenceExists -Connection $Connection -Transaction $Transaction -SchemaName $schemaName -SequenceName $objectName)
+            }
+            'TableType' {
+                $shouldExecute = -not (Test-TableTypeExists -Connection $Connection -Transaction $Transaction -SchemaName $schemaName -TypeName $objectName)
+            }
             'PrimaryKey' {
                 $shouldExecute = -not (Test-PrimaryKeyExists -Connection $Connection -Transaction $Transaction -SchemaName $schemaName -TableName $objectName)
             }
@@ -596,6 +680,15 @@ function Invoke-ManifestSource {
                 $shouldExecute = -not (Test-ForeignKeyDisabled -Connection $Connection -Transaction $Transaction -SchemaName $schemaName -TableName $objectName -ForeignKeyName ([string]$batchContract.name))
             }
             'Procedure' {
+                $shouldExecute = $true
+            }
+            'View' {
+                $shouldExecute = $true
+            }
+            'Function' {
+                $shouldExecute = $true
+            }
+            'Trigger' {
                 $shouldExecute = $true
             }
             default {
@@ -653,7 +746,18 @@ FROM (VALUES
     (N'SCore', N'IntegrationOutbox', N'U'),
     (N'SCore', N'UpsertDataObject', N'P'),
     (N'SCore', N'DataObjectTransitionUpsert', N'P'),
-    (N'SCore', N'NonActivityEventsUpsert', N'P')
+    (N'SCore', N'NonActivityEventsUpsert', N'P'),
+    (N'SFin', N'Transactions', N'U'),
+    (N'SFin', N'TransactionDetails', N'U'),
+    (N'SFin', N'TransactionSageSubmissionStatus', N'U'),
+    (N'SFin', N'TransactionSageInvoiceDetails_Upsert', N'P'),
+    (N'SFin', N'TransactionSageSubmissionStatus_MarkSentLegacy', N'P'),
+    (N'SFin', N'Transaction_InvoiceMergeInfo', N'V'),
+    (N'SCore', N'GetCurrentUserId', N'FN'),
+    (N'SCore', N'IntegrationOutbox_EnqueueJobCreatedFromProposal', N'P'),
+    (N'SSop', N'tr_QuoteItems_EnqueueJobCreatedFromProposal', N'TR'),
+    (N'SCore', N'EntityPropertiesForValidationV', N'V'),
+    (N'SSop', N'tvf_QuotesValidate', N'TF')
 ) AS requiredObjects(SchemaName, ObjectName, ObjectType)
 WHERE OBJECT_ID(
     QUOTENAME(requiredObjects.SchemaName) + N'.' + QUOTENAME(requiredObjects.ObjectName),
@@ -672,7 +776,8 @@ FROM (VALUES
     (N'SCore', N'NonActivityTypes'),
     (N'SCore', N'NonActivityEvents'),
     (N'SCore', N'DataObjectTransition'),
-    (N'SCore', N'IntegrationOutbox')
+    (N'SCore', N'IntegrationOutbox'),
+    (N'SCore', N'EntityProperties')
 ) AS requiredTables(SchemaName, TableName)
 WHERE OBJECT_ID(
     QUOTENAME(requiredTables.SchemaName) + N'.' + QUOTENAME(requiredTables.TableName),
@@ -719,6 +824,8 @@ WHERE indexObject.object_id = OBJECT_ID(N'SCore.DataObjectTransition')
         FixtureStatusCount = 0L
         FixtureNonActivityTypeCount = 0L
         FixtureDataObjectCount = 0L
+        FixtureJobClosureStatusCount = 0L
+        FixtureOrganisationalUnitCount = 0L
     }
 
     $compatibilitySql = @'
@@ -730,7 +837,14 @@ FROM (VALUES
     (N'SSop', N'EnquiryServices'),
     (N'SSop', N'Quotes'),
     (N'SSop', N'QuoteItems'),
-    (N'SSop', N'QuoteItemTotals')
+    (N'SSop', N'QuoteItemTotals'),
+    (N'SCrm', N'Accounts'),
+    (N'SFin', N'VatCodes'),
+    (N'SCrm', N'AccountAddresses'),
+    (N'SCrm', N'Addresses'),
+    (N'SFin', N'CreditTerms'),
+    (N'SCrm', N'Contact_MergeInfo'),
+    (N'SSop', N'Projects')
 ) AS compatibilityObjects(SchemaName, ObjectName)
 WHERE OBJECT_ID(
     QUOTENAME(compatibilityObjects.SchemaName) + N'.' + QUOTENAME(compatibilityObjects.ObjectName),
@@ -739,14 +853,15 @@ WHERE OBJECT_ID(
 '@
     $state.CompatibilityObjectCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $compatibilitySql)
 
-    if ([int64]$state.RequiredTableCount -eq 10) {
+    if ([int64]$state.RequiredTableCount -eq 11) {
         $fixtureEntityHobtSql = @'
 SELECT COUNT_BIG(1)
 FROM SCore.EntityHobts
 WHERE Guid IN
 (
     'D4D00002-0000-4000-8000-000000000007',
-    'D4D00002-0000-4000-8000-000000000008'
+    'D4D00002-0000-4000-8000-000000000008',
+    'D4D00002-0000-4000-8000-000000000009'
 )
   AND RowStatus NOT IN (0, 254);
 '@
@@ -781,6 +896,25 @@ FROM SCore.NonActivityTypes
 WHERE Guid = 'D4D00006-0000-4000-8000-000000000001'
   AND RowStatus NOT IN (0, 254);
 '@
+        $fixtureJobClosureStatusSql = @'
+SELECT COUNT_BIG(1)
+FROM SCore.WorkflowStatus
+WHERE Guid IN
+(
+    '5ED9C55A-4E14-44F6-A106-AE0F5C5EC38D',
+    'E6776DB3-812F-4328-B81E-FEFD494EA049',
+    '20D22623-283B-4088-9CEB-D944AC3E6516',
+    '48507119-2F28-490C-83A6-CE8F85E5AF7F'
+)
+  AND RowStatus NOT IN (0, 254)
+  AND ShowInJobs = 1;
+'@
+        $fixtureOrganisationalUnitSql = @'
+SELECT COUNT_BIG(1)
+FROM SCore.OrganisationalUnits
+WHERE Name = N'CymBuild R4 Test OrgUnit'
+  AND RowStatus NOT IN (0, 254);
+'@
         $fixtureDataObjectSql = @'
 SELECT COUNT_BIG(1)
 FROM SCore.DataObjects
@@ -802,11 +936,17 @@ WHERE Guid IN
     'D4D00002-0000-4000-8000-000000000006',
     'D4D00002-0000-4000-8000-000000000007',
     'D4D00002-0000-4000-8000-000000000008',
+    'D4D00002-0000-4000-8000-000000000009',
     'D4D00003-0000-4000-8000-000000000001',
     'D4D00004-0000-4000-8000-000000000001',
     'D4D00005-0000-4000-8000-000000000001',
     'D4D00005-0000-4000-8000-000000000002',
-    'D4D00006-0000-4000-8000-000000000001'
+    'D4D00006-0000-4000-8000-000000000001',
+    '63542427-46AB-4078-ABD1-1D583C24315C',
+    '5ED9C55A-4E14-44F6-A106-AE0F5C5EC38D',
+    'E6776DB3-812F-4328-B81E-FEFD494EA049',
+    '20D22623-283B-4088-9CEB-D944AC3E6516',
+    '48507119-2F28-490C-83A6-CE8F85E5AF7F'
 )
   AND RowStatus NOT IN (0, 254);
 '@
@@ -815,6 +955,8 @@ WHERE Guid IN
         $state.FixtureIdentityCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureIdentitySql)
         $state.FixtureStatusCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureStatusSql)
         $state.FixtureNonActivityTypeCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureNonActivityTypeSql)
+        $state.FixtureJobClosureStatusCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureJobClosureStatusSql)
+        $state.FixtureOrganisationalUnitCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureOrganisationalUnitSql)
         $state.FixtureDataObjectCount = [int64](Invoke-SqlScalar -Connection $Connection -Transaction $Transaction -CommandText $fixtureDataObjectSql)
     }
 
@@ -828,11 +970,11 @@ function Assert-ProvisioningState {
     )
 
     $failures = New-Object System.Collections.Generic.List[string]
-    if ([int64]$State.RequiredObjectCount -ne 6) {
-        $failures.Add("required objects $($State.RequiredObjectCount)/6")
+    if ([int64]$State.RequiredObjectCount -ne 17) {
+        $failures.Add("required objects $($State.RequiredObjectCount)/17")
     }
-    if ([int64]$State.RequiredTableCount -ne 10) {
-        $failures.Add("required tables $($State.RequiredTableCount)/10")
+    if ([int64]$State.RequiredTableCount -ne 11) {
+        $failures.Add("required tables $($State.RequiredTableCount)/11")
     }
     if ([int64]$State.RequiredIndexCount -ne 2) {
         $failures.Add("required named indexes $($State.RequiredIndexCount)/2")
@@ -840,11 +982,11 @@ function Assert-ProvisioningState {
     if ([int64]$State.UniqueTransitionGuidCount -lt 1) {
         $failures.Add('unique transition Guid index missing')
     }
-    if ([int64]$State.CompatibilityObjectCount -ne 7) {
-        $failures.Add("procedure compatibility objects $($State.CompatibilityObjectCount)/7")
+    if ([int64]$State.CompatibilityObjectCount -ne 14) {
+        $failures.Add("procedure compatibility objects $($State.CompatibilityObjectCount)/14")
     }
-    if ([int64]$State.FixtureEntityHobtCount -ne 2) {
-        $failures.Add("required EntityHobts fixtures $($State.FixtureEntityHobtCount)/2")
+    if ([int64]$State.FixtureEntityHobtCount -ne 3) {
+        $failures.Add("required EntityHobts fixtures $($State.FixtureEntityHobtCount)/3")
     }
     if ([int64]$State.FixtureGroupCount -ne 1) {
         $failures.Add("group fixtures $($State.FixtureGroupCount)/1")
@@ -858,8 +1000,14 @@ function Assert-ProvisioningState {
     if ([int64]$State.FixtureNonActivityTypeCount -ne 1) {
         $failures.Add("non-activity fixtures $($State.FixtureNonActivityTypeCount)/1")
     }
-    if ([int64]$State.FixtureDataObjectCount -ne 21) {
-        $failures.Add("fixture DataObjects $($State.FixtureDataObjectCount)/21")
+    if ([int64]$State.FixtureJobClosureStatusCount -ne 4) {
+        $failures.Add("Job closure workflow status fixtures $($State.FixtureJobClosureStatusCount)/4")
+    }
+    if ([int64]$State.FixtureOrganisationalUnitCount -ne 1) {
+        $failures.Add("OrganisationalUnit fixtures $($State.FixtureOrganisationalUnitCount)/1")
+    }
+    if ([int64]$State.FixtureDataObjectCount -ne 27) {
+        $failures.Add("fixture DataObjects $($State.FixtureDataObjectCount)/27")
     }
 
     if ($failures.Count -gt 0) {
@@ -880,7 +1028,14 @@ Assert-TestSqlScript -Path $compatibilityPath -RequiredText @(
     'CREATE TABLE SSop.Quotes',
     'CREATE TABLE SSop.QuoteItemTotals',
     'CREATE TABLE SSop.EnquiryServices',
-    'CREATE TABLE SSop.Enquiries'
+    'CREATE TABLE SSop.Enquiries',
+    'CREATE TABLE SCrm.Accounts',
+    'CREATE TABLE SFin.VatCodes',
+    'CREATE TABLE SCrm.AccountAddresses',
+    'CREATE TABLE SCrm.Addresses',
+    'CREATE TABLE SFin.CreditTerms',
+    'CREATE TABLE SCrm.Contact_MergeInfo',
+    'CREATE TABLE SSop.Projects'
 )
 Assert-TestSqlScript -Path $fixturePath -RequiredText @(
     "DB_NAME() NOT LIKE N'CymBuild[_]Test[_]%'",
@@ -890,7 +1045,8 @@ Assert-TestSqlScript -Path $fixturePath -RequiredText @(
     'INSERT INTO SCore.Groups',
     'INSERT INTO SCore.Identities',
     'INSERT INTO SCore.WorkflowStatus',
-    'INSERT INTO SCore.NonActivityTypes'
+    'INSERT INTO SCore.NonActivityTypes',
+    'INSERT INTO SCrm.Accounts'
 )
 
 if ($ValidateSourceOnly) {
@@ -932,7 +1088,7 @@ try {
     if ($VerifyOnly) {
         $state = Get-ProvisioningState -Connection $connection
         Assert-ProvisioningState -State $state -DatabaseName $connectionDetails.DatabaseName
-        Write-Host "Dedicated SQL test database '$($connectionDetails.DatabaseName)' is provisioned for all 22 R4 cases."
+        Write-Host "Dedicated SQL test database '$($connectionDetails.DatabaseName)' is provisioned for all 37 R4 cases."
         return
     }
 
@@ -983,7 +1139,15 @@ $allowedDatabaseContext
         foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Schema' })) {
             Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
         }
+        # Table types have no dependencies and procedures take them as parameters, so they go
+        # straight after the schemas.
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'TableType' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
         foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Table' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Sequence' })) {
             Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
         }
 
@@ -995,7 +1159,27 @@ $allowedDatabaseContext
 
         Ensure-TestSupportFunction -Connection $connection -Transaction $transaction
 
+        # Views normally run before Functions: some views (e.g. SCore.WF_Auth_DataObjectRouting)
+        # are pure table joins that a Function may itself depend on. A view that instead depends on
+        # a Function (e.g. SCore.vw_WF_AuthorisationQueue_Display, which calls
+        # SCore.tvf_WF_AuthorisationQueue) is declared with source kind 'ViewDeferred' - its batches
+        # are still kind 'View' for Convert-CanonicalBatchForTestDatabase/shouldExecute purposes, but
+        # its outer kind routes it into this later pass instead. Neither CREATE VIEW nor
+        # CREATE FUNCTION supports deferred name resolution (unlike CREATE PROCEDURE), so an
+        # unconditional single View pass cannot satisfy both directions of this dependency.
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'View' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Function' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
         foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Procedure' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'ViewDeferred' })) {
+            Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
+        }
+        foreach ($source in @($manifest.sources | Where-Object { [string]$_.kind -eq 'Trigger' })) {
             Invoke-ManifestSource -SourceRoot $sourceRoot -Source $source -Connection $connection -Transaction $transaction
         }
 

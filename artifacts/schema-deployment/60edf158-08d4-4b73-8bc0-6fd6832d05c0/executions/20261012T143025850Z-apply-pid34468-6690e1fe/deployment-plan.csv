@@ -1,0 +1,6 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"4c87c38d-09c0-4288-96cf-872f581a0560","Table","SCore","MergeDocuments","","Different","True","True","True","True"
+"870921ec-2431-40f0-8d01-0a792df5193e","Constraint","SCore","DF_SCore_MergeDocuments_IsActive","MergeDocuments","MissingInTarget","True","False","True","True"
+"2db42846-9016-4bba-9823-261f4b3d4a6e","Function","SCore","tvf_MergeDocumentsForEntityType","","Different","True","False","True","True"
+"0eebbffa-4ca0-4e3e-bec3-48c07dcce841","Function","SCore","tvf_UserCanUseInactiveMergeDocuments","","MissingInTarget","True","False","True","True"
+"d54dd995-6fb5-4ea1-895c-5ed59d60aa0b","StoredProcedure","SCore","MergeDocumentsUpsert","","Different","True","False","True","True"

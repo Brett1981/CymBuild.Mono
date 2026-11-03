@@ -23,9 +23,19 @@ public static class MetadataValidateCli
         }
 
         var cmd = args[0].Trim().ToLowerInvariant();
+        if (cmd == "metadata-auto")
+        {
+            return await Concursus.EF.MigrationCli.MetadataMigrationCli.RunAsync(args.Skip(1).ToArray(), ct);
+        }
+
+        if (cmd == "schema-prepare")
+        {
+            return await Concursus.EF.MigrationCli.SchemaMigrationCli.RunAsync(args, ct);
+        }
+
         if (cmd != "validate-grids")
         {
-            Console.Error.WriteLine($"Unknown command '{args[0]}'. Expected: validate-grids");
+            Console.Error.WriteLine($"Unknown command '{args[0]}'. Expected: validate-grids, metadata-auto, schema-prepare");
             return 4;
         }
 

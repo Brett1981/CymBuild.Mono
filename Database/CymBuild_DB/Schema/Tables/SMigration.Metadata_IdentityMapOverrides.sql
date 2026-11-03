@@ -28,6 +28,7 @@ CREATE TABLE [SMigration].[Metadata_IdentityMapOverrides] (
   [TargetRowId] [bigint] NULL,
   [TargetDisplayName] [nvarchar](500) NOT NULL CONSTRAINT [DF_Metadata_IdentityMapOverrides_TargetDisplayName] DEFAULT (N''),
   [StableOverrideKey] [nvarchar](800) NOT NULL,
+  [ColumnSourceSelectionJson] [nvarchar](max) NULL,
   [Reason] [nvarchar](500) NOT NULL CONSTRAINT [DF_Metadata_IdentityMapOverrides_Reason] DEFAULT (N''),
   [MappedByUserId] [int] NOT NULL CONSTRAINT [DF_Metadata_IdentityMapOverrides_MappedByUserId] DEFAULT (-1),
   [MappedOnUtc] [datetime2] NOT NULL CONSTRAINT [DF_Metadata_IdentityMapOverrides_MappedOnUtc] DEFAULT (sysutcdatetime()),

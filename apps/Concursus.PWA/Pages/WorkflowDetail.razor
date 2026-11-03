@@ -56,7 +56,9 @@
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 1)">
                     <DynamicGrid GridCode="WORKFLOWSTATUS"
-                                 DrawerGuid="@DrawerGuid"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
                                  FullGrid="true"
                                  TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
@@ -66,7 +68,9 @@
             {
                 <section class="cb-native-tab-panel" role="tabpanel" hidden="@(_nativeActiveTab != 2)">
                     <DynamicGrid GridCode="WORKFLOWAUTH"
-                                 DrawerGuid="@DrawerGuid"
+                                 ParentGuid="@RecordGuid"
+                                 ParentDataObjectReference="@editPage.MyDataObjectReference"
+                                 ParentRowStatus="@editPage.dataObject.RowStatus"
                                  FullGrid="true"
                                  TransientVirtualProperties="@TransientVirtualProperties" />
                 </section>
@@ -107,7 +111,6 @@
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
 
-    public string DrawerGuid { get; set; } = "";
 
     //private bool isLoading { get; set; } = true;
 }

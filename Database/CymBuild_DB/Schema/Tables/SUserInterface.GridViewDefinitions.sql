@@ -54,7 +54,9 @@ CREATE TABLE [SUserInterface].[GridViewDefinitions] (
   [FilteredListOrangeStatusIndicatorTxt] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__79CB6EBA] DEFAULT (N''),
   [FilteredListGreenStatusIndicatorTxt] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__7ABF92F3] DEFAULT (N''),
   [FilteredListGroupBy] [nvarchar](100) NOT NULL CONSTRAINT [DF__GridViewD__Filte__7BB3B72C] DEFAULT (N''),
-  [IsHidden] [bit] NOT NULL CONSTRAINT [DF_GridViewDefinitions_IsHidden] DEFAULT (0)
+  [IsHidden] [bit] NOT NULL CONSTRAINT [DF_GridViewDefinitions_IsHidden] DEFAULT (0),
+  [ShowSearchBar] [bit] NOT NULL CONSTRAINT [DF_GridViewDefinitions_ShowSearchBar] DEFAULT (1),
+  [IsSearchDefaultCollapsed] [bit] NOT NULL CONSTRAINT [DF_GridViewDefinitions_IsSearchDefaultCollapsed] DEFAULT (0)
 )
 ON [METADATA]
 TEXTIMAGE_ON [PRIMARY]

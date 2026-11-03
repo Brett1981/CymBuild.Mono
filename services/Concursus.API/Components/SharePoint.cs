@@ -701,7 +701,7 @@ public class SharePoint : MSGraphBase, IDisposable
         if (dataObject.EntityTypeGuid == JobEntityTypeGuid)
         {
             var effectiveOrganisationalUnitGuid = ResolveJobOrganisationalUnitGuid(dataObject, organisationalUnit);
-            var directory = BuildJobSharepointDirectory(effectiveOrganisationalUnitGuid);
+            var directory = BuildJobSharepointDirectory(sharepointService, effectiveOrganisationalUnitGuid);
 
             var jobLinks = await ResolveJobSharePointLinksAsync(efCore, dataObject.Guid)
                 .ConfigureAwait(false);
@@ -765,7 +765,7 @@ public class SharePoint : MSGraphBase, IDisposable
                 }
             }
 
-            var directory = BuildQuoteSharepointDirectory(effectiveOrganisationalUnitGuid);
+            var directory = BuildQuoteSharepointDirectory(sharepointService, effectiveOrganisationalUnitGuid);
 
             await sharepointService.EnsureFolderStructureExists(
                     _graphServiceClient,
@@ -788,7 +788,7 @@ public class SharePoint : MSGraphBase, IDisposable
         {
             var effectiveOrganisationalUnitGuid = ResolveEnquiryOrganisationalUnitGuid(dataObject, organisationalUnit);
 
-            var directory = BuildEnquirySharepointDirectory(effectiveOrganisationalUnitGuid);
+            var directory = BuildEnquirySharepointDirectory(sharepointService, effectiveOrganisationalUnitGuid);
 
             await sharepointService.EnsureFolderStructureExists(
                     _graphServiceClient,
@@ -1034,7 +1034,9 @@ ORDER BY q.ID DESC;";
                !string.IsNullOrWhiteSpace(organisationalUnit.Guid);
     }
 
-    private SharepointDirectory BuildJobSharepointDirectory(string? organisationalUnitGuid)
+    internal static SharepointDirectory BuildJobSharepointDirectory(
+        ISharepointService sharepointService,
+        string? organisationalUnitGuid)
     {
         var defaultFolderStruct = new List<string>
         {
@@ -1236,9 +1238,13 @@ ORDER BY q.ID DESC;";
                     };
 
                 case OrganisationalUnitEnum.FireEngineering:
+                case OrganisationalUnitEnum.FireEngineeringSIL:
                 case OrganisationalUnitEnum.StructuralEngineering:
                 case OrganisationalUnitEnum.BuildingEnvelope:
                     return sharepointService.GetFoldersForFireStructuralBuildingInJobs();
+
+                case OrganisationalUnitEnum.BuildingSafetyConsultancy:
+                    return sharepointService.GetFoldersForBuildingSafetyConsultancy();
 
                 default:
                     return new SharepointDirectory
@@ -1258,7 +1264,9 @@ ORDER BY q.ID DESC;";
         }
     }
 
-    private SharepointDirectory BuildQuoteSharepointDirectory(string? organisationalUnitGuid)
+    internal static SharepointDirectory BuildQuoteSharepointDirectory(
+        ISharepointService sharepointService,
+        string? organisationalUnitGuid)
     {
         if (string.IsNullOrWhiteSpace(organisationalUnitGuid))
         {
@@ -1270,9 +1278,13 @@ ORDER BY q.ID DESC;";
             switch (OrganisationalUnitHelper.GetById(organisationalUnitGuid.ToUpperInvariant()))
             {
                 case OrganisationalUnitEnum.FireEngineering:
+                case OrganisationalUnitEnum.FireEngineeringSIL:
                 case OrganisationalUnitEnum.StructuralEngineering:
                 case OrganisationalUnitEnum.BuildingEnvelope:
                     return sharepointService.GetFoldersForFireStructuralBuildingInQuotes();
+
+                case OrganisationalUnitEnum.BuildingSafetyConsultancy:
+                    return sharepointService.GetFoldersForBuildingSafetyConsultancy();
 
                 default:
                     return new SharepointDirectory();
@@ -1284,7 +1296,9 @@ ORDER BY q.ID DESC;";
         }
     }
 
-    private SharepointDirectory BuildEnquirySharepointDirectory(string? organisationalUnitGuid)
+    internal static SharepointDirectory BuildEnquirySharepointDirectory(
+        ISharepointService sharepointService,
+        string? organisationalUnitGuid)
     {
         if (string.IsNullOrWhiteSpace(organisationalUnitGuid))
         {
@@ -1296,9 +1310,13 @@ ORDER BY q.ID DESC;";
             switch (OrganisationalUnitHelper.GetById(organisationalUnitGuid.ToUpperInvariant()))
             {
                 case OrganisationalUnitEnum.FireEngineering:
+                case OrganisationalUnitEnum.FireEngineeringSIL:
                 case OrganisationalUnitEnum.StructuralEngineering:
                 case OrganisationalUnitEnum.BuildingEnvelope:
                     return sharepointService.GetFoldersForFireStructuralBuildingInEnquiry();
+
+                case OrganisationalUnitEnum.BuildingSafetyConsultancy:
+                    return sharepointService.GetFoldersForBuildingSafetyConsultancy();
 
                 default:
                     return new SharepointDirectory();

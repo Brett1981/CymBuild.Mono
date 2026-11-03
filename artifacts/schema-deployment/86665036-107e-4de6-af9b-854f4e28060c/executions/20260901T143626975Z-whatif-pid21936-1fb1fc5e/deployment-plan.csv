@@ -1,0 +1,8 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"78fc0416-4613-4d12-b021-fdba9ce80f23","Index","SCore","SequenceTable.IX_UQ_SequenceTable_Guid","SequenceTable","Different","True","False","True","True"
+"2820ee4b-9461-4cd1-84ea-e522001e76da","Index","SCore","SynchronisationErrors.IX_UQ_SychronisationErrors_Guid","SynchronisationErrors","Different","True","False","True","True"
+"5c280f9a-72c9-4b33-8ad0-7a1a1b8ef646","Index","SFin","SageExportTransactions.IX_SageExportTransaction_TransactionId","SageExportTransactions","Different","True","False","True","True"
+"b3671a53-fa1d-49f9-9b01-6c2a659df147","Index","SMigration","Schema_ObjectComparisons.IX_Schema_ObjectComparisons_Run_Active","Schema_ObjectComparisons","Different","True","False","True","True"
+"5a3c3375-0936-4bce-923d-095d70e14d0d","Index","SUserInterface","GridViewActions.IX_UQ_GridViewActions_Unique","GridViewActions","Different","True","False","True","True"
+"ad76b5d2-abde-4769-9a68-9568dfe71776","Function","SJob","ActivitiesValidate","","Different","True","False","True","True"
+"1d449466-efdf-47d5-8afc-0a6503dec332","StoredProcedure","SSop","EnquiriesDuplicate","","Different","True","False","True","True"

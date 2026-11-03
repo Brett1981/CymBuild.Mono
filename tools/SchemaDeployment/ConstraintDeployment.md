@@ -1,4 +1,4 @@
-# CymBuild Declarative Constraint, Table and Index Deployment Contract (CYB-361 R41)
+# CymBuild Declarative Constraint, Table and Index Deployment Contract (CYB-361 R42/R7C4)
 
 ## Purpose
 
@@ -37,6 +37,17 @@ A changed constraint is split into phases:
 Foreign keys are prepared before key constraints. Primary/unique constraints are recreated before foreign keys.
 
 R41 retains this constraint contract and adds declarative `CYB_TABLE_V2` and `CYB_INDEX_V2` materialisation. Selected index replacements/removals are prepared before selected existing-table alterations. Constraint and index preflights that depend on a selected table change run after table convergence and before recreation.
+
+R42 restricts first-class constraint and ordinary rowstore-index snapshots to physical user tables. Defaults on multi-statement table-valued-function return definitions remain inside the function module and are never materialised as `ALTER TABLE` operations. Declarative JSON properties are read through direct `PSPropertyInfo` values for Windows PowerShell 5.1 compatibility, including one-column key and foreign-key arrays.
+
+R7C4 treats SQL Server system-generated default names as environment noise. Both table and standalone
+default-constraint snapshots derive the same deterministic CymBuild name from schema, table and column;
+the standalone comparison identity remains stable while its declarative `ConstraintName` retains an
+explicit source name when one exists. A genuine replacement discovers the actual
+target constraint by parent table and column before dropping it, so committed SQL is portable across
+QA, UAT and LIVE even when their historical constraint names differ. Default definitions are never
+disabled because SQL Server does not support disabling defaults; replacement is transactional and does
+not modify existing business data.
 
 ## Existing-data policy
 

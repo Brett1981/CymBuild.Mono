@@ -12,6 +12,7 @@
 @using static Concursus.API.Client.FormHelper
 
 @inherits EditPageBase
+@implements IDisposable
 
 @inject Core.CoreClient coreClient
 @inject UserService userService
@@ -148,7 +149,7 @@
 
                         <FlexPropertyGroups @ref="@editPage.flexPropertyGroups"
                                             entityProperties="@editPage.entityProperties"
-                                            entityPropertyGroups="@editPage.entityPropertyGroups"
+                                            entityPropertyGroups="@JobTabPropertyGroups"
                                             IsMainRecordContext="@IsMainRecordContext"
                                             FormHelper="@ActiveFormHelper"
                                             @bind-dataObject="@editPage.dataObject"
@@ -184,12 +185,24 @@
                             </button>
                         </div>
                     } *@
-                    <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFEES"
+                    <DynamicGrid @ref="_jobFeesGrid" FormHelper="@ActiveFormHelper" GridCode="JOBFEES"
                                  OnActionCompleted="RefreshJobProgressAndInvoiceScheduleActions"
                                  ParentGuid="@RecordGuid"
                                  ParentDataObjectReference="@editPage.MyDataObjectReference"
                                  ParentRowStatus="@editPage.dataObject.RowStatus"
                                  TransientVirtualProperties="@BuildInvoiceScheduleTransientVirtualProperties()" />
+
+                    <div class="row">
+                        <FlexPropertyGroups @ref="@_financeFlexPropertyGroups"
+                                            entityProperties="@editPage.entityProperties"
+                                            entityPropertyGroups="@FeesTabPropertyGroups"
+                                            MinColumnWidth="100%"
+                                            IsMainRecordContext="@IsMainRecordContext"
+                                            FormHelper="@ActiveFormHelper"
+                                            @bind-dataObject="@editPage.dataObject"
+                                            RecordGuid="@RecordGuid"
+                                            inputUpdated="@editPage.HandleInputUpdated" />
+                    </div>
 
                     <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="JOBFINANCEMEMO"
                                  OnActionCompleted="RefreshJobProgress"
@@ -275,7 +288,7 @@
                     @if (ShowSubContractorGrid)
                     {
                         <DynamicGrid FormHelper="@ActiveFormHelper" GridCode="SUBCONTRACTOR"
-                                     OnActionCompleted="RefreshJobProgress"
+                                     OnActionCompleted="OnSubcontractorActionCompletedAsync"
                                      ParentGuid="@RecordGuid"
                                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                                      ParentRowStatus="@editPage.dataObject.RowStatus" TransientVirtualProperties="@TransientVirtualProperties" />
@@ -576,6 +589,10 @@
 
     public DynamicGrid gridRef { get; set; }
 
+    // CYB-334: the Fee table's Subcontractor Costs column is derived from Subcontractor Invoices
+    // and their Activity's RIBA stage, so saves in those grids must reload it too.
+    private DynamicGrid? _jobFeesGrid;
+
     private enum JobDetailTab
     {
         Job,
@@ -663,6 +680,24 @@
     private JobSummaryModel? _jobSummary;
     private ErrorBoundary? _docsBoundary;
 
+    // CYB-526: Finance property group moved from the Job tab to the Fees tab (alongside the PO
+    // grid, for consistency). EntityPropertyGroups has no tab dimension of its own, so the split
+    // is expressed here by filtering which groups each of the two FlexPropertyGroups panels
+    // renders, rather than in metadata.
+    private static readonly string FinancePropertyGroupGuid = "61dcf384-6a04-4738-91de-b462fe4172ea";
+
+    private List<EntityPropertyGroup> JobTabPropertyGroups =>
+        editPage.entityPropertyGroups
+            .Where(g => !string.Equals(g.Guid, FinancePropertyGroupGuid, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private List<EntityPropertyGroup> FeesTabPropertyGroups =>
+        editPage.entityPropertyGroups
+            .Where(g => string.Equals(g.Guid, FinancePropertyGroupGuid, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private FlexPropertyGroups? _financeFlexPropertyGroups;
+
     private bool ShowDocumentsTab =>
             Config.Value.Environment.ShowDocumentsTab;
 
@@ -734,6 +769,14 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
+
+        // The Fees tab (and its Finance panel) lazy-loads on first request, which happens well
+        // after the page's own firstRender, so this has to run on every render - it's a cheap
+        // idempotent Contains check, not per-firstRender setup.
+        if (_financeFlexPropertyGroups is not null && !editPage.ExtraFlexPropertyGroups.Contains(_financeFlexPropertyGroups))
+        {
+            editPage.ExtraFlexPropertyGroups.Add(_financeFlexPropertyGroups);
+        }
 
         if (!firstRender) return;
 
@@ -1176,9 +1219,41 @@
 
     private async Task OnActivityActionCompletedAsync()
     {
+        _jobFeesGrid?.RefreshGrid();
         await RefreshJobShellAsync(updateReplacementScheduleButton: false);
         await TryPromptGenerateWhilePausedAsync("Activity grid action completed");
 
+    }
+
+    private async Task OnSubcontractorActionCompletedAsync()
+    {
+        _jobFeesGrid?.RefreshGrid();
+        await RefreshJobShellAsync(updateReplacementScheduleButton: false);
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        refreshService.GridRefreshRequested += OnGridRefreshRequested;
+    }
+
+    // CYB-335: the fee amendment raised from an activity is completed in an app-level modal that no
+    // grid on this page hears about, so it asks for a Fees table refresh through RefreshService.
+    private void OnGridRefreshRequested()
+    {
+        if (!string.Equals(refreshService.GridCodeSelected, ActivityFeeAmendmentNavigation.JobFeesGridCode, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        _ = InvokeAsync(async () =>
+        {
+            _jobFeesGrid?.RefreshGrid();
+            await RefreshJobShellAsync(updateReplacementScheduleButton: true);
+        });
+    }
+
+    public void Dispose()
+    {
+        refreshService.GridRefreshRequested -= OnGridRefreshRequested;
     }
 
     private async Task ConfirmGenerateInvoicesWhilePausedAsync()

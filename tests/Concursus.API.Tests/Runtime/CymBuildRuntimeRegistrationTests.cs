@@ -3,6 +3,7 @@ using Concursus.API.Services;
 using Concursus.API.Services.Finance;
 using Concursus.API.Services.InvoiceAutomation;
 using Concursus.API.Services.Outbox;
+using Concursus.API.Services.RecordExpiry;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,7 +20,8 @@ public sealed class CymBuildRuntimeRegistrationTests
         typeof(WorkflowOutboxKafkaPublisherWorker),
         typeof(InvoiceAutomationScheduledWorker),
         typeof(SharePointStructureRepairWorker),
-        typeof(SageTransactionSubmissionWorker)
+        typeof(SageTransactionSubmissionWorker),
+        typeof(RecordExpiryScheduledWorker)
     ];
 
     [Fact]
@@ -49,6 +51,7 @@ public sealed class CymBuildRuntimeRegistrationTests
     [InlineData("SharePointRepair", typeof(SharePointStructureRepairWorker))]
     [InlineData("SageSubmission", typeof(SageTransactionSubmissionWorker))]
     [InlineData("SageInbound", typeof(SageInboundPaymentSyncWorker))]
+    [InlineData("RecordExpiry", typeof(RecordExpiryScheduledWorker))]
     public void WorkerMode_RegistersExactlyOneSelectedWorker(
         string workerRole,
         Type expectedWorkerType)

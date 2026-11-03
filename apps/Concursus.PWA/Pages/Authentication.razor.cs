@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.JSInterop;
 
@@ -35,7 +36,40 @@ public partial class Authentication
             return;
         }
 
-        Nav.NavigateTo(pendingDeepLink, replace: true);
+        // RemoteAuthenticatorViewCore.ProcessLoginCallbackAsync unconditionally navigates
+        // to GetReturnUrl(state) immediately after this callback returns, regardless of
+        // any navigation performed here. For a deep link opened in a brand new tab/window,
+        // that framework-computed return URL has no continuous history/state to recover
+        // the original target from and falls back to the app base URI, clobbering a
+        // NavigateTo call made here. Defer our correction to the LocationChanged event that
+        // call produces so ours always applies last, instead of racing it.
+        void OnFrameworkNavigated(object? sender, LocationChangedEventArgs e)
+        {
+            Nav.LocationChanged -= OnFrameworkNavigated;
+
+            var correctionTarget = GetPostLoginCorrectionTarget(
+                Nav.ToAbsoluteUri(e.Location).ToString(),
+                pendingDeepLink);
+
+            if (correctionTarget is not null)
+            {
+                Nav.NavigateTo(correctionTarget, replace: true);
+            }
+        }
+
+        Nav.LocationChanged += OnFrameworkNavigated;
+    }
+
+    /// <summary>
+    /// Decides whether the framework's own post-login navigation landed somewhere other
+    /// than the recovered deep link, and if so, returns the URL to correct it to.
+    /// Returns null when no correction is needed (the framework already landed correctly).
+    /// </summary>
+    internal static string? GetPostLoginCorrectionTarget(string frameworkNavigatedLocation, string pendingDeepLink)
+    {
+        return string.Equals(frameworkNavigatedLocation, pendingDeepLink, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : pendingDeepLink;
     }
 
     private async Task RemoveSessionStorageItemAsync(string key)

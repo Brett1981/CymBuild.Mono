@@ -5,11 +5,14 @@ PRINT (N'Create procedure [SCore].[PreDeploymentScript]')
 GO
 
 CREATE PROCEDURE [SCore].[PreDeploymentScript]
-AS 
-BEGIN 
-	-- Disable Schema Binding 
-	EXEC SCore.SCHEMABINDING @Apply = 0	-- bit
-	
+(
+	@RunGuid UNIQUEIDENTIFIER = NULL -- correlates durable SCore.PostDeploymentRunLog rows to a deployment run
+)
+AS
+BEGIN
+	-- Disable Schema Binding
+	EXEC SCore.SCHEMABINDING @Apply = 0, @RunGuid = @RunGuid	-- bit
+
   DECLARE @Maxid     INT,
           @CurrentId INT,
           @stmt      NVARCHAR(4000);

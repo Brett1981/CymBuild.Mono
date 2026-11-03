@@ -1,0 +1,19 @@
+﻿{
+    "RunGuid":  "06d97d36-2bb3-44f9-a211-5217bd423e1f",
+    "TargetServer":  "SOC-SQLDEVBRE01\\GENERAL",
+    "TargetDatabase":  "CymBuild_Upgrade_Stage",
+    "ReleaseReference":  "Testing Upgrade Stage",
+    "DeploymentReference":  "Testing Upgrade Stage",
+    "IsApply":  false,
+    "IsWhatIf":  true,
+    "PlanCount":  130,
+    "SupportedCount":  130,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  0,
+    "RetryFailedDeployment":  false,
+    "GeneratedOnUtc":  "2026-08-11T12:55:34.1487107Z",
+    "ExecutionId":  "20260811T125533135Z-whatif-pid20936-abc35457",
+    "ExecutionMode":  "whatif",
+    "RunOutputRoot":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\06d97d36-2bb3-44f9-a211-5217bd423e1f",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\06d97d36-2bb3-44f9-a211-5217bd423e1f\\executions\\20260811T125533135Z-whatif-pid20936-abc35457"
+}

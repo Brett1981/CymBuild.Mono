@@ -1,5 +1,6 @@
 ﻿using Concursus.EF.Types;
 using Microsoft.Data.SqlClient;
+using System.Text.RegularExpressions;
 
 namespace Concursus.EF
 {
@@ -218,15 +219,58 @@ namespace Concursus.EF
 
                         // Compose final SQL
                         var userId = await entityFramework.GetCurrentUserId(connection);
-                        var finalSql = dataSqlQuery + " " + sqlWhere;
 
-                        // Add the union row ONLY if we actually have a selected value
-                        if (request.CurrentSelectedValueGuid != Guid.Empty)
+                        // A dropdown's own stored query commonly starts "SELECT TOP(N) ...".
+                        // Evaluated as-is, that TOP(N) truncates to an ARBITRARY N rows (T-SQL's
+                        // TOP has no defined row order without an ORDER BY in the SAME SELECT)
+                        // before the ORDER BY appended below ever runs - so whenever a search
+                        // filter narrows to more than N rows, the visible N look sorted (they're
+                        // sorted among themselves) but are not reliably "the first N" of the full
+                        // match set, silently hiding genuine matches. Move TOP(N) to an outer
+                        // wrapper so it's applied AFTER filtering and sorting instead.
+                        var topMatch = Regex.Match(dataSqlQuery, @"^(\s*SELECT\s+)TOP\s*\(\s*(\d+)\s*\)\s*", RegexOptions.IgnoreCase);
+                        string finalSql;
+
+                        if (topMatch.Success)
                         {
-                            finalSql += $" UNION {dataSqlQuery} WHERE (root_hobt.Guid = @CurrentSelectedValueGuid)";
-                        }
+                            var topN = topMatch.Groups[2].Value;
+                            var unTopSql = dataSqlQuery.Remove(topMatch.Index, topMatch.Length).Insert(topMatch.Index, topMatch.Groups[1].Value);
 
-                        finalSql += sqlSort;
+                            var innerSql = unTopSql + " " + sqlWhere;
+                            var outerSort = sqlSort;
+
+                            if (request.CurrentSelectedValueGuid != Guid.Empty)
+                            {
+                                innerSql += $" UNION {unTopSql} WHERE (root_hobt.Guid = @CurrentSelectedValueGuid)";
+
+                                // The UNION above only puts the selected row into the candidate
+                                // set - the outer TOP({topN}) below still re-truncates that whole
+                                // combined set by {sqlSort} alone, so a selected value that
+                                // doesn't naturally rank in the first {topN} rows (e.g. an account
+                                // far down the alphabet when sorted by Name) is silently dropped
+                                // again, exactly as if the UNION had never happened. Give it
+                                // sort-priority 0 so it always survives the TOP regardless of
+                                // where it would otherwise land.
+                                var selectedPriority = "CASE WHEN Guid = @CurrentSelectedValueGuid THEN 0 ELSE 1 END";
+                                outerSort = string.IsNullOrEmpty(sqlSort)
+                                    ? $" ORDER BY {selectedPriority} "
+                                    : sqlSort.Replace("ORDER BY ", $"ORDER BY {selectedPriority}, ", StringComparison.OrdinalIgnoreCase);
+                            }
+
+                            finalSql = $"SELECT TOP({topN}) * FROM ({innerSql}) AS combined {outerSort}";
+                        }
+                        else
+                        {
+                            finalSql = dataSqlQuery + " " + sqlWhere;
+
+                            // Add the union row ONLY if we actually have a selected value
+                            if (request.CurrentSelectedValueGuid != Guid.Empty)
+                            {
+                                finalSql += $" UNION {dataSqlQuery} WHERE (root_hobt.Guid = @CurrentSelectedValueGuid)";
+                            }
+
+                            finalSql += sqlSort;
+                        }
 
                         // Bind [[...]] tokens to @params
                         var bound = Core.BindStandardTokens(
@@ -547,7 +591,9 @@ namespace Concursus.EF
                                 {
                                     Id = reader.GetInt32(reader.GetOrdinal("Id")),
                                     Name = reader.GetString(reader.GetOrdinal("Name")),
-                                    SqlQuery = reader.GetString(reader.GetOrdinal("SqlQuery"))
+                                    SqlQuery = reader.GetString(reader.GetOrdinal("SqlQuery")),
+                                    DefaultSortColumnName = reader.GetString(reader.GetOrdinal("DefaultSortColumnName")),
+                                    IsDefaultSortDescending = reader.GetBoolean(reader.GetOrdinal("IsDefaultSortDescending"))
                                 };
                             }
                         }
@@ -682,7 +728,11 @@ namespace Concursus.EF
                 string sqlWhere = Core.DataObjectCompositeFilterListToPredicate(sqlQuery, request.Filters);
                 // Use new overload so default sort comes from metadata instead of hardcoded ID
                 // (Step 4)
-                string sqlSort = BuildSortClause(request.Sort, columns, defaultSortColumnName: null);
+                string sqlSort = BuildSortClause(
+                    request.Sort,
+                    columns,
+                    defaultSortColumnName: gridViewDefinition.DefaultSortColumnName,
+                    defaultSortDescending: gridViewDefinition.IsDefaultSortDescending);
 
                 // Paginate
                 if (request.PageSize > 0)
@@ -922,7 +972,7 @@ namespace Concursus.EF
         {
             AutomatedInvoicingKPI rsl = new();
 
-           
+
             SqlConnection? connection = null;
 
             try
@@ -943,8 +993,8 @@ namespace Concursus.EF
                             {
                                 rsl = new()
                                 {
-                                    Average = (double) reader.GetDecimal(reader.GetOrdinal("Average")),
-                                    Sum = (double) reader.GetDecimal(reader.GetOrdinal("Total")),
+                                    Average = (double)reader.GetDecimal(reader.GetOrdinal("Average")),
+                                    Sum = (double)reader.GetDecimal(reader.GetOrdinal("Total")),
                                     NumberOfPaid = reader.GetInt32(reader.GetOrdinal("TotalPaid")),
                                     NumberOfPending = reader.GetInt32(reader.GetOrdinal("TotalPending")),
                                     NumberOfOverdue = reader.GetInt32(reader.GetOrdinal("TotalOverdue"))
@@ -1137,7 +1187,8 @@ namespace Concursus.EF
         private static string BuildSortClause(
             IEnumerable<DataSort> sorts,
             List<GridViewColumnDefinition>? columns,
-            string? defaultSortColumnName)
+            string? defaultSortColumnName,
+            bool defaultSortDescending = false)
         {
             string sqlSort = "ORDER BY";
 
@@ -1174,7 +1225,7 @@ namespace Concursus.EF
             }
 
             return !string.IsNullOrWhiteSpace(fallback)
-                ? $"ORDER BY [{fallback}] ASC"
+                ? $"ORDER BY [{fallback}] {(defaultSortDescending ? "DESC" : "ASC")}"
                 : "ORDER BY 1"; // last-resort deterministic order
         }
 
@@ -1340,7 +1391,9 @@ namespace Concursus.EF
                                 FilteredListRedStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListRedStatusIndicatorTxt")),
                                 FilteredListOrangeStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListOrangeStatusIndicatorTxt")),
                                 FilteredListGreenStatusIndicatorTxt = reader.GetString(reader.GetOrdinal("FilteredListGreenStatusIndicatorTxt")),
-                                IsHidden = reader.GetBoolean(reader.GetOrdinal("IsHidden"))
+                                IsHidden = reader.GetBoolean(reader.GetOrdinal("IsHidden")),
+                                ShowSearchBar = reader.GetBoolean(reader.GetOrdinal("ShowSearchBar")),
+                                IsSearchDefaultCollapsed = reader.GetBoolean(reader.GetOrdinal("IsSearchDefaultCollapsed"))
                             };
                             if (forExport)
                             {

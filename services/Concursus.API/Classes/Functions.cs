@@ -636,12 +636,23 @@ public class Functions
 
             if (dataCompositeFilter.Filters.Count > 0)
             {
+                // Give this composite's own filters their own sub-composite (mirroring the
+                // CompositeFilters branch above) instead of flattening them into the shared
+                // resultFilter.Filters list. Sibling groups - e.g. the AND-group of column
+                // filters and the OR-group of search-bar cross-column filters - must keep
+                // their own LogicalOperator; flattening them lost that grouping and left
+                // whichever group ran last overwriting resultFilter.LogicalOperator for all of them.
+                var leafComposite = new EF.Types.DataObjectCompositeFilter
+                {
+                    LogicalOperator = dataCompositeFilter.LogicalOperator
+                };
+
                 foreach (var filter in dataCompositeFilter.Filters)
                 {
                     // Check if the Guid return an empty if so get a new Guid
                     var giveMeAGuid = ParseAndReturnEmptyGuidIfInvalid(filter.Guid) == Guid.Empty ? Guid.NewGuid() : ParseAndReturnEmptyGuidIfInvalid(filter.Guid);
 
-                    resultFilter.Filters.Add(new EF.Types.DataObjectFilter()
+                    leafComposite.Filters.Add(new EF.Types.DataObjectFilter()
                     {
                         Guid = giveMeAGuid,
                         Value = filter.Value,
@@ -649,6 +660,9 @@ public class Functions
                         Operator = filter.Operator
                     });
                 }
+
+                resultFilter.CompositeFilters.Add(leafComposite);
+                resultFilter.LogicalOperator = "AND";
             }
         }
         return resultFilter;

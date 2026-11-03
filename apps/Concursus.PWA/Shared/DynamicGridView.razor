@@ -11,10 +11,10 @@
 @inject NavigationManager NavManager
 @inject IJSRuntime JsRuntime
 @inject ModalService modalService
+@inject StateService stateService
 @inject RefreshService refreshService
 @inject DeviceInfoService DeviceInfoService
 @inject UserInteractionTrackerService InteractionTracker
-@inject AiErrorReporter AiErrorReporter
 @inject IToastService Toast
 @inject Helpers.LocalStorageAccessor LocalStorageAccessor
 
@@ -102,6 +102,13 @@
             for (const candidate of candidates) {
                 if (!isVisible(candidate) || isSuccessOrInfoElement(candidate)) continue;
                 if (candidate.closest('.dynamic-grid-view-v2-detail-panel-header')) continue;
+
+                // A candidate can contain a nested component's own <script> block (e.g. a
+                // windowed sub-grid rendered inside this panel). textContent walks into
+                // <script>/<style> children, so their source text (which itself contains
+                // words like "compulsory"/"required") would otherwise be mistaken for a
+                // real, rendered validation message. Skip any wrapper that embeds one.
+                if (candidate.querySelector('script, style')) continue;
 
                 const text = (candidate.textContent || '').trim().toLowerCase();
                 if (!text) continue;
@@ -268,9 +275,27 @@
                                 }
                             }
 
+                            @if (ViewDefinition.ShowSearchBar && ViewDefinition.IsSearchDefaultCollapsed)
+                            {
+                                <button type="button"
+                                        class="btn btn-outline-secondary btn-sm cb-v2-btn-secondary dynamic-grid-view-v2-action-btn dynamic-grid-view-v2-search-toggle @(_isSearchBarCollapsed ? string.Empty : "is-active")"
+                                        @onclick="ToggleSearchBar"
+                                        disabled="@_isLoading"
+                                        aria-expanded="@(!_isSearchBarCollapsed)"
+                                        title="@(_isSearchBarCollapsed ? "Show search and filters" : "Hide search and filters")">
+                                    <i class="bi bi-search me-1" aria-hidden="true"></i>
+                                    Search
+                                    @if (ActiveSearchCriteriaCount > 0)
+                                    {
+                                        <span class="dynamic-grid-view-v2-filter-count">@ActiveSearchCriteriaCount</span>
+                                    }
+                                    <i class="bi @(_isSearchBarCollapsed ? "bi-chevron-down" : "bi-chevron-up") ms-1" aria-hidden="true"></i>
+                                </button>
+                            }
+
                             @if (ViewDefinition.AllowNew && !Disabled)
                             {
-                                <button class="btn btn-primary btn-sm dynamic-grid-view-v2-primary-btn" id="newBtn" type="button" @onclick="AddNew">
+                                <button class="btn btn-primary py-2 mx-1 cb-grid-bulk-update-button" id="newBtn" type="button" @onclick="AddNew">
                                     <i class="bi bi-plus-circle-fill me-1" aria-hidden="true"></i>
                                     New
                                 </button>
@@ -279,7 +304,11 @@
                     </div>
                 </div>
 
+                @if (IsSearchToolbarVisible || !string.IsNullOrWhiteSpace(DrawdownInlineError))
+                {
                 <div class="cb-v2-card">
+                    @if (IsSearchToolbarVisible)
+                    {
                     <div class="cb-v2-toolbar dynamic-grid-view-v2-toolbar">
                         <div class="cb-v2-toolbar-left dynamic-grid-view-v2-toolbar-left">
                             <input class="cb-v2-input dynamic-grid-view-v2-search"
@@ -352,6 +381,7 @@
                             </select>
                         </div>
                     </div>
+                    }
 
                     @if (!string.IsNullOrWhiteSpace(DrawdownInlineError))
                     {
@@ -360,7 +390,7 @@
                         </div>
                     }
 
-                    @if (_isFilterPanelOpen)
+                    @if (_isFilterPanelOpen && IsSearchToolbarVisible)
                     {
                         <div class="dynamic-grid-view-v2-filter-panel cb-v2-card shadow-sm"
                              style="margin:0 1.25rem 1rem 1.25rem; padding:1rem; border:1px solid #e5eaf3; border-radius:18px; background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);">
@@ -384,24 +414,58 @@
                             <div class="dynamic-grid-view-v2-filter-grid row g-3">
                                 @foreach (var column in VisibleColumns.Where(c => c.IsFiltered))
                                 {
-                                    <div class="dynamic-grid-view-v2-filter-field col-12 col-sm-6 col-lg-4 col-xl-3">
-                                        <div class="dynamic-grid-view-v2-filter-field-card h-100 p-3 border rounded-4 bg-white">
-                                            <label class="form-label text-uppercase fw-bold small text-muted mb-2" for="filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
-                                            <div class="dynamic-grid-view-v2-filter-input-shell input-group">
-                                                <span class="input-group-text bg-white border-end-0">
-                                                    <i class="bi bi-search" aria-hidden="true"></i>
-                                                </span>
-                                                <input id="filter-@ViewDefinition.Code-@column.Name"
-                                                       class="form-control cb-v2-input dynamic-grid-view-v2-filter border-start-0"
-                                                       placeholder="Filter @column.Title..."
-                                                       value="@GetColumnFilterValue(column.Name)"
-                                                       @oninput="args => OnColumnFilterChanged(column.Name, args)"
-                                                       disabled="@_isLoading" />
+                                    List<string> dateDisplayFormats = new List<string>()
+                                                {
+                                                "dd", "mm", "yyyy"
+                                                };
+
+                                    Console.WriteLine($"column: {column.Name}, format: {column.DisplayFormat}");
+
+                                    //[DATE ]
+                                    if (dateDisplayFormats.Contains(column.DisplayFormat))
+                                    {
+                                        <div class="dynamic-grid-view-v2-filter-field col-12 col-sm-6 col-lg-4 col-xl-3">
+                                            <div class="dynamic-grid-view-v2-filter-field-card h-100 p-3 border rounded-4 bg-white">
+                                                <label class="form-label text-uppercase fw-bold small text-muted mb-2" for="filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                                <div class="dynamic-grid-view-v2-filter-input-shell input-group">
+                                                    <span class="input-group-text bg-white border-end-0">
+                                                        <i class="bi bi-search" aria-hidden="true"></i>
+                                                    </span>
+                                                    <input 
+                                                           type="date"
+                                                           id="filter-@ViewDefinition.Code-@column.Name"
+                                                           class="form-control cb-v2-input dynamic-grid-view-v2-filter border-start-0"
+                                                           placeholder="Filter @column.Title..."
+                                                           value="@GetColumnFilterValue(column.Name)"
+                                                           @oninput="args => OnColumnFilterChanged(column.Name, args)"
+                                                           disabled="@_isLoading" />
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="dynamic-grid-view-v2-filter-field col-12 col-sm-6 col-lg-4 col-xl-3">
+                                            <div class="dynamic-grid-view-v2-filter-field-card h-100 p-3 border rounded-4 bg-white">
+                                                <label class="form-label text-uppercase fw-bold small text-muted mb-2" for="filter-@ViewDefinition.Code-@column.Name">@column.Title</label>
+                                                <div class="dynamic-grid-view-v2-filter-input-shell input-group">
+                                                    <span class="input-group-text bg-white border-end-0">
+                                                        <i class="bi bi-search" aria-hidden="true"></i>
+                                                    </span>
+                                                    <input id="filter-@ViewDefinition.Code-@column.Name"
+                                                           class="form-control cb-v2-input dynamic-grid-view-v2-filter border-start-0"
+                                                           placeholder="Filter @column.Title..."
+                                                           value="@GetColumnFilterValue(column.Name)"
+                                                           @oninput="args => OnColumnFilterChanged(column.Name, args)"
+                                                           disabled="@_isLoading" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+
                                 }
                             </div>
+
 
                             <div class="dynamic-grid-view-v2-filter-actions d-flex align-items-center justify-content-end gap-2 mt-3 pt-3 border-top flex-wrap">
                                 <button type="button"
@@ -422,6 +486,7 @@
                         </div>
                     }
                 </div>
+                }
 
                 @if (ViewDefinition.IsDetailWindowed && WindowIsVisible)
                 {
@@ -475,7 +540,7 @@
                 else
                 {
                     <div class="cb-v2-card dynamic-grid-view-v2-grid-card">
-                        <div class="cb-v2-table-wrap dynamic-grid-view-v2-grid-wrapper">
+                        <div id="@GridWrapperDomId" class="cb-v2-table-wrap dynamic-grid-view-v2-grid-wrapper">
                             <table class="cb-v2-table dynamic-grid-view-v2-grid-table">
                                 <thead>
                                     <tr>
@@ -529,14 +594,15 @@
                                                         {
                                                             @if (IsDrawdownStageColumn(column))
                                                             {
+                                                                var selectedStageGuid = GetDrawdownStageGuid(row);
                                                                 <select class="form-select form-select-sm dynamic-grid-view-v2-inline-input"
-                                                                        value="@GetDrawdownStageGuid(row)"
+                                                                        value="@selectedStageGuid"
                                                                         @onchange="args => UpdateDrawdownStage(row, args.Value?.ToString())"
                                                                         disabled="@IsDrawdownInlineSaving">
-                                                                    <option value="">-- None --</option>
+                                                                    <option value="" selected="@string.IsNullOrEmpty(selectedStageGuid)">-- None --</option>
                                                                     @foreach (var stage in DrawdownStageOptions)
                                                                     {
-                                                                        <option value="@stage.Guid">@stage.Name</option>
+                                                                        <option value="@stage.Guid" selected="@string.Equals(stage.Guid.ToString(), selectedStageGuid, StringComparison.OrdinalIgnoreCase)">@stage.Name</option>
                                                                     }
                                                                 </select>
                                                             }
@@ -638,6 +704,21 @@
                                 }
 
                                 <div class="row g-3">
+
+                                    <div class="col-12 col-md-6">
+                                        <label class="form-label">Frequency</label>
+                                        <select class="form-select"
+                                                @bind="MonthlySeries.Frequency"
+                                                disabled="@MonthlySeriesSaving">
+                                          
+                                            <option value="">Select frequency</option>
+                                            <option value="Monthly">Monthly</option>
+                                            <option value="Bi-monthly">Bi-monthly</option>
+                                            <option value="Quarterly">Quarterly</option>
+                                            <option value="Bi-annual">Bi-annual</option>
+                                        </select>
+                                    </div>
+
                                     <div class="col-12 col-md-6">
                                         <label class="form-label">Start Date (First Invoice)</label>
                                         <input class="form-control"

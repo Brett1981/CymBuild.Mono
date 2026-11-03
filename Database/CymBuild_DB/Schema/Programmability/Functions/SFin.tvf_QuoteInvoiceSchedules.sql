@@ -4,7 +4,7 @@ GO
 PRINT (N'Create function [SFin].[tvf_QuoteInvoiceSchedules]')
 GO
 
-CREATE FUNCTION [SFin].[tvf_QuoteInvoiceSchedules]
+CREATE OR ALTER FUNCTION [SFin].[tvf_QuoteInvoiceSchedules]
 (
       @UserId INT
     , @ParentGuid UNIQUEIDENTIFIER
@@ -41,7 +41,10 @@ SELECT
           END
           AS DECIMAL(19, 2)
       ) AS Amount
-    , ist.Name AS TriggerId
+    , CASE
+		WHEN  ist.Name = N'Monthly Drawdowns' AND invs.Frequency IS NOT NULL
+			THEN CONCAT(N'Monthly Drawdowns (', invs.Frequency, N')')
+		ELSE ist.Name END AS TriggerId
     , invs.ExpectedDate
 FROM SFin.InvoiceSchedules AS invs
 JOIN SSop.Quotes AS q

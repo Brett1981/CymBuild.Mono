@@ -1,0 +1,27 @@
+﻿{
+    "Contract":  "CYB_SCHEMA_SOURCE_SYNC_V1",
+    "SchemaSnapshotContract":  "R7C4",
+    "RunGuid":  "c7b55579-21a9-4a30-b236-f1f7f4266d80",
+    "SourceEnvironment":  "DEV",
+    "SourceServerName":  "SOC-SQLDEVBRE01\\GENERAL",
+    "SourceDatabaseName":  "CymBuild_Dev",
+    "PlanDatabase":  "CymBuild_QA",
+    "Mode":  "VerifySource",
+    "SelectedObjectCount":  1,
+    "ArtifactCount":  1,
+    "GeneratedOnUtc":  "2026-08-14T22:02:27.7615568Z",
+    "Artifacts":  [
+                      {
+                          "ComparisonGuid":  "078045a4-be29-443e-a98f-8419ab7889d9",
+                          "ObjectType":  "Function",
+                          "SchemaName":  "SFin",
+                          "ObjectName":  "tvf_SageInboundDiagnostics",
+                          "ParentObjectName":  "",
+                          "DifferenceType":  "Different",
+                          "SourceHash":  "BF95D6161C0B5966A2F0374B3C7CAE2D936E83EFCF3C15226901E4A93FA68A6C",
+                          "RelativePath":  "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_SageInboundDiagnostics.sql",
+                          "FileSha256":  "A430F24587C707EC24A16103CC1F856013975B9845CEBA19B4A686565F3E6CFF",
+                          "WasSynchronized":  false
+                      }
+                  ]
+}

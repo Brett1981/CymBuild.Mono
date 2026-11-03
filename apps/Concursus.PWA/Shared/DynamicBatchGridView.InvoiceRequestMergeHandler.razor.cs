@@ -27,6 +27,11 @@ public partial class DynamicBatchGridView
         bool MoreThanOneItemSelected = SelectedItems.Count() > 1;
         bool IsInvoiceRequestGridView = ViewDefinition?.Code == "INVOICEREQUESTS";
 
+        // Rebuild from scratch every time - this list must only ever reflect the CURRENT selection.
+        // Previously this was never cleared, so GUIDs from rows the user selected and then
+        // deselected earlier in the session stayed in the list and got merged along with the...
+        InvoiceReqsToMerge.Clear();
+
 
         if (!IsInvoiceRequestGridView || !MoreThanOneItemSelected)
             return CanBeMerged;

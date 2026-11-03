@@ -94,6 +94,37 @@
     grid-column: span 2;
 }
 
+.filter-collapsible-section {
+    margin-top: 1rem;
+}
+
+.filter-collapsible-header {
+    margin-bottom: 0.65rem;
+}
+
+.filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 40px;
+}
+
+    .filter-toggle i {
+        font-size: 0.9rem;
+    }
+
+.filter-toggle-count {
+    color: var(--cb-v2-text-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.filter-collapsible-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
 .range-row {
     display: flex;
     align-items: center;

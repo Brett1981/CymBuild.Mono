@@ -1,0 +1,16 @@
+{
+  "Release": "UAT-20261014-134201-d6db2b1c",
+  "Environment": "UAT",
+  "Branch": "chore/SB_26.4-dev-sql-sync",
+  "Commit": "d6db2b1c54da632e57ad6d99bfdad0d1b4163df9",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-14T13:44:40.1146419+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 205,
+    "Pwa": 7061
+  }
+}

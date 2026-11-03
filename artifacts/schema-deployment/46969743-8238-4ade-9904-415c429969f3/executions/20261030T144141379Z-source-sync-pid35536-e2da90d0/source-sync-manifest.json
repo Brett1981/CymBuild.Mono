@@ -1,0 +1,100 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "46969743-8238-4ade-9904-415c429969f3",
+  "SourceEnvironment": "QA",
+  "SourceServerName": "10.100.34.114\\general",
+  "SourceDatabaseName": "CymBuild_QA",
+  "PlanDatabase": "Cymbuild_UAT_Test",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 7,
+  "ArtifactCount": 7,
+  "GeneratedOnUtc": "2026-10-30T14:41:42.5320268Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "729071c3-2e02-4a2a-8f0f-ef625172e417",
+      "ObjectType": "Function",
+      "SchemaName": "SFin",
+      "ObjectName": "tvf_InvoiceRequestItemFeeCheck",
+      "ParentObjectName": "",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "13A9682E5FD4F2F7298686B6938AA67A871B098689E30CB2F6B5986BC6DE5820",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_InvoiceRequestItemFeeCheck.sql",
+      "FileSha256": "E1688DE7A525B678B7891DC7DE74F73F491C5253A94B856386473796BF2E1728",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "0f72ae61-71c5-4fb1-87a1-9d2b3dd02f11",
+      "ObjectType": "Function",
+      "SchemaName": "SFin",
+      "ObjectName": "tvf_InvoiceRequestItemsValidate",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2FD9126A3BC69541133E0E17E498D3959795CE06F11AEE1F2512CE78DC9FD652",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SFin.tvf_InvoiceRequestItemsValidate.sql",
+      "FileSha256": "5EEFBC3FE42B4C9F00E3567831559D7EC56D98B2AA546EF87CC69B43D47F101A",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "ff9565d1-1d63-476c-a84c-2d4d045fbf9e",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SCore",
+      "ObjectName": "CreateUserSession",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "0DBF18A8A4ABD2D82F525889D4E86DEF0C206DC5C952D1088E34B0DF76C50CD2",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SCore.CreateUserSession.sql",
+      "FileSha256": "99F513197F09E52F1E23F84BFDCD67658DFA1328A4B1DE0C2F3A2731EA4ABF53",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "9aa2442d-6e29-4855-a6fc-27d479a9cb73",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "2D46BD7E67525FC325CF27E749D7C0F7AF9BF8705BBFF150D0C7696D2F0A6ED1",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.InvoiceAutomation_CreateInvoiceRequests_FromTriggerInstances.sql",
+      "FileSha256": "8ABE0817F25BB3AC0E7272AD45D43201F39235BFC526195F2CB9E2C350AB888C",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "2538981f-3df7-44c7-be4b-37e0c505573f",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "InvoiceRequestCreateInvoice",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "98C5EC36DA94C6314BCE95310807EAF26D0BC4D713636B8C21178AF36D175DBF",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.InvoiceRequestCreateInvoice.sql",
+      "FileSha256": "396423C1888F2ACF7115C94175FBE8B55A6F8EC80E9AE6CC21C39DDE580A087A",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "5a604cc5-ccd9-4771-8652-44170108b982",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SFin",
+      "ObjectName": "InvoiceRequestItemsUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "48027B5AA2E081CE8EBDE3BC3C90C561C7F379AD153AE3E1831CFD71EE180019",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SFin.InvoiceRequestItemsUpsert.sql",
+      "FileSha256": "C0B3784B33F79C60B27AC761B49CFAECBF2C6AB570A55C638ECB13AF4ECDD180",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "68357bed-d90a-427a-9a7f-b60830da865d",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "D160A13A1D5A3B6AF935250F3152FF2A590971254476D3C989B47CA82198CCB0",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql",
+      "FileSha256": "5B2E353761EECE731EDAB2C2C77B5B24344213A08CD6FC6C0846A0FD6F6C2131",
+      "WasSynchronized": false
+    }
+  ]
+}

@@ -32,9 +32,12 @@ CREATE TABLE [SMigration].[Schema_RunSelections] (
   [IsSelected] [bit] NOT NULL,
   [SelectionNote] [nvarchar](2000) NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectionNote] DEFAULT (N''),
   [SelectedByUserId] [int] NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectedByUserId] DEFAULT (-1),
-  [SelectedOnUtc] [datetime2] NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectedOnUtc] DEFAULT (sysutcdatetime())
+  [SelectedOnUtc] [datetime2] NOT NULL CONSTRAINT [DF_Schema_RunSelections_SelectedOnUtc] DEFAULT (sysutcdatetime()),
+  [CopyReferenceData] [bit] NULL,
+  [NewTableCaptureJson] [nvarchar](max) NULL
 )
 ON [PRIMARY]
+TEXTIMAGE_ON [PRIMARY]
 GO
 
 PRINT (N'Create primary key [PK_Schema_RunSelections] on table [SMigration].[Schema_RunSelections]')

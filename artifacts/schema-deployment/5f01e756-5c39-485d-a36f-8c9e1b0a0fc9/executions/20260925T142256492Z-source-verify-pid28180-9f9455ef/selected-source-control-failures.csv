@@ -1,0 +1,5 @@
+﻿"RelativePath","GitStatus","Message"
+"Database/CymBuild_DB/Schema/Programmability/Functions/SJob.FeeAmendmentsValidate.sql","M  Database/CymBuild_DB/Schema/Programmability/Functions/SJob.FeeAmendmentsValidate.sql","The selected schema artefact is modified, staged or otherwise differs from repository HEAD."
+"Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentChaseUpsert.sql","M  Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentChaseUpsert.sql","The selected schema artefact is modified, staged or otherwise differs from repository HEAD."
+"Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentsUpsert.sql","M  Database/CymBuild_DB/Schema/Programmability/Procedures/SJob.FeeAmendmentsUpsert.sql","The selected schema artefact is modified, staged or otherwise differs from repository HEAD."
+"Database/CymBuild_DB/Schema/Views/SJob.Job_FeeDrawdown.sql","M  Database/CymBuild_DB/Schema/Views/SJob.Job_FeeDrawdown.sql","The selected schema artefact is modified, staged or otherwise differs from repository HEAD."

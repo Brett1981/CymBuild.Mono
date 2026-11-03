@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"f210fbe6-022b-4574-a8c5-86d8457cc257","StoredProcedure","SMigration","MetadataQuerySignature_Check","","MissingInTarget","True","False","True","True"

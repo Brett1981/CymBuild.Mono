@@ -19,11 +19,33 @@ namespace Concursus.EF
                 bool validateOnly = false
 )
         {
+            ApplyValidationResults(
+                ref dataObject,
+                rowVersionCheckResult,
+                entityType,
+                validationResults,
+                new[] { hoBTGuid },
+                ForInformationView);
+        }
+
+        /// <summary>
+        /// Resets the properties of every listed HoBT, then applies the combined validation results.
+        /// Used on read so a validation query on one HoBT (e.g. the main HoBT) can target
+        /// properties of another HoBT that has no validation query of its own (CYB-462).
+        /// </summary>
+        internal static void ApplyValidationResults(
+                ref DataObject dataObject,
+                bool rowVersionCheckResult,
+                EntityType entityType,
+                List<Types.ValidationResult> validationResults,
+                IReadOnlyCollection<Guid> hoBTGuids,
+                bool ForInformationView)
+        {
             // Reset all data properties to the entity property defaults
             foreach (DataProperty dataProperty in dataObject.DataProperties)
             {
                 EntityProperty? entityProperty = entityType.EntityProperties
-                    .FirstOrDefault(ep => ep.Guid == dataProperty.EntityPropertyGuid && ep.EntityHoBTGuid == hoBTGuid);
+                    .FirstOrDefault(ep => ep.Guid == dataProperty.EntityPropertyGuid && hoBTGuids.Contains(ep.EntityHoBTGuid));
 
                 if (entityProperty is not null)
                 {

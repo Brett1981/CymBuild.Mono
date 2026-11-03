@@ -1,0 +1,3 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"d783c742-24a7-4efa-97ce-3d2ccd52d2e5","Function","SSop","tvf_QuotesValidate","","Different","True","False","True","True"
+"dd275f71-8e65-450b-98ce-eb7708597c80","StoredProcedure","SJob","ActivityCreateInvoiceRequest","","Different","True","False","True","True"

@@ -141,14 +141,62 @@ namespace Concursus.EF.Finance
                 };
             }
 
+            var matchedTransactionGuidOrdinal = reader.GetOrdinal("MatchedTransactionGuid");
+
             return new SageReconcileInvoiceResult
             {
                 ExternalTransactionId = reader.GetInt64(reader.GetOrdinal("ExternalTransactionID")),
                 IsMatched = reader.GetBoolean(reader.GetOrdinal("IsMatched")),
                 MatchedTransactionId = reader.GetInt64(reader.GetOrdinal("MatchedTransactionID")),
+                MatchedTransactionGuid = reader.IsDBNull(matchedTransactionGuidOrdinal)
+                    ? Guid.Empty
+                    : reader.GetGuid(matchedTransactionGuidOrdinal),
                 MatchedInvoiceRequestId = reader.GetInt32(reader.GetOrdinal("MatchedInvoiceRequestID")),
                 MatchedJobId = reader.GetInt32(reader.GetOrdinal("MatchedJobID")),
                 MatchRule = reader.GetString(reader.GetOrdinal("MatchRule"))
+            };
+        }
+
+        public async Task<SageAllocationRecordResult> RecordAllocationAsync(
+            SageAllocationRecordRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[SageInbound_RecordAllocation]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.AddWithValue("@InvoiceExternalTransactionID", request.InvoiceExternalTransactionId);
+            command.Parameters.AddWithValue("@CounterpartUrn", request.CounterpartUrn ?? string.Empty);
+            command.Parameters.AddWithValue("@CounterpartTypeCode", (object?)request.CounterpartTypeCode ?? DBNull.Value);
+            command.Parameters.AddWithValue("@CounterpartReference", request.CounterpartReference ?? string.Empty);
+            command.Parameters.AddWithValue("@CounterpartSecondReference", request.CounterpartSecondReference ?? string.Empty);
+            command.Parameters.AddWithValue("@CounterpartTransactionDate", (object?)request.CounterpartTransactionDateUtc?.Date ?? DBNull.Value);
+            command.Parameters.AddWithValue("@CounterpartNetAmount", request.CounterpartNetAmount);
+            command.Parameters.AddWithValue("@CounterpartTaxAmount", request.CounterpartTaxAmount);
+            command.Parameters.AddWithValue("@CounterpartGrossAmount", request.CounterpartGrossAmount);
+            command.Parameters.AddWithValue("@CounterpartRawPayloadJson", (object?)request.CounterpartRawPayloadJson ?? DBNull.Value);
+            command.Parameters.AddWithValue("@AllocationHeaderID", request.AllocationHeaderId ?? string.Empty);
+            command.Parameters.AddWithValue("@SessionDate", (object?)request.SessionDateUtc?.Date ?? DBNull.Value);
+            command.Parameters.AddWithValue("@AppliedAmount", request.AppliedAmount);
+            command.Parameters.AddWithValue("@AllocationRawPayloadJson", (object?)request.AllocationRawPayloadJson ?? DBNull.Value);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("SFin.SageInbound_RecordAllocation returned no result.");
+            }
+
+            return new SageAllocationRecordResult
+            {
+                CounterpartExternalTransactionId = reader.GetInt64(reader.GetOrdinal("CounterpartExternalTransactionID")),
+                ExternalAllocationId = reader.GetInt64(reader.GetOrdinal("ExternalAllocationID"))
             };
         }
 
@@ -252,6 +300,31 @@ namespace Concursus.EF.Finance
             };
 
             command.Parameters.AddWithValue("@ExternalTransactionID", externalTransactionId);
+
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task ApplySageInvoiceDocumentNumberAsync(
+            Guid transactionGuid,
+            string sageDocumentNo,
+            int updatedByUserId,
+            CancellationToken cancellationToken = default)
+        {
+            if (transactionGuid == Guid.Empty)
+                throw new ArgumentException("A valid transaction guid is required.", nameof(transactionGuid));
+
+            await using var connection = new SqlConnection(_core.CreateConnection().ConnectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var command = new SqlCommand("[SFin].[TransactionSageInvoiceDetails_Upsert]", connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            command.Parameters.AddWithValue("@TransactionGuid", transactionGuid);
+            command.Parameters.AddWithValue("@SageInvoiceNumber", (object?)sageDocumentNo ?? DBNull.Value);
+            command.Parameters.AddWithValue("@SageSalesOrderNumber", DBNull.Value);
+            command.Parameters.AddWithValue("@UpdatedByUserID", updatedByUserId);
 
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }

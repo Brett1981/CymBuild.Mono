@@ -4,10 +4,10 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataApplyPreview_Get]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataApplyPreview_Get]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataApplyPreview_Get]
 (
     @RunGuid UNIQUEIDENTIFIER,
-    @ApplySelectedOnly BIT = 0,
+    @ApplySelectedOnly BIT = 1,
     @IncludeIgnored BIT = 1,
     @SourceSnapshotFingerprint VARCHAR(64),
     @TargetSnapshotFingerprint VARCHAR(64)
@@ -16,6 +16,9 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+
+    IF ISNULL(@ApplySelectedOnly, 0) <> 1
+        THROW 52301, 'Metadata apply preview requires an explicit selected-row scope.', 1;
 
     DECLARE
         @TargetDatabaseName SYSNAME,
@@ -45,7 +48,54 @@ BEGIN
     FROM SMigration.Metadata_ValidationIssues AS vi
     WHERE vi.RunGuid = @RunGuid
       AND vi.RowStatus NOT IN (0,254)
-      AND vi.Severity = N'Fail';
+      AND vi.Severity = N'Fail'
+      AND NOT EXISTS
+      (
+          SELECT 1
+          FROM SMigration.Metadata_ValidationIssueIgnores AS ignoredIssue
+          WHERE ignoredIssue.DatabaseName = @TargetDatabaseName
+            AND ignoredIssue.RegistryGuid = vi.RegistryGuid
+            AND ignoredIssue.SourceRowGuid = vi.SourceRowGuid
+            AND ignoredIssue.IssueCode = vi.IssueCode
+            AND ignoredIssue.RowStatus NOT IN (0,254)
+      )
+      AND
+      (
+          vi.IssueCode IN (N'RunNotFound', N'NoSelectedRows', N'DuplicateSourceGuid', N'DuplicateTargetGuid', N'DuplicateTargetKey', N'UnresolvedReference')
+          OR EXISTS
+          (
+              SELECT 1
+              FROM SMigration.Metadata_RunSelections AS selected
+              INNER JOIN SMigration.Metadata_StagedRows AS selectedRow
+                  ON selectedRow.RunGuid = selected.RunGuid
+                 AND selectedRow.RegistryGuid = selected.RegistryGuid
+                 AND selectedRow.SourceRowGuid = selected.SourceRowGuid
+                 AND selectedRow.RowStatus NOT IN (0,254)
+              WHERE selected.RunGuid = vi.RunGuid
+                AND selected.RowStatus NOT IN (0,254)
+                AND selectedRow.DifferenceType IN (N'Insert', N'Update')
+                AND selectedRow.RegistryGuid = vi.RegistryGuid
+                AND (vi.SourceRowGuid IS NULL OR selectedRow.SourceRowGuid = vi.SourceRowGuid)
+                AND NOT EXISTS
+                (
+                    SELECT 1
+                    FROM SMigration.Metadata_IgnoredRecords AS selectedIgnored
+                    WHERE selectedIgnored.DatabaseName = @TargetDatabaseName
+                      AND selectedIgnored.RegistryGuid = selectedRow.RegistryGuid
+                      AND selectedIgnored.SourceRowGuid = selectedRow.SourceRowGuid
+                      AND selectedIgnored.RowStatus NOT IN (0,254)
+                )
+                AND NOT EXISTS
+                (
+                    SELECT 1
+                    FROM SMigration.Metadata_IdentityMapOverrides AS selectedOverride
+                    WHERE selectedOverride.DatabaseName = @TargetDatabaseName
+                      AND selectedOverride.RegistryGuid = selectedRow.RegistryGuid
+                      AND selectedOverride.SourceRowGuid = selectedRow.SourceRowGuid
+                      AND selectedOverride.RowStatus NOT IN (0,254)
+                )
+          )
+      );
 
     EXEC SMigration.MetadataApplyPreviewFingerprint_Get
         @RunGuid = @RunGuid,
@@ -71,15 +121,12 @@ BEGIN
         CASE
             WHEN @RunFailureCount > 0 THEN N'Blocked'
             WHEN ign.Guid IS NOT NULL THEN N'Skip'
-            WHEN ov.Guid IS NOT NULL THEN N'Skip'
-            WHEN ISNULL(@ApplySelectedOnly, 0) = 1 AND sel.Guid IS NULL THEN N'Skip'
             ELSE N'Apply'
         END AS ApplyAction,
         CASE
             WHEN @RunFailureCount > 0 THEN N'Run has validation failure(s).'
             WHEN ign.Guid IS NOT NULL THEN N'Record is ignored for this target database.'
-            WHEN ov.Guid IS NOT NULL THEN N'Record has a manual identity-map target match and will not be blindly inserted by automated apply.'
-            WHEN ISNULL(@ApplySelectedOnly, 0) = 1 AND sel.Guid IS NULL THEN N'Not selected in this run.'
+            WHEN ov.Guid IS NOT NULL THEN N'Record has a manual identity-map target match - applies as an update to that mapped target record.'
             ELSE N''
         END AS SkipReason,
         ISNULL(changed.ChangedColumns, N'') AS ChangedColumns,
@@ -120,7 +167,7 @@ BEGIN
     WHERE sr.RunGuid = @RunGuid
       AND sr.RowStatus NOT IN (0,254)
       AND sr.DifferenceType IN (N'Insert', N'Update')
-      AND (ISNULL(@ApplySelectedOnly, 0) = 0 OR sel.Guid IS NOT NULL)
+      AND sel.Guid IS NOT NULL
       AND (ISNULL(@IncludeIgnored, 0) = 1 OR ign.Guid IS NULL)
     ORDER BY
         CASE

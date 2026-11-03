@@ -7,6 +7,8 @@
 @inject OutlookEmailService OutlookEmailService
 @inject TargetObjectService TargetObjectService
 @inject EmailDescriptionService EmailDescriptionService
+@inject SuggestedFilingLocationsService SuggestedFilingLocationsService
+@inject FrequentFilingRecordsService FrequentFilingRecordsService
 @* @inject IAccessTokenProvider TokenProvider *@
 @inject IJSRuntime JSRuntime
 @inject IConfiguration Configuration
@@ -162,8 +164,46 @@
                     </div>
                 }
 
-                @if (FilingFolders?.Any() == true)
+                @if (isLoadingFolders)
                 {
+                    <div class="outlook-field-block compact">
+                        <label for="filingFolderSelect" class="outlook-field-label">Folder</label>
+                        <select id="filingFolderSelect"
+                                class="outlook-input outlook-select"
+                                disabled>
+                            <option value="" selected>Loading folders...</option>
+                        </select>
+                    </div>
+                }
+                else if (FilingFolders?.Any() == true)
+                {
+                    @if (SuggestedFolderChips.Any())
+                    {
+                        <div class="outlook-field-block compact outlook-quick-select">
+                            <button type="button"
+                                    class="outlook-collapsible-toggle"
+                                    aria-expanded="@(isQuickSelectExpanded ? "true" : "false")"
+                                    @onclick="ToggleQuickSelect">
+                                <i class="fas @(isQuickSelectExpanded ? "fa-chevron-down" : "fa-chevron-right")" aria-hidden="true"></i>
+                                <span class="outlook-field-label">Quick select <span>(based on previous filing)</span></span>
+                            </button>
+                            @if (isQuickSelectExpanded)
+                            {
+                                <div class="outlook-suggested-folders">
+                                    @foreach (var folder in SuggestedFolderChips)
+                                    {
+                                        <button type="button"
+                                                class="outlook-folder-suggestion-chip @(selectedFolderPath == folder.Path ? "selected" : string.Empty)"
+                                                title="@folder.Path"
+                                                @onclick="@(() => SelectSuggestedFolder(folder))">
+                                            @GetFolderLabel(folder.Path)
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
                     <div class="outlook-field-block compact">
                         <label for="filingFolderSelect" class="outlook-field-label">Folder</label>
                         <select id="filingFolderSelect"
@@ -172,7 +212,7 @@
                             <option value="">Default: Emails folder</option>
                             @foreach (var folder in FilingFolders.OrderBy(x => x.Path))
                             {
-                                <option value="@folder.Path">@folder.Name</option>
+                                <option value="@folder.Path" title="@folder.Path">@GetFolderLabel(folder.Path)</option>
                             }
                         </select>
                     </div>
@@ -184,6 +224,35 @@
                             <span class="outlook-destination-folder">@EffectiveFilingFolderName</span>
                         </div>
                         <div class="outlook-destination-path">@EffectiveFilingFolderPath</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="outlook-field-block compact">
+                        <label for="filingFolderSelect" class="outlook-field-label">Folder</label>
+                        <select id="filingFolderSelect"
+                                class="outlook-input outlook-select"
+                                disabled>
+                            <option value="" selected>No folders in location</option>
+                        </select>
+                    </div>
+                }
+
+                @if (FrequentRecords.Any())
+                {
+                    <div class="outlook-field-block compact">
+                        <label class="outlook-field-label">Frequently filed <span>(based on your filing)</span></label>
+                        <div class="outlook-suggested-folders">
+                            @foreach (var record in FrequentRecords)
+                            {
+                                <button type="button"
+                                        class="outlook-folder-suggestion-chip @(selectedRecords?.Any(x => x.ID == record.ID) == true ? "selected" : string.Empty)"
+                                        title="@($"{record.Name} | {record.EntityTypeName} | {record.ID}")"
+                                        @onclick="@(() => OnFrequentRecordClick(record))">
+                                    @record.Name
+                                </button>
+                            }
+                        </div>
                     </div>
                 }
 
@@ -223,6 +292,13 @@
                 </div>
             </section>
         }
+        else if (isLoadingMailData)
+        {
+            <div class="outlook-loading-panel" role="status" aria-live="polite">
+                <span class="outlook-spinner-lg" aria-hidden="true"></span>
+                <span>Loading email data...</span>
+            </div>
+        }
         else
         {
             <div class="outlook-alert outlook-alert-danger" role="alert">
@@ -241,24 +317,82 @@
 
             @if (MailReadData?.Attachments?.Any() == true)
             {
+                <p class="outlook-note">Choose a destination folder and description for each attachment you want to file. Attachments left unchecked are not filed.</p>
+
                 <div class="outlook-attachment-list">
                     @foreach (var attachment in MailReadData.Attachments)
                     {
-                        <div class="outlook-attachment-row" title="@attachment.AttachmentName">
-                            <div class="outlook-attachment-icon">
-                                @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
-                                {
-                                    <img src="@attachment.AttachmentImageURL" class="outlook-attachment-preview" alt="Image Preview" />
-                                }
-                                else
-                                {
-                                    <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
-                                }
+                        <div class="outlook-attachment-row editable" title="@attachment.AttachmentName">
+                            <div class="outlook-attachment-header">
+                                <label class="outlook-attachment-include" title="Include this attachment when filing">
+                                    <input type="checkbox" @bind="attachment.IncludeWhenFiling" />
+                                </label>
+                                <div class="outlook-attachment-icon">
+                                    @if (!string.IsNullOrEmpty(attachment.AttachmentImageURL) && MailReadData.IsImageFile(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))
+                                    {
+                                        <img src="@attachment.AttachmentImageURL" class="outlook-attachment-preview" alt="Image Preview" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bi @(MailReadData.GetDefaultIconForFileType(Path.GetExtension(attachment.AttachmentName ?? ".unknown")))" aria-hidden="true"></i>
+                                    }
+                                </div>
+                                <div class="outlook-attachment-copy">
+                                    <span>@(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)</span>
+                                    <small>@attachment.AttachmentType • @(attachment.Inline ? "Inline" : "Attachment")</small>
+                                </div>
                             </div>
-                            <div class="outlook-attachment-copy">
-                                <span>@(string.IsNullOrEmpty(attachment.AttachmentName) ? "Unknown File" : attachment.AttachmentName)</span>
-                                <small>@attachment.AttachmentType • @(attachment.Inline ? "Inline" : "Attachment")</small>
-                            </div>
+
+                            @if (attachment.IncludeWhenFiling)
+                            {
+                                <div class="outlook-attachment-controls">
+                                    @if (isLoadingFolders)
+                                    {
+                                        <select class="outlook-input outlook-select" title="Destination folder" disabled>
+                                            <option value="" selected>Loading folders...</option>
+                                        </select>
+                                    }
+                                    else if (FilingFolders?.Any() == true)
+                                    {
+                                        <select class="outlook-input outlook-select" @bind="attachment.DestinationFolderPath" title="Destination folder">
+                                            <option value="">Default: Attachments folder</option>
+                                            @foreach (var folder in FilingFolders.OrderBy(x => x.Path))
+                                            {
+                                                <option value="@folder.Path" title="@folder.Path">@GetFolderLabel(folder.Path)</option>
+                                            }
+                                        </select>
+                                    }
+                                    else
+                                    {
+                                        <select class="outlook-input outlook-select" title="Destination folder" disabled>
+                                            <option value="" selected>No folders in location</option>
+                                        </select>
+                                    }
+
+                                    <div class="outlook-field-header compact">
+                                        <button class="outlook-ai-icon-button"
+                                                type="button"
+                                                @onclick="@(() => GenerateAttachmentDescriptionAsync(attachment))"
+                                                disabled="@IsGeneratingAttachmentDescription(attachment)"
+                                                title="Generate description using AI">
+                                            @if (IsGeneratingAttachmentDescription(attachment))
+                                            {
+                                                <span class="outlook-mini-spinner" aria-hidden="true"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i>
+                                            }
+                                            <span>AI</span>
+                                        </button>
+                                    </div>
+                                    <textarea class="outlook-input outlook-textarea"
+                                              placeholder="Add description..."
+                                              @bind="attachment.Description"
+                                              rows="2"
+                                              maxlength="4000"></textarea>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -336,6 +470,13 @@
                     </details>
                 }
             }
+            else if (isLoadingMailData)
+            {
+                <div class="outlook-loading-panel" role="status" aria-live="polite">
+                    <span class="outlook-spinner-lg" aria-hidden="true"></span>
+                    <span>Loading email data...</span>
+                </div>
+            }
             else
             {
                 <div class="outlook-alert outlook-alert-danger" role="alert">
@@ -355,11 +496,6 @@
             <label class="outlook-check-row" for="moveToCymBuildFiled">
                 <input type="checkbox" id="moveToCymBuildFiled" @bind="moveToCymBuildFiled" />
                 <span>Move filed email to "CymBuild Filed"</span>
-            </label>
-
-            <label class="outlook-check-row" for="extractAttachments">
-                <input type="checkbox" id="extractAttachments" @bind="extractAttachments" />
-                <span>Extract attachments to separate folder</span>
             </label>
 
             <button type="button" class="outlook-action-button pastel-green outlook-settings-save" @onclick="SaveSettings">Save Settings</button>

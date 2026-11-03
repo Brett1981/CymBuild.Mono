@@ -1,0 +1,5 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"f4097f0b-f099-4828-add8-4a71ef87123c","Function","SFin","tvf_InvoiceRequestsWIP","","Different","True","False","True","True"
+"55b861bb-0eaf-458d-87a7-b444a4dc6c62","Function","SJob","FeeAmendmentsValidate","","Different","True","False","True","True"
+"17e4204e-70ba-4d02-8768-725ff0a13a52","StoredProcedure","SFin","InvoiceScheduleMonthConfiguration_GenerateMonthlySeries","","Different","True","False","True","True"
+"5533073d-6ba2-4cb2-a1e0-262df1bee04d","StoredProcedure","SJob","FeeAmendmentsUpsert","","Different","True","False","True","True"

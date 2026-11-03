@@ -129,7 +129,7 @@ internal sealed class SqlTestDatabase
 
     internal static async Task DisableAuditTriggersAsync(
         SqlConnection connection,
-        SqlTransaction transaction,
+        SqlTransaction? transaction,
         CancellationToken cancellationToken = default)
     {
         await using var command = CreateCommand(

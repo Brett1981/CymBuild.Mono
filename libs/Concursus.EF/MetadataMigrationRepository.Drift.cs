@@ -50,14 +50,16 @@ public sealed partial class MetadataMigrationRepository
         string GuidColumnName,
         string PrimaryKeyColumnName,
         int ApplyOrder,
-        IReadOnlyList<StagedSnapshotRow> StagedRows);
+        IReadOnlyList<StagedSnapshotRow> StagedRows,
+        IReadOnlySet<Guid> KeyConflictSourceRowGuids);
 
     private sealed record StagedSnapshotRow(
         Guid SourceRowGuid,
         string SourcePayloadJson,
         byte[] SourcePayloadHash,
         string? TargetPayloadJson,
-        byte[]? TargetPayloadHash);
+        byte[]? TargetPayloadHash,
+        byte? SourceRowStatus);
 
     private sealed record PayloadRow(Guid RowGuid, string PayloadJson);
 
@@ -72,6 +74,7 @@ public sealed partial class MetadataMigrationRepository
         CancellationToken cancellationToken = default)
     {
         ValidateRunAndTargetArguments(runGuid, targetServerName, targetDatabaseName);
+        EnsureSelectedOnly(applySelectedOnly);
 
         await using var targetConnection = await OpenConfiguredConnectionAsync(
             targetServerName,
@@ -118,6 +121,7 @@ public sealed partial class MetadataMigrationRepository
         CancellationToken cancellationToken)
     {
         ValidateRunAndTargetArguments(runGuid, targetServerName, targetDatabaseName);
+        EnsureSelectedOnly(applySelectedOnly);
         ValidateFingerprint(expectedPreviewFingerprint, nameof(expectedPreviewFingerprint));
 
         await using var targetConnection = await OpenConfiguredConnectionAsync(
@@ -206,6 +210,7 @@ public sealed partial class MetadataMigrationRepository
         CancellationToken cancellationToken = default)
     {
         ValidateRunAndTargetArguments(runGuid, targetServerName, targetDatabaseName);
+        EnsureSelectedOnly(applySelectedOnly);
 
         await using var targetConnection = await OpenConfiguredConnectionAsync(
             targetServerName,
@@ -280,6 +285,9 @@ public sealed partial class MetadataMigrationRepository
                 await sourceConnection.DisposeAsync().ConfigureAwait(false);
             }
         }
+
+        // Reached only when both transactions committed.
+        await TryVerifyApplyConvergenceAsync(targetConnection, runGuid, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<SqlConnection> OpenConfiguredConnectionAsync(
@@ -374,11 +382,27 @@ public sealed partial class MetadataMigrationRepository
                 "Metadata drift validation found no enabled registry rows. Re-stage and validate the run before deployment.");
         }
 
+        var selectedSourceRowGuidsByRegistry = await ReadSelectedSourceRowGuidsAsync(
+            targetConnection,
+            targetTransaction,
+            runGuid,
+            cancellationToken).ConfigureAwait(false);
+
         var sourceEntries = new List<string>();
         var targetEntries = new List<string>();
 
         foreach (var registry in registries)
         {
+            // Apply is always selected-row scoped (EnsureSelectedOnly). A table nobody selected
+            // anything from this run isn't being applied, so its live state - schema, row set,
+            // unrelated row changes - is none of this run's business; only tables with at least
+            // one selected row are drift-checked, and only for the rows actually selected.
+            if (!selectedSourceRowGuidsByRegistry.TryGetValue(registry.RegistryGuid, out var selectedSourceRowGuids)
+                || selectedSourceRowGuids.Count == 0)
+            {
+                continue;
+            }
+
             ValidateSqlIdentifier(registry.SchemaName, nameof(registry.SchemaName));
             ValidateSqlIdentifier(registry.TableName, nameof(registry.TableName));
             ValidateSqlIdentifier(registry.GuidColumnName, nameof(registry.GuidColumnName));
@@ -423,6 +447,31 @@ public sealed partial class MetadataMigrationRepository
                 activeOnly: true,
                 cancellationToken).ConfigureAwait(false);
 
+            // CYB-564 retirements: a staged retirement is a source row already soft-deleted to
+            // 254, so the active-only read above can never contain it and every run with a
+            // retirement selected failed as "source payload changed after staging" (UAT_Test run
+            // 9F02560B, 2026-10-12). Add back exactly the selected retired rows.
+            var selectedRetirementGuids = registry.StagedRows
+                .Where(row => row.SourceRowStatus == 254 && selectedSourceRowGuids.Contains(row.SourceRowGuid))
+                .Select(row => row.SourceRowGuid)
+                .ToHashSet();
+
+            if (selectedRetirementGuids.Count > 0)
+            {
+                var retiredSourceRows = await ReadPayloadRowsAsync(
+                    sourceConnection,
+                    sourceTransaction,
+                    registry,
+                    targetColumns,
+                    activeOnly: false,
+                    cancellationToken,
+                    retiredOnly: true).ConfigureAwait(false);
+
+                sourceRows = sourceRows
+                    .Concat(retiredSourceRows.Where(row => selectedRetirementGuids.Contains(row.RowGuid)))
+                    .ToList();
+            }
+
             var targetRows = await ReadPayloadRowsAsync(
                 targetConnection,
                 targetTransaction,
@@ -431,19 +480,32 @@ public sealed partial class MetadataMigrationRepository
                 activeOnly: false,
                 cancellationToken).ConfigureAwait(false);
 
-            var sourceByGuid = BuildUniquePayloadIndex(sourceRows, registry, "source");
-            var targetByGuid = BuildUniquePayloadIndex(targetRows, registry, "target");
-            var stagedByGuid = registry.StagedRows.ToDictionary(row => row.SourceRowGuid);
+            var sourceByGuid = BuildUniquePayloadIndex(sourceRows, out var sourceDuplicateGuids);
+            var targetByGuid = BuildUniquePayloadIndex(targetRows, out var targetDuplicateGuids);
 
-            if (!sourceByGuid.Keys.ToHashSet().SetEquals(stagedByGuid.Keys))
-            {
-                throw Drift(
-                    registry,
-                    null,
-                    "the active source row set changed after staging (a row was added, removed or retired)");
-            }
+            // Genuine duplicate identity Guids (2+ active rows sharing one Guid) are pre-existing
+            // data corruption needing manual correction - not drift caused by this run. Exclude
+            // those rows from this run's scope entirely rather than blocking every other selected
+            // record; SMigration.MetadataStage_Run already keeps freshly-staged runs from including
+            // them, and a "DuplicateTargetGuid"/"DuplicateSourceGuid" validation issue surfaces the
+            // condition on the Audit page without stopping the process. Rows excluded from staging
+            // for colliding with a different target row on some other unique key
+            // (DuplicateTargetKey) are the same kind of pre-existing conflict and must be excluded
+            // here too, or the live source row set will never match what was (deliberately) staged.
+            var duplicateGuids = new HashSet<Guid>(sourceDuplicateGuids);
+            duplicateGuids.UnionWith(targetDuplicateGuids);
+            duplicateGuids.UnionWith(registry.KeyConflictSourceRowGuids);
 
-            foreach (var stagedRow in registry.StagedRows)
+            // Scoped to this run's selection: a row nobody selected isn't being applied, so a
+            // change to it (or to some other, unselected row in the same table) isn't drift this
+            // run needs to care about. A selected row that's missing, retired, or duplicated is
+            // still caught below via the per-row source/target payload checks.
+            var stagedRowsInScope = registry.StagedRows
+                .Where(row => selectedSourceRowGuids.Contains(row.SourceRowGuid)
+                    && !duplicateGuids.Contains(row.SourceRowGuid))
+                .ToList();
+
+            foreach (var stagedRow in stagedRowsInScope)
             {
                 ValidateStoredPayloadHash(
                     registry,
@@ -491,8 +553,25 @@ public sealed partial class MetadataMigrationRepository
             sourceEntries.Add($"registry|{registry.ApplyOrder}|{registry.RegistryGuid:D}|{registry.SchemaName}|{registry.TableName}|{columnEnvelope}");
             targetEntries.Add($"registry|{registry.ApplyOrder}|{registry.RegistryGuid:D}|{registry.SchemaName}|{registry.TableName}|{columnEnvelope}");
 
-            sourceEntries.AddRange(sourceRows.Select(row => BuildSnapshotRowEntry(registry, row)));
-            targetEntries.AddRange(targetRows.Select(row => BuildSnapshotRowEntry(registry, row)));
+            // A duplicated Guid's per-row PayloadJson is unreliable: ReadPayloadRowsAsync's
+            // correlated subquery matches every row sharing that Guid, and FOR JSON PATH
+            // WITHOUT_ARRAY_WRAPPER concatenates multiple matches into invalid single-value JSON
+            // (e.g. "{...},{...}") rather than throwing at read time. Canonicalizing that text
+            // for the fingerprint would throw, so duplicate rows are fingerprinted by Guid alone.
+            // Scoped to selected rows only, matching the drift checks above.
+            foreach (var row in sourceRows.Where(row => selectedSourceRowGuids.Contains(row.RowGuid)))
+            {
+                sourceEntries.Add(sourceDuplicateGuids.Contains(row.RowGuid)
+                    ? $"row|{registry.ApplyOrder}|{registry.RegistryGuid:D}|{row.RowGuid:D}|duplicate"
+                    : BuildSnapshotRowEntry(registry, row));
+            }
+
+            foreach (var row in targetRows.Where(row => selectedSourceRowGuids.Contains(row.RowGuid)))
+            {
+                targetEntries.Add(targetDuplicateGuids.Contains(row.RowGuid)
+                    ? $"row|{registry.ApplyOrder}|{registry.RegistryGuid:D}|{row.RowGuid:D}|duplicate"
+                    : BuildSnapshotRowEntry(registry, row));
+            }
         }
 
         return new DriftSnapshot(
@@ -518,7 +597,8 @@ public sealed partial class MetadataMigrationRepository
                 sr.SourcePayloadJson,
                 sr.SourcePayloadHash,
                 sr.TargetPayloadJson,
-                sr.TargetPayloadHash
+                sr.TargetPayloadHash,
+                sr.SourceRowStatus
             FROM SMigration.Metadata_TableRegistry AS tr WITH (HOLDLOCK)
             LEFT JOIN SMigration.Metadata_StagedRows AS sr WITH (HOLDLOCK)
                 ON sr.RunGuid = @RunGuid
@@ -572,7 +652,50 @@ public sealed partial class MetadataMigrationRepository
                         : Convert.ToString(reader["TargetPayloadJson"]),
                     TargetPayloadHash: reader["TargetPayloadHash"] == DBNull.Value
                         ? null
-                        : (byte[])reader["TargetPayloadHash"]));
+                        : (byte[])reader["TargetPayloadHash"],
+                    SourceRowStatus: reader["SourceRowStatus"] == DBNull.Value
+                        ? null
+                        : Convert.ToByte(reader["SourceRowStatus"])));
+            }
+        }
+
+        await reader.DisposeAsync().ConfigureAwait(false);
+
+        // Rows excluded from staging because they collide with a different target row on some
+        // other unique key (SMigration.MetadataStage_Run's DuplicateTargetKey check), or because
+        // they reference another row excluded for that reason (UnresolvedReference, cascaded the
+        // same way through registered foreign keys) are, by definition, never staged. The live
+        // source re-read below still sees them as active, ordinary rows though - without this,
+        // the "active source row set changed after staging" check would misfire on every run
+        // that has one of these known, already-flagged conflicts, rather than only on genuine
+        // drift.
+        const string keyConflictSql = """
+            SELECT
+                vi.RegistryGuid,
+                vi.SourceRowGuid
+            FROM SMigration.Metadata_ValidationIssues AS vi WITH (HOLDLOCK)
+            WHERE vi.RunGuid = @RunGuid
+              AND vi.IssueCode IN (N'DuplicateTargetKey', N'UnresolvedReference')
+              AND vi.RowStatus NOT IN (0,254)
+              AND vi.SourceRowGuid IS NOT NULL;
+            """;
+
+        await using var keyConflictCommand = new SqlCommand(keyConflictSql, connection, transaction)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 600
+        };
+
+        keyConflictCommand.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+
+        await using var keyConflictReader = await keyConflictCommand.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        while (await keyConflictReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var registryGuid = (Guid)keyConflictReader["RegistryGuid"];
+            if (builders.TryGetValue(registryGuid, out var builder))
+            {
+                builder.KeyConflictSourceRowGuids.Add((Guid)keyConflictReader["SourceRowGuid"]);
             }
         }
 
@@ -584,6 +707,46 @@ public sealed partial class MetadataMigrationRepository
             .ToArray();
     }
 
+    private static async Task<IReadOnlyDictionary<Guid, IReadOnlySet<Guid>>> ReadSelectedSourceRowGuidsAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        Guid runGuid,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                sel.RegistryGuid,
+                sel.SourceRowGuid
+            FROM SMigration.Metadata_RunSelections AS sel WITH (HOLDLOCK)
+            WHERE sel.RunGuid = @RunGuid
+              AND sel.RowStatus NOT IN (0,254);
+            """;
+
+        await using var command = new SqlCommand(sql, connection, transaction)
+        {
+            CommandType = CommandType.Text,
+            CommandTimeout = 300
+        };
+
+        command.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+
+        var selections = new Dictionary<Guid, HashSet<Guid>>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var registryGuid = (Guid)reader["RegistryGuid"];
+            if (!selections.TryGetValue(registryGuid, out var sourceRowGuids))
+            {
+                sourceRowGuids = [];
+                selections.Add(registryGuid, sourceRowGuids);
+            }
+
+            sourceRowGuids.Add((Guid)reader["SourceRowGuid"]);
+        }
+
+        return selections.ToDictionary(pair => pair.Key, pair => (IReadOnlySet<Guid>)pair.Value);
+    }
+
     private sealed class RegistryDefinitionBuilder
     {
         public Guid RegistryGuid { get; init; }
@@ -593,6 +756,7 @@ public sealed partial class MetadataMigrationRepository
         public string PrimaryKeyColumnName { get; init; } = string.Empty;
         public int ApplyOrder { get; init; }
         public List<StagedSnapshotRow> StagedRows { get; } = [];
+        public HashSet<Guid> KeyConflictSourceRowGuids { get; } = [];
 
         public RegistryDefinition Build() => new(
             RegistryGuid,
@@ -601,7 +765,8 @@ public sealed partial class MetadataMigrationRepository
             GuidColumnName,
             PrimaryKeyColumnName,
             ApplyOrder,
-            StagedRows);
+            StagedRows,
+            KeyConflictSourceRowGuids);
     }
 
     private static async Task<IReadOnlyList<string>> ReadColumnNamesAsync(
@@ -651,14 +816,19 @@ public sealed partial class MetadataMigrationRepository
         RegistryDefinition registry,
         IReadOnlyList<string> columnNames,
         bool activeOnly,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool retiredOnly = false)
     {
         var qualifiedColumns = string.Join(", ", columnNames.Select(column => $"sj.{QuoteName(column)}"));
         var objectName = $"{QuoteName(registry.SchemaName)}.{QuoteName(registry.TableName)}";
         var hasRowStatus = columnNames.Contains("RowStatus", StringComparer.OrdinalIgnoreCase);
-        var activeFilter = activeOnly && hasRowStatus
-            ? "WHERE s.[RowStatus] NOT IN (0,254)"
-            : string.Empty;
+
+        // A table without RowStatus has no retired rows; retiredOnly must not fall back to "all rows".
+        var activeFilter = retiredOnly
+            ? hasRowStatus ? "WHERE s.[RowStatus] = 254" : "WHERE 1 = 0"
+            : activeOnly && hasRowStatus
+                ? "WHERE s.[RowStatus] NOT IN (0,254)"
+                : string.Empty;
 
         var sql = $"""
             SELECT
@@ -789,6 +959,33 @@ public sealed partial class MetadataMigrationRepository
             Message: Convert.ToString(reader["Message"]) ?? string.Empty);
     }
 
+    /// <summary>
+    /// CYB-574: after the apply has committed, re-compares every applied row with its source and
+    /// records rows that still differ as 'ApplyDidNotConverge' warnings on the run. Advisory: the
+    /// procedure logs its own failure, and nothing here may turn a committed apply into an error.
+    /// </summary>
+    private static async Task TryVerifyApplyConvergenceAsync(
+        SqlConnection connection,
+        Guid runGuid,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var command = new SqlCommand("SMigration.MetadataApply_VerifyConvergence", connection)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 600
+            };
+
+            command.Parameters.Add(new SqlParameter("@RunGuid", SqlDbType.UniqueIdentifier) { Value = runGuid });
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqlException)
+        {
+            // The apply is already committed; the check is advisory and logs its own failures.
+        }
+    }
+
     private static async Task ExecuteApplyAsync(
         SqlConnection connection,
         SqlTransaction transaction,
@@ -828,21 +1025,41 @@ public sealed partial class MetadataMigrationRepository
         });
     }
 
+    private static void EnsureSelectedOnly(bool applySelectedOnly)
+    {
+        if (!applySelectedOnly)
+        {
+            throw new InvalidOperationException(
+                "Metadata preview and apply operations require an explicit selected-row scope.");
+        }
+    }
+
+    /// <summary>
+    /// Builds a Guid-keyed payload index, excluding (not throwing on) Guids that appear on more
+    /// than one row. A genuine duplicate identity Guid is pre-existing data corruption that needs
+    /// manual correction, not something a single migration run can resolve automatically - so
+    /// affected rows are reported via <paramref name="duplicateGuids"/> and skipped rather than
+    /// blocking the entire drift check for every other selected record.
+    /// </summary>
     private static Dictionary<Guid, PayloadRow> BuildUniquePayloadIndex(
         IReadOnlyList<PayloadRow> rows,
-        RegistryDefinition registry,
-        string endpointName)
+        out HashSet<Guid> duplicateGuids)
     {
-        var duplicate = rows
-            .GroupBy(row => row.RowGuid)
-            .FirstOrDefault(group => group.Count() > 1);
+        duplicateGuids = new HashSet<Guid>();
+        var index = new Dictionary<Guid, PayloadRow>();
 
-        if (duplicate is not null)
+        foreach (var group in rows.GroupBy(row => row.RowGuid))
         {
-            throw Drift(registry, duplicate.Key, $"the {endpointName} contains duplicate Guid values");
+            if (group.Count() > 1)
+            {
+                duplicateGuids.Add(group.Key);
+                continue;
+            }
+
+            index[group.Key] = group.Single();
         }
 
-        return rows.ToDictionary(row => row.RowGuid);
+        return index;
     }
 
     private static void ValidateStoredPayloadHash(

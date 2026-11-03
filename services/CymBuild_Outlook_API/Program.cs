@@ -81,7 +81,7 @@ var tenantId = azureAd["TenantId"] ?? throw new InvalidOperationException("Azure
 var apiAudienceSimple = $"api://{clientId}";
 var apiHost = builder.Configuration["ApiSettings:Host"]
           ?? builder.Configuration["AzureAd:AppIdUriHost"]
-          ?? "bre.socotec.co.uk:9603";
+          ?? "cymbuild.socotec.co.uk";
 
 var apiAudienceHostPort = $"api://{apiHost}/{clientId}";
 var apiAudienceFromConfig = builder.Configuration["AzureAd:Audience"]; // optional explicit override
@@ -92,8 +92,8 @@ var validAudiences = new[]
     clientId,
     apiAudienceHostPort,
     apiAudienceFromConfig,
-    $"api://bre.socotec.co.uk:9603/{clientId}",
-    $"api://bre.socotec.co.uk:9604/{clientId}",
+    $"api://cymbuild.socotec.co.uk/{clientId}",
+    $"api://cymbuild.socotec.co.uk:9604/{clientId}",
 }
 .Where(x => !string.IsNullOrWhiteSpace(x))
 .Distinct(StringComparer.OrdinalIgnoreCase)

@@ -60,6 +60,23 @@ namespace Concursus.Common.Shared.Models.Finance
         public byte RowStatus { get; set; }
 
         /// <summary>
+        /// Source finance transaction type. The ID is retained for diagnostics;
+        /// routing uses the name because IDs can differ between environments.
+        /// </summary>
+        public int TransactionTypeId { get; set; }
+
+        public Guid TransactionTypeGuid { get; set; }
+
+        public string TransactionTypeName { get; set; } = string.Empty;
+
+        public bool TransactionTypeIsNegated { get; set; }
+
+        public bool TransactionTypeIsBank { get; set; }
+
+        public SageOutboundDocumentType GetSageOutboundDocumentType() =>
+            SageOutboundDocumentTypeResolver.Resolve(TransactionTypeName);
+
+        /// <summary>
         /// Optional job identifier linked to the transaction.
         /// </summary>
         public int? JobId { get; set; }

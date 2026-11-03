@@ -1,9 +1,27 @@
 ﻿SET QUOTED_IDENTIFIER, ANSI_NULLS ON
 GO
 
-PRINT (N'Create procedure [SFin].[SageInbound_ReconcileAllocations]')
+PRINT (N'Create or alter procedure [SFin].[SageInbound_ReconcileAllocations]')
 GO
-CREATE PROCEDURE [SFin].[SageInbound_ReconcileAllocations]
+
+/*
+    CYB-555: turns one recorded Sage allocation (SFin.SageInbound_RecordAllocation)
+    into CymBuild records.
+
+    - The target is the Sage invoice row; MatchedTargetTransactionID is the
+      CymBuild invoice it was reconciled to.
+    - A Receipt (1) or Credit Note (5) counterpart is materialised by
+      SFin.SageInboundReceiptAndAllocation_Materialise in pair mode: one CymBuild
+      Receipt/Credit Note per (counterpart, invoice), on the invoice's job, for
+      the amount Sage applied to that invoice. MatchedSourceTransactionID is that
+      CymBuild transaction.
+    - An unresolved counterpart (-1) creates nothing: the invoice is settled,
+      method unknown. MatchedSourceTransactionID stays -1. A Receipt is never
+      invented.
+
+    Idempotent: re-running updates the same CymBuild transaction and allocation.
+*/
+CREATE OR ALTER PROCEDURE [SFin].[SageInbound_ReconcileAllocations]
 (
     @ExternalAllocationID BIGINT
 )
@@ -15,17 +33,17 @@ BEGIN
     DECLARE
         @SourceExternalTransactionID BIGINT,
         @TargetExternalTransactionID BIGINT,
-        @AllocatedAmount            DECIMAL(18,2),
-        @MatchedSourceTransactionID BIGINT = -1,
-        @MatchedTargetTransactionID BIGINT = -1;
+        @CounterpartTypeCode         INT,
+        @InvoiceTransactionID        BIGINT = -1,
+        @MatchedSourceTransactionID  BIGINT = -1,
+        @MatchedTargetTransactionID  BIGINT = -1;
 
     SELECT
-        @SourceExternalTransactionID = ext.SourceExternalTransactionID,
-        @TargetExternalTransactionID = ext.TargetExternalTransactionID,
-        @AllocatedAmount             = ext.AllocatedAmount
-    FROM SFin.SageExternalAllocations ext
-    WHERE ext.ID = @ExternalAllocationID
-      AND ext.RowStatus NOT IN (0,254);
+        @SourceExternalTransactionID = a.SourceExternalTransactionID,
+        @TargetExternalTransactionID = a.TargetExternalTransactionID
+    FROM SFin.SageExternalAllocations AS a
+    WHERE a.ID = @ExternalAllocationID
+      AND a.RowStatus NOT IN (0,254);
 
     IF @SourceExternalTransactionID IS NULL
     BEGIN
@@ -33,70 +51,38 @@ BEGIN
         RETURN;
     END;
 
-    SELECT
-        @MatchedSourceTransactionID = src.MatchedTransactionID
-    FROM SFin.SageExternalTransactions src
+    SELECT @CounterpartTypeCode = src.SageTransactionTypeCode
+    FROM SFin.SageExternalTransactions AS src
     WHERE src.ID = @SourceExternalTransactionID
       AND src.RowStatus NOT IN (0,254);
 
-    SELECT
-        @MatchedTargetTransactionID = tgt.MatchedTransactionID
-    FROM SFin.SageExternalTransactions tgt
+    SELECT @InvoiceTransactionID = ISNULL(tgt.MatchedTransactionID, -1)
+    FROM SFin.SageExternalTransactions AS tgt
     WHERE tgt.ID = @TargetExternalTransactionID
       AND tgt.RowStatus NOT IN (0,254);
 
-    UPDATE ext
+    UPDATE a
     SET
-        MatchedSourceTransactionID = ISNULL(@MatchedSourceTransactionID, -1),
-        MatchedTargetTransactionID = ISNULL(@MatchedTargetTransactionID, -1),
+        MatchedTargetTransactionID = ISNULL(@InvoiceTransactionID, -1),
         UpdatedByUserID            = SCore.GetCurrentUserId(),
         UpdatedDateTimeUTC         = GETUTCDATE()
-    FROM SFin.SageExternalAllocations ext
-    WHERE ext.ID = @ExternalAllocationID
-      AND ext.RowStatus NOT IN (0,254);
+    FROM SFin.SageExternalAllocations AS a
+    WHERE a.ID = @ExternalAllocationID;
 
-    IF
-    (
-        ISNULL(@MatchedSourceTransactionID, -1) > 0
-        AND ISNULL(@MatchedTargetTransactionID, -1) > 0
-        AND @AllocatedAmount IS NOT NULL
-        AND NOT EXISTS
-        (
-            SELECT 1
-            FROM SFin.TransactionAllocations ta
-            WHERE ta.SourceTransactionID = @MatchedSourceTransactionID
-              AND ta.TargetTransactionID = @MatchedTargetTransactionID
-              AND ta.AllocatedAmount     = @AllocatedAmount
-              AND ta.RowStatus NOT IN (0,254)
-        )
-    )
+    -- CYB-555-RECONCILE-PAIR-MODE
+    IF @CounterpartTypeCode IN (1, 5)
+       AND ISNULL(@InvoiceTransactionID, -1) > 0
     BEGIN
-        DECLARE @NewAllocationGuid UNIQUEIDENTIFIER = NEWID();
-        DECLARE @IsInsert BIT;
-
-        EXEC SCore.UpsertDataObject
-             @Guid       = @NewAllocationGuid,
-             @SchemeName = N'SFin',
-             @ObjectName = N'TransactionAllocations',
-             @IsInsert   = @IsInsert OUTPUT;
-
-        INSERT INTO SFin.TransactionAllocations
-        (
-            RowStatus,
-            Guid,
-            SourceTransactionID,
-            TargetTransactionID,
-            AllocatedAmount
-        )
-        VALUES
-        (
-            1,
-            @NewAllocationGuid,
-            @MatchedSourceTransactionID,
-            @MatchedTargetTransactionID,
-            @AllocatedAmount
-        );
+        EXECUTE SFin.SageInboundReceiptAndAllocation_Materialise
+             @ExternalTransactionID        = @SourceExternalTransactionID,
+             @InvoiceExternalTransactionID = @TargetExternalTransactionID;
     END;
+
+    SELECT
+        @MatchedSourceTransactionID = a.MatchedSourceTransactionID,
+        @MatchedTargetTransactionID = a.MatchedTargetTransactionID
+    FROM SFin.SageExternalAllocations AS a
+    WHERE a.ID = @ExternalAllocationID;
 
     SELECT
         @ExternalAllocationID AS ExternalAllocationID,

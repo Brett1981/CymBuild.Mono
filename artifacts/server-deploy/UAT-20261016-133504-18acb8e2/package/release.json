@@ -1,0 +1,16 @@
+{
+  "Release": "UAT-20261016-133504-18acb8e2",
+  "Environment": "UAT",
+  "Branch": "bugfix/SB_CYB-584-26.4",
+  "Commit": "18acb8e28e8e81681e33d9319a41dce73d114aaf",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-16T13:42:04.4558212+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 205,
+    "Pwa": 7061
+  }
+}

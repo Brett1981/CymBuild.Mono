@@ -1,4 +1,9 @@
-# CYB-361 Controlled Schema Deployment Runner (R41)
+# CYB-361 Controlled Schema Source Sync and Deployment Runner (R7D)
+
+R42 table convergence hotfix: generated column declarations validate collation names and emit
+them as T-SQL collation tokens (for example `COLLATE SQL_Latin1_General_CP1_CI_AS`). Collation
+names are deliberately not emitted as bracketed identifiers because that syntax is invalid in
+a `COLLATE` clause.
 
 This is the controlled manual implementation of the future schema deployment pipeline worker.
 
@@ -19,10 +24,12 @@ PowerShell runner/pipeline worker -> committed source-controlled SQL -> target S
 | Component | Current source revision |
 |---|---|
 | Schema Migration workbench/bootstrap and persistent exclusions | CYB-361 R39 |
-| Manual schema deployment runner, first-class constraints and declarative table/index convergence | CYB-361 R41 |
+| Manual schema deployment runner, first-class constraints and declarative table/index convergence | CYB-361 R42 |
+| Selected DEV source sync, portable default constraints, idempotent programmable-object output and pipeline verification | CYB-361 R7C4 |
+| Apply lock, target-drift baseline, persistent attempts/checkpoints and post-apply hash verification | CYB-361 R7D |
 | Last independently verified shared-environment baseline | CYB-361 R27, unless later deployment evidence is supplied |
 
-R39/R41 being present in source does not itself prove that those revisions have already been deployed to a shared environment. Retain the exact run, plan, source hashes and verification evidence for the first R41 rehearsal.
+R39/R42/R7C4/R7D being present in source does not itself prove that those revisions have already been deployed to a shared environment. Retain the exact run, plan, source hashes, attempt/checkpoint rows and verification evidence for the first R7D rehearsal.
 
 Historical run Guids shown in older records are audit evidence only and must not be reused.
 
@@ -65,6 +72,7 @@ Dry-run is the default. `-WhatIf` is shown explicitly for clarity.
 Dry-run:
 
 - reads the accepted run and `SMigration.SchemaDeploymentPlan_Get`;
+- re-snapshots every selected target object and fails if it no longer matches the accepted `TargetHash` baseline;
 - resolves canonical or explicitly allowlisted source-controlled SQL files;
 - can materialise missing canonical Function, View, StoredProcedure, Trigger, Constraint, existing-Table convergence or rowstore-Index SQL from the accepted declarative snapshot unless `-SkipSourceMaterialization` is supplied;
 - writes the plan, resolved, unsupported and summary artefacts to a unique execution-scoped directory;
@@ -75,6 +83,108 @@ Dry-run:
 - writes no SMigration deployment/audit rows.
 
 Materialised files are source artefacts. Review and commit them before deployment. Later-environment promotion should use `-SkipSourceMaterialization` so QA/UAT/LIVE consume only immutable committed files.
+
+## R7C selected DEV source sync
+
+The Schema Management UI remains the place to create a run, compare, save the explicit row selection,
+validate and accept it. Once that accepted selection exists, synchronize only its supported source
+artefacts from the persisted `CymBuild_Dev` snapshot:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "SOC-SQLDEVBRE01\GENERAL" `
+    -TargetDatabase "CymBuild_QA" `
+    -RunGuid "<ACCEPTED_DEV_SOURCE_RUN_GUID>" `
+    -SyncSource
+```
+
+`-SyncSource`:
+
+- requires a reviewed/accepted run whose recorded source is exactly `DEV / CymBuild_Dev`;
+- requires an explicit non-empty selection and processes only the selected deployment-plan rows;
+- updates stale canonical Function, View, StoredProcedure and Trigger files from the accepted source
+  definition, and converges selected generated Constraint, Table and Index migration artefacts;
+- never deletes a canonical file for `MissingInSource`; an explicit reviewed removal migration remains
+  required;
+- validates every persisted source/target definition hash used by the selected plan before writing;
+- writes schema source only beneath `Database\CymBuild_DB\Schema` and restores every schema source file
+  written by the invocation if any selected row is unsupported or the operation otherwise fails;
+- emits `source-sync-manifest.json` with the selected comparison identities, source hashes, repository
+  paths and file SHA-256 values; and
+- returns before target preflight, DDL, business-data changes or SMigration deployment audit changes.
+
+Review and commit the resulting `Database\CymBuild_DB` diff. A normal application compile must not
+silently rewrite source control. Instead, the local release build and future pipeline use the
+non-mutating verification gate:
+
+```powershell
+.\tools\SchemaDeployment\Invoke-CymBuildSchemaDeployment.ps1 `
+    -TargetServer "SOC-SQLDEVBRE01\GENERAL" `
+    -TargetDatabase "CymBuild_QA" `
+    -RunGuid "<ACCEPTED_DEV_SOURCE_RUN_GUID>" `
+    -VerifySource
+```
+
+`-VerifySource` fails when a selected generated artefact is missing/stale or a selected programmable
+object no longer matches the accepted `CymBuild_Dev` source hash. It never writes schema source files or
+preflights/deploys the target. The run Guid and plan database become explicit pipeline inputs, avoiding
+an implicit "latest run" race.
+
+## R7C4 portable defaults and idempotent module source
+
+R7C4 removes environment noise from SQL Server system-named default constraints. A name such as
+`DF__Table__Column__1A2B3C4D` is generated from object creation order and is not a portable schema
+contract. Schema comparison now maps a system-named default to a deterministic CymBuild name derived
+from schema, table and column. An explicitly named source constraint remains authoritative and is not
+discarded.
+
+When a default definition or explicit name genuinely differs, generated prepare/apply SQL resolves the
+currently installed target constraint through `sys.default_constraints` and `sys.columns`. It drops by
+the actual target name, never by a name captured from QA, and then installs the accepted deterministic or
+explicit source name. Read-only preflight rejects a desired name already owned by another column.
+
+Programmable source output is written as `CREATE OR ALTER`, while comparison hashes treat `CREATE`,
+`ALTER` and `CREATE OR ALTER` declaration spelling as equivalent. This preserves the accepted module
+body while keeping committed Function, View, Procedure and Trigger scripts independently idempotent.
+
+The snapshot and hash rules changed in R7C4. Runs created before the API was restarted with R7C4 must not
+be reused for source sync, verification or deployment. Create, compare, select, validate and accept a
+fresh DEV-to-QA run. R7C4 does not approve business-behaviour changes found in DEV definitions: correct
+them in DEV or leave those rows unselected before accepting the fresh run.
+
+## R7D execution hardening
+
+R7D closes the race between accepted comparison and target execution. Restart the API after deploying
+the R7D source and create a fresh Schema run. Run creation transactionally converges these operational
+audit tables from the embedded source-controlled bootstrap:
+
+```text
+SMigration.Schema_DeploymentAttempts
+SMigration.Schema_DeploymentObjectCheckpoints
+```
+
+For `-Apply`, the runner:
+
+1. takes an exclusive, session-owned SQL application lock for the target database;
+2. reads and fingerprints the selected accepted plan again while holding that lock;
+3. creates a persistent attempt row and re-snapshots the target catalogue using the same ten snapshot
+   queries and hash normalizer as the API;
+4. compares every selected object with the accepted `TargetHash` before any pre-deployment script or
+   selected DDL;
+5. records per-object support, preflight, prepare, apply and verification checkpoints;
+6. runs post-deployment restoration; and
+7. re-snapshots every selected object and requires its target hash to match the accepted `SourceHash`
+   before `Schema_Run.RunStatus` can become `DeploymentApplied`.
+
+A competing apply fails immediately by default with a deterministic busy message. A controlled pipeline
+may set `-ApplyLockTimeoutSeconds` to a bounded non-negative wait. Do not bypass the lock. Target drift
+writes `target-drift-failures.csv` and stops before pre-deployment/DDL. Verification failure writes
+`post-apply-verification-failures.csv`, marks the attempt and run failed, and retains all checkpoint
+evidence for diagnosis.
+
+`-WhatIf` performs the same read-only target-baseline check without taking the apply lock or writing
+attempt/checkpoint rows. `-SyncSource` and `-VerifySource` still return before target preflight and keep
+the R7C4 source-sync contract.
 
 ## Apply
 
@@ -90,6 +200,11 @@ Materialised files are source artefacts. Review and commit them before deploymen
 
 Apply requires the run to be in the accepted `Reviewed` state. Saving or clearing a deployment selection resets validation and acceptance, so the current plan must be validated and accepted again before deployment.
 
+Apply also requires the complete supported selected plan. `-Apply -AllowPartial` is prohibited in R7D.
+Use the Schema Management UI to fix, ignore or deselect trouble rows, then validate and accept the exact
+remaining selection again. `-AllowPartial` is retained only for diagnostic dry-run resolution and must
+not be used as a release/pipeline apply control.
+
 If the runner materialises new canonical SQL during an apply attempt, it stops before any target deployment starts. Review and commit the files, run `-WhatIf`, then run `-Apply` again.
 
 ## Deployment-plan behaviour
@@ -104,7 +219,7 @@ EXEC [SMigration].[SchemaDeploymentPlan_Get]
 The stored procedure controls scope:
 
 - saved explicit selection: only selected deployable differences;
-- no active selection rows: all deployable differences;
+- no active selected rows: empty plan and fail closed;
 - active persistent exclusions: omitted from comparison, validation and plan scope.
 
 No captured executable source-database DDL is run directly. Each deployment item resolves to an approved file under:
@@ -134,9 +249,12 @@ Still unsupported by default:
 - identity/computed/ROWGUIDCOL/SPARSE/FILESTREAM characteristic changes and data conversions that cannot pass the read-only `TRY_CONVERT` preflight;
 - partitioned, XML, spatial, columnstore, hash or other specialist index changes without a dedicated migration;
 - any dedicated migration whose approved source hash no longer matches the staged comparison;
-- any constraint whose accepted definition is not valid `CYB_CONSTRAINT_V2`.
+- any constraint whose accepted definition is not valid `CYB_CONSTRAINT_V2`;
+- any system-named (`is_system_named = 1`) primary-key or unique constraint that the compare could not pair one-to-one with a structurally identical target constraint. Its name is generated per database, so it cannot be recreated faithfully; give it an explicit name in source (or remove the duplicate at source) and compare again. Validation fails these rows with `SYSTEM_NAMED_CONSTRAINT_REQUIRES_EXPLICIT_NAME`.
 
-Unsupported selected rows block deployment unless `-AllowPartial` is explicitly supplied. `-AllowPartial` remains a deliberate partial-deployment control and must not be used when the whole accepted plan is intended.
+Unsupported selected rows always block apply. For dry-run diagnosis only, `-AllowPartial` may resolve and
+preflight supported rows while reporting the unsupported rows. The release selection must be corrected in
+CymBuild and accepted again before apply.
 
 ## R39 persistent schema exclusions
 
@@ -193,6 +311,27 @@ The runner materialises deterministic preflight/prepare/apply files beneath `Dat
 
 Table convergence never drops and recreates the whole table. It changes only the reviewed column/table properties. Removing a target-only column is possible only through an explicitly saved table selection because existing-table differences remain destructive-risk rows. Unsupported dependencies or conversions fail closed; they do not trigger inferred data deletion.
 
+## CYB-566 new tables, the -1 row and reference data
+
+A selected table that is `MissingInTarget` is no longer refused. With `-SyncSource`, the runner generates its canonical create file at `Database/CymBuild_DB/Schema/Tables/<Schema>.<Table>.sql`, the same way it generates constraint, index and table-convergence files. Review and commit it like any other generated file; `-VerifySource`, `-WhatIf` and `-Apply` then require it to match the regenerated output.
+
+The generated file:
+
+1. Creates the table with its columns and named defaults, in source column order. Keys, unique constraints, indexes and foreign keys stay as their own plan rows and are applied after it.
+2. Always adds the `-1` row: ID `-1`, zero Guid, every other column its default. A NOT NULL integer column with no default takes `-1`, the CymBuild foreign-key sentinel. Any other NOT NULL column with no default stops generation with a clear message.
+3. Adds the source rows only when **Copy reference data** was ticked for that table on the Compare screen (off by default). Use it for lookup tables only; transactional data is never copied. Rows are keyed on Guid and keep their source IDs. Tables over 5,000 rows, or with unsupported column types, are refused.
+4. Creates `SCore.DataObjects` rows for the copied rows, with `EntityTypeId` resolved from `SCore.EntityHobts` on the target. If the table has no registration, it prints a warning and skips them rather than guessing.
+
+The runner never connects to the source. When the selection is saved, the API captures each selected new table's column order from the source, plus its rows when the box is ticked, and stores them on `SMigration.Schema_RunSelections` (`CopyReferenceData`, `NewTableCaptureJson`). Both are part of the plan fingerprint. If the DEV table changes after that, run Compare again and re-save the selection.
+
+A hand-written canonical create file already at that path is used as before, unless reference data was requested.
+
+## R42 physical-table classification and Windows PowerShell compatibility
+
+R42 restricts key, foreign-key, check, default and standalone-index snapshots to physical user tables in `sys.tables`. Defaults that belong to multi-statement table-valued-function return definitions are part of the function module and are no longer emitted as standalone `Constraint` rows. Indexed-view or other non-table indexes are likewise excluded from the ordinary table-index contract.
+
+The runner reads declarative JSON properties through their `PSPropertyInfo.Value`, preserving one-column `Columns` arrays under Windows PowerShell 5.1. The `SCore.ObjectSecurity` dedicated migration remains source-hash guarded, with its allow-list updated to the approved `CYB_TABLE_V2` snapshot produced by the canonical source table.
+
 ## Dedicated schema support
 
 ### `SCore.ObjectSecurity`
@@ -200,7 +339,7 @@ Table convergence never drops and recreates the whole table. It changes only the
 The runner includes an exact allowlisted migration for source hash:
 
 ```text
-6BB3BF24C7B4A3991239D04BD8F0726389DCDE6AE5BC4E0B71FBFB5B5FF9751C
+F8196E022BF3112E9064A03D5C684F01104A9D1DCCEFC66C00E88FFC96218465
 ```
 
 Files:
@@ -263,22 +402,26 @@ Changing or clearing the saved selection invalidates review and requires normal 
 
 Apply mode runs the controlled sequence:
 
-1. read-only migration, table, constraint and index preflights that are valid against the pre-change structure;
-2. `SCore.PreDeploymentScript`;
-3. strict post-predeployment preflights confirming managed schema-bound dependencies were removed;
-4. selected index/constraint prepare files, including dependent-object ordering;
-5. selected table and programmable-object source-controlled changes;
-6. deferred constraint/index preflights against the converged table structure;
-7. selected rowstore indexes;
-8. constraint finalisation files, with primary/unique constraints before foreign keys;
-9. `SCore.PostDeploymentScript` after success, except for the established `CymBuild_Dev` rule;
-10. SMigration execution audit and final run status.
+1. acquire the target-database apply lock and recheck the accepted-plan fingerprint;
+2. create the persistent attempt and re-snapshot every selected target baseline;
+3. read-only migration, table, constraint and index preflights that are valid against the pre-change structure;
+4. `SCore.PreDeploymentScript`;
+5. strict post-predeployment preflights confirming managed schema-bound dependencies were removed;
+6. selected index/constraint prepare files, including dependent-object ordering;
+7. selected table and programmable-object source-controlled changes;
+8. deferred constraint/index preflights against the converged table structure;
+9. selected rowstore indexes and constraint finalisation, with primary/unique constraints before foreign keys;
+10. `SCore.PostDeploymentScript` after success, except for the established `CymBuild_Dev` rule;
+11. re-snapshot and verify every selected target object against its accepted source hash; and
+12. complete the attempt, audit and final run status before releasing the lock.
 
 If a later deployment step fails after pre-deployment completed, the runner attempts controlled `SCore.PostDeploymentScript` recovery before returning the original failure. Recovery success/failure is included in the audit detail.
 
 ## Audit and DataObjects
 
-Apply mode writes `SMigration.Schema_ExecutionLog` entries. Each log row is created atomically with its matching `SCore.DataObjects` row through:
+Apply mode writes `SMigration.Schema_ExecutionLog`, `SMigration.Schema_DeploymentAttempts` and
+`SMigration.Schema_DeploymentObjectCheckpoints` entries. Each new operational row is created atomically
+with its matching `SCore.DataObjects` row through:
 
 ```sql
 EXEC [SMigration].[SchemaDataObject_Ensure]
@@ -311,6 +454,10 @@ unsupported-items.csv
 summary.json
 manual-preview-deployment.sql
 ```
+
+When applicable, it also writes `target-drift-failures.csv` or
+`post-apply-verification-failures.csv`. These are failure evidence and should be retained with the
+execution manifest and pipeline logs.
 
 `manual-preview-deployment.sql` is inspection-only. The approved execution path is the PowerShell runner/pipeline worker because it enforces source-path validation, preflights, environment controls, dependency ordering and SMigration audit.
 

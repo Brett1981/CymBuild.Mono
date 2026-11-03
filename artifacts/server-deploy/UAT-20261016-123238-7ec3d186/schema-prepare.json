@@ -1,0 +1,18 @@
+{
+  "mode": "created",
+  "runGuid": "8392429a-a1d2-4105-ada4-91bf52faffbb",
+  "comparedOnUtc": "2026-10-16 11:47:08",
+  "selected": [
+    {
+      "objectType": "StoredProcedure",
+      "schemaName": "SMigration",
+      "objectName": "MetadataQuerySignature_Check",
+      "parentObjectName": "",
+      "differenceType": "MissingInTarget"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 8392429a-a1d2-4105-ada4-91bf52faffbb: selected 1 row(s), skipped 0, validated and accepted."
+}

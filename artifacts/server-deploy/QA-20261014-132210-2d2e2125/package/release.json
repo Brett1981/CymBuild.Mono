@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261014-132210-2d2e2125",
+  "Environment": "QA",
+  "Branch": "chore/SB_26.4-dev-sql-sync",
+  "Commit": "2d2e2125c049f5720e0123fd452f7890e3121e1a",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-14T13:25:30.0752631+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 205,
+    "Pwa": 7061
+  }
+}

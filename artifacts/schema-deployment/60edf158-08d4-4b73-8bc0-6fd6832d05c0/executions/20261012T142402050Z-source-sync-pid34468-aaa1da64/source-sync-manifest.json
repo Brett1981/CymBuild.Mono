@@ -1,0 +1,100 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "60edf158-08d4-4b73-8bc0-6fd6832d05c0",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev264",
+  "PlanDatabase": "CymBuild_QA2",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 5,
+  "ArtifactCount": 7,
+  "GeneratedOnUtc": "2026-10-12T14:24:03.5093952Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "4c87c38d-09c0-4288-96cf-872f581a0560",
+      "ObjectType": "Table",
+      "SchemaName": "SCore",
+      "ObjectName": "MergeDocuments",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "520EA6A72AFE55B76C90E9971C90867D77983904725CAD057C2BF94CFA7C6AA9",
+      "RelativePath": "Database/CymBuild_DB/Schema/Migrations/Generated/Tables/SCore.MergeDocuments.alter.sql",
+      "FileSha256": "88432B8B0C5A4C3AFA3A8E61D9B404DF74FF26037FD47054C478F1476A35DC9C",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "4c87c38d-09c0-4288-96cf-872f581a0560",
+      "ObjectType": "Table",
+      "SchemaName": "SCore",
+      "ObjectName": "MergeDocuments",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "520EA6A72AFE55B76C90E9971C90867D77983904725CAD057C2BF94CFA7C6AA9",
+      "RelativePath": "Database/CymBuild_DB/Schema/Migrations/Generated/Tables/SCore.MergeDocuments.preflight.sql",
+      "FileSha256": "D2691337397BF7A1C9B03C1F8FC02EDD1995375B900CEBA59F133D53E39CD145",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "870921ec-2431-40f0-8d01-0a792df5193e",
+      "ObjectType": "Constraint",
+      "SchemaName": "SCore",
+      "ObjectName": "DF_SCore_MergeDocuments_IsActive",
+      "ParentObjectName": "MergeDocuments",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "CF95B15C1AA067542D2B03E07C70EAA76F88D0CB8DCC1727E7E186878A1D7624",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SCore.MergeDocuments.DF_SCore_MergeDocuments_IsActive.sql",
+      "FileSha256": "E29EB0BC3509A505235310F462A94A9FB48318BE07068FAC166320ECA62AC223",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "870921ec-2431-40f0-8d01-0a792df5193e",
+      "ObjectType": "Constraint",
+      "SchemaName": "SCore",
+      "ObjectName": "DF_SCore_MergeDocuments_IsActive",
+      "ParentObjectName": "MergeDocuments",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "CF95B15C1AA067542D2B03E07C70EAA76F88D0CB8DCC1727E7E186878A1D7624",
+      "RelativePath": "Database/CymBuild_DB/Schema/Constraints/SCore.MergeDocuments.DF_SCore_MergeDocuments_IsActive.preflight.sql",
+      "FileSha256": "6F306AF665586D8AC9A44FCD278370AF095CD2398C5E7851BC59EF269C6163B0",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "2db42846-9016-4bba-9823-261f4b3d4a6e",
+      "ObjectType": "Function",
+      "SchemaName": "SCore",
+      "ObjectName": "tvf_MergeDocumentsForEntityType",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "16C07C0FFD471B61905A51F3DD12F6B33C82D8871E48DE913377549DC831FE54",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SCore.tvf_MergeDocumentsForEntityType.sql",
+      "FileSha256": "351255891E196C646C4F13FE48260871E796C65BEA35E35A62D75BFD282B7EB4",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "0eebbffa-4ca0-4e3e-bec3-48c07dcce841",
+      "ObjectType": "Function",
+      "SchemaName": "SCore",
+      "ObjectName": "tvf_UserCanUseInactiveMergeDocuments",
+      "ParentObjectName": "",
+      "DifferenceType": "MissingInTarget",
+      "SourceHash": "1BD2FF03C368714E9AE3D68862C6668205CDED523C97050EC8C7126AF0474702",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SCore.tvf_UserCanUseInactiveMergeDocuments.sql",
+      "FileSha256": "19FCD7232C54223ADC794F00BE53EA3D3D8F299180E429BDF90ADB7E73BE5645",
+      "WasSynchronized": true
+    },
+    {
+      "ComparisonGuid": "d54dd995-6fb5-4ea1-895c-5ed59d60aa0b",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SCore",
+      "ObjectName": "MergeDocumentsUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "FE6661F86AEA8EBC14E3817E5161AC8AF14DCCA7E4D9B0DA320DE1EF9733EB2B",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SCore.MergeDocumentsUpsert.sql",
+      "FileSha256": "08947FE0189FFCBFF18D7DF222DA545B856FB75975F78EC45C138AC22EAFE18A",
+      "WasSynchronized": true
+    }
+  ]
+}

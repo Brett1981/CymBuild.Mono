@@ -1,0 +1,79 @@
+{
+  "$schema": "../schema/cymbuild-test-case.schema.json",
+  "schemaVersion": "1.0",
+  "id": "CYB-TC-EXAMPLE-METADATA-FORM-RENDER",
+  "title": "Render a required field from a synthetic metadata form",
+  "requirement": "The generic renderer honours required-field metadata and exposes an accessible validation error.",
+  "rationale": "This synthetic example demonstrates the case format without referring to a real CymBuild screen or database row.",
+  "exampleOnly": true,
+  "layers": [
+    "component",
+    "metadata-contract"
+  ],
+  "sources": [
+    {
+      "kind": "approved-requirement",
+      "ref": "example://requirements/metadata-required-field",
+      "note": "Synthetic documentation source only."
+    }
+  ],
+  "metadataRefs": [
+    {
+      "kind": "form",
+      "manifestRef": "example://metadata/forms/required-field",
+      "key": "example-required-field-form"
+    }
+  ],
+  "environments": [
+    "DEV"
+  ],
+  "dataPolicy": {
+    "mode": "none",
+    "createsManagedEntity": false,
+    "cleanup": "none",
+    "liveWriteAllowed": false,
+    "notes": "Uses an in-memory synthetic metadata fixture."
+  },
+  "invariants": {
+    "managedEntityInsert": "not-applicable",
+    "workflowStateChange": "not-applicable",
+    "integrationOutbox": "not-applicable"
+  },
+  "preconditions": [
+    "The current repository's supported metadata model has been used to build the synthetic fixture.",
+    "The field is visible, editable, and marked required in the fixture."
+  ],
+  "steps": [
+    {
+      "action": "Render the synthetic form fixture without a value for the required field.",
+      "via": "renderer"
+    },
+    {
+      "action": "Invoke validation through the component's supported interaction.",
+      "via": "test harness"
+    }
+  ],
+  "assertions": [
+    {
+      "type": "render",
+      "expected": "The supported field editor is rendered once for the stable metadata field identity."
+    },
+    {
+      "type": "validation",
+      "expected": "The empty required value is rejected through the renderer's normal validation contract."
+    },
+    {
+      "type": "accessibility",
+      "expected": "The validation message is programmatically associated with the rendered field."
+    }
+  ],
+  "automation": {
+    "status": "proposed"
+  },
+  "tags": [
+    "example",
+    "metadata",
+    "renderer",
+    "required-field"
+  ]
+}

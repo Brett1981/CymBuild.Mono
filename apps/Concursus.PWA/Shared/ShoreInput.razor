@@ -1,18 +1,12 @@
-﻿@*
-    Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+@*
     CymBuild Dynamic Property Renderer
-    Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+    ----------------------------------------------------------------------------------------------------
     PURPOSE:
     Renders metadata-driven input controls (text, number, date, GUID, file, dropdown)
     dynamically based on `EntityProperty` and `DataProperty`.
     Enables UI flexibility in forms like `EditPage.razor`, `BulkEdit`, and dynamic modals.
 
-    Ã°Å¸â€Â REPLACES:
-    Hardcoded forms or field-by-field Blazor layouts
-    Ã¢Å¾Å“
-    Fully dynamic, auto-validating, metadata-controlled rendering for all field types.
-
-    Ã°Å¸â€œâ€™ SUPPORTED TYPES:
+    SUPPORTED TYPES:
     - Text: NVARCHAR(MAX)
     - Boolean: BIT
     - Integer: INT, BIGINT, SMALLINT, TINYINT
@@ -23,38 +17,35 @@
     - Dropdowns: With DropDownListDefinitionGuid
     - Readonly variations for restricted properties
 
-    Ã°Å¸Â§Â  LOGIC:
+    LOGIC:
     - Renders label, input, validation UI, info/detail buttons, and field interactivity
     - Respects `IsRestricted`, `IsReadOnly`, `IsInvalid`, mobile visibility rules, and `EntityDataTypeName`
     - Includes interactive components:
-        Ã¢â‚¬Â¢ <TelerikComboBox> with dynamic lookup
-        Ã¢â‚¬Â¢ <TelerikDatePicker>, <TelerikDateTimePicker> with steps
-        Ã¢â‚¬Â¢ <SignatureControl> for binary input
-        Ã¢â‚¬Â¢ Modal popup for linked DetailPage/InformationPage via `EntityProperty.*Uri`
+        - native <input type="date">/time controls with dynamic lookup dropdowns
+        - <SignatureControl> for binary input
+        - Modal popup for linked DetailPage/InformationPage via `EntityProperty.*Uri`
 
-    Ã°Å¸â€ºÂ Ã¯Â¸Â DEPENDENCIES:
+    DEPENDENCIES:
     - Requires:
-        Ã¢â‚¬Â¢ EntityProperty, DataProperty, GuidValueBinding, etc.
-        Ã¢â‚¬Â¢ Injected Services: `UserService`, `DeviceInfoService`, `UserInteractionTrackerService`
-        Ã¢â‚¬Â¢ Telerik UI components
-        Ã¢â‚¬Â¢ SignatureControl (custom)
-        Ã¢â‚¬Â¢ ModalService + StateService for dynamic page rendering
+        - EntityProperty, DataProperty, GuidValueBinding, etc.
+        - Injected Services: `UserService`, `DeviceInfoService`, `UserInteractionTrackerService`
+        - SignatureControl (custom)
+        - ModalService + StateService for dynamic page rendering
 
-    Ã°Å¸Â§Â© TEMPLATING NOTES:
+    TEMPLATING NOTES:
     - Use `ItemTemplate` for colorized drop-down items (e.g., Sage highlight)
-    - All value bindings (@bind-Value) respect BlazorÃ¢â‚¬â„¢s change tracking and validation
+    - All value bindings (@bind-Value) respect Blazor's change tracking and validation
     - Supports both single-record and BulkEdit scenarios
 
-    Ã°Å¸Â§Âª QA HIGHLIGHTS:
+    QA HIGHLIGHTS:
     - Field-specific validation messaging
     - Real-time interaction logging via `UserInteractionTrackerService`
     - Mobile conditional suppression of heavy UI (e.g. dropdowns or modals)
     - Compatibility with all supported DB field types via metadata
 
-    Ã¢Å¡Â Ã¯Â¸Â CAVEATS:
-    - Large componentÃ¢â‚¬â€consider refactoring into sub-controls for testability & reuse
+    CAVEATS:
+    - Large component - consider refactoring into sub-controls for testability & reuse
     - Ensure dropdown GUIDs and `EntityDataTypeName` mappings are synchronized in metadata
-
 *@
 
 @using System.Dynamic
@@ -571,6 +562,11 @@
                                                                                                 </select>
                                                                                             </div>
                                                                                         </div>
+                                                                                        <button class="btn btn-outline-secondary" type="button" title="Set to now"
+                                                                                            disabled="@IsNativeDateInputDisabled"
+                                                                                            @onclick="SetDateTimeToNowAsync">
+                                                                                            <span class="bi bi-clock"></span>
+                                                                                        </button>
                                                                                         <div class="invalid-feedback">
                                                                                             @DataProperty.ValidationMessage
                                                                                         </div>
@@ -948,6 +944,11 @@
                                                                                                                                                     </select>
                                                                                                                                                 </div>
                                                                                                                                             </div>
+                                                                                                                                            <button class="btn btn-outline-secondary" type="button" title="Set to now"
+                                                                                                                                                disabled="@IsNativeDateInputDisabled"
+                                                                                                                                                @onclick="SetDateTimeToNowAsync">
+                                                                                                                                                <span class="bi bi-clock"></span>
+                                                                                                                                            </button>
                                                                                                                                             <div class="invalid-feedback">
                                                                                                                                                 @DataProperty.ValidationMessage
                                                                                                                                             </div>

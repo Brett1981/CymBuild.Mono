@@ -5,7 +5,7 @@ PRINT (N'Create view [SSop].[Quotes_DWETL]')
 GO
 
 
-CREATE VIEW [SSop].[Quotes_DWETL]
+CREATE OR ALTER VIEW [SSop].[Quotes_DWETL]
        --WITH SCHEMABINDING
 AS
 SELECT 
@@ -130,6 +130,32 @@ WHERE
 
     -- Use effective sent date for inclusion
     AND eff.EffectiveDateSent IS NOT NULL
+
+    -- CYB-553-SHORE-LEGACY-EXCLUSION: leave out Shore CDM legacy quotes
+    -- (LegacySystemID 1) that were never converted to a job and are now
+    -- Expired; the business asked for these to be removed from reporting.
+    AND NOT
+    (
+        q.LegacySystemID = 1
+        AND NOT EXISTS
+        (
+            SELECT 1
+            FROM SSop.QuoteItems AS legacyItem
+            WHERE legacyItem.QuoteId = q.ID
+              AND legacyItem.RowStatus NOT IN (0,254)
+              AND legacyItem.CreatedJobId > 0
+        )
+        AND
+        (
+            SELECT TOP (1) legacyStatus.Guid
+            FROM SCore.DataObjectTransition AS legacyDot
+            JOIN SCore.WorkflowStatus AS legacyStatus
+                ON legacyStatus.ID = legacyDot.StatusID
+            WHERE legacyDot.DataObjectGuid = q.Guid
+              AND legacyDot.RowStatus NOT IN (0,254)
+            ORDER BY legacyDot.ID DESC
+        ) = 'E6FAC201-F98B-4B3A-AB55-83DC9F802D00' -- Expired
+    )
 
 GROUP BY
     q.ID,

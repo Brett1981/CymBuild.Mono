@@ -206,7 +206,8 @@ public partial class FormHelper
                 SchemaName = selection.SchemaName ?? string.Empty,
                 ObjectName = selection.ObjectName ?? string.Empty,
                 ParentObjectName = selection.ParentObjectName ?? string.Empty,
-                IsSelected = selection.IsSelected
+                IsSelected = selection.IsSelected,
+                CopyReferenceData = selection.CopyReferenceData
             });
         }
 
@@ -438,7 +439,8 @@ public partial class FormHelper
             TargetDefinition = message.TargetDefinition ?? string.Empty,
             Notes = message.Notes ?? string.Empty,
             IsSelected = message.IsSelected,
-            HasExplicitSelection = message.HasExplicitSelection
+            HasExplicitSelection = message.HasExplicitSelection,
+            CopyReferenceData = message.CopyReferenceData
         };
     }
 

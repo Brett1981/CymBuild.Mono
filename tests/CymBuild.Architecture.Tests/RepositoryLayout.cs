@@ -50,12 +50,16 @@ internal static class RepositoryLayout
 
     public static IEnumerable<string> EnumerateSourceFiles(string projectRelativeDirectory)
     {
+        return EnumerateFilesByExtension(projectRelativeDirectory, ".cs", ".razor");
+    }
+
+    public static IEnumerable<string> EnumerateFilesByExtension(string projectRelativeDirectory, params string[] extensions)
+    {
         var directory = PathFromRoot(projectRelativeDirectory.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries));
 
         return Directory
             .EnumerateFiles(directory, "*", SearchOption.AllDirectories)
-            .Where(path => path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+            .Where(path => extensions.Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase)))
             .Where(path => !IsExcludedPath(path));
     }
 

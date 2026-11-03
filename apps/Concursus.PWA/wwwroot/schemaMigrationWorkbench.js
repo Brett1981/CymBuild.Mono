@@ -97,3 +97,24 @@ export function bindDefinitionScrollSync(sourceElement, targetElement) {
         copyScrollPosition(sourceElement, targetElement);
     });
 }
+
+// CYB-566: every workbench grid gets the shared CYB-524 edge-hover horizontal
+// scroll (grid-edge-auto-scroll.js). Sections render conditionally, so this is
+// called after each render; attach() is idempotent per element.
+let edgeScrollSequence = 0;
+
+export function attachGridEdgeAutoScroll(rootElement) {
+    const api = window.cymbuildGridEdgeAutoScroll;
+    if (!rootElement || !api || typeof api.attach !== 'function') {
+        return;
+    }
+
+    for (const wrapper of rootElement.querySelectorAll('.schema-table-wrap')) {
+        if (!wrapper.id) {
+            edgeScrollSequence += 1;
+            wrapper.id = `schema-table-wrap-${edgeScrollSequence}`;
+        }
+
+        api.attach(wrapper.id);
+    }
+}

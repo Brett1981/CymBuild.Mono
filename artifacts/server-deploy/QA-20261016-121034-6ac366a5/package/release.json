@@ -1,0 +1,16 @@
+{
+  "Release": "QA-20261016-121034-6ac366a5",
+  "Environment": "QA",
+  "Branch": "bugfix/SB_CYB-584-26.4",
+  "Commit": "6ac366a5098bf3d0ab909d3d8335a02bd4b3d704",
+  "BuiltBy": "ESGL\\stephen.brett_adm",
+  "BuiltAt": "2026-10-16T12:14:00.2701291+01:00",
+  "Components": [
+    "Api",
+    "Pwa"
+  ],
+  "FileCounts": {
+    "Api": 205,
+    "Pwa": 7061
+  }
+}

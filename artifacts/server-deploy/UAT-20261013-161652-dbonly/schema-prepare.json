@@ -1,0 +1,10 @@
+{
+  "mode": "created",
+  "runGuid": "50dcbaf5-3eb4-4d15-9ff0-3d183b489328",
+  "comparedOnUtc": "",
+  "selected": [],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "InvalidOperationException: Schema comparison failed after pre-deployment preparation. Post-deployment recovery also failed: Source recovery failed: Post-deployment lifecycle failed for database [CymBuild_QA2] (log RunGuid 50dcbaf5-3eb4-4d15-9ff0-3d183b489328). SQL 2801: The definition of object \u0027PostDeploymentScript\u0027 has changed since it was compiled.  Add missing Data Object rows  [SCore].[Languages]    Inserted missing DataObjects rows: 0  [SCore].[LanguageLabels]    Inserted missing DataObjects rows: 0  [SCore].[LanguageLabelTranslations]    Inserted missing DataObjects rows: 0  [SCore].[EntityTypes]    Inserted missing DataObjects rows: 0  [SCore].[EntityHobts]    Inserted missing DataObjects rows: 0  [SCore].[EntityProperties]    Inserted missing DataObjects rows: 0  [SCore].[EntityQueries]    Inserted missing DataObjects rows: 0  [SCore].[EntityQueryParameters]    Inserted missing DataObjects rows: 0  [SJob].[Jobs]    Inserted missing DataObjects rows: 0  [SUserInterface].[DropDownListDefinitions]    Inserted missing DataObjects rows: 0  [SUserInter... No correlated Error rows were available. Inner: The definition of object \u0027SCHEMABINDING\u0027 has changed since it was compiled."
+}

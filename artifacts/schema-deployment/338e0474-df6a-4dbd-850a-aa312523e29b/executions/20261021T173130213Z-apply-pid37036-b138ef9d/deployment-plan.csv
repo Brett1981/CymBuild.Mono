@@ -1,0 +1,2 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"1d9f4862-2212-4145-90ff-922f8e72723e","Function","SCore","WorkflowGetNextStatus","","Different","True","False","True","True"

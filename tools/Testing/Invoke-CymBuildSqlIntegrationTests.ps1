@@ -184,17 +184,20 @@ $projectName = 'CymBuild.Database.IntegrationTests'
 $trxPath = Join-Path $ResultsRoot "$projectName.trx"
 $arguments = @(
     'test',
-    $project,
+    '--project', $project,
     '--configuration', $Configuration,
-    '--settings', $runSettings,
     '--results-directory', $ResultsRoot,
-    '--logger', "trx;LogFileName=$projectName.trx"
+    '--report-trx',
+    '--report-trx-filename', "$projectName.trx"
 )
 if ($NoRestore) { $arguments += '--no-restore' }
 if ($NoBuild) { $arguments += '--no-build' }
 if (-not $NoCoverage) {
-    $arguments += '--collect'
-    $arguments += 'XPlat Code Coverage'
+    $arguments += '--coverage'
+    $arguments += '--coverage-output-format'
+    $arguments += 'cobertura'
+    $arguments += '--coverage-settings'
+    $arguments += $runSettings
 }
 
 $previousConnectionString = $env:CYMBUILD_SQL_TEST_CONNECTION_STRING
@@ -220,14 +223,14 @@ finally {
 $finishedUtc = (Get-Date).ToUniversalTime()
 
 $counts = Get-TrxCounts -Path $trxPath
-if ($counts.Total -ne 22 -or $counts.Passed -ne 22 -or $counts.Failed -ne 0 -or $counts.Skipped -ne 0) {
-    throw "Unexpected SQL integration result. Expected 22 passed, 0 failed, 0 skipped; actual total=$($counts.Total), passed=$($counts.Passed), failed=$($counts.Failed), skipped=$($counts.Skipped)."
+if ($counts.Total -ne 111 -or $counts.Passed -ne 111 -or $counts.Failed -ne 0 -or $counts.Skipped -ne 0) {
+    throw "Unexpected SQL integration result. Expected 111 passed, 0 failed, 0 skipped; actual total=$($counts.Total), passed=$($counts.Passed), failed=$($counts.Failed), skipped=$($counts.Skipped)."
 }
 
 if (-not $NoCoverage) {
-    $coverage = @(Get-ChildItem -LiteralPath $ResultsRoot -Recurse -Filter 'coverage.cobertura.xml' -File)
+    $coverage = @(Get-ChildItem -LiteralPath $ResultsRoot -Recurse -Filter '*.cobertura.xml' -File)
     if ($coverage.Count -eq 0) {
-        throw 'SQL integration coverage.cobertura.xml was not produced.'
+        throw 'SQL integration Cobertura coverage (*.cobertura.xml) was not produced.'
     }
 }
 

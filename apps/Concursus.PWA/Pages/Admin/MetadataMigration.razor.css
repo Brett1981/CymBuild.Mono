@@ -759,6 +759,33 @@
     font-weight: 700;
 }
 
+.metadata-json-lines-selectable .metadata-json-line {
+    grid-template-columns: 3rem minmax(0, 1fr) auto;
+}
+
+.metadata-json-column-toggle-cell {
+    padding: 0.18rem 0.5rem;
+    display: flex;
+    align-items: center;
+}
+
+.metadata-json-column-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.72rem;
+    color: #475569;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.metadata-json-column-selection-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+}
+
 
 .metadata-ignore-actions {
     display: flex;
@@ -778,6 +805,11 @@
 }
 
 .metadata-record-ignored td {
+    background: var(--cb-v2-surface-muted, #f8fafc);
+}
+
+.metadata-validation-issue-ignored td {
+    opacity: 0.72;
     background: var(--cb-v2-surface-muted, #f8fafc);
 }
 
@@ -1511,6 +1543,10 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    margin: 1rem 0;
+}
+
+.metadata-conflicts-panel {
     margin: 1rem 0;
 }
 

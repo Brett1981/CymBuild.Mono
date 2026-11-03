@@ -16,7 +16,6 @@ public partial class MultiColumnDynamicGridView
     private const string DefaultHeaderColour = "#f8f9fa";
 
     private readonly IDictionary<string, object> _detailPageParameters = new Dictionary<string, object>();
-    private MessageDisplay _messageDisplay = default!;
 
     private IEnumerable<ExpandoObject>? CurrentGridItems { get; set; }
     private bool WindowIsVisible { get; set; }

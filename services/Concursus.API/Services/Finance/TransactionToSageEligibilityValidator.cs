@@ -66,6 +66,42 @@ namespace Concursus.API.Services.Finance
                         "The finance transaction is still marked as batched and is not approved for Sage submission."));
             }
 
+            var documentType = transaction.GetSageOutboundDocumentType();
+
+            if (documentType == SageOutboundDocumentType.Unknown)
+            {
+                return Task.FromResult(
+                    TransactionToSageEligibilityResult.NotEligible(
+                        TransactionToSageEligibilityFailureReason.UnsupportedTransactionType,
+                        $"Finance transaction type '{transaction.TransactionTypeName}' is not supported by the Sage submission router."));
+            }
+
+            if (documentType is SageOutboundDocumentType.Receipt or SageOutboundDocumentType.Payment)
+            {
+                return Task.FromResult(
+                    TransactionToSageEligibilityResult.NotEligible(
+                        TransactionToSageEligibilityFailureReason.InboundOnlyTransactionType,
+                        $"Finance transaction type '{transaction.TransactionTypeName}' is inbound-only and must not be submitted as a Sage sales order."));
+            }
+
+            if (transaction.TransactionTypeIsBank ||
+                (documentType == SageOutboundDocumentType.Invoice && transaction.TransactionTypeIsNegated) ||
+                (documentType == SageOutboundDocumentType.CreditNote && !transaction.TransactionTypeIsNegated))
+            {
+                return Task.FromResult(
+                    TransactionToSageEligibilityResult.NotEligible(
+                        TransactionToSageEligibilityFailureReason.InvalidTransactionTypeConfiguration,
+                        $"Finance transaction type '{transaction.TransactionTypeName}' has incompatible IsBank/IsNegated configuration for Sage submission."));
+            }
+
+            if (documentType == SageOutboundDocumentType.CreditNote)
+            {
+                return Task.FromResult(
+                    TransactionToSageEligibilityResult.NotEligible(
+                        TransactionToSageEligibilityFailureReason.SageManagedInboundTransactionType,
+                        "CreditNote is Sage-managed and inbound-only because the Wrapper has no Credit Note write operation."));
+            }
+
             if (string.IsNullOrWhiteSpace(transaction.TransactionNumber))
             {
                 return Task.FromResult(

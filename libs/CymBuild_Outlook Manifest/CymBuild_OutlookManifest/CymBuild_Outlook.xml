@@ -14,13 +14,13 @@
   <DefaultLocale>en-GB</DefaultLocale>
   <DisplayName DefaultValue="CymBuild Outlook" />
   <Description DefaultValue="CymBuild Outlook Addin bringing CymBuild and Office together" />
-  <IconUrl DefaultValue="https://bre.socotec.co.uk:9603/Images/SOCLOGO64x64.png" />
-  <HighResolutionIconUrl DefaultValue="https://bre.socotec.co.uk:9603/Images/SOCLOGO128x128.png" />
+  <IconUrl DefaultValue="https://cymbuild.socotec.co.uk/Images/SOCLOGO64x64.png" />
+  <HighResolutionIconUrl DefaultValue="https://cymbuild.socotec.co.uk/Images/SOCLOGO128x128.png" />
 
   <SupportUrl DefaultValue="https://environmentalscientifics.sharepoint.com/Pages/default.aspx" />
 
   <AppDomains>
-    <AppDomain>https://bre.socotec.co.uk</AppDomain>
+    <AppDomain>https://cymbuild.socotec.co.uk</AppDomain>
     <AppDomain>https://inspection.shoreengineering.co.uk</AppDomain>
     <AppDomain>https://environmentalscientifics.sharepoint.com</AppDomain>
     <AppDomain>https://socotec.co.uk</AppDomain>
@@ -40,15 +40,15 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+        <SourceLocation DefaultValue="https://cymbuild.socotec.co.uk" />
         <RequestedHeight>250</RequestedHeight>
       </DesktopSettings>
       <TabletSettings>
-        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+        <SourceLocation DefaultValue="https://cymbuild.socotec.co.uk" />
         <RequestedHeight>250</RequestedHeight>
       </TabletSettings>
       <PhoneSettings>
-        <SourceLocation DefaultValue="https://bre.socotec.co.uk:9603" />
+        <SourceLocation DefaultValue="https://cymbuild.socotec.co.uk" />
       </PhoneSettings>
     </Form>
   </FormSettings>
@@ -208,16 +208,16 @@
 
       <Resources>
         <bt:Images>
-          <bt:Image id="icon16" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button16x16.png" />
-          <bt:Image id="icon32" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button32x32.png" />
-          <bt:Image id="icon80" DefaultValue="https://bre.socotec.co.uk:9603/Images/Button80x80.png" />
+          <bt:Image id="icon16" DefaultValue="https://cymbuild.socotec.co.uk/Images/Button16x16.png" />
+          <bt:Image id="icon32" DefaultValue="https://cymbuild.socotec.co.uk/Images/Button32x32.png" />
+          <bt:Image id="icon80" DefaultValue="https://cymbuild.socotec.co.uk/Images/Button80x80.png" />
         </bt:Images>
 
         <bt:Urls>
-          <bt:Url id="functionFile" DefaultValue="https://bre.socotec.co.uk:9603/Functions/FunctionFile.html" />
-          <bt:Url id="launchEvents" DefaultValue="https://bre.socotec.co.uk:9603/js/LaunchEvent.js" />
-          <bt:Url id="messageReadTaskPaneUrl" DefaultValue="https://bre.socotec.co.uk:9603" />
-          <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://bre.socotec.co.uk:9603?context=compose" />
+          <bt:Url id="functionFile" DefaultValue="https://cymbuild.socotec.co.uk/Functions/FunctionFile.html" />
+          <bt:Url id="launchEvents" DefaultValue="https://cymbuild.socotec.co.uk/js/LaunchEvent.js" />
+          <bt:Url id="messageReadTaskPaneUrl" DefaultValue="https://cymbuild.socotec.co.uk" />
+          <bt:Url id="messageComposeTaskPaneUrl" DefaultValue="https://cymbuild.socotec.co.uk?context=compose" />
         </bt:Urls>
 
         <bt:ShortStrings>
@@ -240,7 +240,7 @@
 
       <WebApplicationInfo>
         <Id>e551c05f-19f7-435c-9842-c039ab8a4e0c</Id>
-        <Resource>api://bre.socotec.co.uk:9603/e551c05f-19f7-435c-9842-c039ab8a4e0c</Resource>
+        <Resource>api://cymbuild.socotec.co.uk/e551c05f-19f7-435c-9842-c039ab8a4e0c</Resource>
         <Scopes>
           <Scope>profile</Scope>
           <Scope>user.read</Scope>

@@ -5,6 +5,12 @@
 @using System.Web
 @inherits EditPageBase
 
+@using Concursus.PWA.Classes
+@inject Core.CoreClient activityCoreClient
+@inject UserService userService
+@inject Concursus.Components.Shared.Modals.CymBuildModalService feeAmendmentModalService
+@inject RefreshService refreshService
+
 @attribute [Authorize]
 
 <EditPage @ref="@editPage"
@@ -17,6 +23,7 @@
           CloseWindow="@CloseWindow"
           GridUpdated="@GridUpdated"
           IsDetailWindowed="IsDetailWindowed"
+          FormSavedPost="OpenRaisedFeeAmendmentAsync"
           TransientVirtualProperties="@TransientVirtualProperties">
     <FormTitle>
         <i class="bi bi-briefcase-fill me-2" style="font-size: 1.2rem;"></i>
@@ -46,6 +53,15 @@
     [Parameter] public bool IsMainRecordContext { get; set; } = true;
     [Parameter]
     public Dictionary<string, Any> TransientVirtualProperties { get; set; } = new();
+
+    // CYB-333: a billable activity that is not part of the agreed fee opens its new fee amendment in a modal.
+    private Task OpenRaisedFeeAmendmentAsync(DataObject savedActivity) =>
+        ActivityFeeAmendmentNavigation.OpenRaisedFeeAmendmentAsync(
+            new API.Client.FormHelper(activityCoreClient, EntityTypeGuid, userService),
+            feeAmendmentModalService,
+            refreshService,
+            this,
+            savedActivity);
 
     protected override async Task OnParametersSetAsync()
     {

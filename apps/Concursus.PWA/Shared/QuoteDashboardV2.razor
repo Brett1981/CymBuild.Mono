@@ -2,13 +2,17 @@
 @using System.Globalization
 @using System.Text
 @using System.Web
+@using Concursus.API.Client
 @using Concursus.API.Client.Models
+@using Concursus.PWA.Classes
 @using Newtonsoft.Json
+
 @implements IDisposable
 @inject IJSRuntime JsRuntime
 @inject Core.CoreClient coreClient
-@inject NavigationManager NavManager
 @inject UserService UserService
+@inject NavigationManager NavManager
+@inject RefreshService refreshService
 
 <div class="quote-dashboard-v2 cb-v2-page">
     <div id="quote-dashboard-export">
@@ -70,6 +74,17 @@
                     <label for="end-date">End date</label>
                     <input id="end-date" class="dashboard-input cb-v2-input" type="date" value="@EndDate.ToString("yyyy-MM-dd")" @onchange="OnEndDateChanged" />
                 </div>
+                
+                <div class="filter-field">
+                    <label for="ColumnToOrderBy">Column to search by:</label>
+                    <select id="ColumnToOrderBy" class="cb-v2-select" value="@ColumnToOrderBy" @onchange="ColumnToFilterByHasChanged" aria->
+                        @foreach (var option in new Dictionary<string, string> { { "QuoteSentDate", "Date Sent" }, { "Date", "Date Created" } })
+                        {
+                            <option value="@option.Key">@option.Value</option>
+                        }
+                    </select>
+                </div>
+               
 
                 <div class="filter-field filter-field-wide">
                     <label for="value-filter">Value threshold</label>
@@ -92,6 +107,74 @@
                         <button type="button" class="preset-button cb-v2-btn-chip @(ValueFilter == BeyondThresholdValue ? "active" : null)" @onclick="() => SetValueFilter(BeyondThresholdValue)">Beyond £100K</button>
                     </div>
                 </div>
+            </div>
+
+            <div class="chip-section filter-collapsible-section">
+                <div class="chip-group-header filter-collapsible-header">
+                    <button type="button"
+                            class="filter-toggle cb-v2-btn-chip"
+                            aria-expanded="@IsBusinessUnitsExpanded"
+                            @onclick="() => IsBusinessUnitsExpanded = !IsBusinessUnitsExpanded">
+                        <i class="bi @(IsBusinessUnitsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                        <span>Business units</span>
+                        <span class="filter-toggle-count">@BusinessUnitSelectionSummary</span>
+                    </button>
+
+                    <div class="chip-actions cb-v2-actions">
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllBusinessUnits">All</button>
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearBusinessUnits">Clear</button>
+                    </div>
+                </div>
+
+                @if (IsBusinessUnitsExpanded)
+                {
+                    <div class="filter-collapsible-body">
+                        <div class="chip-list">
+                            @foreach (var businessUnit in BusinessUnits)
+                            {
+                                <button type="button"
+                                        class="chip-button cb-v2-btn-chip @(SelectedBusinessUnits.Contains(businessUnit) ? "selected" : null)"
+                                        @onclick="() => ToggleBusinessUnit(businessUnit)">
+                                    @businessUnit
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="chip-section filter-collapsible-section">
+                <div class="chip-group-header filter-collapsible-header">
+                    <button type="button"
+                            class="filter-toggle cb-v2-btn-chip"
+                            aria-expanded="@IsDepartmentsExpanded"
+                            @onclick="() => IsDepartmentsExpanded = !IsDepartmentsExpanded">
+                        <i class="bi @(IsDepartmentsExpanded ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                        <span>Departments</span>
+                        <span class="filter-toggle-count">@DepartmentSelectionSummary</span>
+                    </button>
+
+                    <div class="chip-actions cb-v2-actions">
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="SelectAllDepartments">All</button>
+                        <button type="button" class="link-button cb-v2-btn-link" @onclick="ClearDepartments">Clear</button>
+                    </div>
+                </div>
+
+                @if (IsDepartmentsExpanded)
+                {
+                    <div class="filter-collapsible-body">
+                        <div class="chip-list">
+                            @foreach (var department in Departments)
+                            {
+                                <button type="button"
+                                        class="chip-button cb-v2-btn-chip @(SelectedDepartments.Contains(department) ? "selected" : null)"
+                                        @onclick="() => ToggleDepartment(department)">
+                                    @department
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
 
             <div class="chip-section job-types-collapsible-section">
@@ -511,11 +594,20 @@
     private List<BreakdownItem> QuoteTypeBreakdown { get; set; } = new();
     private List<ChartGridLine> ChartGridLines { get; set; } = new();
     private Dictionary<string, List<string>> GroupedJobTypes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private API.Client.FormHelper? _formHelper;
 
     private List<string> JobTypes { get; set; } = new();
     private List<string> SelectedJobType { get; set; } = new();
     private List<string> JobStatuses { get; set; } = new();
     private List<string> SelectedJobStatus { get; set; } = new();
+    private List<string> BusinessUnits { get; set; } = new();
+    private List<string> SelectedBusinessUnits { get; set; } = new();
+
+    private List<string> Departments { get; set; } = new();
+    private List<string> SelectedDepartments { get; set; } = new();
+
+    private bool IsBusinessUnitsExpanded { get; set; } = false;
+    private bool IsDepartmentsExpanded { get; set; } = false;
 
     private decimal TotalQuoteValue { get; set; }
     private decimal AverageQuoteValue { get; set; }
@@ -525,6 +617,8 @@
     private int QuotesAccepted { get; set; }
     private int QuotesRejected { get; set; }
     private int VisibleQuoteCount { get; set; }
+    public string BusinessUnit { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
 
     private int ValueFilter = 50000;
     private int PageSize { get; set; } = 20;
@@ -533,6 +627,8 @@
     private string? ActiveStatusBreakdownFilter { get; set; }
     private string? ActiveQuoteTypeBreakdownFilter { get; set; }
     private bool IsJobTypesExpanded { get; set; } = false;
+
+    private string ColumnToOrderBy { get; set; } = "Date";
 
     private string JobTypeSelectionSummary
     {
@@ -557,6 +653,28 @@
         }
     }
 
+    private string BusinessUnitSelectionSummary => BuildSelectionSummary(BusinessUnits, SelectedBusinessUnits);
+    private string DepartmentSelectionSummary => BuildSelectionSummary(Departments, SelectedDepartments);
+
+    private static string BuildSelectionSummary(List<string> available, List<string> selected)
+    {
+        if (available.Count == 0)
+        {
+            return "None available";
+        }
+
+        if (selected.Count == 0)
+        {
+            return "None selected";
+        }
+
+        if (selected.Count == available.Count)
+        {
+            return $"All {available.Count} selected";
+        }
+
+        return $"{selected.Count} of {available.Count} selected";
+    }
     public enum TimeGrouping { Daily, Weekly, Monthly }
 
     private enum QuoteDashboardKpiCard
@@ -646,10 +764,16 @@
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        //Check which UserGroups the user is in to determine which JobTypes to show on the dashboard
+
+        _formHelper = new API.Client.FormHelper(
+            coreClient,
+            Guid.Empty.ToString(),
+            UserService);
+
+        // Check which UserGroups the user is in to determine which JobTypes to show on the dashboard.
         if (UserService.UserGroups == null || !UserService.UserGroups.Any())
         {
-            Console.WriteLine("QuoteDashboardV2: User is not in any groups, no data will be shown on the dashboard.");
+            Console.WriteLine("QuoteDashboardV2: User is not in any groups. SQL/API object security will still control returned records.");
         }
         else
         {
@@ -660,8 +784,6 @@
         }
 
         await GetQuoteData();
-
-        StateHasChanged();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -672,20 +794,29 @@
         }
     }
 
+
     private async Task GetQuoteData()
     {
         try
         {
             ChartData.Clear();
 
-            var records = await coreClient.GetQuoteDashboardDataAsync(new GetQuoteDashboardDataReq());
-            if (!records.Res.Any())
+            if (_formHelper is null)
+            {
+                throw new InvalidOperationException("QuoteDashboardV2 FormHelper has not been initialised.");
+            }
+
+            var records = await _formHelper.GetQuoteDashboardDataAsync();
+
+            Console.WriteLine($"QuoteDashboardV2: Quote dashboard API returned {records.Count} records.");
+
+            if (!records.Any())
             {
                 RebindChart();
                 return;
             }
 
-            foreach (var rec in records.Res)
+            foreach (var rec in records)
             {
                 if (string.IsNullOrWhiteSpace(rec.QuoteType))
                 {
@@ -693,6 +824,7 @@
                 }
 
                 var quoteDate = rec.Date.ToDateTime();
+                var quoteSentDate = rec.SentDate is null ? (DateTime?)null : rec.SentDate.ToDateTime();
                 var normalisedStatus = NormaliseStatus(rec.Status);
 
                 ChartData.Add(new QuoteChartData
@@ -702,12 +834,19 @@
                     Guid = rec.Guid ?? string.Empty,
                     Label = GetTimeGroupLabel(quoteDate),
                     Date = quoteDate,
+                    SentDate = quoteSentDate,
                     Client = rec.Client ?? string.Empty,
                     QuoteType = rec.QuoteType ?? string.Empty,
                     Status = normalisedStatus,
                     QuoteValue = rec.QuoteValue,
                     Min = GetMin(rec.QuoteValue),
-                    Max = GetMax(rec.QuoteValue)
+                    Max = GetMax(rec.QuoteValue),
+                    BusinessUnit = string.IsNullOrWhiteSpace(rec.BusinessUnit)
+                        ? "Business Unit Not Set"
+                        : rec.BusinessUnit.Trim(),
+                    Department = string.IsNullOrWhiteSpace(rec.Department)
+                        ? "Department Not Set"
+                        : rec.Department.Trim()
                 });
             }
 
@@ -734,6 +873,30 @@
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(x => x)
                 .ToList();
+
+            BusinessUnits = ChartData
+                .Select(x => x.BusinessUnit)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+
+            Departments = ChartData
+                .Select(x => x.Department)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x)
+                .ToList();
+
+            if (SelectedBusinessUnits.Count == 0)
+            {
+                SelectedBusinessUnits = BusinessUnits.ToList();
+            }
+
+            if (SelectedDepartments.Count == 0)
+            {
+                SelectedDepartments = Departments.ToList();
+            }
 
             if (SelectedJobType.Count == 0)
             {
@@ -774,16 +937,30 @@
         StateHasChanged();
     }
 
+    private DateTime? GetOrderColumnDate(QuoteChartData d)
+    {
+        return ColumnToOrderBy == "QuoteSentDate" ? d.SentDate : d.Date;
+    }
+
     private void FilterChart()
     {
         VisibleSourceData = ChartData
-            .Where(d => d.Date.Date >= StartDate.Date && d.Date.Date <= EndDate.Date)
+            .Where(d =>
+            {
+                var effectiveDate = GetOrderColumnDate(d);
+                return effectiveDate.HasValue
+                    && effectiveDate.Value.Date >= StartDate.Date
+                    && effectiveDate.Value.Date <= EndDate.Date;
+            })
+           
             .Where(d => SelectedJobType.Count == 0 || SelectedJobType.Contains(d.QuoteType))
             .Where(d => SelectedJobStatus.Count == 0 || SelectedJobStatus.Contains(d.Status))
             .Where(d => string.IsNullOrWhiteSpace(ActiveStatusBreakdownFilter)
                         || IsStatus(d.Status, ActiveStatusBreakdownFilter))
             .Where(d => string.IsNullOrWhiteSpace(ActiveQuoteTypeBreakdownFilter)
                         || string.Equals(d.QuoteType, ActiveQuoteTypeBreakdownFilter, StringComparison.OrdinalIgnoreCase))
+            .Where(d => SelectedBusinessUnits.Count == 0 || SelectedBusinessUnits.Contains(d.BusinessUnit))
+            .Where(d => SelectedDepartments.Count == 0 || SelectedDepartments.Contains(d.Department))
             .OrderBy(d => d.Date)
             .ToList();
 
@@ -797,34 +974,96 @@
         VisibleSourceData = ApplyActiveKpiFilter(VisibleSourceData).ToList();
 
         FilteredChartData = VisibleSourceData
-            .GroupBy(r => new
+        .GroupBy(r =>
+        {
+            var effectiveDate = GetOrderColumnDate(r)!.Value.Date;
+            return new
             {
-                Date = r.Date.Date,
+                Date = effectiveDate,
                 Status = r.Status,
                 r.QuoteType,
                 r.Client,
-                Label = GetTimeGroupLabel(r.Date),
+                Label = GetTimeGroupLabel(effectiveDate),
                 r.Min,
                 r.Max
-            })
-            .Select(g => new FilteredQuoteChartData
-            {
-                QuoteID = g.First().QuoteID,
-                Label = g.Key.Label,
-                Value = g.Count(),
-                Min = g.Key.Min,
-                Max = g.Key.Max,
-                Date = g.Key.Date,
-                Status = g.Key.Status,
-                Client = g.Key.Client,
-                QuoteType = g.Key.QuoteType,
-                QuoteValue = g.Sum(x => x.QuoteValue),
-                Quotes = g.Select(x => new QuoteInfo(x.QuoteNumber, x.Guid)).Distinct().ToList()
-            })
-            .OrderBy(x => x.Date)
-            .ThenBy(x => x.Status)
-            .ThenBy(x => x.QuoteType)
-            .ToList();
+            };
+        })
+        .Select(g => new FilteredQuoteChartData
+        {
+            QuoteID = g.First().QuoteID,
+            Label = g.Key.Label,
+            Value = g.Count(),
+            Min = g.Key.Min,
+            Max = g.Key.Max,
+            Date = g.Key.Date,
+            Status = g.Key.Status,
+            Client = g.Key.Client,
+            QuoteType = g.Key.QuoteType,
+            QuoteValue = g.Sum(x => x.QuoteValue),
+            Quotes = g.Select(x => new QuoteInfo(x.QuoteNumber, x.Guid)).Distinct().ToList()
+        })
+        .OrderBy(x => x.Date)
+        .ThenBy(x => x.Status)
+        .ThenBy(x => x.QuoteType)
+        .ToList();
+    }
+
+    private void ToggleBusinessUnit(string businessUnit)
+    {
+        if (SelectedBusinessUnits.Contains(businessUnit))
+        {
+            SelectedBusinessUnits.Remove(businessUnit);
+        }
+        else
+        {
+            SelectedBusinessUnits.Add(businessUnit);
+        }
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SelectAllBusinessUnits()
+    {
+        SelectedBusinessUnits = BusinessUnits.ToList();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearBusinessUnits()
+    {
+        SelectedBusinessUnits = new List<string>();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ToggleDepartment(string department)
+    {
+        if (SelectedDepartments.Contains(department))
+        {
+            SelectedDepartments.Remove(department);
+        }
+        else
+        {
+            SelectedDepartments.Add(department);
+        }
+
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void SelectAllDepartments()
+    {
+        SelectedDepartments = Departments.ToList();
+        ResetToFirstPage();
+        RebindChart();
+    }
+
+    private void ClearDepartments()
+    {
+        SelectedDepartments = new List<string>();
+        ResetToFirstPage();
+        RebindChart();
     }
 
     private void BuildDashboardState()
@@ -1255,6 +1494,14 @@
         }
     }
 
+    private void ColumnToFilterByHasChanged(ChangeEventArgs e)
+    {
+        ColumnToOrderBy = e.Value.ToString();
+        ResetToFirstPage();
+        RebindChart();
+
+    }
+
     private void PreviousPage()
     {
         if (CurrentPage > 1)
@@ -1503,10 +1750,13 @@
         public int Min { get; set; }
         public int Max { get; set; }
         public DateTime Date { get; set; }
+        public DateTime? SentDate { get; set; }
         public string Status { get; set; } = string.Empty;
         public string Client { get; set; } = string.Empty;
         public string QuoteType { get; set; } = string.Empty;
         public double QuoteValue { get; set; }
+        public string BusinessUnit { get; set; } = string.Empty;
+        public string Department { get; set; } = string.Empty;
     }
 
     public record QuoteInfo(string QuoteNumber, string Guid);

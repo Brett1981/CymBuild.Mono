@@ -310,7 +310,7 @@
 
                                 <div class="cb-v2-stat-pill">
                                     <span class="cb-v2-pill-label">Selected</span>
-                                    <span class="cb-v2-pill-value">@SelectedRowGuids.Count</span>
+                                    <span class="cb-v2-pill-value">@SelectedItems.Count</span>
                                 </div>
                             </div>
                         </div>
@@ -323,14 +323,15 @@
                     else
                     {
                         <div class="cb-v2-card dynamic-batch-grid-v2-grid-card">
-                            <div class="cb-v2-table-wrap dynamic-batch-grid-v2-grid-wrapper">
+                            <div id="@GridWrapperDomId" class="cb-v2-table-wrap dynamic-batch-grid-v2-grid-wrapper">
                                 <table class="cb-v2-table dynamic-batch-grid-v2-grid-table">
                                     <thead>
                                         <tr>
                                             <th class="dynamic-batch-grid-v2-checkbox-col">
                                                 <input type="checkbox"
-                                                       checked="@IsCurrentPageFullySelected"
-                                                       @onchange="ToggleSelectAllCurrentPage" />
+                                                       title="Select all matching rows on every page"
+                                                       checked="@AreAllFilteredRowsSelected"
+                                                       @onchange="ToggleSelectAllFilteredRows" />
                                             </th>
                                             <th>Status</th>
 

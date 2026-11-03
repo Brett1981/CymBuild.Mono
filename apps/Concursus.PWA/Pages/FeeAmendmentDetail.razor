@@ -51,10 +51,16 @@
                 Amendments entered here will adjust the agreed fee, meetings, and site visits for stages that are not covered by the standard RIBA stage fee amendment fields above.
             </div>
         </div>
+
         <DynamicGrid GridCode="CUSTOMFEEAMENDMENT"
                      ParentGuid="@RecordGuid"
                      ParentDataObjectReference="@editPage.MyDataObjectReference"
                      ParentRowStatus="@editPage.dataObject.RowStatus"/>
+
+        <DynamicGrid GridCode="FEEAMENDMENTCHASE"
+                     ParentGuid="@RecordGuid"
+                     ParentDataObjectReference="@editPage.MyDataObjectReference"
+                     ParentRowStatus="@editPage.dataObject.RowStatus" />
 
     </FormBody>
 </EditPage>

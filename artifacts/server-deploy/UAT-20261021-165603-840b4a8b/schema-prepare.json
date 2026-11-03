@@ -1,0 +1,18 @@
+{
+  "mode": "created",
+  "runGuid": "338e0474-df6a-4dbd-850a-aa312523e29b",
+  "comparedOnUtc": "2026-10-21 16:11:16",
+  "selected": [
+    {
+      "objectType": "Function",
+      "schemaName": "SCore",
+      "objectName": "WorkflowGetNextStatus",
+      "parentObjectName": "",
+      "differenceType": "Different"
+    }
+  ],
+  "skipped": [],
+  "failCount": 0,
+  "warnCount": 0,
+  "message": "Created run 338e0474-df6a-4dbd-850a-aa312523e29b: selected 1 row(s), skipped 0, validated and accepted."
+}

@@ -1,0 +1,19 @@
+﻿{
+    "RunGuid":  "4fe9e990-dd18-4261-903f-57c1bc09cf90",
+    "TargetServer":  "SOC-SQLBRE01\\SQL2022",
+    "TargetDatabase":  "Concursus",
+    "ReleaseReference":  "Live Schema release",
+    "DeploymentReference":  "Live Schema release",
+    "IsApply":  false,
+    "IsWhatIf":  true,
+    "PlanCount":  4,
+    "SupportedCount":  4,
+    "UnsupportedCount":  0,
+    "MaterializedSourceCount":  0,
+    "RetryFailedDeployment":  false,
+    "GeneratedOnUtc":  "2026-08-12T19:25:53.2348247Z",
+    "ExecutionId":  "20260812T192552867Z-whatif-pid15152-9c2bb6fa",
+    "ExecutionMode":  "whatif",
+    "RunOutputRoot":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\4fe9e990-dd18-4261-903f-57c1bc09cf90",
+    "OutputDirectory":  "C:\\Users\\stephen.brett\\source\\CymBuild.Monorepo\\artifacts\\schema-deployment\\4fe9e990-dd18-4261-903f-57c1bc09cf90\\executions\\20260812T192552867Z-whatif-pid15152-9c2bb6fa"
+}

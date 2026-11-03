@@ -1,0 +1,10 @@
+{
+  "mode": "refreshed",
+  "runGuid": "d9e94913-c964-40a2-947a-f4f53bf37c20",
+  "comparedOnUtc": "2026-10-16 14:28:14",
+  "selected": [],
+  "skipped": [],
+  "failCount": 1,
+  "warnCount": 0,
+  "message": "Run d9e94913-c964-40a2-947a-f4f53bf37c20 failed validation with 1 failure(s); it was not accepted. NO_SELECTED_ROWS .: No schema rows are selected. Save at least one deployable row before validation."
+}

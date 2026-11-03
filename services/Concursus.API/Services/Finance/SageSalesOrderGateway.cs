@@ -228,7 +228,7 @@ namespace Concursus.API.Services.Finance
             if (force)
                 query.Add("force=true");
 
-            var uri = "api/customer-transactions?" + string.Join("&", query);
+            var uri = "api/v2/customer-transactions?" + string.Join("&", query);
 
             using var message = new HttpRequestMessage(HttpMethod.Get, uri);
 

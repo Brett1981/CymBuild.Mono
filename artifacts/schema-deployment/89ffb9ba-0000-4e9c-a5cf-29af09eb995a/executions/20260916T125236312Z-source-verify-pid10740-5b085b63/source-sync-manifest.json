@@ -1,0 +1,52 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "89ffb9ba-0000-4e9c-a5cf-29af09eb995a",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "SOC-SQLDEVBRE01\\GENERAL",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_UAT",
+  "Mode": "VerifySource",
+  "NonDevSourceOverrideApplied": false,
+  "SelectedObjectCount": 3,
+  "ArtifactCount": 3,
+  "GeneratedOnUtc": "2026-09-16T12:52:37.8761329Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "a302752d-6884-4106-ac67-43104f250e8c",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SMigration",
+      "ObjectName": "MetadataApply_Run",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "514CD84D21AA4857BE0135F321A7B3317E49AFF9B52C87864994A3CFDDE80693",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SMigration.MetadataApply_Run.sql",
+      "FileSha256": "8C0FB7504C2103C46EA5447F57E8665137438D1C24806B0FB803B988E63AEEEE",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "a06f238a-f7df-4e72-a8e5-0462e022c198",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesRevise",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "4EF9D311B06BDBA9B8C04AACEB2C97A1997CB3DB751CDECB0084184C3F71DCC7",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesRevise.sql",
+      "FileSha256": "87D50C24B5538DE911EB86304138104DFA65509C3DCE7CDD40569ABD024C7A35",
+      "WasSynchronized": false
+    },
+    {
+      "ComparisonGuid": "dabc92b5-6d63-4db5-9268-d6ced5174ac7",
+      "ObjectType": "StoredProcedure",
+      "SchemaName": "SSop",
+      "ObjectName": "QuotesUpsert",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "525F5BD2096E67FB006D758BD2DB925A64426C662B20A430A5F0E306FEC3ACE1",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Procedures/SSop.QuotesUpsert.sql",
+      "FileSha256": "3347330D9FC4AB9DF009A89E95F911BD8F96978909055F457E170F8D86275061",
+      "WasSynchronized": false
+    }
+  ]
+}

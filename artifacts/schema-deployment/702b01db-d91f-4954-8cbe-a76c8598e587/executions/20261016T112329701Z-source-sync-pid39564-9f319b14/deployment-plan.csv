@@ -1,0 +1,4 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"dadb851e-31a3-40d1-ac6d-cf64b912b09e","StoredProcedure","SMigration","MetadataApply_Run","","Different","True","False","True","True"
+"557caa76-c6d5-4bef-8a09-b91e451454c4","StoredProcedure","SMigration","MetadataQuerySignature_Check","","MissingInTarget","True","False","True","True"
+"55756980-cb7c-4c03-b0db-a469a1fe64d2","StoredProcedure","SMigration","MetadataValidate_Run","","Different","True","False","True","True"

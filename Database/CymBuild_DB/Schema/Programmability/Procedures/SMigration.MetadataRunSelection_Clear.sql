@@ -4,7 +4,7 @@ GO
 PRINT (N'Create procedure [SMigration].[MetadataRunSelection_Clear]')
 GO
 
-CREATE PROCEDURE [SMigration].[MetadataRunSelection_Clear]
+CREATE OR ALTER PROCEDURE [SMigration].[MetadataRunSelection_Clear]
 (
     @RunGuid UNIQUEIDENTIFIER,
     @SchemaName NVARCHAR(128) = N'',
@@ -68,6 +68,13 @@ BEGIN
     INNER JOIN @SelectionsToClear AS clearRows
         ON clearRows.SelectionGuid = sel.Guid
     WHERE sel.RowStatus NOT IN (0,254);
+
+    UPDATE SMigration.Metadata_Run
+    SET
+        RunStatus = N'Staged',
+        ValidatedOnUtc = NULL
+    WHERE Guid = @RunGuid
+      AND RowStatus NOT IN (0,254);
 
     EXEC SMigration.MetadataExecutionLog_Add
         @RunGuid = @RunGuid,

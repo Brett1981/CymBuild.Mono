@@ -740,7 +740,9 @@ CREATE TABLE [SUserInterface].[GridViewDefinitions](
 	[FilteredListOrangeStatusIndicatorTxt] [nvarchar](100) NOT NULL,
 	[FilteredListGreenStatusIndicatorTxt] [nvarchar](100) NOT NULL,
 	[FilteredListGroupBy] [nvarchar](100) NOT NULL,
- CONSTRAINT [PK_GridViewDefinitions] PRIMARY KEY CLUSTERED 
+	[ShowSearchBar] [bit] NOT NULL,
+	[IsSearchDefaultCollapsed] [bit] NOT NULL,
+ CONSTRAINT [PK_GridViewDefinitions] PRIMARY KEY CLUSTERED
 (
 	[ID] ASC
 )WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, FILLFACTOR = 80, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [METADATA]
@@ -5653,6 +5655,10 @@ GO
 INSERT [SCore].[EntityProperties] ([ID], [RowStatus], [Guid], [Name], [LanguageLabelID], [EntityHoBTID], [EntityDataTypeID], [IsReadOnly], [IsImmutable], [IsUppercase], [IsHidden], [IsCompulsory], [MaxLength], [Precision], [Scale], [DoNotTrackChanges], [EntityPropertyGroupID], [SortOrder], [GroupSortOrder], [IsObjectLabel], [DropDownListDefinitionID], [IsParentRelationship], [IsLongitude], [IsLatitude], [IsIncludedInformation], [FixedDefaultValue], [SqlDefaultValueStatement], [AllowBulkChange], [IsVirtual], [ShowOnMobile], [IsAlwaysVisibleInGroup], [IsAlwaysVisibleInGroup_Mobile]) VALUES (2555, 1, N'b3349db9-81bd-4a08-84eb-e6e78b1439f3', N'JobId', 3614, 165, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, 0, 0, 0, -1, 1, 0, 0, 0, N'', N'', 0, 0, 0, 0, 0)
 GO
 INSERT [SCore].[EntityProperties] ([ID], [RowStatus], [Guid], [Name], [LanguageLabelID], [EntityHoBTID], [EntityDataTypeID], [IsReadOnly], [IsImmutable], [IsUppercase], [IsHidden], [IsCompulsory], [MaxLength], [Precision], [Scale], [DoNotTrackChanges], [EntityPropertyGroupID], [SortOrder], [GroupSortOrder], [IsObjectLabel], [DropDownListDefinitionID], [IsParentRelationship], [IsLongitude], [IsLatitude], [IsIncludedInformation], [FixedDefaultValue], [SqlDefaultValueStatement], [AllowBulkChange], [IsVirtual], [ShowOnMobile], [IsAlwaysVisibleInGroup], [IsAlwaysVisibleInGroup_Mobile]) VALUES (2556, 1, N'b491dace-43ac-4dc7-aafe-7e82ab9cff90', N'Source', 3711, 79, 1, 0, 0, 0, 0, 0, 500, 0, 0, 0, -1, 0, 0, 0, -1, 0, 0, 0, 0, N'', N'', 0, 0, 0, 0, 0)
+GO
+INSERT [SCore].[EntityProperties] ([ID], [RowStatus], [Guid], [Name], [LanguageLabelID], [EntityHoBTID], [EntityDataTypeID], [IsReadOnly], [IsImmutable], [IsUppercase], [IsHidden], [IsCompulsory], [MaxLength], [Precision], [Scale], [DoNotTrackChanges], [EntityPropertyGroupID], [SortOrder], [GroupSortOrder], [IsObjectLabel], [DropDownListDefinitionID], [IsParentRelationship], [IsLongitude], [IsLatitude], [IsIncludedInformation], [FixedDefaultValue], [SqlDefaultValueStatement], [AllowBulkChange], [IsVirtual], [ShowOnMobile], [IsAlwaysVisibleInGroup], [IsAlwaysVisibleInGroup_Mobile]) VALUES (2557, 1, N'9f823354-d0cd-4bef-bd14-3169a0695466', N'ShowSearchBar', 3712, 12, 4, 0, 0, 0, 0, 0, 1, 1, 0, 0, 30, 1, 0, 0, -1, 0, 0, 0, 0, N'', N'', 0, 0, 0, 0, 0)
+GO
+INSERT [SCore].[EntityProperties] ([ID], [RowStatus], [Guid], [Name], [LanguageLabelID], [EntityHoBTID], [EntityDataTypeID], [IsReadOnly], [IsImmutable], [IsUppercase], [IsHidden], [IsCompulsory], [MaxLength], [Precision], [Scale], [DoNotTrackChanges], [EntityPropertyGroupID], [SortOrder], [GroupSortOrder], [IsObjectLabel], [DropDownListDefinitionID], [IsParentRelationship], [IsLongitude], [IsLatitude], [IsIncludedInformation], [FixedDefaultValue], [SqlDefaultValueStatement], [AllowBulkChange], [IsVirtual], [ShowOnMobile], [IsAlwaysVisibleInGroup], [IsAlwaysVisibleInGroup_Mobile]) VALUES (2558, 1, N'9c45ee8d-07ba-4cf4-bbd0-6d92f529042d', N'IsSearchDefaultCollapsed', 3713, 12, 4, 0, 0, 0, 0, 0, 1, 1, 0, 0, 30, 2, 0, 0, -1, 0, 0, 0, 0, N'', N'', 0, 0, 0, 0, 0)
 GO
 SET IDENTITY_INSERT [SCore].[EntityProperties] OFF
 GO
@@ -19365,6 +19371,10 @@ INSERT [SCore].[LanguageLabels] ([ID], [RowStatus], [Guid], [Name]) VALUES (3710
 GO
 INSERT [SCore].[LanguageLabels] ([ID], [RowStatus], [Guid], [Name]) VALUES (3711, 1, N'a5f556e7-2d84-48e8-a2ba-218f74d19568', N'[SCore].[Groups].[Source]')
 GO
+INSERT [SCore].[LanguageLabels] ([ID], [RowStatus], [Guid], [Name]) VALUES (3712, 1, N'3e6e1209-584a-4639-b710-aa4e1575ae97', N'[SUserInterface].[GridViewDefinitions].[ShowSearchBar]')
+GO
+INSERT [SCore].[LanguageLabels] ([ID], [RowStatus], [Guid], [Name]) VALUES (3713, 1, N'aea5a6d1-7b36-4cbe-b812-680e23fbc126', N'[SUserInterface].[GridViewDefinitions].[IsSearchDefaultCollapsed]')
+GO
 SET IDENTITY_INSERT [SCore].[LanguageLabels] OFF
 GO
 SET IDENTITY_INSERT [SCore].[LanguageLabelTranslations] ON 
@@ -25928,6 +25938,10 @@ GO
 INSERT [SCore].[LanguageLabelTranslations] ([ID], [RowStatus], [Guid], [Text], [TextPlural], [LanguageLabelID], [LanguageID], [HelpText]) VALUES (3730, 1, N'e8e279da-cec7-46c9-bf8a-ea4d7dd196c6', N'Quote Date', N'Quote Date', 3710, 1, N'')
 GO
 INSERT [SCore].[LanguageLabelTranslations] ([ID], [RowStatus], [Guid], [Text], [TextPlural], [LanguageLabelID], [LanguageID], [HelpText]) VALUES (3731, 1, N'9c340dfb-f587-4d7b-8780-958669b310bf', N'Source', N'', 3711, 1, N'')
+GO
+INSERT [SCore].[LanguageLabelTranslations] ([ID], [RowStatus], [Guid], [Text], [TextPlural], [LanguageLabelID], [LanguageID], [HelpText]) VALUES (3732, 1, N'f550373d-359a-43f8-b765-0e3f3269d215', N'Show Search Bar', N'Show Search Bar', 3712, 1, N'')
+GO
+INSERT [SCore].[LanguageLabelTranslations] ([ID], [RowStatus], [Guid], [Text], [TextPlural], [LanguageLabelID], [LanguageID], [HelpText]) VALUES (3733, 1, N'437a37e7-3ead-4a7e-a8ce-e3012a1b4c3d', N'Search Collapsed By Default', N'Search Collapsed By Default', 3713, 1, N'')
 GO
 SET IDENTITY_INSERT [SCore].[LanguageLabelTranslations] OFF
 GO
@@ -33670,6 +33684,10 @@ GO
 ALTER TABLE [SUserInterface].[GridViewDefinitions] ADD  DEFAULT (N'') FOR [FilteredListGreenStatusIndicatorTxt]
 GO
 ALTER TABLE [SUserInterface].[GridViewDefinitions] ADD  DEFAULT (N'') FOR [FilteredListGroupBy]
+GO
+ALTER TABLE [SUserInterface].[GridViewDefinitions] ADD  CONSTRAINT [DF_GridViewDefinitions_ShowSearchBar]  DEFAULT ((1)) FOR [ShowSearchBar]
+GO
+ALTER TABLE [SUserInterface].[GridViewDefinitions] ADD  CONSTRAINT [DF_GridViewDefinitions_IsSearchDefaultCollapsed]  DEFAULT ((0)) FOR [IsSearchDefaultCollapsed]
 GO
 ALTER TABLE [SUserInterface].[GridViewTypes] ADD  CONSTRAINT [DF_GridViewTypes_RowStatus]  DEFAULT ((0)) FOR [RowStatus]
 GO

@@ -1,0 +1,28 @@
+﻿{
+  "Contract": "CYB_SCHEMA_SOURCE_SYNC_V1",
+  "SchemaSnapshotContract": "R7C4",
+  "RunGuid": "25e36f0c-1c13-4331-ad8d-605201f3edc5",
+  "SourceEnvironment": "DEV",
+  "SourceServerName": "10.100.34.114\\general",
+  "SourceDatabaseName": "CymBuild_Dev",
+  "PlanDatabase": "CymBuild_QA",
+  "Mode": "SyncSource",
+  "NonDevSourceOverrideApplied": true,
+  "SelectedObjectCount": 1,
+  "ArtifactCount": 1,
+  "GeneratedOnUtc": "2026-10-21T12:09:50.5640837Z",
+  "Artifacts": [
+    {
+      "ComparisonGuid": "da0ed788-c984-4296-b6b6-93d866c4e99f",
+      "ObjectType": "Function",
+      "SchemaName": "SCore",
+      "ObjectName": "WorkflowGetNextStatus",
+      "ParentObjectName": "",
+      "DifferenceType": "Different",
+      "SourceHash": "CCDC9D63DF5C75512236147F40AEAECF776938938D8E087E0234D7CF30E8440A",
+      "RelativePath": "Database/CymBuild_DB/Schema/Programmability/Functions/SCore.WorkflowGetNextStatus.sql",
+      "FileSha256": "FDEF12C3C88851C7EDFF61AF589B257885A989D2518206D7E71BB878D23DAAD5",
+      "WasSynchronized": true
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"157cbf47-4747-445c-95c5-c89938226044","Constraint","SMigration","UQ_Metadata_StagedRows_Guid","Metadata_StagedRows","Different","True","False","True","True"
+"e9a5fa51-9121-498c-abe6-d86f927f8ac0","Constraint","SMigration","UQ_Metadata_StagedRows_Run_Table_Row","Metadata_StagedRows","Different","True","False","True","True"
+"bcda2e5f-869b-4462-b4f7-df1f3ffea96c","Constraint","SMigration","UQ_Schema_ObjectComparisons_Guid","Schema_ObjectComparisons","Different","True","False","True","True"
+"31849091-7d32-47e7-b536-c7051a7f0a66","Index","SMigration","Metadata_StagedRows.IX_Metadata_StagedRows_RunGuid","Metadata_StagedRows","Different","True","False","True","True"
+"011e37b9-fa52-4fec-9cce-5b6f201e0690","Index","SMigration","Schema_ObjectComparisons.IX_Schema_ObjectComparisons_Run_Active","Schema_ObjectComparisons","Different","True","False","True","True"
+"5dd37b1d-f5eb-4f58-b508-f06df1438e37","Index","SMigration","Schema_ObjectComparisons.UX_Schema_ObjectComparisons_Run_Key_Active","Schema_ObjectComparisons","Different","True","False","True","True"

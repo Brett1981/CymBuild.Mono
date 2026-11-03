@@ -1,0 +1,5 @@
+﻿"ComparisonGuid","ObjectType","SchemaName","ObjectName","ParentObjectName","DifferenceType","IsDeployable","IsDestructiveRisk","IsSelected","HasExplicitSelection"
+"bf50c233-dc95-4768-ab82-fe8fb61209aa","Function","SCore","tvf_GetScheduledActivities","","Different","True","False","True","True"
+"cd30c00c-a6c0-444c-9157-f9d9e929e1d7","Function","SFin","tvf_AllTransactions","","Different","True","False","True","True"
+"698b32d1-25f9-49cf-8317-0e1e1901f87a","Function","SSop","tvf_QuotesValidate","","Different","True","False","True","True"
+"53426db9-274b-47ac-a739-3e6c8fc7a105","StoredProcedure","SSop","EnquiriesDuplicate","","Different","True","False","True","True"
